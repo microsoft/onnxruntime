@@ -304,18 +304,18 @@ class Execution {
 
  private:
   void cleanup();
-  bool model_loaded{false};
-  NSString* coreml_model_path;
-  NSString* compiled_model_path;
-  const logging::Logger* logger;
-  uint32_t coreml_flags;
-  MLModel* model;
+  bool model_loaded_ {false};
+  NSString* coreml_model_path_ {nil};
+  NSString* compiled_model_path_ {nil};
+  const logging::Logger& logger_;
+  uint32_t coreml_flags_ {0};
+  MLModel* model_ {nil};
 };
 
 Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
     : coreml_model_path{[NSString stringWithUTF8String:path.c_str()]},
-      logger{&logger},
-      coreml_flags{coreml_flags} {
+      logger_{logger},
+      coreml_flags_{coreml_flags} {
 }
 
 Execution::~Execution() {
@@ -324,36 +324,36 @@ Execution::~Execution() {
 
 void Execution::cleanup() {
   NSError* error = nil;
-  if (compiled_model_path != nil) {
-    [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path error:&error];
+  if (compiled_model_path_ != nil) {
+    [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
     if (error != nil) {
-      LOGS(*logger, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path UTF8String]
+      LOGS(logger_, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
                            << ", error message: " << [[error localizedDescription] UTF8String];
     }
-    compiled_model_path = nil;
+    compiled_model_path_ = nil;
   }
 
 #if !defined(NDEBUG)
   std::string path_override = Env::Default().GetEnvironmentVar(util::kOverrideModelOutputDirectoryEnvVar);
   if (!path_override.empty()) {
     // don't cleanup
-    coreml_model_path = nil;
+    coreml_model_path_ = nil;
   }
 #endif
 
-  if (coreml_model_path != nil) {
+  if (coreml_model_path_ != nil) {
     error = nil;
-    [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path error:&error];
+    [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
     if (error != nil) {
-      LOGS(*logger, ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path UTF8String]
+      LOGS(logger_, ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
                            << ", error message: " << [[error localizedDescription] UTF8String];
     }
-    coreml_model_path = nil;
+    coreml_model_path_ = nil;
   }
 }
 
 Status Execution::LoadModel() {
-  if (model_loaded) {
+  if (model_loaded_) {
     return Status::OK();
   }
 
@@ -370,21 +370,21 @@ Status Execution::LoadModel() {
                              [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
-    compiled_model_path = [compileUrl path];
+      compiled_model_path_ = [compileUrl path];
 
-    MLModelConfiguration* config = [MLModelConfiguration alloc];
-    config.computeUnits = (coreml_flags & COREML_FLAG_USE_CPU_ONLY)
-                              ? MLComputeUnitsCPUOnly
-                              : MLComputeUnitsAll;
-    model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
+      MLModelConfiguration* config = [MLModelConfiguration alloc];
+      config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
+                                ? MLComputeUnitsCPUOnly
+                                : MLComputeUnitsAll;
+      model_ = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
     if (error != NULL) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel ",
                              [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
-    model_loaded = status.IsOK();
-    return status;
+      model_loaded_ = true;
+      return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+");
@@ -393,22 +393,22 @@ Status Execution::LoadModel() {
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
                           const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
                           const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
-  ORT_RETURN_IF_NOT(model_loaded, "Execution::Predict requires Execution::LoadModel");
+  ORT_RETURN_IF_NOT(model_loaded_, "Execution::Predict requires Execution::LoadModel");
 
   if (HAS_COREML3_OR_LATER) {
     Status status = Status::OK();
     ORT_TRY {
-      if (model == nil) {
+        if (model_ == nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model is not loaded");
       }
 
       id<MLFeatureProvider> input_features;
       InlinedVector<std::unique_ptr<int32_t[]>> conversion_buffers;
-      ORT_RETURN_IF_ERROR(CreateInputFeatureProvider(inputs, *logger, &input_features, conversion_buffers));
+        ORT_RETURN_IF_ERROR(CreateInputFeatureProvider(inputs, *logger_, &input_features, conversion_buffers));
 
       MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
       NSError* error = nil;
-      id<MLFeatureProvider> output_features = [model predictionFromFeatures:input_features
+        id<MLFeatureProvider> output_features = [model_ predictionFromFeatures:input_features
                                                                     options:options
                                                                       error:&error];
 
@@ -438,7 +438,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
         }();
 
         const auto static_output_shape = GetStaticOutputShape(output_tensor_info.shape, coreml_static_output_shape,
-                                                              *logger);
+                                                                *logger_);
 
         void* output_buffer = get_output_tensor_mutable_raw_data_fn(output_name, output_tensor_info.data_type,
                                                                     static_output_shape);
