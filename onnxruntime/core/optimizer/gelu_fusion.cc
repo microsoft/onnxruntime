@@ -47,16 +47,16 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
   const auto& version_map = graph.DomainToVersionMap();
   const auto& onnx_version = version_map.find(kOnnxDomain);
   // Gelu is an official ONNX operator as of opset 20, so we can fuse in level 1 if it is available
-  bool gelu_fusion_flag = (onnx_version != version_map.end() && onnx_version->second >= 20);
-  const auto compatible_providers = GetCompatibleExecutionProviders();
-  auto op_domain = optimization_level_ == TransformerLevel::Level1 ? kOnnxDomain : kMSDomain;
+  const bool onnx_gelu_available = (onnx_version != version_map.end() && onnx_version->second >= 20);
+  const bool fuse_in_level_1 = onnx_gelu_available || allow_contrib_op_in_level_1_;
+  const auto op_domain = fuse_in_level_1 && onnx_gelu_available ? kOnnxDomain : kMSDomain;
 
-  if (contrib_flag_) {
-    op_domain = kMSDomain;
-  }
-  else if ((optimization_level_ == TransformerLevel::Level1 && !gelu_fusion_flag) || (optimization_level_ == TransformerLevel::Level2 && gelu_fusion_flag)) {
+  if ((optimization_level_ == TransformerLevel::Level1 && !fuse_in_level_1) ||
+      (optimization_level_ == TransformerLevel::Level2 && fuse_in_level_1)) {
     return Status::OK();
   }
+
+  const auto compatible_providers = GetCompatibleExecutionProviders();
 
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
