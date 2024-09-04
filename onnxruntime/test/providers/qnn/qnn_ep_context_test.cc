@@ -840,7 +840,8 @@ static void CreateQdqModel(const std::string& model_file_name, const Logger& log
 }
 
 static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
-                                   const std::vector<std::string>& onnx_model_paths) {
+                                   const std::string& onnx_model_path1,
+                                   const std::string& onnx_model_path2) {
   SessionOptions so;
   so.session_logid = "qnn_ctx_model_logger";
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1"));
@@ -851,12 +852,15 @@ static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
   auto qnn_ep = QnnExecutionProviderWithOptions(provider_options, &so);
   std::shared_ptr<IExecutionProvider> qnn_ep_shared(std::move(qnn_ep));
 
-  for (auto model_path : onnx_model_paths) {
-    InferenceSessionWrapper session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(qnn_ep_shared));
-    ASSERT_STATUS_OK(session_object.Load(ToPathString(model_path)));
-    ASSERT_STATUS_OK(session_object.Initialize());
-  }
+  InferenceSessionWrapper session_object1{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object1.RegisterExecutionProvider(qnn_ep_shared));
+  ASSERT_STATUS_OK(session_object1.Load(ToPathString(onnx_model_path1)));
+  ASSERT_STATUS_OK(session_object1.Initialize());
+
+  InferenceSessionWrapper session_object2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(qnn_ep_shared));
+  ASSERT_STATUS_OK(session_object2.Load(ToPathString(onnx_model_path2)));
+  ASSERT_STATUS_OK(session_object2.Initialize());
 }
 
 // from the last context ache Onnx model, find the EPContext node with main_context=1,
@@ -956,7 +960,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
     ctx_model_paths.push_back(model_path + "_ctx.onnx");
   }
 
-  DumpModelWithSharedCtx(provider_options, onnx_model_paths);
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths[0], onnx_model_paths[1]);
 
   // Get the last context binary file name
   std::string last_qnn_ctx_binary_file_name;
@@ -1048,7 +1052,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions2) {
     ctx_model_paths.push_back(model_path + "_ctx.onnx");
   }
 
-  DumpModelWithSharedCtx(provider_options, onnx_model_paths);
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths[0], onnx_model_paths[1]);
 
   // Get the last context binary file name
   std::string last_qnn_ctx_binary_file_name;
