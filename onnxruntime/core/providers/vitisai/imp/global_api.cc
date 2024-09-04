@@ -39,17 +39,15 @@ using namespace onnxruntime;
 #define LIBRARY_PREFIX "lib"
 #define LIBRARY_EXTENSION ".so"
 #endif
-
-namespace vaip_core {
-
-void initialize_onnxruntime_vitisai_ep(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
-uint32_t vaip_get_version();
-extern "C" int create_ep_context_nodes(
+extern "C" {
+void initialize_onnxruntime_vitisai_ep_c(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+uint32_t vaip_get_version_c();
+int create_ep_context_nodes_c(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
     vaip_core::DllSafe<std::vector<Node*>>* ret_value);
-std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* compile_onnx_model_with_options(
+std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* compile_onnx_model_with_options_c(
     const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
-}  // namespace vaip_core
+};
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
@@ -65,11 +63,14 @@ struct OrtVitisAIEpAPI {
                                 size_t config_xmodel_size, void* state,
                                 char* (*allocator)(void*, size_t)) = nullptr;
   void Ensure() {
-    this->initialize_onnxruntime_vitisai_ep = vaip_core::initialize_onnxruntime_vitisai_ep;
-    this->compile_onnx_model_with_options = vaip_core::compile_onnx_model_with_options;
-    this->create_ep_context_nodes = vaip_core::create_ep_context_nodes;
-    this->vaip_get_version = vaip_core::vaip_get_version;
-    //
+    if (handle_)
+      return;
+
+    this->initialize_onnxruntime_vitisai_ep = initialize_onnxruntime_vitisai_ep_c;
+    this->compile_onnx_model_with_options = compile_onnx_model_with_options_c;
+    this->create_ep_context_nodes = create_ep_context_nodes_c;
+    this->vaip_get_version = vaip_get_version_c;
+
     auto& env = Provider_GetHost()->Env__Default();
     auto& logger = *Provider_GetHost()->LoggingManager_GetDefaultLogger();
 
@@ -424,5 +425,9 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
   the_global_api.vaip_xcompiler_compile = s_library_vitisaiep.vaip_xcompiler_compile;
-  return &the_global_api;
+  if (!s_library_vitisaiep.vaip_get_version) {
+    return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
+  } else {
+    return &the_global_api;
+  }
 }
