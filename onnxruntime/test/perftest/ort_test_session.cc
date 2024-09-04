@@ -636,6 +636,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
 
+  if (!performance_test_config.run_config.register_custom_op_path.empty()) {
+    session_options.RegisterCustomOpsLibrary(performance_test_config.run_config.register_custom_op_path.c_str());
+  }
+
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
     fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
     session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
