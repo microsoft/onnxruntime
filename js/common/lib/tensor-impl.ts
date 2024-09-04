@@ -243,6 +243,9 @@ export class Tensor implements TensorInterface {
           } else {
             throw new TypeError(`Invalid element type of data array: ${firstElementType}.`);
           }
+        } else if (arg0 instanceof Uint8ClampedArray) {
+          type = "uint8";
+          data = Uint8Array.from(arg0);
         } else {
           // get tensor type from TypedArray
           const mappedType = NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.get(
