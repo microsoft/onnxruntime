@@ -301,7 +301,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::copy(supported_options.begin(), supported_options.end(),
                     std::ostream_iterator<std::string>(str_stream, ","));
           std::string str = str_stream.str();
-          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+          ORT_THROW("Wrong value for " + key + ". select from: " + str);
         }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
