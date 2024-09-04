@@ -103,6 +103,17 @@ inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPoo
 }
 
 template <typename T>
+void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, float softcap) {
+  for (int i = 0; i < sequence_length; i++) {
+    scores[i] = scores[i] / softcap;
+    scores[i] = std::tanh(scores[i]);
+    scores[i] = scores[i] * softcap;
+  }
+}
+
+template void ComputeAttentionSoftcapInplace<float>(float* scores, int sequence_length, float softcap);
+
+template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  gsl::span<const int64_t> mask_index_dims,
                  T* mask_data,

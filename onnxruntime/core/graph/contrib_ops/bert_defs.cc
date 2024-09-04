@@ -1061,6 +1061,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("softcap",
+              "Softcap value for attention weights. Default value is 0.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Attr("local_window_size",
               "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
               AttributeProto::INT,

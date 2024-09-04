@@ -224,6 +224,7 @@ def create_group_query_attention_graph_prompt(
     rotary_interleaved=False,
     packed=False,
     interactive=False,
+    softcap=0.0,
     use_smooth_softmax=False,
 ):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
@@ -249,6 +250,7 @@ def create_group_query_attention_graph_prompt(
             local_window_size=local_window_size,
             do_rotary=rotary,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
             smooth_softmax=1 if use_smooth_softmax else 0,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             # kv_share_buffer=1 if share_buffer else 0,
@@ -412,6 +414,7 @@ def create_group_query_attention_graph_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
     use_smooth_softmax=False,
 ):
     past_kv_seqlen = config.kv_sequence_length
@@ -439,6 +442,7 @@ def create_group_query_attention_graph_past(
             local_window_size=local_window_size,
             do_rotary=rotary,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
             smooth_softmax=1 if use_smooth_softmax else 0,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             # kv_share_buffer=1 if share_buffer else 0,
@@ -789,6 +793,7 @@ def gqa_prompt_func(
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     rotary_interleaved=False,
+    softcap=0.0,
     use_smooth_softmax=False,
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
@@ -799,6 +804,7 @@ def gqa_prompt_func(
         rotary=cos is not None,
         rotary_interleaved=rotary_interleaved,
         packed=new_k is None,
+        softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
@@ -896,6 +902,7 @@ def gqa_past_func(
     share_buffer=True,
     window_size=-1,
     rotary_interleaved=False,
+    softcap=0.0,
     use_smooth_softmax=False,
 ):
     onnx_model_str = create_group_query_attention_graph_past(
@@ -906,6 +913,7 @@ def gqa_past_func(
         rotary=cos is not None,
         rotary_interleaved=rotary_interleaved,
         packed=new_k is None,
+        softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
@@ -1041,6 +1049,7 @@ def attention_ref(
     dropout_mask=None,
     causal=False,
     window_size=(-1, -1),  # -1 means infinite window size
+    softcap=0.0,
     upcast=True,
     reorder_ops=False,
     use_smooth_softmax=False,
@@ -1078,6 +1087,10 @@ def attention_ref(
         scores = torch.einsum("bthd,bshd->bhts", q / math.sqrt(d), k)
     else:
         scores = torch.einsum("bthd,bshd->bhts", q, k / math.sqrt(d))
+    if softcap > 0:
+        scores = scores / softcap
+        scores = scores.tanh()
+        scores = scores * softcap
     if key_padding_mask is not None:
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
     if window_size[0] >= 0 or window_size[1] >= 0:
@@ -1216,6 +1229,7 @@ def parity_check_gqa_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
     use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
@@ -1340,6 +1354,7 @@ def parity_check_gqa_prompt(
         None,
         causal=True,
         window_size=window_size,
+        softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
@@ -1364,6 +1379,7 @@ def parity_check_gqa_prompt(
             past_format,
             True,
             rotary_interleaved,
+            softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     else:
@@ -1381,6 +1397,7 @@ def parity_check_gqa_prompt(
             past_format,
             True,
             rotary_interleaved,
+            softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
@@ -1389,7 +1406,7 @@ def parity_check_gqa_prompt(
 
     err_msg = (
         f" with {config}, causal={causal}, local={local}, past_format={past_format},"
-        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}, softcap={softcap}"
     )
     # Make sure past-present buffer updating correctly
     numpy.testing.assert_allclose(
@@ -1410,6 +1427,7 @@ def parity_check_gqa_prompt_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
     use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
@@ -1511,6 +1529,7 @@ def parity_check_gqa_prompt_no_buff(
         None,
         causal=True,
         window_size=window_size,
+        softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
@@ -1535,6 +1554,7 @@ def parity_check_gqa_prompt_no_buff(
             past_format,
             False,
             rotary_interleaved,
+            softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     else:
@@ -1552,6 +1572,7 @@ def parity_check_gqa_prompt_no_buff(
             past_format,
             False,
             rotary_interleaved,
+            softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
@@ -1560,8 +1581,7 @@ def parity_check_gqa_prompt_no_buff(
 
     err_msg = (
         f" with {config}, causal={causal}, local={local}, past_format={past_format},"
-        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed},"
-        f" use_smooth_softmax={use_smooth_softmax}"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}, softcap={softcap}, use_smooth_softmax={use_smooth_softmax}"
     )
     # Make sure past-present buffer updating correctly
     numpy.testing.assert_allclose(
@@ -1582,6 +1602,7 @@ def parity_check_gqa_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
     use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
@@ -1700,6 +1721,7 @@ def parity_check_gqa_past(
         None,
         causal=True,
         window_size=window_size,
+        softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
@@ -1726,6 +1748,7 @@ def parity_check_gqa_past(
             True,
             left_window_size,
             rotary_interleaved,
+            softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     else:
@@ -1743,6 +1766,7 @@ def parity_check_gqa_past(
             True,
             left_window_size,
             rotary_interleaved,
+            softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
@@ -1751,7 +1775,7 @@ def parity_check_gqa_past(
 
     err_msg = (
         f" with {config}, causal={causal}, local={local}, past_format={past_format},"
-        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}, softcap={softcap}"
     )
     # Make sure past-present buffer updating correctly
     numpy.testing.assert_allclose(
@@ -1771,6 +1795,7 @@ def parity_check_gqa_past_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
     use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
@@ -1895,6 +1920,7 @@ def parity_check_gqa_past_no_buff(
         None,
         causal=True,
         window_size=window_size,
+        softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
@@ -1921,6 +1947,7 @@ def parity_check_gqa_past_no_buff(
             False,
             window_size=left_window_size,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     else:
@@ -1938,6 +1965,7 @@ def parity_check_gqa_past_no_buff(
             False,
             window_size=left_window_size,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
             use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
@@ -1946,7 +1974,7 @@ def parity_check_gqa_past_no_buff(
 
     err_msg = (
         f" with {config}, causal={causal}, local={local}, past_format={past_format},"
-        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}, softcap={softcap}"
     )
     for b in range(config.batch_size):
         numpy.testing.assert_allclose(
@@ -2077,14 +2105,16 @@ def gqa_no_past_memory_efficient_test_cases():
                 for h in h_sizes:
                     for rotary, rotary_interleaved in rotary_options_for_current_os():
                         for packed in [False, True]:
-                            config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                            yield (
-                                str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
-                                config,
-                                rotary,
-                                rotary_interleaved,
-                                packed,
-                            )
+                            for softcap in [0.0, 50.0]:
+                                config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                yield (
+                                    str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
+                                    config,
+                                    rotary,
+                                    rotary_interleaved,
+                                    packed,
+                                    softcap,
+                                )
 
 
 def gqa_no_past_flash_attention_test_cases():
@@ -2117,15 +2147,17 @@ def gqa_no_past_flash_attention_test_cases():
                     for local in [False, True]:
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
-                                config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                yield (
-                                    str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
-                                    config,
-                                    local,
-                                    rotary,
-                                    rotary_interleaved,
-                                    packed,
-                                )
+                                for softcap in [0.0, 50.0]:
+                                    config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                    yield (
+                                        str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
+                                        config,
+                                        local,
+                                        rotary,
+                                        rotary_interleaved,
+                                        packed,
+                                        softcap,
+                                    )
 
 
 def gqa_past_memory_efficient_test_cases():
@@ -2157,15 +2189,17 @@ def gqa_past_memory_efficient_test_cases():
                 for h in h_sizes:
                     for rotary, rotary_interleaved in rotary_options_for_current_os():
                         for packed in [False, True]:
-                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                            config = Config(b, s, s2, sp, n, n2, h)
-                            yield (
-                                str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
-                                config,
-                                rotary,
-                                rotary_interleaved,
-                                packed,
-                            )
+                            for softcap in [0.0, 50.0]:
+                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                config = Config(b, s, s2, sp, n, n2, h)
+                                yield (
+                                    str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
+                                    config,
+                                    rotary,
+                                    rotary_interleaved,
+                                    packed,
+                                    softcap,
+                                )
 
 
 def gqa_past_flash_attention_test_cases():
@@ -2198,16 +2232,18 @@ def gqa_past_flash_attention_test_cases():
                     for local in [False, True]:
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
-                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                config = Config(b, s, s2, sp, n, n2, h)
-                                yield (
-                                    str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
-                                    config,
-                                    local,
-                                    rotary,
-                                    rotary_interleaved,
-                                    packed,
-                                )
+                                for softcap in [0.0, 50.0]:
+                                    sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                    config = Config(b, s, s2, sp, n, n2, h)
+                                    yield (
+                                        str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
+                                        config,
+                                        local,
+                                        rotary,
+                                        rotary_interleaved,
+                                        packed,
+                                        softcap,
+                                    )
 
 
 def gqa_interactive_memory_efficient_test_cases():
@@ -2333,7 +2369,7 @@ def gqa_interactive_one_batch_memory_efficient_attention_test_cases():
 
 class TestGQA(unittest.TestCase):
     @parameterized.expand(gqa_no_past_memory_efficient_test_cases())
-    def test_gqa_no_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
+    def test_gqa_no_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed, softcap):
         if not has_memory_efficient():
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
@@ -2347,6 +2383,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
+            softcap=softcap,
             use_smooth_softmax=False,
         )
         parity_check_gqa_prompt_no_buff(
@@ -2357,11 +2394,12 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
-            use_smooth_softmax=False,
+            softcap=softcap,
+            use_smooth_softmax=True,
         )
 
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
-    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
         if not has_flash_attention():
             return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
@@ -2374,6 +2412,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
+            softcap=softcap,
             use_smooth_softmax=True,
         )
         parity_check_gqa_prompt_no_buff(
@@ -2383,11 +2422,12 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
+            softcap=softcap,
             use_smooth_softmax=False,
         )
 
     @parameterized.expand(gqa_past_memory_efficient_test_cases())
-    def test_gqa_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
+    def test_gqa_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed, softcap):
         if not has_memory_efficient():
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
@@ -2401,7 +2441,8 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
-            use_smooth_softmax=False,
+            softcap=softcap,
+            use_smooth_softmax=True,
         )
         parity_check_gqa_past_no_buff(
             config,
@@ -2411,11 +2452,12 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
+            softcap=softcap,
             use_smooth_softmax=False,
         )
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
-    def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+    def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
         if not has_flash_attention():
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
@@ -2430,6 +2472,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
+            softcap=softcap,
             use_smooth_softmax=False,
         )
         parity_check_gqa_past_no_buff(
@@ -2441,6 +2484,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
+            softcap=softcap,
             use_smooth_softmax=True,
         )
 
