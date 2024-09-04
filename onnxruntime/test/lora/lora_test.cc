@@ -11,46 +11,8 @@
 namespace onnxruntime {
 namespace test {
 
-// TEST(LoraFormatTest, CreateAdapter) {
-//   // Generate a random sequence of floats
-//   // shape = {8, 4}
-//   constexpr std::array<int64_t, 2> shape = {8, 4};
-//   std::vector<float> param_1(32);
-//   std::iota(param_1.begin(), param_1.end(), 0.0f);
-//
-//   std::vector<float> param_2(32);
-//   std::iota(param_2.begin(), param_2.end(), 33.0f);
-//
-//   flatbuffers::FlatBufferBuilder builder;
-//   std::vector<flatbuffers::Offset<lora::Parameter>> params;
-//   params.reserve(2);
-//   flatbuffers::Offset<lora::Parameter> fbs_param_1, fbs_param_2;
-//   auto byte_span = ReinterpretAsSpan<uint8_t>(gsl::make_span(param_1));
-//   lora::utils::SaveLoraParameter(builder, "param_1", lora::TensorDataType_FLOAT, shape,
-//                                  byte_span, fbs_param_1);
-//   params.push_back(fbs_param_1);
-//
-//   byte_span = ReinterpretAsSpan<uint8_t>(gsl::make_span(param_2));
-//   lora::utils::SaveLoraParameter(builder, "param_2", lora::TensorDataType_FLOAT, shape,
-//                                  byte_span, fbs_param_2);
-//   params.push_back(fbs_param_2);
-//
-//   auto fbs_params = builder.CreateVector(params);
-//   auto fbs_adapter = lora::CreateAdapter(builder, lora::kLoraFormatVersion, 1, 1, fbs_params);
-//   builder.Finish(fbs_adapter, lora::AdapterIdentifier());
-//
-//   constexpr const char* const file_name =
-//       "D:/dmitrism/Downloads/generate-test-model/param_conversion/lora_unit_test_adapter.fb";
-//   std::ofstream file(file_name, std::ios::binary);
-//   ASSERT_TRUE(file.is_open());
-//
-//   ASSERT_FALSE(file.write(reinterpret_cast<const char*>(builder.GetBufferPointer()), builder.GetSize()).fail());
-//   ASSERT_FALSE(file.flush().fail());
-//   file.close();
-// }
-
 TEST(LoraAdapterTest, Load) {
-  // XXX: put this into test directory
+  // See file creation code at testdata/lora/lora_unit_test_adapter.cc
   const std::filesystem::path file_path = "testdata/lora/lora_unit_test_adapter.fb";
 
   auto verify_load = [](const lora::LoraAdapter& adapter) {
