@@ -127,7 +127,7 @@ TEST(LoggingTests, TestFileSink) {
   // create scoped manager so sink gets destroyed once done
   {
 #ifdef _WIN32
-    LoggingManager manager{std::unique_ptr<ISink>{new FileSink{ToWideString(filename), false, false}},
+    LoggingManager manager{std::unique_ptr<ISink>{new FileSink{onnxruntime::ToWideString(filename), false, false}},
                            min_log_level, false, InstanceType::Temporal};
 #else
     LoggingManager manager{std::unique_ptr<ISink>{new FileSink{filename, false, false}},
