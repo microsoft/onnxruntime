@@ -165,7 +165,8 @@ Status CreateInputFeatureProvider(
   }
 
   auto* feature_provider =
-      [[MLDictionaryFeatureProvider alloc] initWithDictionary:feature_dictionary error:&error];
+      [[MLDictionaryFeatureProvider alloc] initWithDictionary:feature_dictionary
+                                                        error:&error];
   ORT_RETURN_IF(
       error != nil || feature_provider == nil, "Failed to create MLDictionaryFeatureProvider",
       (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
