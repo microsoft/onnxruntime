@@ -120,7 +120,6 @@ TEST(LoggingTests, TestCErrSink) {
 /// </summary>
 TEST(LoggingTests, TestFileSink) {
   const std::string filename{"TestFileSink.out"};
-  const std::string filename{"TestFileSink.out"};
   const std::string logid{"FileSink"};
   const std::string message{"Test message"};
   const Severity min_log_level = Severity::kWARNING;
