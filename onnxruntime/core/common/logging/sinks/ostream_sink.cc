@@ -21,6 +21,7 @@ struct Color {
 };
 #endif
 
+#ifndef _WIN32
 void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   // operator for formatting of timestamp in ISO8601 format including microseconds
   using timestamp_ns::operator<<;
@@ -31,11 +32,8 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
   //
   // Going with #2 as it should scale better at the cost of creating the message in memory first
   // before sending to the stream.
-#ifdef _WIN32
-  std::wostringstream msg;
-#else
+
   std::ostringstream msg;
-#endif
 
 #ifndef ORT_MINIMAL_BUILD
   if (message.Severity() == Severity::kWARNING) {
@@ -47,13 +45,8 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
   }
 #endif
 
-#ifdef _WIN32
   msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
-    << message.Location().ToString() << "] " << message.Message();
-#else
-  msg << timestamp << L" [" << message.SeverityPrefix() << L":" << message.Category() << L":" << ToWideString(logger_id) << L", "
-    << ToWideString(message.Location().ToString()) << L"] " << ToWideString(message.Message());
-#endif
+      << message.Location().ToString() << "] " << message.Message();
 
 #ifndef ORT_MINIMAL_BUILD
   if (message.Severity() == Severity::kWARNING ||
@@ -62,12 +55,7 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
     msg << Color::kEnd;
   }
 #endif
-
-#ifdef _WIN32
-  msg << L"\n";
-#else
   msg << "\n";
-#endif
 
   (*stream_) << msg.str();
 
@@ -75,7 +63,7 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
     stream_->flush();
   }
 }
-#ifdef _WIN32
+#else
 void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   // operator for formatting of timestamp in ISO8601 format including microseconds
   using date::operator<<;
