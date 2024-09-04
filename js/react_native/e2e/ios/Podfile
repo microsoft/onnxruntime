@@ -9,7 +9,7 @@ pre_install do |installer|
 
   # Recommended fix for https://github.com/facebook/react-native/issues/32483
   # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
-  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"${SRCROOT}/Pods/RCT-Folly/folly/portability/Time.h\"")
+  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
 end
 
 target 'OnnxruntimeModuleExample' do
