@@ -1134,7 +1134,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (it != provider_options_map.end()) {
       info = it->second;
     }
-    for(const auto &option: session_options.config_options.configurations) {
+    for (const auto& option : session_options.config_options.configurations) {
       auto key = std::string("ort_session_config.") + option.first;
       const auto& value = option.second;
       info[key] = value;
