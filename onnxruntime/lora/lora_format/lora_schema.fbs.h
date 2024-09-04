@@ -22,55 +22,55 @@ struct ParameterBuilder;
 struct Adapter;
 struct AdapterBuilder;
 
-enum TensorDataType : int32_t {
-  TensorDataType_UNDEFINED = 0,
-  TensorDataType_FLOAT = 1,
-  TensorDataType_UINT8 = 2,
-  TensorDataType_INT8 = 3,
-  TensorDataType_UINT16 = 4,
-  TensorDataType_INT16 = 5,
-  TensorDataType_INT32 = 6,
-  TensorDataType_INT64 = 7,
-  TensorDataType_STRING = 8,
-  TensorDataType_BOOL = 9,
-  TensorDataType_FLOAT16 = 10,
-  TensorDataType_DOUBLE = 11,
-  TensorDataType_UINT32 = 12,
-  TensorDataType_UINT64 = 13,
-  TensorDataType_COMPLEX64 = 14,
-  TensorDataType_COMPLEX128 = 15,
-  TensorDataType_BFLOAT16 = 16,
-  TensorDataType_FLOAT8E4M3FN = 17,
-  TensorDataType_FLOAT8E4M3FNUZ = 18,
-  TensorDataType_FLOAT8E5M2 = 19,
-  TensorDataType_FLOAT8E5M2FNUZ = 20,
-  TensorDataType_MIN = TensorDataType_UNDEFINED,
-  TensorDataType_MAX = TensorDataType_FLOAT8E5M2FNUZ
+enum class TensorDataType : int32_t {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  UINT8 = 2,
+  INT8 = 3,
+  UINT16 = 4,
+  INT16 = 5,
+  INT32 = 6,
+  INT64 = 7,
+  STRING = 8,
+  BOOL = 9,
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+  FLOAT8E4M3FN = 17,
+  FLOAT8E4M3FNUZ = 18,
+  FLOAT8E5M2 = 19,
+  FLOAT8E5M2FNUZ = 20,
+  MIN = UNDEFINED,
+  MAX = FLOAT8E5M2FNUZ
 };
 
 inline const TensorDataType (&EnumValuesTensorDataType())[21] {
   static const TensorDataType values[] = {
-    TensorDataType_UNDEFINED,
-    TensorDataType_FLOAT,
-    TensorDataType_UINT8,
-    TensorDataType_INT8,
-    TensorDataType_UINT16,
-    TensorDataType_INT16,
-    TensorDataType_INT32,
-    TensorDataType_INT64,
-    TensorDataType_STRING,
-    TensorDataType_BOOL,
-    TensorDataType_FLOAT16,
-    TensorDataType_DOUBLE,
-    TensorDataType_UINT32,
-    TensorDataType_UINT64,
-    TensorDataType_COMPLEX64,
-    TensorDataType_COMPLEX128,
-    TensorDataType_BFLOAT16,
-    TensorDataType_FLOAT8E4M3FN,
-    TensorDataType_FLOAT8E4M3FNUZ,
-    TensorDataType_FLOAT8E5M2,
-    TensorDataType_FLOAT8E5M2FNUZ
+    TensorDataType::UNDEFINED,
+    TensorDataType::FLOAT,
+    TensorDataType::UINT8,
+    TensorDataType::INT8,
+    TensorDataType::UINT16,
+    TensorDataType::INT16,
+    TensorDataType::INT32,
+    TensorDataType::INT64,
+    TensorDataType::STRING,
+    TensorDataType::BOOL,
+    TensorDataType::FLOAT16,
+    TensorDataType::DOUBLE,
+    TensorDataType::UINT32,
+    TensorDataType::UINT64,
+    TensorDataType::COMPLEX64,
+    TensorDataType::COMPLEX128,
+    TensorDataType::BFLOAT16,
+    TensorDataType::FLOAT8E4M3FN,
+    TensorDataType::FLOAT8E4M3FNUZ,
+    TensorDataType::FLOAT8E5M2,
+    TensorDataType::FLOAT8E5M2FNUZ
   };
   return values;
 }
@@ -104,7 +104,7 @@ inline const char * const *EnumNamesTensorDataType() {
 }
 
 inline const char *EnumNameTensorDataType(TensorDataType e) {
-  if (::flatbuffers::IsOutRange(e, TensorDataType_UNDEFINED, TensorDataType_FLOAT8E5M2FNUZ)) return "";
+  if (::flatbuffers::IsOutRange(e, TensorDataType::UNDEFINED, TensorDataType::FLOAT8E5M2FNUZ)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorDataType()[index];
 }
@@ -173,7 +173,7 @@ inline ::flatbuffers::Offset<Parameter> CreateParameter(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     ::flatbuffers::Offset<::flatbuffers::String> name = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> dims = 0,
-    onnxruntime::lora::TensorDataType data_type = onnxruntime::lora::TensorDataType_UNDEFINED,
+    onnxruntime::lora::TensorDataType data_type = onnxruntime::lora::TensorDataType::UNDEFINED,
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> raw_data = 0) {
   ParameterBuilder builder_(_fbb);
   builder_.add_raw_data(raw_data);
@@ -187,10 +187,11 @@ inline ::flatbuffers::Offset<Parameter> CreateParameterDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     const std::vector<int64_t> *dims = nullptr,
-    onnxruntime::lora::TensorDataType data_type = onnxruntime::lora::TensorDataType_UNDEFINED,
+    onnxruntime::lora::TensorDataType data_type = onnxruntime::lora::TensorDataType::UNDEFINED,
     const std::vector<uint8_t> *raw_data = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto dims__ = dims ? _fbb.CreateVector<int64_t>(*dims) : 0;
+  if (raw_data) { _fbb.ForceVectorAlignment(raw_data->size(), sizeof(uint8_t), 8); }
   auto raw_data__ = raw_data ? _fbb.CreateVector<uint8_t>(*raw_data) : 0;
   return onnxruntime::lora::CreateParameter(
       _fbb,

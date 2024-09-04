@@ -37,7 +37,7 @@ table Parameter {
   dims:[int64];
   data_type:TensorDataType;
 
-  raw_data:[uint8];
+  raw_data:[uint8] (force_align : 8);
 }
 
 table Adapter {
