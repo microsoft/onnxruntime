@@ -42,7 +42,6 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     return new Promise((resolve, reject) => {
       setImmediate(() => {
         try {
-          console.log('running inference session...');
           resolve(this.#inferenceSession.run(feeds, fetches, options));
         } catch (e) {
           // reject if any error is thrown
