@@ -13,6 +13,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/provider_adapter.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -59,6 +60,17 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
   InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
 };
+#endif
+
+#ifdef ORT_ENABLE_STREAM
+static std::string ShouldPostPoneRegisterResourceFor(IExecutionProvider* ep, const ExecutionProviders& all_ep) {
+  ExecutionProviderAdapter* ep_adapter = dynamic_cast<ExecutionProviderAdapter*>(ep);
+  if (ep_adapter == nullptr) return "";  // TODO(leca): or add a member property for performance?
+  for (auto& any_ep : all_ep) {
+    if (any_ep->Type() != ep->Type() && any_ep->GetOrtDeviceByMemType(OrtMemTypeDefault) == ep->GetOrtDeviceByMemType(OrtMemTypeDefault)) return any_ep->Type();
+  }
+  return "";
+}
 #endif
 
 SessionState::SessionState(Graph& graph,
@@ -1367,9 +1379,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   // register stream handles from EP instances
 #ifdef ORT_ENABLE_STREAM
-  auto& eps = GetExecutionProviders();
-  for (auto& ep : eps) {
-    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+  std::string register_resource_after = "";
+  IExecutionProvider* out_tree_ep = nullptr;
+  for (auto& ep : execution_providers_) {
+    if (register_resource_after == "") {
+      register_resource_after = ShouldPostPoneRegisterResourceFor(ep.get(), execution_providers_);
+      if (register_resource_after == "") ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+      else out_tree_ep = ep.get();
+    } else {
+      ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+      if (register_resource_after == ep->Type()) out_tree_ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+    }
   }
 #endif
 

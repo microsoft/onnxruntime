@@ -4,6 +4,9 @@
 #pragma once
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/error_code_helper.h"
+#include "core/framework/kernel_registry.h"
+#include "core/session/allocator_adapters.h"
 
 namespace onnxruntime {
 
@@ -129,10 +132,12 @@ public:
 
   virtual std::vector<AllocatorPtr> CreatePreferredAllocators() override {
     std::vector<AllocatorPtr> ret;
-    OrtAllocator** ort_allocators = nullptr;
-    int cnt = ep_impl_ -> CreatePreferredAllocators(ep_impl_, &ort_allocators);
-    for (int i = 0; i < cnt; i++) {
-      ret.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(ort_allocators[i]));
+    if (ep_impl_->CreatePreferredAllocators) {
+      OrtAllocator** ort_allocators = nullptr;
+      int cnt = ep_impl_ -> CreatePreferredAllocators(ep_impl_, &ort_allocators);
+      for (int i = 0; i < cnt; i++) {
+        ret.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(ort_allocators[i]));
+      }
     }
     return ret;
   }

@@ -78,5 +78,6 @@ int main() {
     std::cout<<"Result:\n";
     for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
 
+    g_ort->ReleaseEnv(p_env);
     return 0;
 }
