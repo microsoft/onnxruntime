@@ -119,7 +119,11 @@ TEST(LoggingTests, TestCErrSink) {
 /// Tests that the file_sink produces the expected output.
 /// </summary>
 TEST(LoggingTests, TestFileSink) {
+#ifdef _WIN32
+  const std::wstring filename{L"TestFileSink.out"};
+#else
   const std::string filename{"TestFileSink.out"};
+#endif
   const std::string logid{"FileSink"};
   const std::string message{"Test message"};
   const Severity min_log_level = Severity::kWARNING;
