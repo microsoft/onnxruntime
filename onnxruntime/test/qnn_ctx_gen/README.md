@@ -1,6 +1,6 @@
 # ONNXRuntime Qnn Context Generator
 
-This tool provides the way to generate Onnx model which has QNN context binary warpt with weight sharing enabled. The options to use with the tool are listed below:
+This tool provides the way to generate Onnx models that wraps QNN context binary warpt with weight sharing enabled. The options to use with the tool are listed below:
 
 `onnxruntime_qnn_ctx_gen [options...] model_path,model_path`
 
@@ -17,7 +17,7 @@ Options:
     -i: [provider_options]: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are:
             [Usage]: -i '<key1>|<value1> <key2>|<value2>'
 
-            [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'.
+            [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Default to HTP backend lib in current folder.
             [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).
             [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.
             [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown).

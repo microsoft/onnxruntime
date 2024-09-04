@@ -20,7 +20,7 @@ struct RunConfig {
   std::unordered_map<std::string, std::string> qnn_options;
 };
 
-struct PerformanceTestConfig {
+struct TestConfig {
   std::vector<std::basic_string<ORTCHAR_T>> model_file_paths;
   RunConfig run_config;
 };

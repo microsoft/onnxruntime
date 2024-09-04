@@ -7,12 +7,12 @@
 namespace onnxruntime {
 namespace qnnctxgen {
 
-struct PerformanceTestConfig;
+struct TestConfig;
 
 class CommandLineParser {
  public:
   static void ShowUsage();
-  static bool ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]);
+  static bool ParseArguments(TestConfig& test_config, int argc, ORTCHAR_T* argv[]);
 };
 
 }  // namespace qnnctxgen

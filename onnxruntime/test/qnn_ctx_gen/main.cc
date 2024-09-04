@@ -31,8 +31,8 @@ static void CheckStatus(const Status& status) {
   }
 }
 
-// from the last context ache Onnx model, find the EPContext node with main_context=1,
-// and get the QNN context binary file name, thie context binary contains all graphs from all Onnx models
+// from the last context cache Onnx model, find the EPContext node with main_context=1,
+// and get the QNN context binary file name, this context binary contains all graphs from all Onnx models
 static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last_onnx_ctx_file,
                                          std::string& last_ctx_bin_file) {
   std::shared_ptr<Model> ctx_model;
@@ -89,7 +89,7 @@ int real_main(int argc, wchar_t* argv[]) {
 int real_main(int argc, char* argv[]) {
 #endif
   g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  qnnctxgen::PerformanceTestConfig test_config;
+  qnnctxgen::TestConfig test_config;
   if (!qnnctxgen::CommandLineParser::ParseArguments(test_config, argc, argv)) {
     qnnctxgen::CommandLineParser::ShowUsage();
     return -1;
@@ -138,6 +138,10 @@ int real_main(int argc, char* argv[]) {
     }
 
     for (auto it : test_config.run_config.session_config_entries) {
+      if (it.first == kOrtSessionOptionEpContextEnable && it.second != "1") {
+        std::cerr << "Need to enable ep context cache." << std::endl;
+        continue;
+      }
       if (it.first == kOrtSessionOptionEpContextEmbedMode && it.second != "0") {
         std::cerr << "Only support non-embed model for weight sharing." << std::endl;
         continue;

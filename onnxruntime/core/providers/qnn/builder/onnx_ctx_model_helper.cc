@@ -34,15 +34,14 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
 }
 
 bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs) {
-  bool has_qnn_ep_context_node = false;
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
     const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
-    has_qnn_ep_context_node = GraphHasEpContextNode(graph_viewer);
+    bool has_qnn_ep_context_node = GraphHasEpContextNode(graph_viewer);
     if (has_qnn_ep_context_node) {
       return true;
     }
   }
-  return has_qnn_ep_context_node;
+  return false;
 }
 
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,

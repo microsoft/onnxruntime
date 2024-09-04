@@ -102,7 +102,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
   return true;
 }
 
-/*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
+/*static*/ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
   while ((ch = getopt(argc, argv, ORT_TSTR("o:u:i:C:vh"))) != -1) {
     switch (ch) {
