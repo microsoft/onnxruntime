@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/common/common.h"
 #include "core/common/logging/capture.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
