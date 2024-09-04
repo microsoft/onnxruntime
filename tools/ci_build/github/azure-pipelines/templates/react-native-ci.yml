@@ -61,7 +61,7 @@ stages:
         architecture: "x64"
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - template: mac-build-step-with-cache.yml
