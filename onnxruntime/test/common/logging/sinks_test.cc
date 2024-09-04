@@ -119,20 +119,21 @@ TEST(LoggingTests, TestCErrSink) {
 /// Tests that the file_sink produces the expected output.
 /// </summary>
 TEST(LoggingTests, TestFileSink) {
-#ifdef _WIN32
-  const std::wstring filename{L"TestFileSink.out"};
-#else
   const std::string filename{"TestFileSink.out"};
-#endif
+  const std::string filename{"TestFileSink.out"};
   const std::string logid{"FileSink"};
   const std::string message{"Test message"};
   const Severity min_log_level = Severity::kWARNING;
 
   // create scoped manager so sink gets destroyed once done
   {
+#ifdef _WIN32
+    LoggingManager manager{std::unique_ptr<ISink>{new FileSink{std::wofstream(filename), false, false}},
+                           min_log_level, false, InstanceType::Temporal};
+#else
     LoggingManager manager{std::unique_ptr<ISink>{new FileSink{filename, false, false}},
                            min_log_level, false, InstanceType::Temporal};
-
+#endif
     auto logger = manager.CreateLogger(logid);
 
     LOGS(*logger, WARNING) << message;
