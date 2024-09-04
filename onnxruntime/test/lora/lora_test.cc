@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers_fwd.h"
 #include "lora/lora_adapters.h"
 #include "lora/lora_format_version.h"
 #include "lora/lora_format_utils.h"
@@ -19,8 +20,8 @@ TEST(LoraAdapterTest, Load) {
     const auto param_num = adapter.GetParamNum();
     ASSERT_GE(param_num, 0U);
 
-    std::vector<const char*> names;
-    std::vector<OrtValue> ort_values;
+    InlinedVector<const char*> names;
+    InlinedVector<OrtValue> ort_values;
     names.reserve(param_num);
     ort_values.reserve(param_num);
 
