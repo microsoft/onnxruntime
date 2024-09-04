@@ -192,9 +192,11 @@ else()
     onnxruntime_util
     re2::re2
   )
-
-  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','getValue','setValue'")
-
+  if (onnxruntime_USE_JSEP)
+    set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','getValue','setValue'")
+  else()
+    set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
+  endif()
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
     string(APPEND EXPORTED_RUNTIME_METHODS ",'addFunction'")
@@ -304,11 +306,11 @@ else()
     target_compile_options(absl_throw_delegate PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_raw_logging_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_log_severity PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-if (onnxruntime_USE_EXTENSIONS)
-    target_compile_options(ortcustomops PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(ocos_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(noexcep_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-endif()
+    if (onnxruntime_USE_EXTENSIONS)
+        target_compile_options(ortcustomops PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+        target_compile_options(ocos_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+        target_compile_options(noexcep_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    endif()
     target_link_options(onnxruntime_webassembly PRIVATE
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
     )
