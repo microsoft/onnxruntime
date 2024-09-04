@@ -25,6 +25,9 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   auto* output_tensor = context.Output(0, input_tensor->Shape());
   int64_t size = input_tensor->Shape().Size();
+  if (size == 0) {
+    return Status::OK();
+  }
   SafeInt<uint32_t> vec_size = (size + 3) / 4;
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
