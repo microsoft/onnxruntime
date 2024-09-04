@@ -59,7 +59,7 @@ void Dequantize4BitsKernelReOrder(
         zp = zero_points[n_idx * zero_point_shape_x + rid / 2];
         zp = (rid & 0x01) ? (zp >> 4) : (zp & 0x0f);
       } else {
-        zp_f = *(zero_points + n_idx * scales_shape_x + rid);
+        zp_f = *(zero_points + static_cast<uint64_t>(n_idx) * static_cast<uint64_t>(scales_shape_x) + static_cast<uint64_t>(rid));
       }
     }
 
