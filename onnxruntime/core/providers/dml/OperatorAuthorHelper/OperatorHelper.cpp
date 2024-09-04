@@ -1150,10 +1150,10 @@ namespace OperatorHelper
         }
 
         uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
-        for (int32_t i = 0; i < axes.size(); i++)
+        for (uint32_t i = 0; i < numAxes; i++)
         {
             auto xi_begin = padding[i];
-            auto xi_end = padding[i+axes.size()];
+            auto xi_end = padding[i+numAxes];
             m_startPadding[axes[i]] = xi_begin;
             m_endPadding[axes[i]] = xi_end;
         }

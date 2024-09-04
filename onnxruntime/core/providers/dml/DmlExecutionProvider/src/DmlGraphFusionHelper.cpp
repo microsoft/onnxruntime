@@ -845,11 +845,11 @@ namespace DmlGraphFusionHelper
             .Provider(onnxruntime::kDmlExecutionProvider);
 
         // Force the CPU inputs to be allocated on the CPU
-        for (int i = 0; i < subGraphInputArgNames.size(); ++i)
+        for (size_t i = 0; i < subGraphInputArgNames.size(); ++i)
         {
             if (dynamicCpuInputMap.find(subGraphInputArgNames[i]) != dynamicCpuInputMap.end())
             {
-                builder.InputMemoryType(OrtMemTypeCPUInput, i);
+                builder.InputMemoryType(OrtMemTypeCPUInput, static_cast<int>(i));
             }
         }
 

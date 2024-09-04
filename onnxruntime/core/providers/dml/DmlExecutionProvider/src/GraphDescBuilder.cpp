@@ -333,7 +333,7 @@ namespace Dml::GraphDescBuilder
             EdgeShapes inputShapesOverrides(node.InputDefs().size());
 
             // Override the input shapes with shapes that were previously inferred
-            for (int inputIndex = 0; inputIndex < node.InputDefs().size(); ++inputIndex)
+            for (size_t inputIndex = 0; inputIndex < node.InputDefs().size(); ++inputIndex)
             {
                 auto inputDef = node.InputDefs()[inputIndex];
 
@@ -344,7 +344,7 @@ namespace Dml::GraphDescBuilder
                 }
                 else if (inputDef->HasTensorOrScalarShape())
                 {
-                    for (int i = 0; i < inputDef->Shape()->dim_size(); ++i)
+                    for (size_t i = 0; i < inputDef->Shape()->dim_size(); ++i)
                     {
                         ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->Shape()->dim(i).has_dim_value());
                         inputShapesOverrides.GetMutableShape(inputIndex).push_back(gsl::narrow_cast<uint32_t>(inputDef->Shape()->dim(i).dim_value()));
