@@ -248,7 +248,7 @@ class CTestSink : public WOStreamSink {
 };
 #else
 class CTestSink : public OStreamSink {
-public:
+ public:
   CTestSink(std::ostringstream& stream) : OStreamSink(stream, /*flush*/ true) {
   }
 };
@@ -263,7 +263,7 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
   std::wostringstream out;
 #else
   std::ostringstream out;
- #endif
+#endif
   auto* sink_ptr = new CTestSink{out};
 
   LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,

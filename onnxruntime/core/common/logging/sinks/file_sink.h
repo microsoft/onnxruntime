@@ -55,7 +55,7 @@ class FileSink : public OStreamSink {
 /// </summary>
 /// <seealso cref="ISink" />
 class FileSink : public WOStreamSink {
-public:
+ public:
   /// <summary>
   /// Initializes a new instance of the <see cref="FileSink" /> class.
   /// </summary>
@@ -79,7 +79,7 @@ public:
                  filter_user_data} {
   }
 
-private:
+ private:
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override {
     if (!filter_user_data_ || message.DataType() != DataType::USER) {
       WOStreamSink::SendImpl(timestamp, logger_id, message);
