@@ -291,7 +291,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 }
 
 // Internal Execution class
-// This class will bridge Model (c++) with CoreMLExecution (objective c++)
+// This class is part of the model class and handles the calls into CoreML
 class Execution {
  public:
   Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
