@@ -90,7 +90,7 @@
 					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Llama 3</a>
 					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi-3-tutorial.md" class="btn btn-primary btn-block">Phi-3</a>
 					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Gemma</a>
-					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Mistral</a>
+					<a href="https://huggingface.co/microsoft/Mistral-7B-v0.1-onnx" class="btn btn-primary btn-block">Mistral</a>
 				</div>
 			</div>
 			
@@ -206,7 +206,7 @@
 		</p>
 		<div class="">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3 my-8 ">
-				<div class="card bg-base-100 image-full w-80 mx-auto">
+				<div class="card bg-base-100 image-full sm:w-80 mx-auto">
 					<figure>
 						<img class="brightness-50" src={coffee} alt="A cappuccino used to inference with Phi3 vision" />
 					</figure>
@@ -223,7 +223,7 @@
 						</div>
 					</div>
 				</div>
-				<div class="card bg-base-100 image-full w-80 mx-auto">
+				<div class="card bg-base-100 image-full sm:w-80 mx-auto">
 					<figure>
 						<img class="brightness-50" src={vision_ui} alt="UI of the vision LLM chat app" />
 					</figure>
@@ -240,7 +240,7 @@
 						</div>
 					</div>
 				</div>
-				<div class="card bg-base-100 image-full w-80 mx-auto">
+				<div class="card bg-base-100 image-full sm:w-80 mx-auto">
 					<figure>
 						<img class="brightness-50" src={genny} alt="Genny's model testing UI" />
 					</figure>
