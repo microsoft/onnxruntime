@@ -104,7 +104,9 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
 
   OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
-  Tensor::InitOrtValue(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(),
+  auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
+  // const_cast is necessery due to Tensor class API
+  Tensor::InitOrtValue(elem_type,
                        TensorShape(shape_span),
                        const_cast<uint8_t*>(param.raw_data()->data()),
                        cpu_meminfo,

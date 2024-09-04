@@ -20,7 +20,7 @@ It is possible to use another flatc as well, e.g., from a separate installation.
 
 To update the flatbuffers schemas and generated files:
 1. Modify [ONNXRuntime Lora Parameter file format schema](lora_schema.fbs).
-2. Run [compile_schema.py](./compile_schema.py) to generate the C++ and Python bindings.
+2. Run [compile_schema.py](./compile_schema.py) to generate the C++ bindings.
 
     ```
     python onnxruntime/lora/lora_format/compile_schema.py --flatc <path to flatc>
