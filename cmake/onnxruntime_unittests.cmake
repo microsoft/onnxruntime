@@ -263,6 +263,11 @@ file(GLOB onnxruntime_test_flatbuffers_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/flatbuffers/*.h"
 )
 
+file(GLOB onnxruntime_test_lora_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/lora/*.cc"
+  "${TEST_SRC_DIR}/lora/*.h"
+)
+
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
   file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
@@ -783,7 +788,7 @@ endif()
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
         ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantization_src}
-        ${onnxruntime_test_flatbuffers_src})
+        ${onnxruntime_test_flatbuffers_src} ${onnxruntime_test_lora_src})
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
