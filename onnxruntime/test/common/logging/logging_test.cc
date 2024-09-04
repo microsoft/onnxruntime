@@ -273,8 +273,11 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
 
   // attempt to print string longer than hard-coded 2K buffer limit
   LOGF(*logger, ERROR, "%s", std::string(4096, 'a').c_str());
-
+#ifdef _WIN32
+  EXPECT_THAT(out.str(), HasSubstr(L"[...truncated...]"));
+#else
   EXPECT_THAT(out.str(), HasSubstr("[...truncated...]"));
+#endif
 }
 
 TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStatement) {
