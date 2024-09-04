@@ -3,6 +3,15 @@ require_relative '../node_modules/@react-native-community/cli-platform-ios/nativ
 
 platform :ios, '13.0'
 
+pre_install do |installer|
+  # Custom pre-install script or commands
+  puts "Running pre-install script..."
+
+  # Recommended fix for https://github.com/facebook/react-native/issues/32483
+  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
+  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"${SRCROOT}/Pods/RCT-Folly/folly/portability/Time.h\"")
+end
+
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 
