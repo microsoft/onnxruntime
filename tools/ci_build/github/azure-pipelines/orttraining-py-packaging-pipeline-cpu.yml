@@ -1,7 +1,7 @@
 parameters:
 - name: cmake_build_type
   type: string
-  displayName: 'Linux packages cmake build type. Linux Only.'
+  displayName: 'Linux/Windows/iOS packages cmake build type.'
   default: 'Release'
   values:
    - Debug
