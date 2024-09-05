@@ -91,8 +91,8 @@ describe('Tensor Constructor Tests - check types', () => {
   });
 
   it("[bool] new Tensor('bool', uint8Array, dims): tensor can be constructed from Uint8Array", () => {
-      const tensor = new Tensor('bool', new Uint8Array([1, 0, 1, 0]), [2, 2]);
-      assert.equal(tensor.type, 'bool', "tensor.type should be 'bool'");
+    const tensor = new Tensor('bool', new Uint8Array([1, 0, 1, 0]), [2, 2]);
+    assert.equal(tensor.type, 'bool', "tensor.type should be 'bool'");
   });
 
   it('[bool] new Tensor(booleans, dims): "tensor.data" should match inferred type', () => {
