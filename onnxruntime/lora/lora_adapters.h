@@ -125,9 +125,8 @@ class LoraAdapter {
   /// </summary>
   struct LoraParam {
     LoraParam() = default;
-    LoraParam(std::string name, OrtValue parameter) noexcept;
+    explicit LoraParam(OrtValue parameter) noexcept;
 
-    std::string name_;
     OrtValue ort_value_;
   };
 
