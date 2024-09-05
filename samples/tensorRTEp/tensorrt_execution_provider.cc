@@ -1135,8 +1135,9 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
   sub_graph->node_index_len = graph_nodes_index.first.size();
   sub_graph->node_index = new size_t [sub_graph->node_index_len];
   sub_graph->meta_def = new OrtMetaDef();
-  std::unordered_map<std::string, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<std::string> erased;
+  std::vector<std::string> inputs;
+  std::vector<std::string> outputs;
   int input_order = 0;
   int output_order = 0;
 
@@ -1157,13 +1158,18 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
         initializers.push_back(input_name);
         continue;
       }
-      const auto& it = fused_outputs.find(input_name);
-      if (it != fused_outputs.end()) {
-        fused_outputs.erase(it);
-        erased.insert(input_name);
-      } else if (erased.find(input_name) == erased.end()) {
-        // Only when input is neither in output list nor erased list, add the input to input list
-        fused_inputs[input_name] = input_order++;
+      const OrtNode* producer = nullptr;
+      api_->OrtGraph_GetNodeProducingOutput(graph, input_name, &producer);
+      // If the input is not produced by any node, it is a graph input
+      if (producer == nullptr) {
+        inputs.push_back(input_name);
+        continue;
+      }
+      size_t producer_index = 0;
+      api_->OrtNode_GetIndex(producer, &producer_index);
+      // If the producer node is not in the subgraph, the input is a graph input
+      if (node_set.find(producer_index) == node_set.end()) {
+        inputs.push_back(input_name);
       }
     }
 
@@ -1178,81 +1184,44 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
         initializers.push_back(input_name);
         continue;
       }
-      const auto& it = fused_outputs.find(input_name);
-      if (it != fused_outputs.end()) {
-        fused_outputs.erase(it);
-        erased.insert(input_name);
-      } else if (erased.find(input_name) == erased.end()) {
-        // Only when input is neither in output list nor erased list, add the input to input list
-        fused_inputs[input_name] = input_order++;
+      const OrtNode* producer = nullptr;
+      api_->OrtGraph_GetNodeProducingOutput(graph, input_name, &producer);
+      // If the input is not produced by any node, it is a graph input
+      if (producer == nullptr) {
+        inputs.push_back(input_name);
+        continue;
+      }
+      size_t producer_index = 0;
+      api_->OrtNode_GetIndex(producer, &producer_index);
+      // If the producer node is not in the subgraph, the input is a graph input
+      if (node_set.find(producer_index) == node_set.end()) {
+        inputs.push_back(input_name);
       }
     }
 
-//    // For output searching, there are two special cases,
-//    // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
-//    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
-//    // to the output list
-//    // The other one is, if subgraph's node output is parent graph's output. the node output should
-//    // be also added to the subgraph's output list
-//    if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
-//      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-//        const auto& node_idx = it->GetNode().Index();
-//        const onnxruntime::NodeArg* output;
-//        // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
-//        // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
-//        if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
-//          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
-//        } else {
-//          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
-//        }
-//        if (node_set.find(node_idx) != node_set.end()) {
-//          const auto& iter = fused_inputs.find(output);
-//          if (iter != fused_inputs.end()) {
-//            fused_inputs.erase(iter);
-//            erased.insert(output);
-//          } else if (erased.find(output) == erased.end()) {
-//            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
-//              graph_outputs_to_add[output] = output_order;
-//            }
-//            fused_outputs[output] = output_order++;
-//          }
-//        } else {
-//          fused_outputs_to_add[output] = output_order++;
-//        }
-//      }
-//    } else {
-      size_t output_size = 0;
-      api_->OrtNode_GetOutputSize(node, &output_size);
-      for (size_t j = 0; j < output_size; j++) {
-        const char* output_name = nullptr;
-        api_->OrtNode_GetIthOutputName(node, j, &output_name);
-        const auto& it = fused_inputs.find(output_name);
-        if (it != fused_inputs.end()) {
-          fused_inputs.erase(it);
-          erased.insert(output_name);
-        }
-        // Only when output is neither in input list nor erased list, add the output to output list
-        else if (erased.find(output_name) == erased.end()) {
-          if (graph_output_names.find(output_name) != graph_output_names.end()) {
-            graph_outputs_to_add[output_name] = output_order;
-          }
-          fused_outputs[output_name] = output_order++;
+    size_t output_size = 0;
+    api_->OrtNode_GetOutputSize(node, &output_size);
+    for (size_t j = 0; j < output_size; j++) {
+      const char* output_name = nullptr;
+      api_->OrtNode_GetIthOutputName(node, j, &output_name);
+      // If the output is the graph output, it is a subgraph output
+      if (graph_output_names.find(output_name) != graph_output_names.end()) {
+        outputs.push_back(output_name);
+        continue;
+      }
+      size_t consumer_count = 0;
+      const OrtNode** consumers = nullptr;
+      api_->OrtGraph_GetNodesConsumingInput(graph, output_name, &consumer_count, &consumers);
+      for (size_t k = 0; k < consumer_count; k++) {
+        size_t consumer_index = 0;
+        api_->OrtNode_GetIndex(consumers[k], &consumer_index);
+        // If the consumer node is not in the subgraph, the output is a subgraph output
+        if (node_set.find(consumer_index) == node_set.end()) {
+          outputs.push_back(output_name);
+          break;
         }
       }
-//    }
-  }
-
-  fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
-  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
-
-  // Sort inputs and outputs by the order they were added
-  std::multimap<int, std::string> inputs, outputs;
-  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-    inputs.insert(std::pair<int, std::string>(it->second, it->first));
-  }
-
-  for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-    outputs.insert(std::pair<int, std::string>(it->second, it->first));
+    }
   }
 
   // Generate unique kernel name for TRT subgraph
@@ -1270,8 +1239,8 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
   sub_graph->meta_def->inputs = new char* [sub_graph->meta_def->input_len];
   i = 0;
   for (const auto& input : inputs) {
-    sub_graph->meta_def->inputs[i] = new char [input.second.length() + 1];
-    strcpy(sub_graph->meta_def->inputs[i++], input.second.c_str());
+    sub_graph->meta_def->inputs[i] = new char [input.length() + 1];
+    strcpy(sub_graph->meta_def->inputs[i++], input.c_str());
   }
 
   sub_graph->meta_def->initializer_len = initializers.size();
@@ -1286,8 +1255,8 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
   sub_graph->meta_def->outputs = new char* [sub_graph->meta_def->output_len];
   i = 0;
   for (const auto& output : outputs) {
-    sub_graph->meta_def->outputs[i] = new char [output.second.length() + 1];
-    strcpy(sub_graph->meta_def->outputs[i++], output.second.c_str());
+    sub_graph->meta_def->outputs[i] = new char [output.length() + 1];
+    strcpy(sub_graph->meta_def->outputs[i++], output.c_str());
   }
 
   sub_graph->meta_def->domain = "com.microsoft";
