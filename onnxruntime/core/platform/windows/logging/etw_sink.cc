@@ -151,21 +151,19 @@ EtwRegistrationManager::~EtwRegistrationManager() {
 EtwRegistrationManager::EtwRegistrationManager() {
 }
 
-void EtwRegistrationManager::LazyInitialize() try {
+void EtwRegistrationManager::LazyInitialize() {
   if (initialization_status_ == InitializationStatus::NotInitialized) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
     if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
       initialization_status_ = InitializationStatus::Initializing;
       etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
       if (FAILED(etw_status_)) {
+        initialization_status_ = InitializationStatus::Failed;
         ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
       }
       initialization_status_ = InitializationStatus::Initialized;
     }
   }
-} catch (...) {
-  initialization_status_ = InitializationStatus::Failed;
-  throw;
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,

@@ -61,7 +61,7 @@ stages:
         architecture: "x64"
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - template: mac-build-step-with-cache.yml
@@ -267,7 +267,10 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all --configuration android.emu.release --loglevel trace
+          detox test --record-logs all \
+                     --configuration android.emu.release \
+                     --loglevel trace \
+                     --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
 
@@ -318,7 +321,10 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
-        detox test --record-logs all --configuration ios.sim.release --loglevel trace
+          detox test --record-logs all \
+                     --configuration ios.sim.release \
+                     --loglevel trace \
+                     --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
 
