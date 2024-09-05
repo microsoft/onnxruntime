@@ -19,9 +19,12 @@ LoraAdapter::LoraParam::LoraParam(std::string name, OrtValue ort_value) noexcept
 
 void LoraAdapter::Load(const std::filesystem::path& file_path) {
   auto buffer = utils::LoadLoraAdapterBytes(file_path);
+  Load(std::move(buffer));
+}
+
+void LoraAdapter::Load(std::vector<uint8_t> buffer) {
   adapter_ = utils::ValidateAndGetAdapterFromBytes(buffer);
   buffer_.emplace<BufferHolder>(std::move(buffer));
-
   InitializeParamsValues();
 }
 
