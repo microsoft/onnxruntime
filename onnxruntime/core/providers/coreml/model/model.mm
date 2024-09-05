@@ -407,6 +407,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
 
   if (HAS_COREML3_OR_LATER) {
     @autoreleasepool {
+      Status status = Status::OK();
       ORT_TRY {
         if (model_ == nil) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model is not loaded");
@@ -487,11 +488,11 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
       }
       ORT_CATCH(const std::exception& e) {
         ORT_HANDLE_EXCEPTION([&]() {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception: ", e.what());
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception: ", e.what());
         });
       }
 
-      return Status::OK();
+      return status;
     }
   }
 
