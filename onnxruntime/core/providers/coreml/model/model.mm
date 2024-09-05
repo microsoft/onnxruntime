@@ -307,7 +307,6 @@ class Execution {
 
  private:
   void cleanup();
-  bool model_loaded_{false};
   NSString* coreml_model_path_{nil};
   NSString* compiled_model_path_{nil};
   const logging::Logger& logger_;
@@ -358,7 +357,7 @@ void Execution::cleanup() {
 }
 
 Status Execution::LoadModel() {
-  if (model_loaded_) {
+  if (model_ != nil) {
     return Status::OK();
   }
 
@@ -394,7 +393,6 @@ Status Execution::LoadModel() {
                                (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
       }
 
-      model_loaded_ = true;
       return Status::OK();
     }
   }
@@ -405,7 +403,7 @@ Status Execution::LoadModel() {
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
                           const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
                           const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
-  ORT_RETURN_IF_NOT(model_loaded_, "Execution::Predict requires Execution::LoadModel");
+  ORT_RETURN_IF_NOT(model_ != nil, "Execution::Predict requires Execution::LoadModel");
 
   if (HAS_COREML3_OR_LATER) {
     @autoreleasepool {
