@@ -18,7 +18,10 @@ import csv
 import math
 import os
 import platform
+import re
 import statistics
+import sys
+import threading
 import time
 from contextlib import nullcontext
 from datetime import datetime
@@ -584,8 +587,8 @@ class OrtMultiHeadAttention:
         self.ort_session = create_session(config, session_options, use_tf32=use_tf32)
         self.feed_dict = config.random_inputs()
 
-    def infer(self):
-        return self.ort_session.infer(self.feed_dict)
+    def infer(self, run_options=None, synchronize=True):
+        return self.ort_session.infer(self.feed_dict, run_options=run_options, synchronize=synchronize)
 
 
 def measure_latency(cuda_session: CudaSession, input_dict):
@@ -771,6 +774,72 @@ def get_compute_capability():
     return sm
 
 
+class CaptureStdout:
+    def __init__(self):
+        self.fd = sys.stdout.fileno()
+        self.chunk_size = 1024
+        self.output = b""
+
+    def _capture(self):
+        chunks = []
+        while chunk := os.read(self._pipe_reader, self.chunk_size):
+            chunks.append(chunk)
+        self.output = b"".join(chunks)
+
+    def __enter__(self):
+        self._duped_fd = os.dup(self.fd)
+        self._pipe_reader, pipe_writer = os.pipe()
+        os.dup2(pipe_writer, self.fd)
+        os.close(pipe_writer)
+        self._capture_thread = threading.Thread(target=self._capture)
+        self._capture_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        os.close(self.fd)
+        self._capture_thread.join()
+        os.close(self._pipe_reader)
+        os.dup2(self._duped_fd, self.fd)
+        os.close(self._duped_fd)
+
+
+def sdpa_kernel_from_debug_info(
+    config: MultiHeadAttentionConfig, attention_kernel: SdpaKernel, sess_options: SessionOptions
+):
+    os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+    captured_text = None
+    try:
+        with CaptureStdout() as captured:
+            session = create_session(config, sess_options, attention_kernel=attention_kernel)
+            input_dict = config.random_inputs()
+            session.infer(input_dict)
+            captured_text = captured.output.decode()
+    except Exception as e:
+        print(f"Failed to run {attention_kernel=} for {config=}. Exception: {e}")
+    finally:
+        os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "0"
+
+    if captured_text is not None:
+        m = re.search("SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
+        if m is not None:
+            name = m.group("kernel")
+            kernel_names = {
+                "FLASH_ATTENTION": "ort:flash",
+                "EFFICIENT_ATTENTION": "ort:efficient",
+                "CUDNN_FLASH_ATTENTION": "ort:cudnn",
+                "MATH": "ort:math",
+                "TRT_FUSED_ATTENTION": "ort:trt_fmha",
+                "TRT_FLASH_ATTENTION": "ort:trt_flash",
+                "TRT_CROSS_ATTENTION": "ort:trt_cross",
+                "TRT_CAUSAL_ATTENTION": "ort:trt_causal",
+            }
+            return kernel_names[name]
+        else:
+            print("Failed to get sdpa kernel from debug info:", captured_text)
+
+    return None
+
+
 def run_tflops_test(
     csv_writer: csv.DictWriter,
     args: argparse.Namespace,
@@ -791,7 +860,13 @@ def run_tflops_test(
         # flash attention is available for sm >= 80
         sm = get_compute_capability()
         if sm >= 80:
-            backends = [SdpaKernel.DEFAULT, SdpaKernel.FLASH_ATTENTION, SdpaKernel.EFFICIENT_ATTENTION, SdpaKernel.MATH]
+            backends = [
+                SdpaKernel.DEFAULT,
+                SdpaKernel.FLASH_ATTENTION,
+                SdpaKernel.EFFICIENT_ATTENTION,
+                SdpaKernel.CUDNN_FLASH_ATTENTION,
+                SdpaKernel.MATH,
+            ]
         else:
             backends = [SdpaKernel.DEFAULT, SdpaKernel.EFFICIENT_ATTENTION, SdpaKernel.MATH]
     else:
@@ -803,7 +878,9 @@ def run_tflops_test(
         backends = [SdpaKernel.DEFAULT]
 
     configs = get_test_configs(args)
-    print("\nformat\tcausal\tattBias\tbatch\tseqlen\tpast\theads\th_dim\tthreads\tms\tTFLOPS\tkernel")
+    print(
+        "\nformat\tcausal\tattBias\tbatch\tseqlen\tpast\theads\th_dim\tthreads\tms\tTFLOPS\tsdpa_kernel\trequest_kernel"
+    )
 
     for input_format in formats:
         for batch_size, sequence_length, past_sequence_length, num_heads, head_size, enable_unfused in configs:
@@ -830,14 +907,13 @@ def run_tflops_test(
             for attention_kernel in backends:
                 sess_options = SessionOptions()
                 sess_options.intra_op_num_threads = intra_op_num_threads
-                session = create_session(config, sess_options, attention_kernel=attention_kernel)
 
                 if use_gpu:
-                    kernel = get_gpu_kernel_name(attention_kernel)
+                    request_kernel = get_gpu_kernel_name(attention_kernel)
                 else:
-                    kernel = get_cpu_kernel_name(config)
+                    request_kernel = get_cpu_kernel_name(config)
 
-                if "math" in kernel:
+                if "math" in request_kernel:
                     # Skip large sequence length for Unfused kernel to avoid OOM.
                     if not enable_unfused:
                         if config.verbose:
@@ -850,13 +926,23 @@ def run_tflops_test(
                             print(f"skip input_format for {vars(config)}")
                         continue
 
+                if use_gpu:
+                    actual_kernel = sdpa_kernel_from_debug_info(config, attention_kernel, sess_options)
+                    if actual_kernel is None:
+                        print(f"Warning: skip {config} since kernel from debug info is None")
+                        continue
+                else:
+                    # CPU has no debug info for now.
+                    actual_kernel = request_kernel
+
+                session = create_session(config, sess_options, attention_kernel=attention_kernel)
                 input_dict = config.random_inputs()
 
                 # warm up session
                 try:
                     _ = measure_latency(session, input_dict)
                 except Exception as e:
-                    print(f"Failed to run {kernel=} for {config=}. Exception: {e}")
+                    print(f"Failed to run {request_kernel=} for {config=}. Exception: {e}")
                     continue
 
                 latency_list = []
@@ -892,7 +978,8 @@ def run_tflops_test(
                     "intra_op_num_threads": intra_op_num_threads,
                     "average_latency": average_latency,
                     "tflops": speed,
-                    "kernel": kernel,
+                    "request_kernel": request_kernel,
+                    "kernel": actual_kernel,
                 }
                 csv_writer.writerow(row)
 
@@ -900,7 +987,7 @@ def run_tflops_test(
                 print(
                     f"{format_str}\t{causal}\t{args.has_attn_bias}\t{batch_size}\t"
                     f"{sequence_length}\t{past_sequence_length}\t{num_heads}\t{head_size}\t"
-                    f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed}\t{kernel}"
+                    f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed}\t{actual_kernel}\t{request_kernel}"
                 )
 
 
@@ -973,7 +1060,7 @@ def run_torch_test(
             print(
                 f"{input_format}\t{causal}\t{False}\t{batch_size}\t"
                 f"{sequence_length}\t{past_sequence_length}\t{num_heads}\t{head_size}\t"
-                f"{torch.get_num_threads()}\t{torch_latency * 1000:.2f}\t{speed}\t{backend_name}"
+                f"{torch.get_num_threads()}\t{torch_latency * 1000:.2f}\t{speed}\t{backend_name}\t{backend_name}"
             )
             row = {
                 "use_gpu": use_gpu,
@@ -991,6 +1078,7 @@ def run_torch_test(
                 "intra_op_num_threads": torch.get_num_threads(),
                 "average_latency": torch_latency,
                 "tflops": speed,
+                "request_kernel": backend_name,
                 "kernel": backend_name,
             }
             csv_writer.writerow(row)
@@ -1024,6 +1112,7 @@ def run_tflops_tests(args):
             "intra_op_num_threads",
             "average_latency",
             "tflops",
+            "request_kernel",
             "kernel",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -1218,7 +1307,7 @@ def _parse_arguments():
         "--repeats",
         required=False,
         type=int,
-        default=100,
+        default=0,
         help="number of repeats for performance test",
     )
 
@@ -1263,8 +1352,10 @@ if __name__ == "__main__":
     args = _parse_arguments()
     print(f"arguments:{args}")
 
+    if args.repeats == 0:
+        args.repeats = 10000 if args.use_gpu else 100
+
     if args.use_gpu:
-        assert args.torch or not args.causal, "no causal cuda kernel in MHA op"
         assert torch.cuda.is_available()
         if not args.torch:
             assert "CUDAExecutionProvider" in get_available_providers()

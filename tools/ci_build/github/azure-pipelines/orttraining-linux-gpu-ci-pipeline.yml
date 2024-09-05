@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -48,7 +49,7 @@ jobs:
     RunInjectedPipeline: 'true'
     InjectedPipeline: 'orttraining-linux-gpu-test-ci-pipeline.yml'
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
-    TimeoutInMinutes: 140
+    TimeoutInMinutes: 190
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'

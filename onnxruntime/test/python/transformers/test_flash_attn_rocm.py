@@ -18,7 +18,7 @@ import onnxruntime
 
 class TestGQA(unittest.TestCase):
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
-    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
         config.ep = "ROCMExecutionProvider"
         if not torch.cuda.is_available():
             return
@@ -50,7 +50,7 @@ class TestGQA(unittest.TestCase):
         )
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
-    def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+    def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
         config.ep = "ROCMExecutionProvider"
         if not torch.cuda.is_available():
             return

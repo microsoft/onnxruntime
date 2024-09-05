@@ -37,6 +37,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
@@ -109,6 +110,7 @@ size_t GetAttentionWorkspaceSize(
     bool use_flash_attention,
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention,
+    bool use_cudnn_flash_attention,
     bool no_qkv_workspace) {
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_size = element_size * batch_size * num_heads *
@@ -142,6 +144,10 @@ size_t GetAttentionWorkspaceSize(
 
   if (use_fused_cross_attention) {
     return qkv_bytes + 2 * GetSequenceOffsetSize(static_cast<int>(batch_size), true);
+  }
+
+  if (use_cudnn_flash_attention) {
+    return qkv_bytes;
   }
 
   return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
@@ -297,9 +303,9 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16,
-      parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
-      data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
+      parameters.sequence_length, parameters.total_sequence_length, scale, 0.0, parameters.is_unidirectional, is_bf16,
+      false, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+      reinterpret_cast<void*>(data.out_accum), data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
 
   return Status::OK();
 }
@@ -319,6 +325,68 @@ Status FlashAttention(
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "flash attention does not support float tensor");
 }
 #endif
+
+template <typename T>
+Status CudnnFlashAttention(
+    cudnnHandle_t cudnn_handle,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<T>& data,
+    float scale) {
+  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+         data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH ||
+         data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  assert(parameters.mask_type == AttentionMaskType::MASK_NONE ||
+         parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
+  constexpr bool is_bf16 = false;
+
+  T* attention_bias = const_cast<T*>(data.attention_bias);
+  int* mask_sequence_lengths_kv = const_cast<int*>(data.mask_index);
+
+  cudnn_sdpa::run(
+      data.output,
+      data.q,
+      data.k,
+      data.v,
+      attention_bias,
+      nullptr,                                 // (optional) mask_sequence_lengths_q
+      mask_sequence_lengths_kv,                // (optional) mask_sequence_lengths_kv
+      parameters.batch_size,
+      parameters.num_heads,                    // num_heads_q,
+      parameters.num_heads,                    // num_heads_kv,
+      parameters.head_size,                    // head_size_qk
+      parameters.v_head_size,                  // head_size_v
+      parameters.sequence_length,              // sequence_length_q
+      parameters.total_sequence_length,        // sequence_length_kv
+      scale,                                   // scaling factor applied prior softmax
+      parameters.is_unidirectional,            // causal
+      is_bf16,                                 // True if bfloat16, otherwise float16
+      parameters.broadcast_attn_bias_dim_0,    // broadcast attention bias dimension 0 or not
+      parameters.broadcast_attn_bias_dim_1,    // broadcast attention bias dimension 1 or not
+      0,                                       // sliding window length. 0 means no sliding window.
+      data.qkv_format,
+      cudnn_handle,
+      ort_stream,
+      data.allocator);
+
+  return Status::OK();
+}
+
+template <>
+Status CudnnFlashAttention(
+    cudnnHandle_t cudnn_handle,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<float>& data,
+    float scale) {
+  ORT_UNUSED_PARAMETER(cudnn_handle);
+  ORT_UNUSED_PARAMETER(ort_stream);
+  ORT_UNUSED_PARAMETER(parameters);
+  ORT_UNUSED_PARAMETER(data);
+  ORT_UNUSED_PARAMETER(scale);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
+                         "cudnn flash attention does not support float tensor");
+}
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
 template <typename T>
@@ -347,6 +415,7 @@ Status EfficientAttention(
   p.v_head_size = parameters.v_head_size;
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
+  p.use_smooth_softmax = false;
 
   if (nullptr == data.mask_index) {
     p.seqlen_k_ptr = nullptr;
@@ -498,6 +567,7 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data) {
@@ -512,10 +582,11 @@ Status QkvToContext(
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
-  assert((int(data.use_flash_attention) +
-          int(data.use_memory_efficient_attention) +
-          int(fused_runner != nullptr) +
-          int(data.fused_cross_attention_kernel != nullptr)) <= 1);
+  assert((static_cast<int>(data.use_flash_attention) +
+          static_cast<int>(data.use_memory_efficient_attention) +
+          static_cast<int>(fused_runner != nullptr) +
+          static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
+          static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
@@ -577,6 +648,10 @@ Status QkvToContext(
   }
 #endif
 
+  if (data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
+    return CudnnFlashAttention(cudnn, ort_stream, parameters, data, scale);
+  }
+
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     return EfficientAttention(device_prop, stream, parameters, data, scale);
@@ -594,6 +669,7 @@ template struct AttentionData<half>;
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data);
@@ -601,6 +677,7 @@ template Status QkvToContext<float>(
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
