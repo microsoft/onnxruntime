@@ -337,4 +337,28 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
     );
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
+
+    /**
+     * @brief Convert fp32 to fp16.
+     * @param src_fp32  Source fp32 data.
+     * @param dst_fp16  Destination fp16 data.
+     * @param size      Number of elements to convert.
+     */
+    typedef void(ConvertFp32ToFp16_Fn)(
+        const float* src_fp32,
+        MLAS_FP16* dst_fp16,
+        uint64_t size);
+    ConvertFp32ToFp16_Fn* ConvertFp32ToFp16 = nullptr;
+
+    /**
+     * @brief Convert fp16 to fp32.
+     * @param src_fp16  Source fp16 data.
+     * @param dst_fp32  Destination fp32 data.
+     * @param size      Number of elements to convert.
+     */
+    typedef void(ConvertFp16ToFp32_Fn)(
+        const MLAS_FP16* src_fp16,
+        float* dst_fp32,
+        uint64_t size);
+    ConvertFp16ToFp32_Fn* ConvertFp16ToFp32 = nullptr;
 };

@@ -369,6 +369,12 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 }
 
 void
+ConvertFp16ToFp32Avx(const MLAS_FP16* src_fp16, float* dst_fp32, uint64_t size);
+
+void
+ConvertFp32ToFp16Avx(const float* src_fp32, MLAS_FP16* dst_fp16, uint64_t size);
+
+void
 Q4BitBlkDequantBForSgemm_CompFp32_avx2(
     const size_t BlkLen,
     float* FpData,

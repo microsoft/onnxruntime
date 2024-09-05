@@ -266,39 +266,28 @@ MlasSQNBitGemmPackQuantBData(
     }
 }
 
-#ifdef MLAS_TARGET_AMD64_IX86
-void
-ConvertFp16ToFp32Avx(const MLAS_FP16* src_fp16, float* dst_fp32, uint64_t size);
-void
-ConvertFp32ToFp16Avx(const float* src_fp32, MLAS_FP16* dst_fp16, uint64_t size);
-#endif
-
 void
 MLASCALL
 ConvertFp16ToFp32(const MLAS_FP16* src_fp16, float* dst_fp32, uint64_t size)
 {
-#ifdef MLAS_TARGET_AMD64_IX86
-    ConvertFp16ToFp32Avx(src_fp16, dst_fp32, size);
-#else
-    MLAS_UNREFERENCED_PARAMETER(src_fp16);
-    MLAS_UNREFERENCED_PARAMETER(dst_fp32);
-    MLAS_UNREFERENCED_PARAMETER(size);
-    throw std::runtime_error("ConvertFp16ToFp32 is not implemented for this target.");
-#endif
+    if (GetMlasPlatform().SQNBitGemmDispatch->ConvertFp16ToFp32 != nullptr) {
+        GetMlasPlatform().SQNBitGemmDispatch->ConvertFp16ToFp32(src_fp16, dst_fp32, size);
+        return;
+    } else {
+        throw std::runtime_error("ConvertFp16ToFp32 is not implemented for this target.");
+    }
 }
 
 void
 MLASCALL
 ConvertFp32ToFp16(const float* src_fp32, MLAS_FP16* dst_fp16, uint64_t size)
 {
-#ifdef MLAS_TARGET_AMD64_IX86
-    ConvertFp32ToFp16Avx(src_fp32, dst_fp16, size);
-#else
-    MLAS_UNREFERENCED_PARAMETER(src_fp32);
-    MLAS_UNREFERENCED_PARAMETER(dst_fp16);
-    MLAS_UNREFERENCED_PARAMETER(size);
-    throw std::runtime_error("ConvertFp32ToFp16 is not implemented for this target.");
-#endif
+    if (GetMlasPlatform().SQNBitGemmDispatch->ConvertFp32ToFp16 != nullptr) {
+        GetMlasPlatform().SQNBitGemmDispatch->ConvertFp32ToFp16(src_fp32, dst_fp16, size);
+        return;
+    } else {
+        throw std::runtime_error("ConvertFp32ToFp16 is not implemented for this target.");
+    }
 }
 
 namespace
