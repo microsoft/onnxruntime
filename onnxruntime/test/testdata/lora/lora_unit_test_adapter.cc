@@ -10,6 +10,10 @@
 namespace onnxruntime {
 namespace test {
 
+constexpr const int kAdapterVersion = 1;
+constexpr const int kModelVersion = 1;
+   
+
 EST(LoraFormatTest, CreateAdapter) {
   // generate a random sequence of floats
   // shape = {8, 4}

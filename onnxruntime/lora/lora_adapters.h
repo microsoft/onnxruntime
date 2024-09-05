@@ -38,6 +38,12 @@ class LoraAdapter {
   void Load(const std::filesystem::path& file_path);
 
   /// <summary>
+  /// Load parameters from serialized bytes and validates its format.
+  /// </summary>
+  /// <param name="buffer"></param>
+  void Load(std::vector<uint8_t> buffer);
+
+  /// <summary>
   /// Memory maps adapter file into memory and validates its format.
   /// </summary>
   /// <param name="file_name"></param>
@@ -50,6 +56,30 @@ class LoraAdapter {
   /// <returns>size of params_values_ container</returns>
   size_t GetParamNum() const {
     return params_values_.size();
+  }
+
+  /// <summary>
+  /// Gets lora format version
+  /// </summary>
+  /// <returns></returns>
+  int LoraFormatVersion() const noexcept {
+    return adapter_->format_version();
+  }
+
+  /// <summary>
+  /// Gets adapter version
+  /// </summary>
+  /// <returns></returns>
+  int AdapterVersion() const noexcept {
+    return adapter_->adapter_version();
+  }
+
+  /// <summary>
+  /// Gets model version for which the adapter was created
+  /// </summary>
+  /// <returns></returns>
+  int ModelVersion() const noexcept {
+    return adapter_->model_version();
   }
 
   /// <summary>
