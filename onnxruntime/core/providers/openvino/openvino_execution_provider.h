@@ -189,7 +189,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-#ifdef USE_OVEP_NPU_MEMORY
+#ifdef USE_DEVICE_MEMORY
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 #endif
  private:

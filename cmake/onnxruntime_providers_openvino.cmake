@@ -22,7 +22,7 @@
   endif()
 
   if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
-    add_definitions(-DUSE_OVEP_NPU_MEMORY=1)
+    add_definitions(-DUSE_DEVICE_MEMORY=1)
   endif()
 
   if (WIN32)

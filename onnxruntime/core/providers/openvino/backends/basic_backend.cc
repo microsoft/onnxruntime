@@ -515,7 +515,6 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
     auto graph_output_info = exe_network_.Get().outputs();
     for (auto output_info_iter = graph_output_info.begin();
          output_info_iter != graph_output_info.end(); ++output_info_iter) {
-      OVTensorPtr graph_output_blob;
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;
       std::string output_name;
