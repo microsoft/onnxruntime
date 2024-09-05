@@ -125,7 +125,7 @@ float ComputeStandardDeviation(const U* elems, const int32_t size)
 Status ComputeScale(cudaStream_t& stream, const Tensor* tensor, const float std_quant, float& scale)
 {
   const int32_t num_coef = tensor->Shape().Size();
-  Float8E4M3FN* scale_coef = (Float8E4M3FN*)malloc(num_coef * sizeof(Float8E4M3FN));
+  MLFloat16* scale_coef = (MLFloat16*)malloc(num_coef * sizeof(MLFloat16));
   auto status = ComputeStdDevCoefficientsForScale(stream, tensor, num_coef, scale_coef);
   if (! status.IsOK())
     return status;
@@ -143,49 +143,56 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
   (void)(ptr);
 }
 
+// TODO instead of ctx pass alloc and stream  directly
 Status TransposeAndConvertToFp8(cudaStream_t& stream, const Tensor* right_X, IAllocatorUniquePtr<void>& right_X_fp8,
   const cudaDeviceProp& device_prop, const AllocatorPtr& allocator, OpKernelContext* ctx)
 {
   const auto shape_size = right_X->Shape().GetDims().size();
-
-  // TODO why is the size of perm 5? shouldn't it be shape_size?
-  // TODO why is 0 the first element and 1 the last?
-  InlinedVector<size_t, 5> perm;
-  perm.push_back(0);
-  for (size_t i = 2; i < shape_size; i++) {
-    perm.push_back(i);
-  }
-  perm.push_back(1);
-  gsl::span<size_t> permutation(perm.data(), shape_size);
-
-  TensorShapeVector dims;
-  for (size_t i = 0; i < shape_size; i++) {
-    dims.push_back(right_X->Shape()[perm[i]]);
-  }
-
-  std::unique_ptr<Tensor> right_X_transposed = Tensor::Create(right_X->DataType(), TensorShape(dims), allocator);
+  const int num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
 
   cublasHandle_t cublas_handle;
   CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle));
 
-  auto status = cuda::Transpose::DoTranspose(device_prop, stream, cublas_handle, permutation, *right_X, *right_X_transposed);
-  if (!status.IsOK()) {
-    return status;
-  }
+  // We don't have access to the context from inside PrePack, which is one of the callers of this method.
+  Stream* stream_ptr = ctx ? ctx->GetComputeStream() : nullptr; // : DefaultCudaStream();
+  right_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, num_elems * sizeof(Float8E4M3FN), false, stream_ptr);
 
-  const int num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
+  Status return_status;
+  if (shape_size > 1)
+  {
+    InlinedVector<size_t> perm;
+    perm.push_back(1);
+    perm.push_back(0);
+    for (size_t i = 2; i < shape_size; i++) {
+      perm.push_back(i);
+    }
+    gsl::span<size_t> permutation(perm.data(), shape_size);
+
+    TensorShapeVector dims;
+    for (size_t i = 0; i < shape_size; i++) {
+      dims.push_back(right_X->Shape()[perm[i]]);
+    }
+
+    std::unique_ptr<Tensor> right_X_transposed = Tensor::Create(right_X->DataType(), TensorShape(dims), allocator);
+
+    auto status = cuda::Transpose::DoTranspose(device_prop, stream, cublas_handle, permutation, *right_X, *right_X_transposed);
+    if (!status.IsOK()) {
+      return status;
+    }
+    return_status = MLFloat16ToFloat8E4M3FN(stream, right_X_transposed.get(), right_X_fp8.get());
 
 // TODO delete
 printf("\nPrinting tensor data for right_X_transposed:\n");
 PrintTensorData<MLFloat16>(stream, right_X_transposed.get()->DataRaw(), num_elems, 12);
+  }
+  else
+  {
+    return_status = MLFloat16ToFloat8E4M3FN(stream, right_X, right_X_fp8.get());
+  }
 
-  // We don't have access to the context from inside PrePack, which is one of the callers of this method.
-  Stream* stream_ptr = ctx ? ctx->GetComputeStream() : nullptr;
-  right_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, num_elems * sizeof(Float8E4M3FN), false, stream_ptr);
-  status = MLFloat16ToFloat8E4M3FN(stream, right_X_transposed.get(), right_X_fp8.get());
 
   CUBLAS_RETURN_IF_ERROR(cublasDestroy(cublas_handle));
-  return status;
+  return return_status;
 }
 
 Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaStream_t& stream,
@@ -224,10 +231,10 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
 
-  size_t C_size = left_X->SizeInBytes(); // TODO what size should C have?
+  size_t C_size = M * N * sizeof(MLFloat16);
   IAllocatorUniquePtr<void> C = IAllocator::MakeUniquePtr<void>(allocator, C_size, false, ctx->GetComputeStream());
 
-  auto left_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, left_X->SizeInBytes(), false, ctx->GetComputeStream());
+  auto left_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, M * K * sizeof(Float8E4M3FN), false, ctx->GetComputeStream());
   auto status = MLFloat16ToFloat8E4M3FN(stream, left_X, left_X_fp8.get());
   if (! status.IsOK())
     return status;
@@ -258,7 +265,6 @@ PrintTensorData<Float8E4M3FN>(stream, left_X_fp8.get(), left_X_num_elems, 8);
 printf("\nPrinting tensor data for right_X_fp8 tranposed:\n");
 PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
 
-  // const void* p_input_a = right_X->DataRaw();
   const void* p_input_a = right_X_fp8.get();
   const void* p_input_b = left_X_fp8.get();
   const void* p_input_c = C.get();
@@ -266,7 +272,10 @@ PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
 
   // Create matrix descriptors. Not setting any extra attributes.
   // ORT is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
-  // TODO what fp8 types can we use for A and B? These are fp16.
+  // TODO why does cublasLtMatmulAlgoGetHeuristic fail if we use Float8E4M3FN or
+  // ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN for dtype_A and dtype_B,
+  // such that a_cuda_type and b_cuda_type are CUDA_R_8F_E4M3?
+  // Currently, a_cuda_type and b_cuda_type are CUDA_R_16F.
   int32_t dtype_A = right_X->GetElementType();
   int32_t dtype_B = left_X->GetElementType();
   int32_t dtype_C = Y->GetElementType();
@@ -305,7 +314,7 @@ PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
 
   // matmul float 8
 #if CUDA_VERSION >= 11080
-  // TODO It looks like the below breaks the unit test.
+  // TODO why does CUBLASLT_MATMUL_DESC_FAST_ACCUM break cublasLtMatmulAlgoGetHeuristic?
   // // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
   // // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
   // const int8_t ifast_accumulation_mode = 1;
@@ -313,60 +322,50 @@ PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
   //     operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
   //     &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
 
-  // // TODO values for CUBLASLT_MATMUL_DESC_A_SCALE_POINTER need to be device pointers.
-  // // Create the the scale tensors
-  // const TensorShape scalar_shape({1, 1});
-  // MLDataType float_type = onnxruntime::DataTypeImpl::GetType<float>();
-  // std::unique_ptr<Tensor> p_scale_a = Tensor::Create(float_type, scalar_shape, allocator);
-  // std::unique_ptr<Tensor> p_scale_b = Tensor::Create(float_type, scalar_shape, allocator);
-  // std::unique_ptr<Tensor> p_scale_y = Tensor::Create(float_type, scalar_shape, allocator);
-  // ORT_ENFORCE(p_scale_a->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  // ORT_ENFORCE(p_scale_b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  // ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float* quant_float = (float*)malloc(256 * sizeof(float));
+  for (int i = 0; i < 256; i ++) {
+    quant_float[i] = i;
+  }
+  float std_quant = ComputeStandardDeviation(quant_float, 256);
+  free(quant_float);
 
-  // float* quant_float = (float*)malloc(256 * sizeof(float));
-  // for (int i = 0; i < 256; i ++) {
-  //   quant_float[i] = i; // TODO: Float8e4m3ToFloat32(i)?
-  // }
-  // float std_quant = ComputeStandardDeviation(quant_float, 256);
-  // free(quant_float);
+  // Get the weights of the model
+  float scale_a, scale_b;
+  status = ComputeScale(stream, right_X, std_quant, scale_a);
+  if (! status.IsOK())
+    return status;
+  status = ComputeScale(stream, left_X, std_quant, scale_b);
+  if (! status.IsOK())
+    return status;
+  float scale_y = 1.0f;
 
-  // // Get the weights of the model
-  // float scale_a, scale_b;
-  // status = ComputeScale(stream, right_X_fp8.get(), std_quant, scale_a);
-  // if (! status.IsOK())
-  //   return status;
-  // status = ComputeScale(stream, left_X_fp8.get(), std_quant, scale_b);
-  // if (! status.IsOK())
-  //   return status;
-  // float scale_y = 1.0f;
+// TODO delete
+printf("scale_a = %f, scale_b = %f\n", scale_a, scale_b);
 
-  // printf("scale_a = %f, scale_b = %f\n", scale_a, scale_b);
+  // Create the on device scale values.
+  IAllocatorUniquePtr<void> p_scale_a = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
+  IAllocatorUniquePtr<void> p_scale_b = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
+  IAllocatorUniquePtr<void> p_scale_y = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
+  float* sa = (float*)(p_scale_a.get());
+  float* sb = (float*)(p_scale_b.get());
+  float* sy = (float*)(p_scale_y.get());
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sa, &scale_a, sizeof(float), cudaMemcpyHostToDevice, stream)); // TODO check status for these
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sb, &scale_b, sizeof(float), cudaMemcpyHostToDevice, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sy, &scale_y, sizeof(float), cudaMemcpyHostToDevice, stream));
 
-  // OrtValue ort_value_a(&scale_a, float_type, NoOpDeleter);
-  // OrtValue ort_value_b(&scale_b, float_type, NoOpDeleter);
-  // OrtValue ort_value_y(&scale_y, float_type, NoOpDeleter);
-  // p_scale_a->InitOrtValue(float_type, scalar_shape, allocator, ort_value_a);
-  // p_scale_b->InitOrtValue(float_type, scalar_shape, allocator, ort_value_b);
-  // p_scale_y->InitOrtValue(float_type, scalar_shape, allocator, ort_value_y);
-
-  // const float* sa = (float*)(p_scale_a->DataRaw());
-  // const float* sb = (float*)(p_scale_b->DataRaw());
-  // const float* sy = (float*)(p_scale_y->DataRaw());
-
-  // TODO why does this break the test? Most likely because sa/sb/sy need to be pointers on the device
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &sa, sizeof(sa)));
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &sb, sizeof(sb)));
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_C_SCALE_POINTER, &sy, sizeof(sy)));
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &sy, sizeof(sy)));
+  // TODO why does this segfault?
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, sa, sizeof(sa)));
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, sb, sizeof(sb)));
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_C_SCALE_POINTER, sy, sizeof(sy)));
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, sy, sizeof(sy)));
 #endif
 
 // float 8
 #if !defined(DISABLE_FLOAT8_TYPES)
 // For E4M3FN FP8 output, cuBLAS requires C_type to be same as bias_type
 CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, N, M, ldc));
-CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-    operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type, sizeof(c_cuda_type)));
+// CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+//     operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type, sizeof(c_cuda_type)));
 #else
 CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc));
 #endif
@@ -403,9 +402,9 @@ printf("returnedResults = %d, cuda_status == CUBLAS_STATUS_SUCCESS = %d\n", retu
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transA, ", transB=", transB,
       ", fastAccumulationMode=", 1,
-      ", shape_A=", shape_A[0], "x", shape_A[1],
-      ", shape_B=", shape_B[0], "x", shape_B[1],
-      ", shape_Y=", (shape_Y.NumDimensions() > 0 ? shape_Y[0] : 0), "x", (shape_Y.NumDimensions() > 1 ? shape_Y[1] : 0),
+      // ", shape_A=", shape_A[0], "x", shape_A[1],
+      // ", shape_B=", shape_B[0], "x", shape_B[1],
+      // ", shape_Y=", (shape_Y.NumDimensions() > 0 ? shape_Y[0] : 0), "x", (shape_Y.NumDimensions() > 1 ? shape_Y[1] : 0),
       ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldy=", ldy, ", workspaceSize=", workspaceSize,
       ". Check NVIDIA documentation to see what combination is valid: ",
       "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic"
@@ -434,6 +433,9 @@ printf("returnedResults = %d, cuda_status == CUBLAS_STATUS_SUCCESS = %d\n", retu
       workspace,                                /* workspace */
       workspaceSize,
       stream);                                  /* stream */
+
+printf("\nPrinting tensor data for Y:\n");
+PrintTensorData<MLFloat16>(stream, Y->DataRaw(), M * N, M * N);
 
   ORT_ENFORCE(
       cuda_status == CUBLAS_STATUS_SUCCESS,
@@ -475,11 +477,14 @@ Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr allo
   if (input_idx == 1) { // right_X
     auto& device_prop = GetDeviceProp();
 
-    // TODO Creating a new stream because we don't have access to the OpKernelContext here
+    // TODO is okay to create a new stream since we don't have access to the OpKernelContext here?
     cudaStream_t stream;
     CUDA_CALL_THROW(cudaStreamCreate(&stream));
 
     auto status = TransposeAndConvertToFp8(stream, &tensor, right_X_fp8_, device_prop, alloc, nullptr);
+// TODO delete
+printf("Updated right_X_fp8_ from PrePack\n");
+PrintTensorData<Float8E4M3FN>(stream, right_X_fp8_.get(), 12, 12);
     if (! status.IsOK()) {
       return status;
     }

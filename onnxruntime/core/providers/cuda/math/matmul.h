@@ -25,7 +25,7 @@ class MatMul final : public CudaKernel {
         right_X_fp8_(nullptr)
         {
           if (use_fp8_) {
-            // TODO since there are no attributes, should we just initialize the epilogue to CUBLASLT_EPILOGUE_DEFAULT?
+            // TODO should we just initialize the epilogue to CUBLASLT_EPILOGUE_DEFAULT?
             // Or should "activation" be added as an attribute in contrib_defs.cc?
             std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
             if (activation == "NONE") {

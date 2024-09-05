@@ -2,18 +2,57 @@
 // Licensed under the MIT License.
 
 #include "matmul_utils.cuh"
+#include "core/framework/float8.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/mlas/inc/mlas.h"
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#include <cuda_fp8.h>
+#endif
 
 namespace onnxruntime {
 namespace cuda {
 
+// namespace {
+
+// constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
+
+// } // namespace
+
 template <typename CudaFp16T, typename CudaFp8T>
 __global__ void MLFloat16ToFloat8E4M3FNKernel(const CudaFp16T* src_data, CudaFp8T* dest_data, int num_elems)
 {
+//   const auto kElementsPerBlock = kElementsPerThread * blockDim.x;
+//   const auto input_base_idx = kElementsPerBlock * blockIdx.x + threadIdx.x;
+//   const auto element_stride = blockDim.x;
+
+//   CudaFp16T local_src[kElementsPerThread];
+
+//   {
+//     auto input_idx = input_base_idx;
+// #pragma unroll
+//     for (int element_idx = 0; element_idx < kElementsPerThread; ++element_idx) {
+//       local_src[element_idx] = src_data[input_idx];
+//       input_idx += element_stride;
+//     }
+//   }
+
+//   {
+//     auto input_idx = input_base_idx;
+// #pragma unroll
+//     for (int element_idx = 0; element_idx < kElementsPerThread; ++element_idx) {
+//       // if (input_idx < num_elems) {
+//         dest_data[input_idx] = CudaFp8T(src_data[element_idx]);
+//         input_idx += element_stride;
+//       // }
+//     }
+//   }
+
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < num_elems) {
-    dest_data[i] = CudaFp8T(src_data[i]);
+    // dest_data[i] = CudaFp8T(src_data[i]);
+    dest_data[i] = CudaFp8T(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(src_data[i], __NV_SATFINITE, __NV_E4M3)),
+                            CudaFp8T::FromBits());
   }
 }
 
@@ -22,6 +61,7 @@ Status MLFloat16ToFloat8E4M3FN(cudaStream_t stream, const Tensor* src, void* des
   typedef typename ToCudaType<MLFloat16>::MappedType CudaFp16T;
   const CudaFp16T* src_data = reinterpret_cast<const CudaFp16T*>(src->Data<MLFloat16>());
 
+  // CudaFp16T* dest_data = reinterpret_cast<CudaFp16T*>(dest);
   typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaFp8T;
   CudaFp8T* dest_data = reinterpret_cast<CudaFp8T*>(dest);
 
@@ -31,6 +71,7 @@ Status MLFloat16ToFloat8E4M3FN(cudaStream_t stream, const Tensor* src, void* des
   int blocks_per_grid = static_cast<int>((num_elems + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
   int threads_per_block = GridDim::maxThreadsPerBlock;
   MLFloat16ToFloat8E4M3FNKernel<CudaFp16T, CudaFp8T><<<blocks_per_grid, threads_per_block, 0, stream>>>(
+  // MLFloat16ToFloat8E4M3FNKernel<CudaFp16T, CudaFp16T><<<blocks_per_grid, threads_per_block, 0, stream>>>(
     src_data, dest_data, num_elems);
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -53,10 +94,10 @@ __global__ void ComputeStdDevCoefficientsForScaleKernel(const CudaT* tensor_data
 
 // h_scale_coef is an array of size num_coef allocated by the caller on the host.
 // It will also be subsequently freed by the caller.
-Status ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, Float8E4M3FN* h_scale_coef)
+Status ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, MLFloat16* h_scale_coef)
 {
-  typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaT;
-  const CudaT* tensor_data = reinterpret_cast<const CudaT*>(tensor->Data<Float8E4M3FN>());
+  typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
+  const CudaT* tensor_data = reinterpret_cast<const CudaT*>(tensor->Data<MLFloat16>());
   int blocks_per_grid = static_cast<int>((num_coef + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
   CudaT* d_scale_coef; // Device memory
