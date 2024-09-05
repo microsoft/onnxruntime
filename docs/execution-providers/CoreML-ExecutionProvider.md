@@ -170,5 +170,5 @@ Operators that are supported by the CoreML Execution Provider when a MLProgram m
 |ai.onnx.Split|If provided, `splits` must be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
-|ai:onnx:Tanh||
+|ai.onnx:Tanh||
 |ai.onnx:Transpose||
