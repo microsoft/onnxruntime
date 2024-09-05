@@ -14,8 +14,12 @@
 namespace onnxruntime {
 namespace lora {
 
-LoraAdapter::LoraParam::LoraParam(OrtValue ort_value) noexcept
-    : ort_value_(std::move(ort_value)) {}
+LoraAdapter::LoraParam::LoraParam(OrtValue ort_value_mapped) noexcept
+    : ort_value_mapped_(std::move(ort_value_mapped)) {}
+
+LoraAdapter::LoraParam::LoraParam(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept
+    : ort_value_mapped_(std::move(ort_value_mapped)), ort_value_device_(std::move(ort_value_device)) {
+}
 
 void LoraAdapter::Load(const std::filesystem::path& file_path) {
   auto buffer = utils::LoadLoraAdapterBytes(file_path);
@@ -65,7 +69,7 @@ size_t LoraAdapter::GetBufferSize() const {
 }  // namespace lora
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, const ORTCHAR_T* adapter_file_path,
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* /* allocator */,
                     _Outptr_ OrtLoraAdapter** adapter) {
   API_IMPL_BEGIN
   auto lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();

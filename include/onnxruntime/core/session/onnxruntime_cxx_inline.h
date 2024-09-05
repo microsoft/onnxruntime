@@ -557,8 +557,8 @@ inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
 }
 
-inline LoraAdapter::LoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path) {
-  ThrowOnError(GetApi().CreateLoraAdapter(absolute_adapter_path.c_str(), &p_));
+inline LoraAdapter::LoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path, OrtAllocator* allocator) {
+  ThrowOnError(GetApi().CreateLoraAdapter(absolute_adapter_path.c_str(), allocator, &p_));
 }
 
 inline RunOptions::RunOptions() {
@@ -615,6 +615,7 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 
 inline RunOptions& RunOptions::SetLoraAdapterActive(const LoraAdapter& adapter) {
   ThrowOnError(GetApi().RunOptionsSetActiveLoraAdapter(p_, adapter));
+  return *this;
 }
 
 namespace detail {

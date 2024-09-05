@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/flatbuffers.h"
+#include "core/framework/allocator.h"
 #include "core/platform/env.h"
 
 #include <gsl/gsl>
@@ -83,6 +84,14 @@ void SaveLoraParameter(flatbuffers::FlatBufferBuilder& flat_builder, std::string
 /// <param name="tensor"></param>
 /// <returns></returns>
 std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter& param);
+
+/// <summary>
+/// Allocates OrtValue on specified device and copies data there
+/// </summary>
+/// <param name="ort_value_mapped">parameter on CPU</param>
+/// <param name="device_allocator">supplied device allocator</param>
+/// <returns></returns>
+OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const AllocatorPtr& device_allocator);
 
 }  // namespace utils
 }  // namespace lora
