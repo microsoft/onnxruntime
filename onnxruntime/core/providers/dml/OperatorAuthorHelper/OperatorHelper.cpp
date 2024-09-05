@@ -1149,8 +1149,8 @@ namespace OperatorHelper
             HandleEmptyAxes(axes, inputShape, false);
         }
 
-        uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
-        for (uint32_t i = 0; i < numAxes; i++)
+        size_t numAxes = axes.size();
+        for (size_t i = 0; i < numAxes; i++)
         {
             auto xi_begin = padding[i];
             auto xi_end = padding[i+numAxes];
