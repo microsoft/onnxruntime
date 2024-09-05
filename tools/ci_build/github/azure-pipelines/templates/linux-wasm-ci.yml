@@ -93,15 +93,15 @@ jobs:
       - script: |
           set -ex
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 3.1.59 ccache-git-emscripten-64bit
-          ./emsdk activate 3.1.59 ccache-git-emscripten-64bit
+          ./emsdk install 3.1.61 ccache-git-emscripten-64bit
+          ./emsdk activate 3.1.61 ccache-git-emscripten-64bit
         displayName: 'emsdk install and activate ccache for emscripten'
   - ${{if eq(parameters.WithCache, false)}}:
       - script: |
           set -ex
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 3.1.59
-          ./emsdk activate 3.1.59
+          ./emsdk install 3.1.61
+          ./emsdk activate 3.1.61
         displayName: 'emsdk install and activate ccache for emscripten'
 
   - template: build-linux-wasm-step.yml
