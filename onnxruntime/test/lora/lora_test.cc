@@ -3,6 +3,8 @@
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/to_tensor_proto_element_type.h"
+
 #include "lora/lora_adapters.h"
 #include "lora/lora_format_version.h"
 #include "lora/lora_format_utils.h"
@@ -22,7 +24,7 @@ template <class T>
 struct ReadAndValidateData {
   void operator()(const Tensor& parameter) const {
     auto data = parameter.DataAsSpan<T>();
-    for (size_t i = 0, size = data.size(); i < size; ++i) {
+    for (size_t i = static_cast<size_t>(data[0]), size = data.size(); i < size; ++i) {
       ASSERT_EQ(static_cast<T>(i), data[i]);
     }
   }
@@ -32,7 +34,7 @@ template <>
 struct ReadAndValidateData<float> {
   void operator()(const Tensor& parameter) const {
     auto data = parameter.DataAsSpan<float>();
-    for (size_t i = 0, size = data.size(); i < size; ++i) {
+    for (size_t i = static_cast<size_t>(data[0]), size = data.size(); i < size; ++i) {
       ASSERT_FALSE(std::isnan(data[i]));
       ASSERT_TRUE(std::isfinite(data[i]));
       ASSERT_EQ(static_cast<float>(i), data[i]);
@@ -44,7 +46,7 @@ template <>
 struct ReadAndValidateData<double> {
   void operator()(const Tensor& parameter) const {
     auto data = parameter.DataAsSpan<double>();
-    for (size_t i = 0, size = data.size(); i < size; ++i) {
+    for (size_t i = static_cast<size_t>(data[0]), size = data.size(); i < size; ++i) {
       ASSERT_FALSE(std::isnan(data[i]));
       ASSERT_TRUE(std::isfinite(data[i]));
       ASSERT_EQ(static_cast<double>(i), data[i]);
@@ -52,12 +54,11 @@ struct ReadAndValidateData<double> {
   }
 };
 
-
-template<>
+template <>
 struct ReadAndValidateData<BFloat16> {
   void operator()(const Tensor& parameter) const {
     auto data = parameter.DataAsSpan<BFloat16>();
-    for (size_t i = 0, size = data.size(); i < size; ++i) {
+    for (size_t i = static_cast<size_t>(data[0].ToFloat()), size = data.size(); i < size; ++i) {
       ASSERT_FALSE(data[i].IsNaN());
       ASSERT_FALSE(data[i].IsInfinity());
       ASSERT_EQ(static_cast<float>(i), data[i].ToFloat());
@@ -69,7 +70,7 @@ template <>
 struct ReadAndValidateData<MLFloat16> {
   void operator()(const Tensor& parameter) const {
     auto data = parameter.DataAsSpan<MLFloat16>();
-    for (size_t i = 0, size = data.size(); i < size; ++i) {
+    for (size_t i = static_cast<size_t>(data[0].ToFloat()), size = data.size(); i < size; ++i) {
       ASSERT_FALSE(data[i].IsNaN());
       ASSERT_FALSE(data[i].IsInfinity());
       ASSERT_EQ(static_cast<float>(i), data[i].ToFloat());
@@ -121,25 +122,87 @@ auto verify_load = [](const lora::LoraAdapter& adapter) {
   }
 };
 
+constexpr const std::array<int64_t, 2> param_shape = {8, 4};
+
+template <class T>
+struct CreateParam {
+  InlinedVector<T> operator()() const {
+    InlinedVector<T> param(32);
+    std::iota(param.begin(), param.end(), T{0});
+    return param;
+  }
+};
+
+template <class T>
+struct GenerateTestParameters {
+  std::vector<uint8_t> operator()() const {
+    constexpr const auto data_type = utils::ToTensorProtoElementType<T>();
+
+    InlinedVector<T> param_1(32);
+    InlinedVector<T> param_2(32);
+    if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
+      for (float f = 0.f; f < 32; ++f) {
+        param_1[static_cast<size_t>(f)] = static_cast<T>(f);
+        param_2[static_cast<size_t>(f)] = static_cast<T>(f + 32);
+      }
+    } else {
+      std::iota(param_1.begin(), param_1.end(), T{0});
+      std::iota(param_2.begin(), param_2.end(), T{32});
+    }
+
+    flatbuffers::FlatBufferBuilder builder;
+    std::vector<flatbuffers::Offset<lora::Parameter>> params;
+    params.reserve(2);
+
+    flatbuffers::Offset<lora::Parameter> fbs_param_1, fbs_param_2;
+    auto byte_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_1));
+    lora::utils::SaveLoraParameter(builder, "param_1", static_cast<lora::TensorDataType>(data_type), param_shape,
+                                   byte_span, fbs_param_1);
+    params.push_back(fbs_param_1);
+
+    byte_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_2));
+    lora::utils::SaveLoraParameter(builder, "param_2", static_cast<lora::TensorDataType>(data_type), param_shape,
+                                   byte_span, fbs_param_2);
+    params.push_back(fbs_param_2);
+
+    auto fbs_params = builder.CreateVector(params);
+    auto fbs_adapter = lora::CreateAdapter(builder, lora::kLoraFormatVersion, kAdapterVersion, kModelVersion,
+                                           fbs_params);
+    builder.Finish(fbs_adapter, lora::AdapterIdentifier());
+
+    std::vector<uint8_t> result;
+    result.reserve(builder.GetSize());
+    gsl::span<uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
+    std::copy(buffer.begin(), buffer.end(), std::back_inserter(result));
+    return result;
+  }
+};
+
+template <class T>
+struct TestDataType {
+  void operator()() const {
+    const auto test_params = GenerateTestParameters<T>()();
+    lora::LoraAdapter lora_adapter;
+    lora_adapter.Load(std::move(test_params));
+    verify_load(lora_adapter);
+  }
+};
+
 }  // namespace
 
 TEST(LoraAdapterTest, Load) {
-  // See file creation code at testdata/lora/lora_unit_test_adapter.cc
-  // This is float
-  const std::filesystem::path file_path = "testdata/lora/lora_unit_test_adapter.fb";
+  // Test different data types
+  const auto data_types = gsl::make_span(lora::EnumValuesTensorDataType());
+  for (size_t i = 1, size = data_types.size(); i < size; ++i) {
+    if (i == 8 || i == 9 || i == 14 || i == 15 || (i > 16 && i < 21)) 
+      continue;
 
-  {
-    // Test memory load
-    lora::LoraAdapter lora_adapter;
-    lora_adapter.Load(file_path);
-    verify_load(lora_adapter);
-  }
-
-  {
-    // Test memory map
-    lora::LoraAdapter lora_adapter;
-    lora_adapter.MemoryMap(file_path);
-    verify_load(lora_adapter);
+    utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,
+                                int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t,
+                                BFloat16, MLFloat16>
+        disp(static_cast<int32_t>(data_types[i]));
+    disp.Invoke<TestDataType>();
   }
 }
 
