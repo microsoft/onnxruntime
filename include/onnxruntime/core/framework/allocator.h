@@ -50,6 +50,8 @@ constexpr const char* HIP = "Hip";
 constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
+constexpr const char* OpenVINO_RT = "OpenVINO_RT";
+constexpr const char* OpenVINO_RT_NPU = "OpenVINO_RT_NPU";
 constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
 
 constexpr size_t kAllocAlignment = 256;

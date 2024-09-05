@@ -189,7 +189,9 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
+#ifdef USE_DEVICE_MEMORY
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+#endif
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
   openvino_ep::EPCtxHandler ep_ctx_handle_{};

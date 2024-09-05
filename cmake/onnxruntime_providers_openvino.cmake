@@ -21,6 +21,10 @@
     message(FATAL_ERROR "OpenVINO 2024.0 and newer are supported. Please, use latest OpenVINO release")
   endif()
 
+  if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
+    add_definitions(-DUSE_DEVICE_MEMORY=1)
+  endif()
+
   if (WIN32)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()

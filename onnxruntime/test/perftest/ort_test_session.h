@@ -38,6 +38,8 @@ class OnnxRuntimeTestSession : public TestSession {
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
   std::vector<std::vector<Ort::Value>> test_inputs_;
+  std::unique_ptr<Ort::Allocator> custom_allocator_;
+  std::vector<Ort::Value> outputs_;
   std::vector<std::string> output_names_;
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
@@ -46,6 +48,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<std::string> input_names_str_;
   const int input_length_;
   std::string provider_name_;
+  bool use_device_mem = false;
 };
 
 }  // namespace perftest
