@@ -83,7 +83,7 @@ auto verify_load = [](const lora::LoraAdapter& adapter) {
   ASSERT_EQ(kModelVersion, adapter.ModelVersion());
 
   const auto param_num = adapter.GetParamNum();
-  ASSERT_GE(param_num, 0U);
+  ASSERT_EQ(param_num, 2U);
 
   InlinedVector<const char*> names;
   InlinedVector<OrtValue> ort_values;

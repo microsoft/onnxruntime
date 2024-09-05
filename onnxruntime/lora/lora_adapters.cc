@@ -14,8 +14,8 @@
 namespace onnxruntime {
 namespace lora {
 
-LoraAdapter::LoraParam::LoraParam(std::string name, OrtValue ort_value) noexcept
-    : name_(std::move(name)), ort_value_(std::move(ort_value)) {}
+LoraAdapter::LoraParam::LoraParam(OrtValue ort_value) noexcept
+    : ort_value_(std::move(ort_value)) {}
 
 void LoraAdapter::Load(const std::filesystem::path& file_path) {
   auto buffer = utils::LoadLoraAdapterBytes(file_path);
@@ -47,7 +47,8 @@ void LoraAdapter::InitializeParamsValues() {
   params_values.reserve(params->size());
   for (const auto* param : *params) {
     auto [name, ort_value] = utils::CreateOrtValueOverLoraParameter(*param);
-    params_values.emplace(name, LoraParam(std::move(name), std::move(ort_value)));
+    LoraParam lora_param(std::move(ort_value));
+    params_values.emplace(std::move(name), std::move(lora_param));
   }
   params_values_.swap(params_values);
 }
