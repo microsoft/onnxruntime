@@ -947,27 +947,27 @@ Now, we are ready to run the application. You can run the application on the sim
 
 a. Now, when you run the application, you should see the following screen:
 
-<img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_app.png" alt="My Voice application with Train and Infer buttons" width="30%" height="30%">
 
 
 b. Next, click on the `Train` button to navigate to the `TrainView`. The `TrainView` will prompt you to record your voice. You will need to record your voice `kNumRecordings` times. 
 
-<img src="../../../images/iOS_speaker_identification_training_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_screen.jpg" alt="My Voice application with words to record" width="30%" height="30%">
 
 
 c. Once all the recordings are complete, the application will train the model on the given data. You will see the progress bar indicating the progress of the training.
 
-<img src="../../../images/iOS_speaker_identification_training_progress_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_progress_screen.jpg" alt="Loading bar while the app is training" width="30%" height="30%">
 
 
 d. Once the training is complete, you will see the following screen:
 
-<img src="../../../images/iOS_speaker_identification_training_complete_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_complete_screen.jpg" alt="The app informs you training finished successfully!" width="30%" height="30%">
 
 
 e. Now, click on the `Infer` button to navigate to the `InferView`. The `InferView` will prompt you to record your voice. Once the recording is complete, it will perform inference with the trained model and display the result of the inference.
 
-<img src="../../../images/iOS_speaker_identification_infer_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_infer_screen.jpg" alt="My Voice application allows you to record and infer whether it's you or not." width="30%" height="30%">
 
 
 That's it! Hopefully, it identified your voice correctly.

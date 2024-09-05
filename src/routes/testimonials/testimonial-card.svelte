@@ -24,7 +24,7 @@
 <article
 	on:mouseenter={handleEnter}
 	on:mouseleave={handleLeave}
-	class="max-w-md mx-auto bg-blue-300 text-slate-50 rounded-sm overflow-hidden md:max-w-2xl"
+	class="max-w-md mx-auto bg-blue-300 text-primary-content rounded-sm overflow-hidden md:max-w-2xl"
 	id={title}
 >
 	<div class="md:flex">
@@ -35,7 +35,7 @@
 			<p class="block mt-1 leading-tight font-bold text-lg">{title}</p>
 			<p class="mt-2">{description}</p>
 			<br />
-			<p class="text-blue-700 text-right">-{author}</p>
+			<p class="text-right">-{author}</p>
 		</div>
 	</div>
 </article>

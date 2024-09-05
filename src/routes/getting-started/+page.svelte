@@ -34,7 +34,7 @@
 	<p class="pt-4">
 		For more in-depth installation instructions, check out the <a
 			href="https://onnxruntime.ai/docs/tutorials/"
-			class="text-blue-700">ONNX Runtime documentation</a
+			class="dark:text-blue-300 text-blue-800 underline">ONNX Runtime documentation</a
 		>.
 	</p>
 </div>
@@ -45,9 +45,9 @@
 			If you are interested in joining the ONNX Runtime open source community, you might want to join
 			us on GitHub where you can interact with other users and developers, participate in<a
 				href="https://github.com/microsoft/onnxruntime/discussions"
-				class="text-blue-700">discussions</a
+				class="dark:text-blue-300 text-blue-800 underline">discussions</a
 			>, and get help with any
-			<a href="https://github.com/microsoft/onnxruntime/issues" class="text-blue-700">issues</a> you
+			<a href="https://github.com/microsoft/onnxruntime/issues" class="dark:text-blue-300 text-blue-800 underline">issues</a> you
 			encounter. You can also contribute to the project by reporting bugs, suggesting features, or
 			submitting pull requests.
 			<div class="py-4">

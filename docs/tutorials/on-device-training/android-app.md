@@ -12,7 +12,7 @@ In this tutorial, we will explore how to build an Android application that incor
 
 Here is what the application will look like at the end of this tutorial:
 
-<img src="../../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
+<img src="../../../images/on-device-training-application-prediction-tom.jpg"  alt="an image classification app with Tom Cruise in the middle." width="30%" height="30%">
 
 ## Introduction
 
@@ -26,24 +26,22 @@ In this tutorial, we will use data to learn to:
 
 ## Contents
 
-- [Introduction](#introduction)
-- [Prerequisites](#prerequisites)
-- [Offline Phase - Building the training artifacts](#offline-phase---building-the-training-artifacts)
-  - [Export the model to ONNX](#op1)
-  - [Define the trainable and non trainable parameters](#op2)
-  - [Generate the training artifacts](#op3)
-- [Training Phase - Android application development](#training-phase---android-application-development)
-  - [Setting up the project in Android Studio](#tp1)
-  - [Adding the ONNX Runtime dependency](#tp2)
-  - [Packaging the Prebuilt Training Artifacts and Dataset](#tp3)
-  - [Interfacing with ONNX Runtime - C++ Code](#tp4)
-  - [Image Preprocessing](#tp5)
-  - [Application Frontend](#tp6)
-- [Training Phase - Running the application on a device](#training-phase---running-the-application-on-a-device)
-  - [Running the application on a device](#tp7)
-  - [Training with a pre-loaded dataset - Animals](#tp8)
-  - [Training with a custom dataset - Celebrities](#tp9)
-- [Conclusion](#conclusion)
+- [On-Device Training: Building an Android Application](#on-device-training-building-an-android-application)
+  - [Introduction](#introduction)
+  - [Contents](#contents)
+  - [Prerequisites](#prerequisites)
+  - [Offline Phase - Building the training artifacts](#offline-phase---building-the-training-artifacts)
+- [The original model is trained on imagenet which has 1000 classes.](#the-original-model-is-trained-on-imagenet-which-has-1000-classes)
+- [For our image classification scenario, we need to classify among 4 categories.](#for-our-image-classification-scenario-we-need-to-classify-among-4-categories)
+- [So we need to change the last layer of the model to have 4 outputs.](#so-we-need-to-change-the-last-layer-of-the-model-to-have-4-outputs)
+- [Export the model to ONNX.](#export-the-model-to-onnx)
+- [Load the onnx model.](#load-the-onnx-model)
+- [Define the parameters that require their gradients to be computed](#define-the-parameters-that-require-their-gradients-to-be-computed)
+- [(trainable parameters) and those that do not (frozen/non trainable parameters).](#trainable-parameters-and-those-that-do-not-frozennon-trainable-parameters)
+- [Generate the training artifacts.](#generate-the-training-artifacts)
+  - [Training Phase - Android application development](#training-phase---android-application-development)
+  - [Training Phase - Running the application on a device](#training-phase---running-the-application-on-a-device)
+  - [Conclusion](#conclusion)
 
 ## Prerequisites
 
@@ -791,7 +789,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    b. Launching the application on the device should look like this:
 
-   <img src="../../../images/on-device-training-application-landing-page.jpg"  width="30%" height="30%">
+   <img src="../../../images/on-device-training-application-landing-page.jpg"  alt="Barebones ORT Personalize app" width="30%" height="30%">
 
 2. <a name="tp8"></a>Training with a pre-loaded dataset - Animals
 
@@ -805,7 +803,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    e. Use any animal image from your library for inferencing now.
 
-   <img src="../../../images/on-device-training-application-prediction-cow.jpg"  width="30%" height="30%">
+   <img src="../../../images/on-device-training-application-prediction-cow.jpg" alt="ORT Personalize app with an image of a cow" width="30%" height="30%">
 
    As can be seen from the image above, the model correctly predicted `Cow`.
 
@@ -825,7 +823,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    g. That's it!. Hopefully the application classified the image correctly.
 
-   <img src="../../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
+   <img src="../../../images/on-device-training-application-prediction-tom.jpg" alt="an image classification app with Tom Cruise in the middle." width="30%" height="30%">
 
 
 ## Conclusion
