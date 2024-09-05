@@ -304,12 +304,12 @@ class Execution {
 
  private:
   void cleanup();
-  bool model_loaded_ {false};
-  NSString* coreml_model_path_ {nil};
-  NSString* compiled_model_path_ {nil};
+  bool model_loaded_{false};
+  NSString* coreml_model_path_{nil};
+  NSString* compiled_model_path_{nil};
   const logging::Logger& logger_;
-  uint32_t coreml_flags_ {0};
-  MLModel* model_ {nil};
+  uint32_t coreml_flags_{0};
+  MLModel* model_{nil};
 };
 
 Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
@@ -414,12 +414,12 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
         MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
         NSError* error = nil;
         id<MLFeatureProvider> output_features = [model_ predictionFromFeatures:input_features
-                                                                      options:options
-                                                                        error:&error];
+                                                                       options:options
+                                                                         error:&error];
 
         if (error != nil) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
-                                [[error localizedDescription] UTF8String]);
+                                 [[error localizedDescription] UTF8String]);
         }
 
         for (const auto& [output_name, output_tensor_info] : outputs) {
@@ -452,8 +452,8 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
             if (const auto shape_size = ShapeSize(static_output_shape);
                 shape_size < 0 || num_elements != static_cast<size_t>(shape_size)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                    "CoreML MLMultiArray count (", num_elements, ") and shape size (", shape_size,
-                                    ") do not match");
+                                     "CoreML MLMultiArray count (", num_elements, ") and shape size (", shape_size,
+                                     ") do not match");
             }
 
             // support a non-contiguous array, provided only one dimension is not contiguous
@@ -469,11 +469,11 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
             if (@available(macOS 12.3, iOS 15.4, *)) {
               [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
                 copy_status = CopyMLMultiArrayBuffer(bytes, output_buffer, data,
-                                                    num_blocks, block_size, stride, tensor_info);
+                                                     num_blocks, block_size, stride, tensor_info);
               }];
             } else {
               copy_status = CopyMLMultiArrayBuffer(data.dataPointer, output_buffer, data,
-                                                  num_blocks, block_size, stride, tensor_info);
+                                                   num_blocks, block_size, stride, tensor_info);
             }
 
             ORT_RETURN_IF_ERROR(copy_status);
