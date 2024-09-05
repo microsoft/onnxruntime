@@ -71,11 +71,14 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
 
   // handle special cases
 #if defined(USE_JSEP)
-  // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
   if (node.GetExecutionProviderType() == kJsExecutionProvider) {
+    // TODO(fs-eire): Remove it once NHWC Resize implementation is fixed
     if (node.OpType() == "Resize") {
       // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
       // with the original input layout.
+      return false;
+    } else if (node.OpType() == "InstanceNormalization") {
+      // Don't convert layout for InstanceNormalization for better performance.
       return false;
     }
   }
