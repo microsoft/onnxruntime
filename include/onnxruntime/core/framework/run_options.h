@@ -5,6 +5,8 @@
 
 #include <string>
 #include <atomic>
+
+#include "core/common/inlined_containers_fwd.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/config_options.h"
 
@@ -46,7 +48,7 @@ struct OrtRunOptions {
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
   onnxruntime::ConfigOptions config_options;
 
-  std::vector<const onnxruntime::lora::LoraAdapter*> active_adapters_;
+  onnxruntime::InlinedVector<const onnxruntime::lora::LoraAdapter*> active_adapters_;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
