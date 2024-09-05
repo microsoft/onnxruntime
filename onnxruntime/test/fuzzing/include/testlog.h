@@ -48,14 +48,17 @@ class TestLog {
   // Enable logging
   inline void enable();
 
-  // Ends the current line so that the next line can start with time information.
+  // Ends the current line so that the next line
+  // can start with time information.
   void operator<<(LogEndln info);
 
   // Minimize log
   inline void minLog();
 
   // Maintain ring buffer
-  // Note: This is only used for minimum logging; if normal logging is being used, this map must be constrained.
+  // Note: This is only used for minimum logging;
+  // if normal logging is being used, this map must
+  // be constrained.
   void insert(std::wstring data);
 
   // Singleton constructor - only one object exists
@@ -91,7 +94,8 @@ class TestLog {
 };
 
 // Reference to initialized logger
-// Note: this resource is not thread-safe and only one exists for the entire process.
+// Note: this resource is not thread-safe and only
+// one exists for the entire process.
 //
 extern TestLog testLog;
 

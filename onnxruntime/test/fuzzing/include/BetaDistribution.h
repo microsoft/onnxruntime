@@ -82,7 +82,6 @@ class BetaDistribution {
     for (int i = 0; i < sample_size; i++) {
       calc_type sample = convert_to_fixed_range(gen);
       calc_type highest_probability_temp = highest_probability;
-      // highest_probability = std::max({highest_probability_temp, distribution(sample)});
       highest_probability = std::max(highest_probability_temp, distribution(sample));
 
       // A new sample number with a higher probability has been found
