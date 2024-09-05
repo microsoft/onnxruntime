@@ -323,7 +323,9 @@ Execution::Execution(const std::string& path, const logging::Logger& logger, uin
 }
 
 Execution::~Execution() {
-  cleanup();
+  @autoreleasepool {
+    cleanup();
+  }
 }
 
 void Execution::cleanup() {
