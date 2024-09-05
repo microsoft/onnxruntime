@@ -17,12 +17,46 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace {
+
+std::vector<const char*> GetEnabledAdapterToggles() {
+  // See the description of all the toggles in toggles.cpp
+  // "use_dxc" for Shader Model 6+ features (e.g. float16)
+  // "allow_unsafe_apis" for chromium experimental features
+  constexpr const char* toggles[] = {
+      "use_dxc",
+      "allow_unsafe_apis",
+  };
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+}
+
+std::vector<const char*> GetEnabledDeviceToggles() {
+  // Enable / disable other toggles that may affect the performance.
+  // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
+  constexpr const char* toggles[] = {
+      "skip_validation",
+      "disable_robustness",
+      "disable_workgroup_init",
+      "d3d_disable_ieee_strictness",
+  };
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+}
+
+std::vector<const char*> GetDisabledDeviceToggles() {
+  constexpr const char* toggles[] = {
+      "lazy_clear_resource_on_first_use",
+  };
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+}
+
 std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) {
   std::vector<wgpu::FeatureName> required_features;
   constexpr wgpu::FeatureName features[]{
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
       wgpu::FeatureName::TimestampQuery,
-      wgpu::FeatureName::ShaderF16};
+      wgpu::FeatureName::ShaderF16,
+      wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupsF16};
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
@@ -31,7 +65,7 @@ std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter&
   return required_features;
 }
 
-wgpu::RequiredLimits GetAvailableRequiredLimits(const wgpu::Adapter& adapter) {
+wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) {
   wgpu::RequiredLimits required_limits{};
   wgpu::SupportedLimits adapter_limits;
   ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
@@ -49,6 +83,8 @@ wgpu::RequiredLimits GetAvailableRequiredLimits(const wgpu::Adapter& adapter) {
   return required_limits;
 }
 
+}  // namespace
+
 void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info) {
   std::call_once(init_flag_, [this, &webgpu_ep_info]() {
     // Initialization.Step.1 - Create wgpu::Instance
@@ -63,6 +99,13 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     // Initialization.Step.2 - Create wgpu::Adapter
     if (adapter_ == nullptr) {
       wgpu::RequestAdapterOptions req_adapter_options = {};
+      wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
+      req_adapter_options.nextInChain = &adapter_toggles_desc;
+
+      auto enabled_adapter_toggles = GetEnabledAdapterToggles();
+      adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
+      adapter_toggles_desc.enabledToggles = enabled_adapter_toggles.data();
+
       wgpu::RequestAdapterCallbackInfo req_adapter_callback_info = {};
       req_adapter_callback_info.mode = wgpu::CallbackMode::WaitAnyOnly;
       req_adapter_callback_info.callback = [](WGPURequestAdapterStatus status,
@@ -79,11 +122,23 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     // Initialization.Step.3 - Create wgpu::Device
     if (device_ == nullptr) {
       wgpu::DeviceDescriptor device_desc = {};
+      wgpu::DawnTogglesDescriptor device_toggles_desc = {};
+      device_desc.nextInChain = &device_toggles_desc;
+
+      auto enabled_device_toggles = GetEnabledDeviceToggles();
+      device_toggles_desc.enabledToggleCount = enabled_device_toggles.size();
+      device_toggles_desc.enabledToggles = enabled_device_toggles.data();
+
+      auto disabled_device_toggles = GetDisabledDeviceToggles();
+      device_toggles_desc.disabledToggleCount = disabled_device_toggles.size();
+      device_toggles_desc.disabledToggles = disabled_device_toggles.data();
+
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter_);
       if (required_features.size() > 0) {
         device_desc.requiredFeatures = required_features.data();
+        device_desc.requiredFeatureCount = required_features.size();
       }
-      wgpu::RequiredLimits required_limits = GetAvailableRequiredLimits(adapter_);
+      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter_);
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
