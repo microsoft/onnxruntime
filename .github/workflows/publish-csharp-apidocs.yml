@@ -59,4 +59,4 @@ jobs:
       with:
         name: onnxruntime-csharp-apidocs
         path: _site
-        retention-days: 60
+        retention-days: 30
