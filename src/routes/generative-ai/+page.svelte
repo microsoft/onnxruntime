@@ -76,35 +76,33 @@
 			
 		</div>
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 my-8 gap-4">
-			<div class="flex flex-col h-full gap-4 col-span-3">
+			<div class="flex flex-col h-full gap-4">
 				<div class="flex-1">
 					<h3 class="text-2xl">Text Generation Models</h3>
 					<p>
 						Text generation models are AI systems designed to generate human-like text based on
 						prompts. They're used in chatbots, content creation, summarization, and creative
-						writing. Check out our llama 3 and phi-3 demos below:
+						writing. Check out our phi-3 and mistral demos below:
 					</p>
 				</div>
 			
-				<div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mt-auto">
-					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Llama 3</a>
+				<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mt-auto">
 					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi-3-tutorial.md" class="btn btn-primary btn-block">Phi-3</a>
-					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Gemma</a>
-					<a href="https://huggingface.co/microsoft/Mistral-7B-v0.1-onnx" class="btn btn-primary btn-block">Mistral</a>
+					<a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/models/mistral" class="btn btn-primary btn-block">Mistral</a>
 				</div>
 			</div>
 			
-			<!-- <div class="mx-auto flex flex-col gap-4 h-full">
+			<div class="mx-auto flex flex-col gap-4 h-full">
 				<div class="flex-1">
 					<h3 class="text-2xl">Image Generation Models</h3>
 					<p>
 						Image generation models use AI to create visuals from text descriptions or other inputs.
 						These models generate artwork, realistic images, and visual content for design and media
-						applications. Check out stable diffusion for a great example!
+						applications. Check out Stable Diffusion for a great example!
 					</p>
 				</div>
 				<div class="grid gap-4 grid-cols-1 mt-auto">
-					<a href="" class="btn btn-primary btn-block">Stable Diffusion</a>
+					<a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/77989cff19f102300e3c4f99b957b55f74daecb4/js/sd-turbo" class="btn btn-primary btn-block">Stable Diffusion</a>
 				</div>
 			</div>
 			
@@ -117,9 +115,9 @@
 					</p>
 				</div>
 				<div class="grid gap-4 grid-cols-1 mt-auto">
-					<a href="" class="btn btn-primary btn-block">Whisper</a>
+					<a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper" class="btn btn-primary btn-block">Whisper</a>
 				</div>
-			</div> -->
+			</div>
 			
 			<div class="mx-auto flex flex-col gap-4 h-full">
 				<div class="flex-1">
@@ -131,7 +129,6 @@
 				</div>
 				<div class="grid gap-4 grid-cols-1 mt-auto">
 					<a href="https://github.com/microsoft/onnxruntime-genai" class="btn btn-primary btn-block">Request a model on GitHub</a>
-					<!-- <a href="" class="btn btn-primary btn-block">Model B</a> -->
 				</div>
 			</div>
 			
@@ -139,16 +136,16 @@
 	</div>
 	<div class="divider" />
 	<div class="">
-		<h2 class="text-3xl">ONNX Runtime Gen AI</h2>
+		<h2 class="text-3xl">ONNX Runtime ❤️ Generative AI</h2>
 		<p>
-			Use ONNX Runtime Gen AI for its high performance, scalability, and flexibility in deploying
+			Use ONNX Runtime for its high performance, scalability, and flexibility in deploying
 			generative AI models. With support for diverse frameworks and hardware acceleration, it
 			ensures efficient, cost-effective model inference across various environments.
 		</p>
 		<div class="grid grid-cols-1 lg:grid-cols-2 my-8">
 			<div class="">
 				<h2 class="text-2xl text-center">
-					Run ONNX Runtime - Generative AI on:
+					Run ONNX Runtime on:
 				</h2>
 				<h2 class="text-center text-4xl">
 					{#key cycleIndex}
@@ -173,25 +170,25 @@
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
 						<h2 class="card-title">Multiplatform</h2>
-						<p>Whether it be Desktop, Mobile, or the Cloud, run ONNX Runtime on the platform of your choosing!</p>
+						<p>Whether it be Desktop, Mobile, Browser, or the Cloud, run ONNX Runtime on the platform of your choosing!</p>
 					</div>
 				</div>
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
 						<h2 class="card-title">On Device</h2>
-						<p>Run ORT GenAI locally, without privacy concerns and inference however you desire.</p>
+						<p>Run ONNX Runtime on device and inference privately and with significant cost savings. When you consider hybrid scenarios, the possibilities are endless!</p>
 					</div>
 				</div>
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
 						<h2 class="card-title">Multimodal compatibility</h2>
-						<p>You aren't limited to just LLMs with ORT GenAI - you can use your favourite vision or (soon) omni models too.</p>
+						<p>You aren't limited to just LLMs with ONNX Runtime - you can use your favourite vision or omni models too.</p>
 					</div>
 				</div>
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
 						<h2 class="card-title">Easy to use!</h2>
-						<p>Getting ramped up is super easy! Get started using any of the various examples we have below!</p>
+						<p>Getting ramped up is super easy. Get started using any of the various examples we have on this page!</p>
 					</div>
 				</div>
 			</div>
