@@ -301,7 +301,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::copy(supported_options.begin(), supported_options.end(),
                     std::ostream_iterator<std::string>(str_stream, ","));
           std::string str = str_stream.str();
-          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+          ORT_THROW("Wrong value for " + key + ". select from: " + str);
         }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
@@ -634,6 +634,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     warn_dup_config_entry(kOrtSessionOptionsConfigForceSpinningStop);
     fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
+  }
+
+  if (!performance_test_config.run_config.register_custom_op_path.empty()) {
+    session_options.RegisterCustomOpsLibrary(performance_test_config.run_config.register_custom_op_path.c_str());
   }
 
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {

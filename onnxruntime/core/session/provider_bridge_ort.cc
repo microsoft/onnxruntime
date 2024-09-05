@@ -487,6 +487,7 @@ struct ProviderHostImpl : ProviderHost {
   float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) override { return p->f(); }
   const ONNX_NAMESPACE::TensorProto& AttributeProto__t(const ONNX_NAMESPACE::AttributeProto* p) override { return p->t(); }
   void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_s(value); }
+  void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, ::std::string&& value) override { return p->set_s(::std::move(value)); }
   void AttributeProto__set_f(ONNX_NAMESPACE::AttributeProto* p, const float& value) override { return p->set_f(value); }
   void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) override { return p->set_i(value); }
   void AttributeProto__set_t(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::TensorProto& value) override { *p->mutable_t() = value; }
@@ -999,6 +1000,7 @@ struct ProviderHostImpl : ProviderHost {
   }
   void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
   void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->emplace(k, v); }
+  void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, ONNX_NAMESPACE::AttributeProto&& v) override { p->emplace(k, std::move(v)); }
   void NodeAttributes__insert_or_assign(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->insert_or_assign(k, v); }
   void NodeAttributes__reserve(NodeAttributes* p, size_t size) override { p->reserve(size); }
 
@@ -1076,6 +1078,9 @@ struct ProviderHostImpl : ProviderHost {
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
+  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, NodeAttributes&& attributes, const std::string& domain) override {
+    return p->AddNode(name, op_type, description, input_args, output_args, ::std::move(attributes), domain);
+  }
   Node& Graph__AddNode(Graph* p, const Node& other) override {
     return p->AddNode(other);
   }
@@ -1138,6 +1143,7 @@ struct ProviderHostImpl : ProviderHost {
   const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
   IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const override { return p->GetSchemaRegistry(); }
+  bool Graph__SetOpSchemaFromRegistryForNode(Graph* p, Node& node) override { return p->SetOpSchemaFromRegistryForNode(node); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }

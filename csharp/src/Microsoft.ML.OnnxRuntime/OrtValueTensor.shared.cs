@@ -85,7 +85,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// This helper class owns the underlying OrtValue that is assumed to be a Tensor,
     /// it does not support any other ortValues and caches Tensor properties.
     /// 
-    /// It is easy to expose as a Tensor<T> as DenseTensor can take Memory Mapping from
+    /// It is easy to expose as a Tensor{T} as DenseTensor can take Memory Mapping from
     /// this.
     /// 
     /// This class is disposable because of the MemoryManager inheritance. Because this class

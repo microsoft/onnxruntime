@@ -236,12 +236,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Fetch string tensor element buffer pointer at the specified index,
-        /// convert/copy to UTF-16 char[] and return a ReadOnlyMemory<char> instance.
+        /// convert/copy to UTF-16 char[] and return a ReadOnlyMemory{char} instance.
         ///
         /// Obtain TensorTypeAndShape to get shape and element count.
         /// </summary>
         /// <param name="index">flat string tensor element index</param>
-        /// <returns>ReadOnlyMemory<char> backed by a managed char[]. Its lifespan is not
+        /// <returns>ReadOnlyMemory{char} backed by a managed char[]. Its lifespan is not
         /// tied to the native buffer of OrtValue.</returns>
         public ReadOnlyMemory<char> GetStringElementAsMemory(int index)
         {
@@ -845,7 +845,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Note, this is different from creating an OrtValue from other primitive data types
         /// where memory is pinned (if necessary) and the OrtValue points to that chunk of memory.
         /// </summary>
-        /// <param name="tensor">Tensor<string></param>
+        /// <param name="tensor">Tensor{string}</param>
         /// <returns>A disposable OrtValue instance</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         public static OrtValue CreateFromStringTensor(Tensor<string> tensor)
