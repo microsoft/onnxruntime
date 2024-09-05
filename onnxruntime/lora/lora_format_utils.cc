@@ -102,7 +102,7 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   const auto data_type = param.data_type();
   gsl::span<const int64_t> shape_span(param.dims()->data(), param.dims()->size());
 
-  OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
+  static const OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
   auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
   // const_cast is necessery due to Tensor class API
@@ -114,6 +114,16 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
 
   return std::make_pair(std::move(name), std::move(result));
 }
+
+OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const AllocatorPtr& device_allocator) {
+  OrtValue result;
+
+  const auto& tensor = ort_value_mapped.Get<Tensor>();
+  Tensor on_device(tensor.DataType(), tensor.Shape(), device_allocator);
+
+  return result;
+}
+
 }  // namespace utils
 }  // namespace lora
 }  // namespace onnxruntime

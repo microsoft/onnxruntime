@@ -4680,15 +4680,18 @@ struct OrtApi {
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *
    * \param[in] adapter_file_path Absolute file path to the adapter file.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked, if nullptr data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    */
-  ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _Outptr_ OrtLoraAdapter** out);
+  ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
 
   /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
    */
   ORT_CLASS_RELEASE(LoraAdapter);
-
 
   /** \brief Set the active Lora Adapter for the run options
    *

@@ -743,7 +743,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// 
   /// The function attempts to load the adapter from the specified file
   /// \param absolute_adapter_path The absolute path to the Lora adapter
-  explicit LoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path);
+  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
+  ///        be copied to device if required by the model at inference time.
+  explicit LoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path, OrtAllocator* allocator);
 };
 
 /** \brief RunOptions

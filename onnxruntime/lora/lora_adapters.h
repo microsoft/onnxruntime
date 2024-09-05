@@ -5,8 +5,9 @@
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
-#include "core/platform/env.h"
+#include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
+#include "core/platform/env.h"
 
 #include "lora/lora_format_utils.h"
 
@@ -24,6 +25,8 @@ namespace lora {
 class LoraAdapter {
  public:
   LoraAdapter() = default;
+  explicit LoraAdapter(AllocatorPtr device_allocator)
+      : device_allocator_(std::move(device_allocator)) {}
   ~LoraAdapter() = default;
   LoraAdapter(const LoraAdapter&) = delete;
   LoraAdapter& operator=(const LoraAdapter&) = delete;
@@ -96,7 +99,7 @@ class LoraAdapter {
     for (const auto& [name, param] : params_values_) {
       *names_out = name.c_str();
       ++names_out;
-      *tensor_out = param.ort_value_;
+      *tensor_out = param.ort_value_mapped_;
       ++tensor_out;
     }
   }
@@ -125,11 +128,14 @@ class LoraAdapter {
   /// </summary>
   struct LoraParam {
     LoraParam() = default;
-    explicit LoraParam(OrtValue parameter) noexcept;
+    explicit LoraParam(OrtValue ort_value_mapped) noexcept;
+    LoraParam(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept;
 
-    OrtValue ort_value_;
+    OrtValue ort_value_mapped_;
+    OrtValue ort_value_device_;
   };
 
+  AllocatorPtr device_allocator_;
   const Adapter* adapter_{nullptr};
   InlinedHashMap<std::string, LoraParam> params_values_;
 };
