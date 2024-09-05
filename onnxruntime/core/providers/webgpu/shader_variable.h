@@ -15,7 +15,7 @@ namespace webgpu {
 template <typename TIdx>
 std::string GetElementAt(std::string_view var, const TIdx& idx, int rank, bool is_f16 = false) {
   // "std::string::rfind(str, 0) == 0" is equivalent to "std::string::starts_with(str)" before C++20.
-  if (var.rfind("uniform.", 0) == 0) {
+  if (var.rfind("uniforms.", 0) == 0) {
     if (rank > 4) {
       if constexpr (std::is_integral_v<TIdx>) {
         if (is_f16) {
