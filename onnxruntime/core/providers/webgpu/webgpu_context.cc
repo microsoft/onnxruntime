@@ -249,15 +249,19 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                     "Invalid program artifact: variable[", i, "] rank mismatch. Expected: ", (int)expected_rank,
                     ", Actual: ", shape.NumDimensions());
 
-      std::vector<uint32_t> dims(shape.NumDimensions());
-      std::vector<uint32_t> stride(shape.NumDimensions());
-      for (size_t j = 0; j < shape.NumDimensions(); ++j) {
+      std::vector<uint32_t> dims(expected_rank);
+      std::vector<uint32_t> stride(expected_rank - 1);
+      for (size_t j = 0; j < expected_rank; ++j) {
         dims[j] = SafeInt<uint32_t>(shape[j]);
-        stride[j] = SafeInt<uint32_t>(shape.SizeFromDimension(j + 1));
+        if (j < expected_rank - 1) {
+          stride[j] = SafeInt<uint32_t>(shape.SizeFromDimension(j + 1));
+        }
       }
 
       shape_uniforms.emplace_back(gsl::make_span(dims));
-      shape_uniforms.emplace_back(gsl::make_span(stride));
+      if (expected_rank > 1) {
+        shape_uniforms.emplace_back(gsl::make_span(stride));
+      }
     }
   }
 
@@ -268,13 +272,12 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   for (size_t i = 0; i < uniform_count; i++) {
     const auto& uniform = i < shape_uniforms.size() ? shape_uniforms[i]
                                                     : program.UniformVariables()[i - shape_uniforms.size()];
-    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
     size_t length = uniform.length;
-
-    // skip zero-length uniform
-    if (length == 0) {
+    if (length == 0) {  // skip zero-length uniform
       continue;
     }
+
+    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
 
     size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
     // https://www.w3.org/TR/WGSL/#alignof

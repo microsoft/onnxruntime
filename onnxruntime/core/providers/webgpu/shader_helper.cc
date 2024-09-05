@@ -334,12 +334,12 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   shape_uniform_ranks.reserve(input_vars.size() + output_vars.size());
 
   for (const auto& input : vars_[static_cast<int>(ProgramVariableScope::Input)]) {
-    bool use_uniform = (input.usage_ & ShaderVariable::UseUniform) == ShaderVariable::UseUniform && input.rank_ > 1;
+    bool use_uniform = (input.usage_ & ShaderVariable::UseUniform) && input.rank_ > 0;
     use_any_shape_uniform |= use_uniform;
     shape_uniform_ranks.push_back(use_uniform ? input.rank_ : 0);
   }
   for (const auto& output : vars_[static_cast<int>(ProgramVariableScope::Output)]) {
-    bool use_uniform = (output.usage_ & ShaderVariable::UseUniform) == ShaderVariable::UseUniform && output.rank_ > 1;
+    bool use_uniform = (output.usage_ & ShaderVariable::UseUniform) && output.rank_ > 0;
     use_any_shape_uniform |= use_uniform;
     shape_uniform_ranks.push_back(use_uniform ? output.rank_ : 0);
   }
@@ -380,20 +380,22 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     };
 
     for (const auto& input : vars_[static_cast<int>(ProgramVariableScope::Input)]) {
-      if (input.rank_ > 1 && (input.usage_ & ShaderVariable::Usage::UseUniform)) {
+      const size_t rank = input.rank_;
+      if (rank > 0 && (input.usage_ & ShaderVariable::Usage::UseUniform)) {
         std::string shape = input.name_ + "_shape";
         std::string stride = input.name_ + "_stride";
-        append_uniform(shape, ProgramUniformVariableDataType::Uint32, input.rank_);
-        append_uniform(stride, ProgramUniformVariableDataType::Uint32, input.rank_);
+        append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
       }
     }
 
     for (const auto& output : vars_[static_cast<int>(ProgramVariableScope::Output)]) {
-      if (output.rank_ > 1 && (output.usage_ & ShaderVariable::Usage::UseUniform)) {
+      const size_t rank = output.rank_;
+      if (rank > 0 && (output.usage_ & ShaderVariable::Usage::UseUniform)) {
         std::string shape = output.name_ + "_shape";
         std::string stride = output.name_ + "_stride";
-        append_uniform(shape, ProgramUniformVariableDataType::Uint32, output.rank_);
-        append_uniform(stride, ProgramUniformVariableDataType::Uint32, output.rank_);
+        append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
       }
     }
 

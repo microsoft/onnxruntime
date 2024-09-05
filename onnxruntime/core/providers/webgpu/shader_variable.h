@@ -202,13 +202,15 @@ inline std::string ShaderVariable::IndicesToOffset(std::string_view indices_expr
 inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const {
   usage_ |= UseBroadcastedIndicesToOffset;
   broadcasted_to_.push_back(broadcasted_result);
-  return MakeStringWithClassicLocale(broadcasted_result.name_, "_bi2o_", name_, '(', indices_expr, ')');
+  return rank_ == 0
+             ? "0"
+             : MakeStringWithClassicLocale(broadcasted_result.name_, "_bi2o_", name_, '(', indices_expr, ')');
 }
 
 template <typename... TIndices>
 inline std::string ShaderVariable::Indices(TIndices&&... indices_args) const {
   return rank_ == 0
-             ? ""
+             ? "0"
              : MakeStringWithClassicLocale(name_, "_indices_t(",
                                            absl::StrJoin(std::forward_as_tuple(std::forward<TIndices>(indices_args)...), ", "),
                                            ')');

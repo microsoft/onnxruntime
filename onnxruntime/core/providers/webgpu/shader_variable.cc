@@ -68,6 +68,12 @@ constexpr static const std::string_view ELEMENT_TYPE[] = {
     "bool",  // vec4bool
 };
 
+inline std::string GetIndicesType(int rank) {
+  return rank < 2 ? "u32"
+                  : (rank < 4 ? MakeStringWithClassicLocale("vec", rank, "<u32>")
+                              : MakeStringWithClassicLocale("array<u32, ", rank, ">"));
+}
+
 }  // namespace
 
 ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, Usage usage, const TensorShape& dims)
@@ -77,9 +83,7 @@ ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType ty
       rank_{SafeInt<int>(dims.NumDimensions())},
       dims_{dims},
       usage_(usage),
-      indices_type_{rank_ < 2 ? "u32"
-                              : (rank_ < 4 ? MakeStringWithClassicLocale("vec", rank_, "<u32>")
-                                           : MakeStringWithClassicLocale("array<u32, ", rank_, ">"))},
+      indices_type_{GetIndicesType(rank_)},
       value_type_alias_{name_ + "_value_t"},
       element_type_alias_{name_ + "_element_t"},
       indices_type_alias_{name_ + "_indices_t"} {
@@ -105,7 +109,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Need shape and strides when (not use uniform) and (any other usage is enabled)
-  if (!(usage_ & UseUniform) && (usage_ & ~UseUniform)) {
+  if (!(usage_ & UseUniform) && (usage_ & ~UseUniform) && rank_ > 0) {
     SS("const ", shape, " = ", IndicesType(), "(");
 
     bool first = true;
@@ -119,16 +123,18 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
     }
     ss << ");\n";
 
-    SS("const ", stride, " = ", IndicesType(), "(");
-    first = true;
-    for (int i = 1; i <= rank_; i++) {
-      if (!first) {
-        ss << ",";
+    if (rank_ > 1) {
+      SS("const ", stride, " = ", GetIndicesType(rank_ - 1), "(");
+      first = true;
+      for (int i = 1; i < rank_; i++) {
+        if (!first) {
+          ss << ",";
+        }
+        ss << dims_.SizeFromDimension(i);
+        first = false;
       }
-      ss << dims_.SizeFromDimension(i);
-      first = false;
+      ss << ");\n";
     }
-    ss << ");\n";
   }
 
   // Implementation of "fn o2i_{name}"
@@ -138,7 +144,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
       SS("  var indices: ", IndicesType(), ";\n");
       SS("  var current = offset;\n");
       for (int i = 0; i < rank_ - 1; i++) {
-        auto current_stride = GetElementAt(stride, i, rank_);
+        auto current_stride = GetElementAt(stride, i, rank_ - 1);
         SS("  let dim", i, " = current / ", current_stride, ";\n");
         SS("  let rest", i, " = current % ", current_stride, ";\n");
         SS("  indices[", i, "] = dim", i, ";\n");
@@ -156,7 +162,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
       SS("fn i2o_", name_, "(indices : ", IndicesType(), ")->u32 {\n");
       SS("  return ");
       for (int i = 0; i < rank_ - 1; i++) {
-        SS("indices[", i, "] * ", GetElementAt(stride, i, rank_), " + ");
+        SS("indices[", i, "] * ", GetElementAt(stride, i, rank_ - 1), " + ");
       }
       SS("indices[", rank_ - 1, "];\n");
       SS("}\n");
@@ -165,21 +171,23 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
 
   // Implementation of "fn {res_name}_bi2o_{name}"
   if (usage_ & UseBroadcastedIndicesToOffset) {
-    // TODO: do we need this if rank < 2?
-    for (const auto& iter : broadcasted_to_) {
-      const auto& broadcasted_result = iter.get();
-      SS("fn ", broadcasted_result.name_, "_bi2o_", name_, "(indices : ", broadcasted_result.indices_type_, ")->u32 {\n");
-      if (rank_ == 0) {
-        SS("  return 0;\n");
-      } else {
-        SS("  return ");
-        for (int i = rank_ - 1; i >= 0; i--) {
-          auto idx = broadcasted_result.IndicesGet("indices", i + broadcasted_result.rank_ - rank_);
-          SS(IndicesGet(stride, i), " * (", idx, " % ", IndicesGet(shape, i), ") + ");
+    if (rank_ > 0) {
+      for (const auto& iter : broadcasted_to_) {
+        const auto& broadcasted_result = iter.get();
+        SS("fn ", broadcasted_result.name_, "_bi2o_", name_, "(indices : ", broadcasted_result.indices_type_, ")->u32 {\n");
+        if (rank_ == 1) {
+          SS("  return ", broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", shape, ";\n");
+        } else {
+          SS("  return ");
+          for (int i = 0; i < rank_ - 1; i++) {
+            auto idx = broadcasted_result.IndicesGet("indices", i + broadcasted_result.rank_ - rank_);
+            std::string current_stride = rank_ == 2 ? stride : GetElementAt(stride, i, rank_ - 1);
+            SS(current_stride, " * (", idx, " % ", IndicesGet(shape, i), ") + ");
+          }
+          SS(broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", IndicesGet(shape, rank_ - 1), ";\n");
         }
-        SS("0;\n");
+        SS("}\n");
       }
-      SS("}\n");
     }
   }
 
@@ -245,10 +253,8 @@ std::string ShaderVariable::GetByOffsetImpl(std::string_view offset) const {
       ORT_THROW("Invalid type");
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
-      ss << "i32(" << name_ << "[" << offset << "].x)";
-      break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
-      ss << "u32(" << name_ << "[" << offset << "].x)";
+      ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Vec4Bool:
       ss << "vec4<bool>(bool("
