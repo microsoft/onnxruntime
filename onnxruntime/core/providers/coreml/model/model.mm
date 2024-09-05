@@ -291,7 +291,10 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 }
 
 // Internal Execution class
-// This class is part of the model class and handles the calls into CoreML
+// This class is part of the model class and handles the calls into CoreML. Specifically, it performs
+// 1. Compile the model by given path for execution
+// 2. Predict using given OnnxTensorFeatureProvider input and copy the output data back ORT
+// 3. The compiled model will be removed in dealloc or removed using cleanup function
 class Execution {
  public:
   Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
@@ -368,6 +371,10 @@ Status Execution::LoadModel() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
       }
 
+      // TODO: Update this to version with callback handler as the API used here is deprecated.
+      // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
+      // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
+      // background. We will have to check for completion in `predict` and block until it is done.
       NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
       if (error != nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model ",
