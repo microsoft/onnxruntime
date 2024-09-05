@@ -213,10 +213,10 @@ Status MatMulNBits<AType>::PrePack(const Tensor& tensor, int input_idx, /*out*/ 
 #else  // defined(ORT_NEURAL_SPEED)
   ORT_UNUSED_PARAMETER(prepacked_weights);
   const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
+  if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
+    return Status::OK();
+  }
   if (input_idx == InputIndex::B) {
-    if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
-      return Status::OK();
-    }
     packed_b_size_ = MlasSQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, compute_type);
     if (packed_b_size_ == 0) {
       return Status::OK();
