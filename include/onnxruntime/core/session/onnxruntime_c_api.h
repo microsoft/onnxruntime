@@ -4700,6 +4700,7 @@ struct OrtApi {
    * The instance of the OrtRunOptions will then can be used to customize the OrtSession::Run() calls.
    * More than one OrtLoraAdapter can be set active at the same time. Lora Parameters that belong to difference
    * Lora adapters that will be active at the same time must not overlap.
+   * This setting does not affect RunWithBinding.
    *
    * \param[in] options OrtRunOptions instance
    * \param[in] adapter OrtLoraAdapter instance

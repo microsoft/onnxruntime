@@ -86,20 +86,20 @@ class LoraAdapter {
   }
 
   /// <summary>
-  /// Outputs Lora Parameters, their names and values
+  /// Outputs Lora Parameters on CPU, their names and values
   /// into the supplied output iterators.
   /// </summary>
   /// <typeparam name="NamesOutputIter"></typeparam>
   /// <typeparam name="TensorOutputIter"></typeparam>
   /// <param name="names_out">output iterator that accepts const char*</param>
-  /// <param name="tensor_out">output iterator that accepts OrtValue</param>
+  /// <param name="tensor_out">output iterator that accepts const OrtValue*</param>
   template <class NamesOutputIter, class TensorOutputIter>
-  void OutputAdaptersParameters(NamesOutputIter names_out,
+  void OutputLoadedAdaptersParameters(NamesOutputIter names_out,
                                 TensorOutputIter tensor_out) const {
     for (const auto& [name, param] : params_values_) {
       *names_out = name.c_str();
       ++names_out;
-      *tensor_out = param.ort_value_mapped_;
+      *tensor_out = &param.ort_value_mapped_;
       ++tensor_out;
     }
   }

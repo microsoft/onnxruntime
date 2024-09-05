@@ -39,6 +39,8 @@
 #include "core/platform/ort_mutex.h"
 #include "core/common/string_helper.h"
 
+#include "lora/lora_adapters.h"
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -813,6 +815,37 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   API_IMPL_END
 }
 
+namespace {
+// Checks if there are active lora adapters and adjusts input spans.
+void CheckAndAdjustForLora(const OrtRunOptions* run_options,
+                           InlinedVector<const char*>& input_names_with_lora,
+                           InlinedVector<const OrtValue*> input_with_lora,
+                           gsl::span<const char* const>& input_names,
+                           gsl::span<const OrtValue* const>& inputs) {
+  if (!run_options->active_adapters_.empty()) {
+    size_t total_lora_params = 0;
+    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
+      total_lora_params += ad->GetParamNum();
+    }
+
+    input_names_with_lora.reserve(input_names.size() + total_lora_params);
+    input_with_lora.reserve(inputs.size() + total_lora_params);
+    std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
+    std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
+
+    // XXX: Currently only on CPU.
+    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
+      ad->OutputLoadedAdaptersParameters(std::back_inserter(input_names_with_lora),
+                                         std::back_inserter(input_with_lora));
+    }
+
+    input_names = gsl::make_span(input_names_with_lora);
+    inputs = gsl::make_span(input_with_lora);
+  }
+}
+
+}  // namespace
+
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -821,19 +854,26 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  gsl::span<const char* const> input_names_span(input_names, input_len);
-  gsl::span<const OrtValue* const> input_span(input, input_len);
-  gsl::span<const char* const> output_name_span(output_names, output_names_len);
-  gsl::span<OrtValue*> output_span(output, output_names_len);
+  auto input_names_span = gsl::make_span(input_names, input_len);
+  auto input_span = gsl::make_span(input, input_len);
+  auto output_name_span = gsl::make_span(output_names, output_names_len);
+  auto output_span = gsl::make_span(output, output_names_len);
 
   Status status;
   if (run_options) {
+
+    InlinedVector<const char*> input_names_with_lora;
+    InlinedVector<const OrtValue*> input_with_lora;
+
+    CheckAndAdjustForLora(run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
+
     status = session->Run(*run_options,
                           input_names_span,
                           input_span,
                           output_name_span,
                           output_span);
   } else {
+
     const RunOptions default_run_options;
     status = session->Run(default_run_options,
                           input_names_span,
@@ -854,10 +894,15 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  gsl::span<const char* const> input_names_span(input_names, input_len);
-  gsl::span<const OrtValue* const> input_span(input, input_len);
-  gsl::span<const char* const> output_name_span(output_names, output_names_len);
-  gsl::span<OrtValue*> output_span(output, output_names_len);
+  auto input_names_span = gsl::make_span(input_names, input_len);
+  auto input_span = gsl::make_span(input, input_len);
+  auto output_name_span = gsl::make_span(output_names, output_names_len);
+  auto output_span = gsl::make_span(output, output_names_len);
+
+  InlinedVector<const char*> input_names_with_lora;
+  InlinedVector<const OrtValue*> input_with_lora;
+
+  CheckAndAdjustForLora(run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
 
   return ToOrtStatus(session->RunAsync(run_options,
                                        input_names_span,

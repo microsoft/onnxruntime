@@ -86,21 +86,21 @@ auto verify_load = [](const lora::LoraAdapter& adapter) {
   ASSERT_EQ(param_num, 2U);
 
   InlinedVector<const char*> names;
-  InlinedVector<OrtValue> ort_values;
+  InlinedVector<const OrtValue*> ort_values;
   names.reserve(param_num);
   ort_values.reserve(param_num);
 
-  adapter.OutputAdaptersParameters(std::back_inserter(names), std::back_inserter(ort_values));
+  adapter.OutputLoadedAdaptersParameters(std::back_inserter(names), std::back_inserter(ort_values));
   ASSERT_EQ(param_num, names.size());
   ASSERT_EQ(param_num, ort_values.size());
 
   for (size_t i = 0; i < param_num; ++i) {
     const auto& name = names[i];
-    const auto& ort_value = ort_values[i];
+    const auto* ort_value = ort_values[i];
     ASSERT_TRUE(name != nullptr);
-    ASSERT_TRUE(ort_value.IsTensor());
+    ASSERT_TRUE(ort_value->IsTensor());
 
-    const auto& tensor = ort_value.Get<Tensor>();
+    const auto& tensor = ort_value->Get<Tensor>();
     ASSERT_NE(tensor.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
 
     const auto shape = tensor.Shape().GetDims();
