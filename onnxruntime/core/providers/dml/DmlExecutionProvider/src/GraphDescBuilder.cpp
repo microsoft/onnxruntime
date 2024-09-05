@@ -344,7 +344,8 @@ namespace Dml::GraphDescBuilder
                 }
                 else if (inputDef->HasTensorOrScalarShape())
                 {
-                    for (size_t i = 0; i < inputDef->Shape()->dim_size(); ++i)
+                    int dimSize = gsl::narrow_cast<int>(inputDef->Shape()->dim_size());
+                    for (int i = 0; i < dimSize; ++i)
                     {
                         ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->Shape()->dim(i).has_dim_value());
                         inputShapesOverrides.GetMutableShape(inputIndex).push_back(gsl::narrow_cast<uint32_t>(inputDef->Shape()->dim(i).dim_value()));
