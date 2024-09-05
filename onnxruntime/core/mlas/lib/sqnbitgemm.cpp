@@ -270,8 +270,9 @@ void
 MLASCALL
 ConvertFp16ToFp32(const MLAS_FP16* src_fp16, float* dst_fp32, uint64_t size)
 {
-    if (GetMlasPlatform().SQNBitGemmDispatch->ConvertFp16ToFp32 != nullptr) {
-        GetMlasPlatform().SQNBitGemmDispatch->ConvertFp16ToFp32(src_fp16, dst_fp32, size);
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch != nullptr && Dispatch->ConvertFp16ToFp32 != nullptr) {
+        Dispatch->ConvertFp16ToFp32(src_fp16, dst_fp32, size);
         return;
     } else {
         throw std::runtime_error("ConvertFp16ToFp32 is not implemented for this target.");
@@ -282,8 +283,9 @@ void
 MLASCALL
 ConvertFp32ToFp16(const float* src_fp32, MLAS_FP16* dst_fp16, uint64_t size)
 {
-    if (GetMlasPlatform().SQNBitGemmDispatch->ConvertFp32ToFp16 != nullptr) {
-        GetMlasPlatform().SQNBitGemmDispatch->ConvertFp32ToFp16(src_fp32, dst_fp16, size);
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch != nullptr && Dispatch->ConvertFp32ToFp16 != nullptr) {
+        Dispatch->ConvertFp32ToFp16(src_fp32, dst_fp16, size);
         return;
     } else {
         throw std::runtime_error("ConvertFp32ToFp16 is not implemented for this target.");

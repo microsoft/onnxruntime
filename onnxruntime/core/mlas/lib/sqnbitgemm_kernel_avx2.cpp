@@ -1342,8 +1342,8 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
-    d.ConvertFp32ToFp16 = ConvertFp32ToFp16;
-    d.ConvertFp16ToFp32 = ConvertFp16ToFp32;
+    d.ConvertFp32ToFp16 = ConvertFp32ToFp16Avx;
+    d.ConvertFp16ToFp32 = ConvertFp16ToFp32Avx;
     return d;
 }();
 
@@ -1363,7 +1363,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
-    d.ConvertFp32ToFp16 = ConvertFp32ToFp16;
-    d.ConvertFp16ToFp32 = ConvertFp16ToFp32;
+    d.ConvertFp32ToFp16 = ConvertFp32ToFp16Avx;
+    d.ConvertFp16ToFp32 = ConvertFp16ToFp32Avx;
     return d;
 }();
