@@ -5,6 +5,7 @@ import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
 import { ShapeUtil } from '../../util';
 import { ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
+import { createTransposeProgramInfo } from './transpose';
 
 import {
   createTensorShapeVariables,
@@ -260,7 +261,7 @@ const computeMean = (
   )[0];
 };
 
-const createInstanceNormNHWCProgramInfo = (
+export const createInstanceNormNHWCProgramInfo = (
   context: ComputeContext,
   inputs: readonly TensorView[],
   attributes: InstanceNormAttributes,
@@ -320,7 +321,26 @@ const createInstanceNormNHWCProgramInfo = (
 
 export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAttributes): void => {
   if (attributes.format === 'NHWC') {
-    createInstanceNormNHWCProgramInfo(context, context.inputs, attributes);
+    //  createInstanceNormNHWCProgramInfo(context, context.inputs, attributes);
+    // transpose x from NHWC to NCHW
+    const xShape = context.inputs[0].dims;
+    const transposedXPerm = [0, xShape.length - 1];
+    for (let i = 0; i < xShape.length - 2; i++) {
+      transposedXPerm.push(i + 1);
+    }
+    const transposedX = context.compute(createTransposeProgramInfo(context.inputs[0], transposedXPerm), {
+      inputs: [context.inputs[0]],
+      outputs: [-1],
+    })[0];
+    const inputs = [transposedX, context.inputs[1], context.inputs[2]];
+    const y = context.compute(createInstanceNormProgramInfo(inputs, attributes), { inputs, outputs: [-1] })[0];
+    // transpose y from NCHW to NHWC again.
+    const transposedYPerm = [0];
+    for (let i = 0; i < xShape.length - 2; i++) {
+      transposedYPerm.push(i + 2);
+    }
+    transposedYPerm.push(1);
+    context.compute(createTransposeProgramInfo(y, transposedYPerm), { inputs: [y] });
   } else {
     context.compute(createInstanceNormProgramInfo(context.inputs, attributes));
   }
