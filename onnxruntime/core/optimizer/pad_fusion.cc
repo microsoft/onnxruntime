@@ -31,13 +31,6 @@ bool VerifyNotCastChild(const Node& child_node) {
     return false;
   }
 
-#if 0
-  // This pass currently assumed that this attribute already exists on the child node
-  if (child_node.GetAttributes().find("pads") == child_node.GetAttributes().end()) {
-    return false;
-  }
-#endif
-
   return true;
 }
 

@@ -1491,15 +1491,6 @@ TEST_F(GraphTransformationTests, FusePadWithNoPadsConv) {
         expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
       }
     }
-#if 0
-    else if (node.OpType() == "Conv") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        expected_pads[index] += child_pads->Get(index);
-      }
-    }
-#endif
   }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
