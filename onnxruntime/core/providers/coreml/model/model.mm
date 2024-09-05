@@ -376,7 +376,7 @@ Status Execution::LoadModel() {
       // background. We will have to check for completion in `predict` and block until it is done.
       NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
       if (error != nil) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model ",
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
                                [[error localizedDescription] UTF8String]);
       }
 
