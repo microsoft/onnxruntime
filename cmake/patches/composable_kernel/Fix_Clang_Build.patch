@@ -3,22 +3,22 @@ index c23746e7f..bc326c8b5 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -23,10 +23,10 @@ endif()
- 
+
  set(version 1.1.0)
  # Check support for CUDA/HIP in Cmake
 -project(composable_kernel VERSION ${version} LANGUAGES CXX)
 +project(composable_kernel VERSION ${version} LANGUAGES CXX HIP)
  include(CTest)
- 
+
 -find_package(Python3 3.6 COMPONENTS Interpreter REQUIRED)
 +find_package(Python3 COMPONENTS Interpreter REQUIRED)
- 
+
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
- 
+
 @@ -227,27 +227,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
- 
+
 -## OpenMP
 -if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 -	# workaround issue hipcc in rocm3.5 cannot find openmp
@@ -53,11 +53,11 @@ index c23746e7f..bc326c8b5 100644
 -else()
 -    add_compile_definitions(__HIP_PLATFORM_HCC__=1)
 -endif()
- 
+
  ## tidy
  include(EnableCompilerWarnings)
 @@ -541,11 +514,3 @@ rocm_install(FILES
- 
+
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 -
@@ -88,7 +88,7 @@ index c0894f1d7..559481fee 100644
 @@ -6,19 +6,7 @@
  #include <sstream>
  #include <hip/hip_runtime.h>
- 
+
 -// To be removed, which really does not tell the location of failed HIP functional call
 -inline void hip_check_error(hipError_t x)
 -{
@@ -121,9 +121,9 @@ index a164c3f94..293ead89a 100644
 --- a/include/ck_tile/core/utility/transpose_vectors.hpp
 +++ b/include/ck_tile/core/utility/transpose_vectors.hpp
 @@ -11,6 +11,9 @@
- 
+
  namespace ck_tile {
- 
+
 +template <typename... Ts>
 +constexpr bool always_false = false;
 +
@@ -139,7 +139,7 @@ index a164c3f94..293ead89a 100644
          }
      }
  };
- 
+
 +
  } // namespace ck_tile
 +
@@ -150,7 +150,7 @@ index 3acdb4d87..cc26e184f 100644
 @@ -8,20 +8,7 @@
  #include <stdexcept>
  #include <hip/hip_runtime.h>
- 
+
 -namespace ck_tile {
 -// To be removed, which really does not tell the location of failed HIP functional call
 -CK_TILE_HOST void hip_check_error(hipError_t x)
@@ -198,3 +198,41 @@ index c035e7e56..8c5f36d2e 100644
          set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
          clang_tidy_check(${INSTANCE_NAME})
          set(result 0)
+--- ./include/ck/utility/amd_buffer_addressing.hpp      2024-09-05 10:12:33.343091000 +0800
++++ ./include/ck/utility/amd_buffer_addressing_new.hpp  2024-09-05 10:12:20.276686000 +0800
+@@ -991,7 +991,8 @@
+     asm volatile("s_mov_b32 m0, %0; \n\t"
+                  "buffer_load_dword %1, %2, 0 offen lds;\n\t" ::"s"(lds_ptr_sgpr),
+                  "v"(global_offset_bytes),
+-                 "s"(src_resource));
++                 "s"(src_resource)
++                 : "memory");
+ #else
+     // LDS pointer must be attributed with the LDS address space.
+     __attribute__((address_space(3))) uint32_t* lds_ptr =
+--- ./include/ck_tile/core/arch/amd_buffer_addressing.hpp       2024-09-05 10:18:28.884031000 +0800
++++ ./include/ck_tile/core/arch/amd_buffer_addressing_new.hpp   2024-09-05 10:17:29.434931000 +0800
+@@ -26,7 +26,12 @@
+ CK_TILE_DEVICE int32x4_t make_wave_buffer_resource(const void* ptr, uint32_t size = 0xffffffff)
+ {
+     buffer_resource res{ptr, size, CK_TILE_BUFFER_RESOURCE_3RD_DWORD};
+-    return __builtin_bit_cast(int32x4_t, res);
++    int32x4_t r = __builtin_bit_cast(int32x4_t, res);
++    r.x         = __builtin_amdgcn_readfirstlane(r.x);
++    r.y         = __builtin_amdgcn_readfirstlane(r.y);
++    r.z         = __builtin_amdgcn_readfirstlane(r.z);
++    r.w         = __builtin_amdgcn_readfirstlane(r.w);
++    return r;
+ }
+
+ // TODO: glc/slc/...
+@@ -2016,7 +2021,8 @@
+     asm volatile("s_mov_b32 m0, %0; \n\t"
+                  "buffer_load_dword %1, %2, 0 offen lds;\n\t" ::"s"(lds_ptr_sgpr),
+                  "v"(global_offset_bytes),
+-                 "s"(src_resource));
++                 "s"(src_resource)
++                 : "memory");
+ #else
+     // LDS pointer must be attributed with the LDS address space.
+     __attribute__((address_space(3))) uint32_t* lds_ptr =
