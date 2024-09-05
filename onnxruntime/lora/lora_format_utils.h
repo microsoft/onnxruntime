@@ -24,6 +24,46 @@ namespace lora {
 namespace utils {
 
 /// <summary>
+/// Helper class to serialize Lora adapter
+/// </summary>
+class AdapterFormatBuilder {
+ public:
+  AdapterFormatBuilder() = default;
+
+  /// <summary>
+  /// Appends parameter tensor to the adapter builder
+  /// </summary>
+  /// <param name="name">parameter name</param>
+  /// <param name="data_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="data"></param>
+  void AddParameter(const std::string& name, lora::TensorDataType data_type,
+                    gsl::span<const int64_t> shape, gsl::span<const uint8_t> data);
+
+  /// <summary>
+  /// Finishes serialization and returns a serialized byte vector
+  /// </summary>
+  /// <param name="adapter_version"></param>
+  /// <param name="model_version"></param>
+  /// <returns></returns>
+  std::vector<uint8_t> Finish(int adapter_version, int model_version);
+
+  /// <summary>
+  /// Finishes serialization and returns a span to internal buffer.
+  /// </summary>
+  /// <param name="adapter_version"></param>
+  /// <param name="model_version"></param>
+  /// <returns></returns>
+  gsl::span<uint8_t> FinishWithSpan(int adapter_version, int model_version);
+
+ private:
+  void FinishImpl(int adapter_version, int model_version);
+
+  flatbuffers::FlatBufferBuilder builder_;
+  std::vector<flatbuffers::Offset<lora::Parameter>> params_;
+};
+
+/// <summary>
 ///
 /// </summary>
 /// <param name="bytes"></param>

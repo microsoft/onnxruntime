@@ -150,31 +150,13 @@ struct GenerateTestParameters {
       std::iota(param_2.begin(), param_2.end(), T{32});
     }
 
-    flatbuffers::FlatBufferBuilder builder;
-    std::vector<flatbuffers::Offset<lora::Parameter>> params;
-    params.reserve(2);
+    lora::utils::AdapterFormatBuilder adapter_builder;
+    adapter_builder.AddParameter("param_1", static_cast<lora::TensorDataType>(data_type),
+                                 param_shape, ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_1)));
+    adapter_builder.AddParameter("param_2", static_cast<lora::TensorDataType>(data_type),
+                                 param_shape, ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_2)));
 
-    flatbuffers::Offset<lora::Parameter> fbs_param_1, fbs_param_2;
-    auto byte_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_1));
-    lora::utils::SaveLoraParameter(builder, "param_1", static_cast<lora::TensorDataType>(data_type), param_shape,
-                                   byte_span, fbs_param_1);
-    params.push_back(fbs_param_1);
-
-    byte_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_2));
-    lora::utils::SaveLoraParameter(builder, "param_2", static_cast<lora::TensorDataType>(data_type), param_shape,
-                                   byte_span, fbs_param_2);
-    params.push_back(fbs_param_2);
-
-    auto fbs_params = builder.CreateVector(params);
-    auto fbs_adapter = lora::CreateAdapter(builder, lora::kLoraFormatVersion, kAdapterVersion, kModelVersion,
-                                           fbs_params);
-    builder.Finish(fbs_adapter, lora::AdapterIdentifier());
-
-    std::vector<uint8_t> result;
-    result.reserve(builder.GetSize());
-    gsl::span<uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
-    std::copy(buffer.begin(), buffer.end(), std::back_inserter(result));
-    return result;
+    return adapter_builder.Finish(kAdapterVersion, kModelVersion);
   }
 };
 
@@ -194,7 +176,7 @@ TEST(LoraAdapterTest, Load) {
   // Test different data types
   const auto data_types = gsl::make_span(lora::EnumValuesTensorDataType());
   for (size_t i = 1, size = data_types.size(); i < size; ++i) {
-    if (i == 8 || i == 9 || i == 14 || i == 15 || (i > 16 && i < 21)) 
+    if (i == 8 || i == 9 || i == 14 || i == 15 || (i > 16 && i < 21))
       continue;
 
     utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,

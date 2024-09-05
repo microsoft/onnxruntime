@@ -124,6 +124,35 @@ OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const Allocato
   return result;
 }
 
+void AdapterFormatBuilder::AddParameter(const std::string& name, lora::TensorDataType data_type,
+                                        gsl::span<const int64_t> shape, gsl::span<const uint8_t> data) {
+  flatbuffers::Offset<Parameter> fbs_param;
+  SaveLoraParameter(builder_, name, data_type, shape, data, fbs_param);
+  params_.push_back(fbs_param);
+}
+
+std::vector<uint8_t> AdapterFormatBuilder::Finish(int adapter_version, int model_version) {
+  FinishImpl(adapter_version, model_version);
+
+  std::vector<uint8_t> result;
+  result.reserve(builder_.GetSize());
+  gsl::span<uint8_t> buffer(builder_.GetBufferPointer(), builder_.GetSize());
+  std::copy(buffer.begin(), buffer.end(), std::back_inserter(result));
+  return result;
+}
+
+gsl::span<uint8_t> AdapterFormatBuilder::FinishWithSpan(int adapter_version, int model_version) {
+  FinishImpl(adapter_version, model_version);
+  return gsl::make_span(builder_.GetBufferPointer(), builder_.GetSize());
+}
+
+void AdapterFormatBuilder::FinishImpl(int adapter_version, int model_version) {
+  auto fbs_params = builder_.CreateVector(params_);
+  auto fbs_adapter = lora::CreateAdapter(builder_, lora::kLoraFormatVersion, adapter_version,
+                                         model_version, fbs_params);
+  builder_.Finish(fbs_adapter, lora::AdapterIdentifier());
+}
+
 }  // namespace utils
 }  // namespace lora
 }  // namespace onnxruntime
