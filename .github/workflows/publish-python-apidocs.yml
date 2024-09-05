@@ -53,4 +53,4 @@ jobs:
         with:
           name: onnxruntime-python-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30
