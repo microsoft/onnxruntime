@@ -61,8 +61,8 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                         ToProgramVariableDataType(Outputs()[0].tensor->GetElementType()),
                                         ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
   shader.AppendImplementation(permFunctionBody(input_name, output_name, this->perm_));
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
-                          "  let indices = ", output.OffsetToIndices("global_idx"),";\n", "  let x_indices = perm(indices); \n",
+  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
+                          "  let indices = ", output.OffsetToIndices("global_idx"), ";\n", "  let x_indices = perm(indices); \n",
                           output.SetByOffset("global_idx", input.GetByIndices("x_indices")));
   return Status::OK();
 }
