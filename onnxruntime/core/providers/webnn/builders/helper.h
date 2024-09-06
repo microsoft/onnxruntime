@@ -239,12 +239,10 @@ static const InlinedHashMap<std::string, std::string> op_map = {
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder,
                           const WebnnDeviceType device_type) {
-  // Returns false if the op_type is not listed in the op_map.
-  if (op_map.find(op_type) == op_map.end()) {
-    return false;
-  }
-  // Returns false if the WebNN op has not been implemented in MLGraphBuilder in current browser.
-  if (!wnn_builder[op_map.find(op_type)->second].as<bool>()) {
+  auto op_map_entry = op_map.find(op_type);
+  // Returns false if the op_type is not listed in the op_map or
+  // if the WebNN op has not been implemented in MLGraphBuilder in current browser.
+  if (op_map_entry == op_map.end() || !wnn_builder[op_map_entry->second].as<bool()) {
     return false;
   }
 
