@@ -218,7 +218,8 @@ const ShaderVariable& ShaderHelper::AddVariableImpl(ProgramVariableScope scope,
     ORT_NOT_IMPLEMENTED("Local variables are not supported yet.");
   }
 
-  return vars_[std::underlying_type<decltype(scope)>::type(scope)].emplace_back(name, type, usage, dims);
+  const auto& var = vars_[std::underlying_type<decltype(scope)>::type(scope)].emplace_back(std::make_unique<ShaderVariable>(name, type, usage, dims));
+  return *var;
 }
 
 Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const {
@@ -255,18 +256,18 @@ Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
   for (size_t i = 0; i < input_vars.size(); i++) {
 #ifndef NDEBUG  // if debug build
     // Validate input shape
-    ORT_RETURN_IF_ERROR(ValidateVariable(program_.Inputs()[i], input_vars[i]));
+    ORT_RETURN_IF_ERROR(ValidateVariable(program_.Inputs()[i], *input_vars[i]));
 #endif
 
     // check input dependencies with actual usages.
-    auto usage = input_vars[i].usage_;
+    auto usage = input_vars[i]->usage_;
     bool use_uniform = (usage & ShaderVariable::UseUniform) == ShaderVariable::UseUniform;
     auto dependency = program_.Inputs()[i].dependency;
     bool use_rank = (dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank;
     bool use_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
 
     if (use_uniform) {
-      ORT_RETURN_IF_NOT((use_rank || input_vars[i].rank_ < 2) && !use_shape,
+      ORT_RETURN_IF_NOT((use_rank || input_vars[i]->rank_ < 2) && !use_shape,
                         "When UseUniform is set in variable usage, the corresponding program input should depend on rank but not shape.");
     } else {
       ORT_RETURN_IF_NOT(use_shape,
@@ -279,11 +280,11 @@ Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
   for (size_t i = 0; i < output_vars.size(); i++) {
 #ifndef NDEBUG  // if debug build
     // Validate output shape
-    ORT_RETURN_IF_ERROR(ValidateVariable(program_.Outputs()[i], output_vars[i]));
+    ORT_RETURN_IF_ERROR(ValidateVariable(program_.Outputs()[i], *output_vars[i]));
 #endif
 
     // check output dependencies with actual usages.
-    auto usage = output_vars[i].usage_;
+    auto usage = output_vars[i]->usage_;
     bool use_uniform = (usage & ShaderVariable::UseUniform) == ShaderVariable::UseUniform;
     auto dependency = program_.Outputs()[i].dependency;
     bool use_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
@@ -356,11 +357,11 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   size_t variable_count = 0;
   const auto& input_vars = vars_[static_cast<int>(ProgramVariableScope::Input)];
   for (const auto& input : input_vars) {
-    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read> " << input.name_ << ": array<" << input.StorageType() << ">;\n";
+    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
   }
   const auto& output_vars = vars_[static_cast<int>(ProgramVariableScope::Output)];
   for (const auto& output : output_vars) {
-    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << output.name_ << ": array<" << output.StorageType() << ">;\n";
+    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << output->name_ << ": array<" << output->StorageType() << ">;\n";
   }
 
   //
@@ -373,14 +374,18 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   shape_uniform_ranks.reserve(input_vars.size() + output_vars.size());
 
   for (const auto& input : vars_[static_cast<int>(ProgramVariableScope::Input)]) {
-    bool use_uniform = (input.usage_ & ShaderVariable::UseUniform) && (input.usage_ & ShaderVariable::UseShapeAndStride) && input.rank_ > 0;
+    bool use_uniform = (input->usage_ & ShaderVariable::UseUniform) &&
+                       (input->usage_ & ShaderVariable::UseShapeAndStride) &&
+                       input->rank_ > 0;
     use_any_shape_uniform |= use_uniform;
-    shape_uniform_ranks.push_back(use_uniform ? input.rank_ : 0);
+    shape_uniform_ranks.push_back(use_uniform ? input->rank_ : 0);
   }
   for (const auto& output : vars_[static_cast<int>(ProgramVariableScope::Output)]) {
-    bool use_uniform = (output.usage_ & ShaderVariable::UseUniform) && (output.usage_ & ShaderVariable::UseShapeAndStride) && output.rank_ > 0;
+    bool use_uniform = (output->usage_ & ShaderVariable::UseUniform) &&
+                       (output->usage_ & ShaderVariable::UseShapeAndStride) &&
+                       output->rank_ > 0;
     use_any_shape_uniform |= use_uniform;
-    shape_uniform_ranks.push_back(use_uniform ? output.rank_ : 0);
+    shape_uniform_ranks.push_back(use_uniform ? output->rank_ : 0);
   }
 
   if (use_any_shape_uniform || std::any_of(program_.UniformVariables().cbegin(),
@@ -419,20 +424,20 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     };
 
     for (const auto& input : vars_[static_cast<int>(ProgramVariableScope::Input)]) {
-      const size_t rank = input.rank_;
-      if (rank > 0 && (input.usage_ & ShaderVariable::Usage::UseUniform) && (input.usage_ & ShaderVariable::Usage::UseShapeAndStride)) {
-        std::string shape = input.name_ + "_shape";
-        std::string stride = input.name_ + "_stride";
+      const size_t rank = input->rank_;
+      if (rank > 0 && (input->usage_ & ShaderVariable::Usage::UseUniform) && (input->usage_ & ShaderVariable::Usage::UseShapeAndStride)) {
+        std::string shape = input->name_ + "_shape";
+        std::string stride = input->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
         append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
       }
     }
 
     for (const auto& output : vars_[static_cast<int>(ProgramVariableScope::Output)]) {
-      const size_t rank = output.rank_;
-      if (rank > 0 && (output.usage_ & ShaderVariable::Usage::UseUniform) && (output.usage_ & ShaderVariable::Usage::UseShapeAndStride)) {
-        std::string shape = output.name_ + "_shape";
-        std::string stride = output.name_ + "_stride";
+      const size_t rank = output->rank_;
+      if (rank > 0 && (output->usage_ & ShaderVariable::Usage::UseUniform) && (output->usage_ & ShaderVariable::Usage::UseShapeAndStride)) {
+        std::string shape = output->name_ + "_shape";
+        std::string stride = output->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
         append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
       }
@@ -455,7 +460,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   ss << "\n";
   for (const auto& var_group : vars_) {
     for (const auto& var : var_group) {
-      var.Impl(ss);
+      var->Impl(ss);
     }
   }
   ss << "\n";

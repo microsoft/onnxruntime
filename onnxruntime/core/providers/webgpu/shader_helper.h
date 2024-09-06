@@ -174,7 +174,7 @@ class ShaderHelper final {
   const ProgramBase& program_;
   const ProgramMetadata& program_metadata_;
 
-  std::array<std::vector<ShaderVariable>, static_cast<size_t>(ProgramVariableScope::Count)> vars_;
+  std::array<std::vector<std::unique_ptr<ShaderVariable>>, static_cast<size_t>(ProgramVariableScope::Count)> vars_;
   std::ostringstream additional_implementation_;
   std::ostringstream body_;
 
