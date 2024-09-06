@@ -39,18 +39,19 @@ std::string GetElementAt(std::string_view var, const TIdx& idx, int rank, bool i
 class ShaderVariable {
  public:
   enum Usage : uint32_t {
-    None = 0,                            // no usage. this means no additional implementation code will be generated.
-    UseIndicesTypeAlias = 1,             // use type alias "{name}_indices_t" for indices (eg. u32, vec2<u32>, vec3<u32>, vec4<u32>, ...)
-    UseValueTypeAlias = 2,               // use type alias "{name}_value_t" for value (eg. f32, vecT<f32>, vec4<bool>, ...)
-    UseElementTypeAlias = 4,             // use type alias "{name}_element_t" for element (eg. f32, bool, ...)
-    UseOffsetToIndices = 8,              // use implementation of fn o2i_{name}
-    UseIndicesToOffset = 16,             // use implementation of fn i2o_{name}
-    UseBroadcastedIndicesToOffset = 32,  // use implementation of fn {broadcasted_result_name}_bi2o_{name}
-    UseSet = 64,                         // use implementation of fn set_{name}
-    UseSetByIndices = 128,               // use implementation of fn set_{name}_by_indices
-    UseGet = 256,                        // use implementation of fn get_{name}
-    UseGetByIndices = 512,               // use implementation of fn get_{name}_by_indices
-    UseUniform = 1024,                   // use uniform for shape and stride
+    None = 0,                             // no usage. this means no additional implementation code will be generated.
+    UseIndicesTypeAlias = 1,              // use type alias "{name}_indices_t" for indices (eg. u32, vec2<u32>, vec3<u32>, vec4<u32>, ...)
+    UseValueTypeAlias = 2,                // use type alias "{name}_value_t" for value (eg. f32, vecT<f32>, vec4<bool>, ...)
+    UseElementTypeAlias = 4,              // use type alias "{name}_element_t" for element (eg. f32, bool, ...)
+    UseShapeAndStride = 16,               // use shape and stride for the variable
+    UseOffsetToIndices = 32,              // use implementation of fn o2i_{name}
+    UseIndicesToOffset = 64,              // use implementation of fn i2o_{name}
+    UseBroadcastedIndicesToOffset = 128,  // use implementation of fn {broadcasted_result_name}_bi2o_{name}
+    UseSet = 256,                         // use implementation of fn set_{name}
+    UseSetByIndices = 512,                // use implementation of fn set_{name}_by_indices
+    UseGet = 1024,                        // use implementation of fn get_{name}
+    UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
+    UseUniform = 32768,                   // use uniform for shape and stride
   };
 
   ShaderVariable(std::string_view name, ProgramVariableDataType type, Usage usage, const TensorShape& dims);
@@ -188,19 +189,19 @@ std::string pass_as_string(T&& v) {
 }  // namespace detail
 
 inline std::string ShaderVariable::OffsetToIndices(std::string_view offset_expr) const {
-  usage_ |= UseOffsetToIndices;
+  usage_ |= UseOffsetToIndices | UseShapeAndStride;
   return rank_ < 2 ? std::string{offset_expr}
                    : MakeStringWithClassicLocale("o2i_", name_, '(', offset_expr, ')');
 }
 
 inline std::string ShaderVariable::IndicesToOffset(std::string_view indices_expr) const {
-  usage_ |= UseIndicesToOffset;
+  usage_ |= UseIndicesToOffset | UseShapeAndStride;
   return rank_ < 2 ? std::string{indices_expr}
                    : MakeStringWithClassicLocale("i2o_", name_, '(', indices_expr, ')');
 }
 
 inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const {
-  usage_ |= UseBroadcastedIndicesToOffset;
+  usage_ |= UseBroadcastedIndicesToOffset | UseShapeAndStride;
   broadcasted_to_.push_back(broadcasted_result);
   return rank_ == 0
              ? "0"
@@ -209,21 +210,24 @@ inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view i
 
 template <typename... TIndices>
 inline std::string ShaderVariable::Indices(TIndices&&... indices_args) const {
+  usage_ |= UseShapeAndStride;
   return rank_ == 0
              ? "0"
-             : MakeStringWithClassicLocale(name_, "_indices_t(",
+             : MakeStringWithClassicLocale(IndicesType(), "(",
                                            absl::StrJoin(std::forward_as_tuple(std::forward<TIndices>(indices_args)...), ", "),
                                            ')');
 }
 
 template <typename TIdx, typename TVal>
 inline std::string ShaderVariable::IndicesSet(std::string_view indices_var, const TIdx& idx_expr, const TVal& value) const {
+  usage_ |= UseShapeAndStride;
   return rank_ < 2 ? MakeStringWithClassicLocale(indices_var, '=', value, ';')
                    : MakeStringWithClassicLocale(GetElementAt(indices_var, idx_expr, rank_), '=', value, ';');
 }
 
 template <typename TIdx>
 inline std::string ShaderVariable::IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const {
+  usage_ |= UseShapeAndStride;
   return rank_ < 2 ? std::string{indices_var}
                    : GetElementAt(indices_var, idx_expr, rank_);
 }
@@ -235,6 +239,7 @@ inline std::string ShaderVariable::SetByOffset(TOffset&& offset, TValue&& value)
 
 template <typename... TIndicesAndValue>
 inline std::string ShaderVariable::Set(TIndicesAndValue&&... args) const {
+  usage_ |= UseShapeAndStride;
   ORT_ENFORCE(sizeof...(TIndicesAndValue) == rank_ + 1, "Number of arguments should be ", rank_ + 1, "(rank + 1)");
   if constexpr (sizeof...(TIndicesAndValue) == 1) {
     return SetByOffset("0", std::forward<TIndicesAndValue>(args)...);
@@ -249,6 +254,7 @@ inline std::string ShaderVariable::Set(TIndicesAndValue&&... args) const {
 }
 
 inline std::string ShaderVariable::SetByIndices(std::string_view indices_var, std::string_view value) const {
+  usage_ |= UseShapeAndStride;
   if (rank_ < 2) {
     return SetByOffset(indices_var, value);
   } else {
@@ -264,6 +270,7 @@ inline std::string ShaderVariable::GetByOffset(TOffset&& offset) const {
 
 template <typename... TIndices>
 inline std::string ShaderVariable::Get(TIndices&&... indices) const {
+  usage_ |= UseShapeAndStride;
   ORT_ENFORCE(sizeof...(TIndices) == rank_, "Number of arguments should be ", rank_, "(rank)");
   if constexpr (sizeof...(TIndices) == 0) {
     return GetByOffset("0");
@@ -278,6 +285,7 @@ inline std::string ShaderVariable::Get(TIndices&&... indices) const {
 }
 
 inline std::string ShaderVariable::GetByIndices(std::string_view indices_var) const {
+  usage_ |= UseShapeAndStride;
   if (rank_ < 2) {
     return GetByOffset(indices_var);
   } else {

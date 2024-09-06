@@ -108,8 +108,8 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
     SS("alias ", element_type_alias_, " = ", ELEMENT_TYPE[static_cast<int>(type_)], ";\n");
   }
 
-  // Need shape and strides when (not use uniform) and (any other usage is enabled)
-  if (!(usage_ & UseUniform) && (usage_ & ~UseUniform) && rank_ > 0) {
+  // Need shape and strides when (not use uniform) and (use shape and stride is enabled)
+  if (!(usage_ & UseUniform) && (usage_ & UseShapeAndStride) && rank_ > 0) {
     SS("const ", shape, " = ", IndicesType(), "(");
 
     bool first = true;
