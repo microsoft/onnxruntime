@@ -413,8 +413,8 @@ endif(MSVC_Z7_OVERRIDE)
 set_msvc_c_cpp_compiler_warning_level(3)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
-# using the MSVC compiler and on windows OS.
-if (MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
+# using the MSVC compiler and on windows OS and clang/gcc compiler on Linux.
+if (onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
   set(onnxruntime_FUZZ_ENABLED ON)
@@ -1040,6 +1040,9 @@ function(onnxruntime_set_compile_flags target_name)
       if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
         #external/protobuf/src/google/protobuf/arena.h:445:18: error: unused parameter 'p'
         target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
+      endif()
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
+        target_compile_options(${target_name} PRIVATE "-Wno-unused-function")
       endif()
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
       onnxruntime_add_include_to_target(${target_name} nsync::nsync_cpp)

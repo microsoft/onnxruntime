@@ -243,7 +243,10 @@ const getWgslMappedType = (type: number, components: 1 | 2 | 3 | 4): string | [s
         throw new Error('bool must be vec4');
       }
       return ['u32', 'vec4<bool>'];
-
+    case DataType.int4:
+      return 'i32';
+    case DataType.uint4:
+      return 'u32';
     default:
       throw new Error(`Unknown data type: ${type}`);
   }
@@ -872,11 +875,12 @@ class ShaderHelperImpl implements ShaderHelper {
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch
-      ? 'let global_idx = global_id.x; let local_idx = local_id.x;'
-      : `let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
-          workgroup_id.y * num_workgroups[0] + workgroup_id.x) * ${
-            workgroupSizeX * workgroupSizeY * workgroupSizeZ
-          }u + local_idx;`;
+      ? `let global_idx = global_id.x;
+         let local_idx = local_id.x;
+         let workgroup_index = workgroup_id.x;`
+      : `let workgroup_index = workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
+             workgroup_id.y * num_workgroups[0] + workgroup_id.x;
+         let global_idx = workgroup_index * ${workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_idx;`;
 
     return `@compute @workgroup_size(${workgroupSizeX}, ${workgroupSizeY}, ${workgroupSizeZ})
   fn main(${paramList}) {

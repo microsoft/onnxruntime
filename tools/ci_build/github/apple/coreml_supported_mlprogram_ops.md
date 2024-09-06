@@ -27,5 +27,5 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Split|If provided, `splits` must be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
-|ai:onnx:Tanh||
+|ai.onnx:Tanh||
 |ai.onnx:Transpose||

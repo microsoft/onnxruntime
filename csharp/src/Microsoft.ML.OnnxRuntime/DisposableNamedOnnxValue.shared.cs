@@ -83,7 +83,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Ctor
         /// </summary>
         /// <param name="name">Name of the output value</param>
-        /// <param name="value">Managed object created to represent output value, such as DenseTensor<T>
+        /// <param name="value">Managed object created to represent output value, such as DenseTensor{T};
         /// List or Dictionary
         /// </param>
         /// <param name="elementType">Tensor element type if value type is a Tensor</param>
@@ -133,7 +133,7 @@ namespace Microsoft.ML.OnnxRuntime
         public TensorElementType ElementType { get; }
 
         /// <summary>
-        /// Overrides the base class method. With respect to pinnedMemoryHandle, it has no operation
+        /// Overrides the base class method. With respect to memoryHolder, it has no operation
         /// to do, as this class maintains a native buffer via _ortValueHolder and the memory will be
         /// disposed by it. This is the case when we are dealing with an OrtValue that is backed by native memory
         /// and not by pinned managed memory.
@@ -142,7 +142,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// but the interface (derived from NamedOnnxValue) allows it to be passed as output and one of the test
         /// cases does it. Unless we deprecate and re-do the interface, we must support it.
         /// </summary>
-        /// <param name="pinnedMemoryHandle">always set to null</param>
+        /// <param name="memoryHolder">always set to null</param>
         /// <returns>Native OrtValue handle</returns>
         internal override IntPtr InputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryHolder)
         {
@@ -150,7 +150,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new InvalidOperationException("The instance of this class does not own an OrtValue");
             }
-            // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
+            // memoryHolder holds the default value as DisposableNamedOnnxValue
             // doesn't hold any managed buffer (that needs to be pinned)
             memoryHolder = null;
             // Return non-owning instance of OrtValue

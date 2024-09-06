@@ -3,8 +3,9 @@
 
 import { Env } from 'onnxruntime-common';
 
+import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
+
 import type { OrtWasmModule } from '../wasm-types';
-import { DataType, getTensorElementSize } from '../wasm-common';
 
 import { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
@@ -48,6 +49,14 @@ class TensorViewImpl implements TensorView {
     }
     const elementCount = ShapeUtil.size(this.dims);
     return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getUint16Array(): Uint16Array {
+    if (this.dataType !== DataType.float16 && this.dataType !== DataType.uint16) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Uint16Array() : new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
@@ -122,11 +131,10 @@ class ComputeContextImpl implements ComputeContext {
     const createKernelOutput = (index: number, dataType: number, dims: readonly number[]): TensorView =>
       new TensorViewImpl(this.module, dataType, this.output(index, dims), dims);
     const createTemporaryOutput = (dataType: number, dims: readonly number[]): TensorView => {
-      const elementSize = getTensorElementSize(dataType);
-      if (!elementSize) {
+      const bufferSize = calculateTensorSizeInBytes(dataType, dims);
+      if (!bufferSize) {
         throw new Error(`Unsupported data type: ${dataType}`);
       }
-      const bufferSize = elementSize * ShapeUtil.size(dims);
       const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
       return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
@@ -245,9 +253,7 @@ export const init = async (
         LOG_DEBUG(
           'verbose',
           () =>
-            `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
-              contextDataOffset
-            }`,
+            `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${contextDataOffset}`,
         );
         const context = new ComputeContextImpl(module, backend, contextDataOffset);
         return backend.computeKernel(kernel, context, errors);

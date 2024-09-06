@@ -149,7 +149,7 @@ Status QnnModel::FinalizeGraphs() {
                                                                                    qnn_backend_manager_->GetQnnProfileHandle(),
                                                                                    nullptr);
   if (QNN_GRAPH_NO_ERROR != status) {
-    LOGS(logger_, ERROR) << "Failed to finalize QNN graph.";
+    LOGS(logger_, ERROR) << "Failed to finalize QNN graph. Error code: " << status;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to finalize QNN graph.");
   }
 

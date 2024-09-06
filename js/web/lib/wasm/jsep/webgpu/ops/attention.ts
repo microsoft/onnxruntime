@@ -3,6 +3,7 @@
 
 import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
 import { ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
 
 import {
@@ -101,7 +102,7 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
-  //   relative_position_bias            : (B, N, S, T) or NULL
+  //   attention_bias          : (B, N, S, T) or NULL
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
@@ -118,10 +119,10 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   const bias = inputs[2];
   const maskIndex = inputs[3];
   const past = inputs[4];
-  const relativePositionBias = inputs[5];
+  const attentionBias = inputs[5];
 
-  if (past && relativePositionBias) {
-    throw new Error('Attention cannot have both past and relative_position_bias');
+  if (past && attentionBias) {
+    throw new Error('Attention cannot have both past and attention_bias');
   }
 
   if (input.dims.length !== 3) {
@@ -217,6 +218,22 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
     throw new Error('past is not supported');
   }
 
+  if (attentionBias) {
+    if (attentionBias.dims.length !== 4) {
+      throw new Error('Input "attention_bias" must have 4 dimensions');
+    }
+
+    // TODO: support broadcasting the first and second dimensions of attention_bias
+    if (
+      attentionBias.dims[0] !== batchSize ||
+      attentionBias.dims[1] !== attributes.numHeads ||
+      attentionBias.dims[2] !== sequenceLength ||
+      attentionBias.dims[3] !== totalSequenceLength
+    ) {
+      throw new Error('Expect "attention_bias" shape (batch_size, num_heads, sequence_length, total_sequence_length)');
+    }
+  }
+
   return {
     batchSize,
     sequenceLength,
@@ -241,14 +258,12 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   };
 };
 
-const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: TensorView, n: number, d: number) => {
+const createInPlaceSoftmaxProgramInfo = (input: TensorView, n: number, d: number) => {
   const components = getMaxComponents(d);
   let WG = 64;
   const dComp = d / components;
   if (dComp < WG) {
-    WG = 1;
-  } else if (dComp / 8 < 64) {
-    WG = Math.ceil(dComp / 8);
+    WG = 32;
   }
   const elementsPerThread = Math.ceil(d / components / WG);
   const programUniforms: ProgramUniform[] = [
@@ -258,7 +273,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
   ];
   const dataType = tensorTypeToWsglStorageType(input.dataType, components);
   const f32Type = tensorTypeToWsglValueType(DataType.float, components);
-
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type'];
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const inputHelper = outputVariable('x', input.dataType, input.dims, components);
     const elemValueType = tensorTypeToWsglValueType(input.dataType);
@@ -337,25 +352,25 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
 
   return {
     name: 'AttentionProbsSoftmax',
-    shaderCache: { hint: `${WG};${dataType};${components}` },
+    shaderCache: { hint: `${WG};${dataType};${components}`, inputDependencies },
     getShaderSource,
     getRunData: () => ({ outputs: [], dispatchGroup: { x: n }, programUniforms }),
   };
 };
 
 const createAttentionProbsProgramInfo = (
-  context: ComputeContext,
+  outputCount: number,
   q: TensorView,
   key: TensorView,
   pastKey: TensorView | undefined,
-  relativePositionBias: TensorView | undefined,
+  attentionBias: TensorView | undefined,
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
   pastSequenceLength: number,
 ) => {
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
   const probsShape = [parameters.batchSize, parameters.numHeads, parameters.sequenceLength, totalSequenceLength];
-  const presentKey = parameters.kvNumHeads === undefined && context.outputCount > 1;
+  const presentKey = parameters.kvNumHeads === undefined && outputCount > 1 && pastKey;
   const presentKeyShape = presentKey
     ? [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize]
     : undefined;
@@ -380,12 +395,13 @@ const createAttentionProbsProgramInfo = (
     { type: DataType.uint32, data: pastSequenceLength },
     { type: DataType.uint32, data: parameters.kvSequenceLength },
   ];
-
+  // Feed pastKey to the shader-code only if it is non-zero and presentKey is being produced
+  const feedPastKey = presentKey && pastKey && ShapeUtil.size(pastKey.dims) > 0;
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-  if (pastKey) {
+  if (feedPastKey) {
     inputDependencies.push('type');
   }
-  if (relativePositionBias) {
+  if (attentionBias) {
     inputDependencies.push('type');
   }
   const outputs = [{ dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default }];
@@ -396,12 +412,12 @@ const createAttentionProbsProgramInfo = (
     const qInput = inputVariable('q', q.dataType, q.dims, components);
     const kInput = inputVariable('key', key.dataType, key.dims, components);
     const inputVars = [qInput, kInput];
-    if (pastKey) {
+    if (feedPastKey) {
       const pastKeyInput = inputVariable('past_key', pastKey.dataType, pastKey.dims, components);
       inputVars.push(pastKeyInput);
     }
-    if (relativePositionBias) {
-      inputVars.push(inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims));
+    if (attentionBias) {
+      inputVars.push(inputVariable('attention_bias', attentionBias.dataType, attentionBias.dims));
     }
     const output = outputVariable('output', q.dataType, probsShape);
     const outputVars = [output];
@@ -432,7 +448,7 @@ const createAttentionProbsProgramInfo = (
     let n = workgroup_id.x * TILE_SIZE;
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
     ${(() => {
-      if (pastKey && presentKey) {
+      if (feedPastKey && presentKey) {
         return `
     let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx;
     let pastKeyOffset = uniforms.past_sequence_length * uniforms.K * headIdx;`;
@@ -450,7 +466,7 @@ const createAttentionProbsProgramInfo = (
       if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
       ${(() => {
-        if (pastKey && presentKey) {
+        if (feedPastKey && presentKey) {
           return `
               if (n + local_id.y < uniforms.past_sequence_length) {
                 tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
@@ -491,7 +507,7 @@ const createAttentionProbsProgramInfo = (
         }
       })()};
         output[outputIdx] = ${output.type.value} (sum * uniforms.alpha) + ${
-          relativePositionBias ? 'relative_position_bias[outputIdx]' : '0.0'
+          attentionBias ? 'attention_bias[outputIdx]' : '0.0'
         };
     }
   }`;
@@ -499,7 +515,7 @@ const createAttentionProbsProgramInfo = (
   return {
     name: 'AttentionProbs',
     shaderCache: {
-      hint: `${components};${relativePositionBias !== undefined};${pastKey !== undefined};${context.outputCount}`,
+      hint: `${components};${attentionBias !== undefined};${pastKey !== undefined};${outputCount}`,
       inputDependencies,
     },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
@@ -508,7 +524,7 @@ const createAttentionProbsProgramInfo = (
 };
 
 const createVxAttentionScoreProgramInfo = (
-  context: ComputeContext,
+  outputCount: number,
   probs: TensorView,
   v: TensorView,
   pastValue: TensorView | undefined,
@@ -518,7 +534,7 @@ const createVxAttentionScoreProgramInfo = (
   const totalSequenceLength = pastSequenceLength + params.kvSequenceLength;
   const nReps = params.nReps ? params.nReps : 1;
   const repeatedVHiddenSize = params.vHiddenSize * nReps;
-  const presentValue = params.kvNumHeads == null && context.outputCount > 1;
+  const presentValue = params.kvNumHeads == null && outputCount > 1 && pastValue;
   const presentValueShape = presentValue
     ? [params.batchSize, params.numHeads, totalSequenceLength, params.headSize]
     : undefined;
@@ -539,7 +555,12 @@ const createVxAttentionScoreProgramInfo = (
     { type: DataType.uint32, data: pastSequenceLength },
     { type: DataType.uint32, data: params.kvSequenceLength },
   ];
-  const inputDependencies: ProgramInputTensorInfoDependency[] = pastValue ? ['type', 'type', 'type'] : ['type', 'type'];
+  // Feed pastValue to the shader-code only if it is non-empty and presentValue is being produced
+  const feedPastValue = presentValue && pastValue && ShapeUtil.size(pastValue.dims) > 0;
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
+  if (feedPastValue) {
+    inputDependencies.push('type');
+  }
   const outputs = [{ dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default }];
   if (presentValue) {
     outputs.push({ dims: presentValueShape!, dataType: probs.dataType, gpuDataType: GpuDataType.default });
@@ -548,7 +569,7 @@ const createVxAttentionScoreProgramInfo = (
     const probsHelper = inputVariable('probs', probs.dataType, probs.dims);
     const vHelper = inputVariable('v', v.dataType, v.dims);
     const inputVars = [probsHelper, vHelper];
-    if (pastValue) {
+    if (feedPastValue) {
       inputVars.push(inputVariable('past_value', pastValue.dataType, pastValue.dims));
     }
     const output = outputVariable('output', probs.dataType, outputShape);
@@ -577,7 +598,7 @@ const createVxAttentionScoreProgramInfo = (
 
    let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
    ${(() => {
-     if (pastValue && presentValue) {
+     if (feedPastValue && presentValue) {
        return `
     let pastValueOffset = headIdx * uniforms.N * uniforms.past_sequence_length + n;
     let vOffset = headIdx * uniforms.N * uniforms.kv_sequence_length + n;
@@ -597,7 +618,7 @@ const createVxAttentionScoreProgramInfo = (
       if (n < uniforms.N && w + local_id.y < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
         ${(() => {
-          if (pastValue && presentValue) {
+          if (feedPastValue && presentValue) {
             return `
         if (w + local_id.y < uniforms.past_sequence_length) {
           tileK[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
@@ -633,7 +654,7 @@ const createVxAttentionScoreProgramInfo = (
 
   return {
     name: 'AttentionScore',
-    shaderCache: { hint: `${pastValue !== undefined};${context.outputCount}`, inputDependencies },
+    shaderCache: { hint: `${pastValue !== undefined};${outputCount}`, inputDependencies },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
     getShaderSource,
   };
@@ -648,27 +669,33 @@ export const applyAttention = (
   _past: TensorView | undefined,
   pastKey: TensorView | undefined,
   pastValue: TensorView | undefined,
-  relativePositionBias: TensorView | undefined,
+  attentionBiasInput: TensorView | undefined,
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
 ) => {
-  const outputCount = context.outputCount;
+  // Assumption  is that presentKey/presentValue exists only if pastKey/pastValue exists.
+  const outputCount = Math.min(context.outputCount, 1 + (pastKey ? 1 : 0) + (pastValue ? 1 : 0));
   const pastSequenceLength = parameters.kvNumHeads !== undefined || outputCount > 1 ? parameters.pastSequenceLength : 0;
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
+  const attentionBias =
+    attentionBiasInput && ShapeUtil.size(attentionBiasInput.dims) > 0 ? attentionBiasInput : undefined;
 
-  const inputsK = parameters.kvNumHeads === undefined && outputCount > 1 && pastKey ? [q, k, pastKey] : [q, k];
-  if (relativePositionBias) {
-    inputsK.push(relativePositionBias);
+  const inputsK = [q, k];
+  if (parameters.kvNumHeads === undefined && outputCount > 1 && pastKey && ShapeUtil.size(pastKey.dims) > 0) {
+    inputsK.push(pastKey);
+  }
+  if (attentionBias) {
+    inputsK.push(attentionBias);
   }
 
   // Run AttentionProbs
   const probs = context.compute(
     createAttentionProbsProgramInfo(
-      context,
+      outputCount,
       q,
       k,
-      outputCount > 1 ? pastKey : undefined,
-      relativePositionBias,
+      pastKey,
+      attentionBias,
       parameters,
       attributes,
       pastSequenceLength,
@@ -679,7 +706,6 @@ export const applyAttention = (
   // Run Softmax
   context.compute(
     createInPlaceSoftmaxProgramInfo(
-      context,
       probs,
       parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
       totalSequenceLength,
@@ -688,19 +714,14 @@ export const applyAttention = (
   );
 
   // Run AttrionScore
-  const inputsV =
-    parameters.kvNumHeads === undefined && outputCount > 1 && pastValue ? [probs, v, pastValue] : [probs, v];
-  context.compute(
-    createVxAttentionScoreProgramInfo(
-      context,
-      probs,
-      v,
-      outputCount > 1 && pastValue ? pastValue : undefined,
-      parameters,
-      pastSequenceLength,
-    ),
-    { inputs: inputsV, outputs: parameters.kvNumHeads === undefined && outputCount > 1 ? [0, 2] : [0] },
-  );
+  const inputsV = [probs, v];
+  if (parameters.kvNumHeads === undefined && outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
+    inputsV.push(pastValue);
+  }
+  context.compute(createVxAttentionScoreProgramInfo(outputCount, probs, v, pastValue, parameters, pastSequenceLength), {
+    inputs: inputsV,
+    outputs: parameters.kvNumHeads === undefined && outputCount > 1 ? [0, 2] : [0],
+  });
 };
 
 const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
