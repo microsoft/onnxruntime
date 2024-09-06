@@ -176,33 +176,33 @@ Implicit Arguments:
 .if \ASigned\() == 1
     .if \BSigned\() == 1
         .if \ColumnCount\() == 16
-            VpdpbssdsYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
-            VpdpbssdsYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
+            VpdpbssdYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
+            VpdpbssdYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
         .else
-            VpdpbssdsYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
+            VpdpbssdYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
         .endif
     .else
         .if \ColumnCount\() == 16
-            VpdpbsudsYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
-            VpdpbsudsYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
+            VpdpbsudYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
+            VpdpbsudYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
         .else
-            VpdpbsudsYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
+            VpdpbsudYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
         .endif
     .endif
 .else
     .if \BSigned\() == 1
         .if \ColumnCount\() == 16
-            VpdpbusdsYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
-            VpdpbusdsYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
+            VpdpbusdYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
+            VpdpbusdYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
         .else
-            VpdpbusdsYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
+            VpdpbusdYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
         .endif
     .else
         .if \ColumnCount\() == 16
-            VpdpbuudsYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
-            VpdpbuudsYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
+            VpdpbuudYmmYmmYmm \Vec1Reg\(),ymm2,ymm0
+            VpdpbuudYmmYmmYmm \Vec2Reg\(),ymm2,ymm1
         .else
-            VpdpbuudsYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
+            VpdpbuudYmmYmmYmm \Vec2Reg\(),ymm2,ymm0
         .endif
     .endif
 .endif
@@ -905,6 +905,11 @@ Return Value:
 
         mov     eax,-1
         MlasGemmInt8KernelAvx2 0, 1
+
+        FUNCTION_ENTRY MlasGemmU8U8KernelAvx2Vnni
+
+        mov     eax,-1
+        MlasGemmInt8KernelAvx2 0, 0
 
         FUNCTION_ENTRY MlasGemmU8U8KernelAvx2
 

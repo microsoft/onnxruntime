@@ -195,33 +195,33 @@ MultiplyAccumulateRowAvxVnni MACRO ColumnCount, Vec1Reg, Vec2Reg, ASigned, BSign
 IF ASigned EQ 1
     IF BSigned EQ 1
         IF ColumnCount EQ 16
-            VpdpbssdsYmmYmmYmm Vec1Reg,ymm2,ymm0
-            VpdpbssdsYmmYmmYmm Vec2Reg,ymm2,ymm1
+            VpdpbssdYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbssdYmmYmmYmm Vec2Reg,ymm2,ymm1
         ELSE
-            VpdpbssdsYmmYmmYmm Vec2Reg,ymm2,ymm0
+            VpdpbssdYmmYmmYmm Vec2Reg,ymm2,ymm0
         ENDIF
     ELSE
         IF ColumnCount EQ 16
-            VpdpbsudsYmmYmmYmm Vec1Reg,ymm2,ymm0
-            VpdpbsudsYmmYmmYmm Vec2Reg,ymm2,ymm1
+            VpdpbsudYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbsudYmmYmmYmm Vec2Reg,ymm2,ymm1
         ELSE
-            VpdpbsudsYmmYmmYmm Vec2Reg,ymm2,ymm0
+            VpdpbsudYmmYmmYmm Vec2Reg,ymm2,ymm0
         ENDIF
     ENDIF
 ELSE
     IF BSigned EQ 1
         IF ColumnCount EQ 16
-            VpdpbusdsYmmYmmYmm Vec1Reg,ymm2,ymm0
-            VpdpbusdsYmmYmmYmm Vec2Reg,ymm2,ymm1
+            VpdpbusdYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbusdYmmYmmYmm Vec2Reg,ymm2,ymm1
         ELSE
-            VpdpbusdsYmmYmmYmm Vec2Reg,ymm2,ymm0
+            VpdpbusdYmmYmmYmm Vec2Reg,ymm2,ymm0
         ENDIF
     ELSE
         IF ColumnCount EQ 16
-            VpdpbuudsYmmYmmYmm Vec1Reg,ymm2,ymm0
-            VpdpbuudsYmmYmmYmm Vec2Reg,ymm2,ymm1
+            VpdpbuudYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbuudYmmYmmYmm Vec2Reg,ymm2,ymm1
         ELSE
-            VpdpbuudsYmmYmmYmm Vec2Reg,ymm2,ymm0
+            VpdpbuudYmmYmmYmm Vec2Reg,ymm2,ymm0
         ENDIF
     ENDIF
 ENDIF
@@ -975,6 +975,13 @@ ProcessCountM5:
         MlasGemmInt8KernelAvx2 0, 1
 
         NESTED_END MlasGemmU8S8KernelAvxVnni, _TEXT
+
+        NESTED_ENTRY MlasGemmU8U8KernelAvx2Vnni, _TEXT
+
+        mov     eax,-1
+        MlasGemmInt8KernelAvx2 0, 0
+
+        NESTED_END MlasGemmU8U8KernelAvx2Vnni, _TEXT
 
         NESTED_ENTRY MlasGemmU8U8KernelAvx2, _TEXT
 

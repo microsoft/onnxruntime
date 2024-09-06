@@ -791,6 +791,7 @@ extern "C" {
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvxVnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8U8KernelAvx2Vnni;
     MLAS_GEMM_U8S8_KERNEL MlasGemmS8S8KernelAvx2Vnni;
     MLAS_GEMM_U8S8_KERNEL MlasGemmS8U8KernelAvx2Vnni;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
@@ -936,6 +937,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchLSX;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2Vnni;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchAvx2Vnni;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8U8DispatchAvx2Vnni;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;

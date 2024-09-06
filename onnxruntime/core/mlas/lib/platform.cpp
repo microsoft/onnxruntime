@@ -472,6 +472,7 @@ Return Value:
                 // Check if the processor supports AVX-VNNI-INT8
                 //
                 if ((Cpuid7_1[3] & 0x10) != 0) {
+                    this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2Vnni;
                     this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchAvx2Vnni;
                     this->GemmS8S8Kernel = MlasGemmS8S8KernelAvx2Vnni;
                     this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
