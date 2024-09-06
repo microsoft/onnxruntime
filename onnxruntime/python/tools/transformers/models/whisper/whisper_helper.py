@@ -344,7 +344,7 @@ class WhisperHelper:
             assert len(input_features_) == batch_size
             input_features = torch.cat((input_features_[0], input_features_[1]))
 
-        max_length, min_length, num_beams, num_return_sequences = 30, 0, 1, 1
+        max_length, min_length, num_beams, num_return_sequences = 6, 0, 1, 1
         length_penalty, repetition_penalty = 1.0, 1.0
         inputs = {
             "input_features": input_features.to(device),
