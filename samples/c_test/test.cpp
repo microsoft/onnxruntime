@@ -20,7 +20,7 @@ void TestKernelBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) 
 
 void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
     THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
-    std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
+    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 
 //    OrtCUDAProviderOptionsV2* cuda_options = nullptr;

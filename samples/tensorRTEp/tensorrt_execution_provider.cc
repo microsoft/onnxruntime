@@ -1578,15 +1578,16 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
 
     type = ep_type;
     create_stream = new OrtCreateStream();
+    create_stream->device_type = 1; // GPU
     create_stream->CreateStreamFunc = [](const OrtDevice* device) -> void* {
         cudaStream_t stream = nullptr;
         cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
         return stream;
     };
 
-    api_->CreateDevice(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU, OrtMemoryType::OrtMemoryType_Default, 0, &default_device);
-
     info_ = TensorrtExecutionProviderInfo::FromProviderOptions(ep_info);
+    device_id_ = info_.device_id;
+    api_->CreateDevice(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU, OrtMemoryType::OrtMemoryType_Default, device_id_, &default_device);
 
     std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
 
@@ -3590,7 +3591,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-/*        onnx::ModelProto m;
+        onnx::ModelProto m;
         m.set_ir_version(3);
         onnx::OperatorSetIdProto* p = m.add_opset_import();
         p->set_domain("");
@@ -3599,7 +3600,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         for (size_t i = 0; i < nodes_count; i++) {
           onnx::NodeProto* n = g->add_node();
           const OrtNode* node = nullptr;
-          api_->OrtGraph_GetOrtNode(graph, i, &node);
+          api_->OrtGraph_GetOrtNode(graph, node_index[i], &node);
 
           const char* op_type = nullptr;
           api_->OrtNode_GetOpType(node, &op_type);
@@ -3642,7 +3643,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           output->set_name(api_->OrtGraph_GetIthOutputName(graph, i));
           output->mutable_type()->mutable_tensor_type()->set_elem_type(api_->OrtGraph_GetIthOutputElemType(graph, i));
         }
-*/
+
 //        auto model_build = graph.CreateModel(*GetLogger());
 //        auto& graph_build = model_build->MainGraph();
 //        bool has_control_flow_op = false;
@@ -3816,9 +3817,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &subgraph_node_count, &subgraph_node_index);
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
-          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
-          }
+//          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
+//            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+//          }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
       }
