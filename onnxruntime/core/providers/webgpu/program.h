@@ -245,9 +245,9 @@ class ProgramBase {
   //
 
   // set the cache hint for the program
-  template <typename... CacheHintArgs>
-  ProgramBase& CacheHint(CacheHintArgs&&... args) {
-    cache_hint_ = absl::StrJoin(std::forward_as_tuple(std::forward<CacheHintArgs>(args)...), "|");
+  template <typename T>
+  ProgramBase& CacheHint(T&& hint) {
+    cache_hint_ = std::forward<T>(hint);
     return *this;
   }
 
