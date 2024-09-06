@@ -210,7 +210,6 @@ AveragePool::AveragePool(const OpKernelInfo& info)
                                  quant_param, avgpool_type_);
   ORT_ENFORCE(ret.IsOK(), ret.ErrorMessage());
   op0_.reset(p);
-  channels_ = C;
 }
 
 Status AveragePool::Compute(OpKernelContext* context) const {
@@ -220,6 +219,7 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   int64_t N = X_shape[0];
   int64_t H = X_shape[1];
   int64_t W = X_shape[2];
+  int64_t C = X_shape[3];
 
   // set the N dim to the correct value
   TensorShapeVector output_dims{output_dims_};
@@ -245,7 +245,7 @@ Status AveragePool::Compute(OpKernelContext* context) const {
                         ? xnn_reshape_average_pooling2d_nhwc_f32
                         : xnn_reshape_average_pooling2d_nhwc_qu8;
 
-  auto status = reshape_fn(op0_.get(), N, H, W, channels_, channels_, channels_,
+  auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
                            &workspace_size, &workspace_alignment,
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);
