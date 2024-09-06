@@ -3621,7 +3621,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-        onnx::ModelProto m;
+/*        onnx::ModelProto m;
         m.set_ir_version(3);
         onnx::OperatorSetIdProto* p = m.add_opset_import();
         p->set_domain("");
@@ -3673,7 +3673,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           output->set_name(api_->OrtGraph_GetIthOutputName(graph, i));
           output->mutable_type()->mutable_tensor_type()->set_elem_type(api_->OrtGraph_GetIthOutputElemType(graph, i));
         }
-
+*/
 //        auto model_build = graph.CreateModel(*GetLogger());
 //        auto& graph_build = model_build->MainGraph();
 //        bool has_control_flow_op = false;

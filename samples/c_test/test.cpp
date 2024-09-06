@@ -42,19 +42,38 @@ void TestOriginalTensorRTEp(const OrtApi* g_ort, OrtSessionOptions* so) {
     g_ort->ReleaseTensorRTProviderOptions(tensorrt_options);
 }
 
-int main() {
-    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    OrtEnv* p_env = nullptr;
-    OrtLoggingLevel log_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR;//OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
-    THROW_ON_ERROR(g_ort->CreateEnv(log_level, "", &p_env));
-    OrtSessionOptions* so = nullptr;
-    THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
+void RunResnet18v1_7(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
+    // download resnet18-v1-7 model at:
+    // https://github.com/onnx/models/blob/main/validated/vision/classification/resnet/model/resnet18-v1-7.tar.gz
+    OrtSession* session = nullptr;
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/resnet18-v1-7/resnet18-v1-7.onnx", so, &session));
 
-    //TestCompileBasedEp(g_ort, p_env, so);
-    //TestKernelBasedEp(g_ort, p_env, so);
-    TestTensorRTEp(g_ort, p_env, so);
-    //TestOriginalTensorRTEp(g_ort, so);
+    const int input_data_cnt = 3 * 224 * 224;
+    float input_data[input_data_cnt];
+    for (int i = 0; i < input_data_cnt; i++) {
+        input_data[i] = -1 + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX/(2)));   // [-1, 1) uniform distribution
+    }
+    const size_t input_len = input_data_cnt * sizeof(float);
+    const int64_t input_shape[] = {1, 3, 224, 224};
+    const size_t shape_len = sizeof(input_shape)/sizeof(input_shape[0]);
 
+    OrtMemoryInfo* memory_info = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+    OrtValue* input_tensor = nullptr;
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+
+    const char* input_names[] = {"data"};
+    const char* output_names[] = {"resnetv15_dense0_fwd"};
+    OrtValue* output_tensor = nullptr;
+    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+
+    float* output_tensor_data = nullptr;
+    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_tensor_data));
+    std::cout<<"Result:\n";
+    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+}
+
+void RunRelu(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));
 
@@ -77,6 +96,23 @@ int main() {
     THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_tensor_data));
     std::cout<<"Result:\n";
     for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+}
+
+int main() {
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtEnv* p_env = nullptr;
+    OrtLoggingLevel log_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR;//OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    THROW_ON_ERROR(g_ort->CreateEnv(log_level, "", &p_env));
+    OrtSessionOptions* so = nullptr;
+    THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
+
+    //TestCompileBasedEp(g_ort, p_env, so);
+    //TestKernelBasedEp(g_ort, p_env, so);
+    TestTensorRTEp(g_ort, p_env, so);
+    //TestOriginalTensorRTEp(g_ort, so);
+
+    //RunRelu(g_ort, p_env, so);
+    RunResnet18v1_7(g_ort, p_env, so);
 
     g_ort->ReleaseEnv(p_env);
     return 0;
