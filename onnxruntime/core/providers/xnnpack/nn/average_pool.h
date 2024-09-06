@@ -30,6 +30,7 @@ class AveragePool : public XnnpackKernel {
   TensorShapeVector output_dims_;
 
   XnnpackOperator op0_;
+  int64_t channels_;
   std::optional<std::pair<float, float>> clip_min_max_;
   OpComputeType avgpool_type_ = OpComputeType::op_compute_type_invalid;
 };
