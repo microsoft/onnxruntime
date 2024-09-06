@@ -242,7 +242,7 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   auto op_map_entry = op_map.find(op_type);
   // Returns false if the op_type is not listed in the op_map or
   // if the WebNN op has not been implemented in MLGraphBuilder in current browser.
-  if (op_map_entry == op_map.end() || !wnn_builder[op_map_entry->second].as<bool()) {
+  if (op_map_entry == op_map.end() || !wnn_builder[op_map_entry->second].as<bool>()) {
     return false;
   }
 
