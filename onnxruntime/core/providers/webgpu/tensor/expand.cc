@@ -18,7 +18,7 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                         ToProgramVariableDataType(Outputs()[0].tensor->GetElementType()),
                                         ShaderVariable::UseUniform);
 
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
+  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size"),
                           "let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
                           "let input_offset = ", input.BroadcastedIndicesToOffset("output_indices", output), ";\n",
                           output.SetByOffset("global_idx", input.GetByOffset("input_offset")));
@@ -30,20 +30,19 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const auto* input_shape_tensor = context.Input(1);
 
-  const auto* p_shape = input_shape_tensor->Data<int64_t>();
-  TensorShapeVector output_dims{p_shape, p_shape + input_shape_tensor->Shape().Size()};
-  TensorShape output_shape(output_dims);
+  auto output_dims = input_shape_tensor->DataAsSpan<int64_t>();
+  TensorShape output_shape{};
   ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), input_tensor->Shape(), output_dims, output_shape));
 
   auto* output_tensor = context.Output(0, output_shape);
-  SafeInt<uint32_t> vec_size = output_shape.Size();
-  ExpandProgram program{"Expand"};
+  uint32_t data_size = SafeInt<uint32_t>(output_shape.Size());
+  ExpandProgram program{};
   program
       .Inputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .Outputs({{output_tensor, ProgramTensorMetadataDependency::Rank}})
-      .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .DispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .UniformVariables({
-          {static_cast<uint32_t>(vec_size)},
+          {data_size},
       });
   return context.RunProgram(program);
 }
@@ -64,4 +63,4 @@ WEBGPU_EXPAND_VERSIONED_KERNEL(Expand, 8, 12, Expand, WebGpuSupportedFloatTypes(
 WEBGPU_EXPAND_KERNEL(Expand, 13, Expand, WebGpuSupportedFloatTypes())
 
 }  // namespace webgpu
-};  // namespace onnxruntime
+}  // namespace onnxruntime

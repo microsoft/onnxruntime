@@ -11,12 +11,11 @@ namespace webgpu {
 
 class ExpandProgram final : public Program<ExpandProgram> {
  public:
-  ExpandProgram(const std::string& kernel_name) : Program{kernel_name} {
-  }
+  ExpandProgram() : Program{"Expand"} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32});
 };
 
 class Expand final : public WebGpuKernel {
