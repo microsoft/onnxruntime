@@ -37,10 +37,9 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 
-const std::string permFunctionBody(const std::string& input_name, const std::string& output_name, const gsl::span<const size_t>& perm) {
+const std::string AppendPermFunction(std::string_view input_name, std::string_view output_name, gsl::span<const size_t> perm) {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
-
   ss << "fn perm(i: " << output_name << "_indices_t"
      << ")->" << input_name << "_indices_t "
      << "{\n  var a: " << input_name << "_indices_t;\n";
@@ -60,9 +59,11 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput(output_name,
                                         ToProgramVariableDataType(Outputs()[0].tensor->GetElementType()),
                                         ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
-  shader.AppendImplementation(permFunctionBody(input_name, output_name, this->perm_));
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                          "  let indices = ", output.OffsetToIndices("global_idx"), ";\n", "  let x_indices = perm(indices); \n",
+  shader.AppendImplementation(AppendPermFunction(input_name, output_name, this->perm_));
+  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
+                          "  let indices = ", output.OffsetToIndices("global_idx"),
+                          ";\n"
+                          "  let x_indices = perm(indices); \n",
                           output.SetByOffset("global_idx", input.GetByIndices("x_indices")));
   return Status::OK();
 }
@@ -75,20 +76,19 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   TensorShapeVector output_dims(rank);
   InlinedVector<size_t> default_perm(rank);
   const InlinedVector<size_t>* p_perm = nullptr;
-  const auto& status = ComputeOutputShape(*input_tensor, output_dims, default_perm, p_perm);
-  if (!status.IsOK())
-    return status;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(*input_tensor, output_dims, default_perm, p_perm));
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
 
-  SafeInt<uint32_t> vec_size = input_tensor->Shape().Size();
-  TransposeProgram program{"Transpose", *p_perm};
+  uint32_t output_size = gsl::narrow_cast<int32_t>(input_tensor->Shape().Size());
+  TransposeProgram program{*p_perm};
   program
+      .CacheHint(absl::StrJoin(*p_perm, "-"))
       .Inputs({{input_tensor, ProgramTensorMetadataDependency::Rank}})
       .Outputs({output_tensor})
-      .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .DispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .UniformVariables({
-          {static_cast<uint32_t>(vec_size)},
+          {static_cast<uint32_t>(output_size)},
       });
   return context.RunProgram(program);
 }
