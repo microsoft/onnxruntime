@@ -215,7 +215,7 @@ class GQAAttentionBase {
             }
           } else {
             if (softcap_ > 0.f) {
-              ComputeAttentionSoftcapInplace(output_softmax, seq_causal_length, softcap_);
+              ComputeAttentionSoftcapInplace(output_softmax, static_cast<int>(seq_causal_length), softcap_);
             }
             if (use_smooth_softmax_) {
               ComputeSmoothSoftmaxInplace(output_softmax, 1, static_cast<int>(seq_causal_length), nullptr);
