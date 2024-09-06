@@ -45,6 +45,8 @@ class UnaryElementwise : public WebGpuKernel {
                                                                          additional_usage_{usage} {}
 
  protected:
+  std::string cache_hint;
+
   Status ComputeInternal(ComputeContext& context) const final;
   virtual Status ConfigureProgram(UnaryElementwiseProgram& program) const {
     program.UniformVariables({{}, {}});  // empty for both float and int attribute(s)

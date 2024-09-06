@@ -134,6 +134,8 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, Relu);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 15, LeakyRelu);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, LeakyRelu);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, ThresholdedRelu);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 20, Gelu);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceMax);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, ReduceMax);
@@ -185,8 +187,6 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ReduceLogSumExp);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, ReduceLogSumExp);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ReduceLogSumExp);
-
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, ThresholdedRelu);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 7, 12, Add);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 13, Add);
@@ -442,13 +442,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       // KERNEL_CREATE_INFO_VERSIONED(11, 11, Clip),
       // KERNEL_CREATE_INFO_VERSIONED(12, 12, Clip),
       // KERNEL_CREATE_INFO(13, Clip),
-      // KERNEL_CREATE_INFO(6, Elu),
-      // KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
-      // KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
-      // KERNEL_CREATE_INFO(14, Relu),
-      // KERNEL_CREATE_INFO_VERSIONED(6, 15, LeakyRelu),
-      // KERNEL_CREATE_INFO(16, LeakyRelu),
-      // KERNEL_CREATE_INFO(10, ThresholdedRelu),
+      KERNEL_CREATE_INFO(6, Elu),
+      KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
+      KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
+      KERNEL_CREATE_INFO(14, Relu),
+      KERNEL_CREATE_INFO_VERSIONED(6, 15, LeakyRelu),
+      KERNEL_CREATE_INFO(16, LeakyRelu),
+      KERNEL_CREATE_INFO(10, ThresholdedRelu),
+      KERNEL_CREATE_INFO(20, Gelu),
 
       // // binary - math
       // KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),

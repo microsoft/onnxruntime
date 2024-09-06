@@ -37,6 +37,9 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
       .UniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });
+  if (!cache_hint.empty()) {
+    program.CacheHint(cache_hint);
+  }
   ORT_RETURN_IF_ERROR(ConfigureProgram(program));
   return context.RunProgram(program);
 }
@@ -172,7 +175,13 @@ WEBGPU_ELEMENTWISE_KERNEL(Cosh, 9, WebGpuSupportedFloatTypes())
 
 // built-in function tanh() does not work with large input (f32 88.7 or f16 11.09)
 // https://github.com/gpuweb/gpuweb/issues/4458
-WEBGPU_ELEMENTWISE_IMPL(Tanh, "sign(a) * (1 - exp(-2 * abs(a))) / (1 + exp(-2 * abs(a)))")
+constexpr char TanhImpl[] = R"(
+fn tanh_v(a: x_value_t) -> x_value_t {
+  let expr = exp(-2 * abs(a));
+  return sign(a) * (1 - expr) / (1 + expr);
+}
+)";
+WEBGPU_ELEMENTWISE_IMPL(Tanh, "tanh_v(a)", TanhImpl, ShaderVariable::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Tanh, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Tanh, 13, WebGpuSupportedFloatTypes())
 
@@ -193,10 +202,78 @@ WEBGPU_ELEMENTWISE_KERNEL(Atanh, 9, WebGpuSupportedFloatTypes())
 
 // todo: clip
 
-// constexpr char EluImpl[] = R"(
-//)";
-//
-// WEBGPU_ELEMENTWISE_IMPL(Elu, "elu_v(a)", )
+class LinearUnit : public UnaryElementwise {
+ public:
+  LinearUnit(const OpKernelInfo& info,
+             const std::string& kernel_name,
+             const std::string& expression,
+             const std::string& additional_impl,
+             float default_alpha)
+      : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderVariable::UseElementTypeAlias} {
+    info.GetAttrOrDefault("alpha", &alpha_, default_alpha);
+  }
+
+  Status ConfigureProgram(UnaryElementwiseProgram& program) const override {
+    program.UniformVariables({alpha_, {}});
+    return Status::OK();
+  }
+
+ protected:
+  float alpha_;
+};
+
+#define WEBGPU_LU_IMPL(OP_TYPE, ...)                                               \
+  class OP_TYPE final : public LinearUnit {                                        \
+   public:                                                                         \
+    OP_TYPE(const OpKernelInfo& info) : LinearUnit{info, #OP_TYPE, __VA_ARGS__} {} \
+  };
+
+constexpr char EluImpl[] = R"(
+fn elu(a: x_element_t) -> x_element_t {
+  let alpha = x_element_t(uniforms.f32_attr);
+  return select((exp(a) - 1.0) * alpha, a, a >= 0.0);
+}
+
+fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
+  return vec4(elu(v.x), elu(v.y), elu(v.z), elu(v.w));
+}
+)";
+
+WEBGPU_LU_IMPL(Elu, "elu_v(a)", EluImpl, 1.0)
+WEBGPU_ELEMENTWISE_KERNEL(Elu, 6, WebGpuSupportedFloatTypes())
+
+// TODO: support attribute "approximate"
+class Gelu : public UnaryElementwise {
+ public:
+  Gelu(const OpKernelInfo& info)
+      : UnaryElementwise{info,
+                         "Gelu",
+                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhBasedImpl : DefaultImpl,
+                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
+                         ShaderVariable::UseValueTypeAlias} {
+    cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
+  }
+
+  constexpr static const char DefaultImpl[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475))";
+  constexpr static const char TanhBasedImpl[] = "0.5 * a * (1 + tanh_v(0.7978845608028654 * (a + 0.044715 * a * a * a)))";
+
+ protected:
+  float alpha_;
+};
+
+WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
+
+WEBGPU_ELEMENTWISE_IMPL(Relu, "select(x_value_t(0), a, a > x_value_t(0))", "", ShaderVariable::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 6, 12, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 13, 13, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Relu, 14, WebGpuSupportedFloatTypes())
+
+WEBGPU_LU_IMPL(LeakyRelu, "select(x_element_t(uniforms.f32_attr) * a, a, a >= vec4<x_element_t>(0))", "", 0.01f)
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(LeakyRelu, 6, 15, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(LeakyRelu, 16, WebGpuSupportedFloatTypes())
+
+WEBGPU_LU_IMPL(ThresholdedRelu, "select(vec4<x_element_t>(0), a, a > vec4<x_element_t>(uniforms.f32_attr))", "", 1.0f)
+WEBGPU_ELEMENTWISE_KERNEL(ThresholdedRelu, 10, WebGpuSupportedFloatTypes())
 
 // TODO: add other unary elementwise ops
 
