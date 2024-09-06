@@ -162,7 +162,33 @@ const conv2d = (
 
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
+  const outputShape = calculateOutputShape(
+    inputs[0].dims,
+    inputs[1].dims,
+    attributes.dilations,
+    attributes.pads,
+    attributes.strides,
+    isChannelsLast,
+  );
   if (attributes.group !== 1) {
+    const convInputs = [inputs[0]];
+    if (isChannelsLast) {
+      const transposedWeight =
+        (context.kernelCustomData.wT as TensorView | undefined) ??
+        context.compute(createTransposeProgramInfo(inputs[1], weightTransposeAttribute), {
+          inputs: [1],
+          outputs: [attributes.wIsConst ? -2 : -1],
+        })[0];
+      if (attributes.wIsConst && !context.kernelCustomData.wT) {
+        context.kernelCustomData.wT = transposedWeight;
+      }
+      convInputs.push(transposedWeight);
+    } else {
+      convInputs.push(inputs[1]);
+    }
+    if (inputs.length === 3) {
+      convInputs.push(inputs[2]);
+    }
     // NVIDIA GPU with ampere architecture fails with below 2 cases, but we couldn't repro them with any other
     // GPUs. So just disable vectorize on NVIDIA ampere to ensure always correct outputs.
     // [webgpu]Conv - conv - vectorize group - B
@@ -176,33 +202,14 @@ const conv2d = (
       attributes.dilations[0] === 1 &&
       attributes.dilations[1] === 1
     ) {
-      const outputShape = calculateOutputShape(
-        inputs[0].dims,
-        inputs[1].dims,
-        attributes.dilations,
-        attributes.pads,
-        attributes.strides,
-        isChannelsLast,
-      );
-      const transposedWeight =
-        (context.kernelCustomData.wT as TensorView | undefined) ??
-        context.compute(createTransposeProgramInfo(inputs[1], weightTransposeAttribute), {
-          inputs: [1],
-          outputs: [attributes.wIsConst ? -2 : -1],
-        })[0];
-      if (attributes.wIsConst && !context.kernelCustomData.wT) {
-        context.kernelCustomData.wT = transposedWeight;
-      }
-      const convInputs = [inputs[0], transposedWeight];
-      if (inputs.length === 3) {
-        convInputs.push(inputs[2]);
-      }
       context.compute(
         createGroupedConvVectorizeProgramInfo(convInputs, attributes, outputShape, squeezeOutputShapeFunction),
         { inputs: convInputs },
       );
     } else {
-      context.compute(createGroupedConvProgramInfo(inputs, attributes, squeezeOutputShapeFunction));
+      context.compute(createGroupedConvProgramInfo(convInputs, attributes, outputShape, squeezeOutputShapeFunction), {
+        inputs: convInputs,
+      });
     }
     return;
   }
@@ -214,14 +221,6 @@ const conv2d = (
   const weightHeight = inputs[1].dims[2];
   const weightWidth = inputs[1].dims[3];
 
-  const outputShape = calculateOutputShape(
-    inputs[0].dims,
-    inputs[1].dims,
-    attributes.dilations,
-    attributes.pads,
-    attributes.strides,
-    isChannelsLast,
-  );
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
