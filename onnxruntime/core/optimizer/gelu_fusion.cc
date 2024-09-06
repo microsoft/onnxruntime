@@ -52,6 +52,8 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
   const auto op_domain = fuse_in_level_1 && onnx_gelu_available ? kOnnxDomain : kMSDomain;
 
   if ((optimization_level_ == TransformerLevel::Level1 && !fuse_in_level_1) ||
+      // The following check assumes that there is a GeluFusion instance registered in Level1 that may have
+      // already done this fusion, in which case we don't need to do it again.
       (optimization_level_ == TransformerLevel::Level2 && fuse_in_level_1)) {
     return Status::OK();
   }
