@@ -367,10 +367,16 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         Runs all histogram-based calibrators (Percentile, Entropy, Distribution) and checks that they run
         and generate the expected number of tensor ranges. Does not check correctness of range values.
         """
-        # Create and save a test model.
+        # Create test model.
         test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_4.onnx")
         self.construct_test_compute_data_model(test_model_path.as_posix(), augmented=False)
 
+        # Count the number of tensors in the model.
+        model = onnx.load_model(test_model_path)
+        model = onnx.shape_inference.infer_shapes(model)
+        num_tensors = len(model.graph.value_info) + len(model.graph.input) + len(model.graph.output)
+
+        # Run all histogram calibration methods.
         data_reader = TestDataReader()
         calibration_methods = [CalibrationMethod.Percentile, CalibrationMethod.Entropy, CalibrationMethod.Distribution]
         for calibration_method in calibration_methods:
@@ -382,7 +388,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
                 )
                 calibrator.collect_data(data_reader)
                 tensors_range = calibrator.compute_data()
-                self.assertEqual(len(tensors_range.items()), 7)  # A range for every tensor in the graph.
+                self.assertEqual(len(tensors_range.items()), num_tensors)  # A range for every tensor in the graph.
 
     def test_augment_graph_with_zero_value_dimension(self):
         """TEST_CONFIG_5"""
