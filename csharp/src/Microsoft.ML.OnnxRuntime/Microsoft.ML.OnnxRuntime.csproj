@@ -6,7 +6,7 @@
 
   <PropertyGroup>
     <IncludeMobileTargets>true</IncludeMobileTargets>
-    <BaseTargets>netstandard2.0;net6.0</BaseTargets>
+    <BaseTargets>netstandard2.0;net8.0</BaseTargets>
     <MobileTargets></MobileTargets>
   </PropertyGroup>
 
@@ -164,8 +164,9 @@
     <OrtConstants>$(OrtConstants);__ENABLE_COREML__</OrtConstants>
   </PropertyGroup>
 
-  <!-- CoreML may be valid for one of these targets as they support macOS. we do a runtime check that the OS is
-       macOS before attempting to enable CoreML. This includes netcoreapp3.1 and net6.0
+  <!-- CoreML is valid for a macOS .net app. Enable in case GetTargetPlatformIdentifier was not set.
+       TargetFrameworkIdentifier of .netX is '.NETCoreApp'
+       We do a runtime check that the OS is macOS before attempting to enable CoreML.
        NOTE: $(TargetFrameworkIdentitier) may not be set yet, so we need to call GetTargetFrameworkIdentifier
   -->
   <PropertyGroup Condition="$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))=='.NETCoreApp' AND
@@ -309,7 +310,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.5.5" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>

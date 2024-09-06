@@ -65,7 +65,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// The function creates OrtValue objects for each element of the sequence
         /// and then creates an OrtValue for the whole sequence.
         /// </summary>
-        /// <param name="namedOnnxValue">NamedOnnxValue containing a IEnumerable<NameOnnValue></param>
+        /// <param name="namedOnnxValue">NamedOnnxValue containing a IEnumerable{NamedOnnxValue}</param>
         /// <param name="metadata">sequence metadata</param>
         /// <returns>OrtValue that represents a sequence</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
