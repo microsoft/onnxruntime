@@ -36,6 +36,7 @@
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino/openvino_provider_factory.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES CXX_STANDARD 20)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
   if(NOT MSVC)

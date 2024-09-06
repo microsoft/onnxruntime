@@ -169,6 +169,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.head_dim_value = params.v_head_size;
 
     p.scale = params.scale;
+    p.softcap = params.softcap;
 
     // When params.cu_seqlens_q is provided, num_queries is max_seq_q and num_keys will be set inside the kernel
     p.num_queries = params.sequence_length;
@@ -220,6 +221,8 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.bias_strideM = 0;
       p.bias_strideB = 0;
     }
+
+    p.use_smooth_softmax = params.use_smooth_softmax;
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;

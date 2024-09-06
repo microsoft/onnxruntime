@@ -144,6 +144,7 @@ namespace perftest {
       "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-l Provide file as binary in memory by using fopen before session creation.\n"
+      "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -206,7 +207,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznl"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -392,6 +393,9 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         break;
       case 'l':
         test_config.model_info.load_via_path = true;
+        break;
+      case 'R':
+        test_config.run_config.register_custom_op_path = optarg;
         break;
       case '?':
       case 'h':
