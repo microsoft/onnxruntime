@@ -368,7 +368,7 @@ namespace DmlGraphFusionHelper
 
                     DML_CONSTANT_DATA_GRAPH_NODE_DESC* constantNode = allocator.template Allocate<DML_CONSTANT_DATA_GRAPH_NODE_DESC>();
                     constantNode->Name = node.Name.data();
-                    constantNode->DataSize = constantData.dataSize;
+                    constantNode->DataSize = gsl::narrow_cast<size_t>(constantData.dataSize);
                     constantNode->Data = constantData.data;
                     dmlGraphNodes.push_back(DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_CONSTANT, constantNode});
                 }

@@ -365,7 +365,7 @@ namespace Dml::GraphDescBuilder
             );
 
             ORT_THROW_HR_IF(E_UNEXPECTED, outputShapes.EdgeCount() != node.OutputDefs().size());
-            for (int i = 0; i < node.OutputDefs().size(); ++i)
+            for (size_t i = 0; i < node.OutputDefs().size(); ++i)
             {
                 inferredOutputShapes[node.OutputDefs()[i]->Name()] = outputShapes.GetShape(i);
             }
