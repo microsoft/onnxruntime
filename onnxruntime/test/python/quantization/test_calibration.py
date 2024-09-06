@@ -290,16 +290,18 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         #        |
         #       (X6)
         input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 1, 3])
-        graph_outputs = []
+        graph_outputs = None
         if augmented:
-            graph_outputs.append(helper.make_tensor_value_info("X1", TensorProto.FLOAT, [1, 3, 1, 3]))
-            graph_outputs.append(helper.make_tensor_value_info("X2", TensorProto.FLOAT, [1, 3, 1, 3]))
-            graph_outputs.append(helper.make_tensor_value_info("X3", TensorProto.FLOAT, [1, 3, 1, 3]))
-            graph_outputs.append(helper.make_tensor_value_info("X4", TensorProto.FLOAT, [1, 3, 1, 3]))
-            graph_outputs.append(helper.make_tensor_value_info("X5", TensorProto.FLOAT, [1, 3, 1, 3]))
-            graph_outputs.append(helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3]))
+            graph_outputs = [
+                helper.make_tensor_value_info("X1", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X2", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X3", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X4", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X5", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3]),
+            ]
         else:
-            graph_outputs.append(helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3]))
+            graph_outputs = [helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3])]
 
         w1 = generate_input_initializer([3, 3, 1, 1], np.float32, "W1")
         b1 = generate_input_initializer([3], np.float32, "B1")
