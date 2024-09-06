@@ -1518,7 +1518,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
                 m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
             }
-            
+
             // There can be operators (or kernels) which don't require any input.
             assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
             m_graphNodeCreateInfo->inputEdges.insert(

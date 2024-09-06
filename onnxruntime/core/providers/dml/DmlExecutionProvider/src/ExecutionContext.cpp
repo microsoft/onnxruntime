@@ -91,6 +91,7 @@ namespace Dml
     }
 
     void ExecutionContext::InitializeOperator(
+        onnxruntime::IAllocator* allocator,
         IDMLCompiledOperator* op,
         const DML_BINDING_DESC& persistentResourceBinding,
         const DML_BINDING_DESC& inputArrayBinding)
@@ -98,10 +99,11 @@ namespace Dml
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
-        m_dmlRecorder.InitializeOperator(op, persistentResourceBinding, inputArrayBinding);
+        m_dmlRecorder.InitializeOperator(allocator, op, persistentResourceBinding, inputArrayBinding);
     }
 
     void ExecutionContext::ExecuteOperator(
+        onnxruntime::IAllocator* allocator,
         IDMLCompiledOperator* op,
         const DML_BINDING_DESC& persistentResourceBinding,
         gsl::span<const DML_BINDING_DESC> inputBindings,
@@ -110,7 +112,7 @@ namespace Dml
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
-        m_dmlRecorder.ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings);
+        m_dmlRecorder.ExecuteOperator(allocator, op, persistentResourceBinding, inputBindings, outputBindings);
     }
 
     void ExecutionContext::AddUAVBarrier()

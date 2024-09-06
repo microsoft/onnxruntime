@@ -59,10 +59,11 @@ public:
 
         if (m_zeroOperator)
         {
-            ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[1]);
+            ExecuteZeroInt64Tensor(kernelContext.GetAllocator(), m_zeroOperator.Get(), outputTensors[1]);
         }
 
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            kernelContext.GetAllocator(),
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),

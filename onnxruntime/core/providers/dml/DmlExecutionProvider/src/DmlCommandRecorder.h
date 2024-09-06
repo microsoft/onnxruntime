@@ -22,11 +22,13 @@ namespace Dml
             std::shared_ptr<CommandQueue> commandQueue);
 
         void InitializeOperator(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,
             const DML_BINDING_DESC& inputArrayBinding);
 
         void ExecuteOperator(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,
             gsl::span<const DML_BINDING_DESC> inputBindings,

@@ -234,7 +234,7 @@ public:
         OperatorHelper::ShapeInformationAdapter shapeInfo{creationContext};
         DmlSTFTParameters params(kernelInfo, shapeInfo);
 
-        CompileAndInitFramingOperator(params);
+        CompileAndInitFramingOperator(contextPrivate->GetAllocator(), params);
 
         constexpr uint32_t dftAxis = 1;
         constexpr bool dftIsInverse = false;
@@ -251,7 +251,7 @@ public:
         m_dftOperator.dftLength = params.frameSize;
     }
 
-    void CompileAndInitFramingOperator(const DmlSTFTParameters& params)
+    void CompileAndInitFramingOperator(onnxruntime::IAllocator* allocator, const DmlSTFTParameters& params)
     {
         StackAllocator<1024> stackAllocator;
 
@@ -338,6 +338,7 @@ public:
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(params.hasWindowTensor ? 2 : 1);
             ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
+                allocator,
                 m_framingOperator.op.Get(),
                 m_framingOperator.persistentResourceBinding ? &*m_framingOperator.persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)

@@ -7,6 +7,7 @@
 #include "MLOperatorAuthorPrivate.h"
 #include <gsl/gsl>
 #include <optional>
+#include "core/framework/allocator.h"
 
 #ifdef ORT_NO_EXCEPTIONS
 #define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))
@@ -938,6 +939,13 @@ public:
         Microsoft::WRL::ComPtr<IUnknown> ret;
         m_impl->GetExecutionInterface(&ret);
         return ret;
+    }
+
+    onnxruntime::IAllocator* GetAllocator() const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        return operatorKernelContext->GetAllocator();
     }
 
  private:

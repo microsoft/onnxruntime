@@ -78,6 +78,7 @@ namespace Dml
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                kernelInfo.GetAllocator(OrtMemType::OrtMemTypeDefault).get(),
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));

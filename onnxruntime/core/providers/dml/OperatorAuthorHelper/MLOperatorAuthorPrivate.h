@@ -10,6 +10,11 @@ struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
+namespace onnxruntime
+{
+    class IAllocator;
+}
+
 struct MLOperatorGraphDesc
 {
     uint32_t nodeCount;
@@ -77,6 +82,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         ) const noexcept PURE;
 
     STDMETHOD_(bool, IsDmlGraphNode)() const noexcept PURE;
+    STDMETHOD_(onnxruntime::IAllocator*, GetAllocator)() const noexcept PURE;
 
     STDMETHOD(SetDmlOperator)(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc
@@ -260,6 +266,8 @@ IMLOperatorKernelContextPrivate : IUnknown
 
     //! Returns whether the tensor at inputIndex is a sequence tensor or not
     STDMETHOD_(bool, IsSequenceInputTensor)(uint32_t inputIndex) const = 0;
+
+    STDMETHOD_(onnxruntime::IAllocator*, GetAllocator)() const = 0;
 };
 
 // Declare private enum MLOperatorAttributeType::Tensor.

@@ -49,11 +49,13 @@ namespace Dml
             gsl::span<const std::byte> pattern /* Data type agnostic value, treated as raw bits */);
 
         void InitializeOperator(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,
             const DML_BINDING_DESC& inputArrayBinding);
 
         void ExecuteOperator(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,
             gsl::span<const DML_BINDING_DESC> inputBindings,

@@ -46,7 +46,7 @@ public:
             //     input dims: {3, 2, 2}
             //     axes: 1
             //     keepDims: 0
-            // 
+            //
             // The ONNX output expects output dims of {3, 2},
             // while DML expect the output tensor desc of {3, 1, 2}.
 
@@ -109,6 +109,7 @@ public:
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            kernelContext.GetAllocator(),
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),

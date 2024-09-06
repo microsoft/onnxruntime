@@ -113,6 +113,7 @@ namespace Dml
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
             ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+                contextPrivate->GetAllocator(),
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)));
@@ -217,6 +218,7 @@ namespace Dml
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
             ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+                contextPrivate->GetAllocator(),
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)));
@@ -252,7 +254,11 @@ namespace Dml
             m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
         }
 
+        ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+
         ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+            contextPrivate->GetAllocator(),
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::span<const DML_BUFFER_BINDING>() // Empty input bindings since ownedByDml is not used.
@@ -471,6 +477,7 @@ namespace Dml
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            kernelContext.GetAllocator(),
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
@@ -623,7 +630,7 @@ namespace Dml
         return dmlCompiledOperator;
     }
 
-    void DmlOperator::ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor)
+    void DmlOperator::ExecuteZeroInt64Tensor(onnxruntime::IAllocator* allocator, IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor)
     {
         // Element-wise XOR takes two inputs and an output. We want in-place execution, so all three
         // resources are the same.
@@ -631,6 +638,7 @@ namespace Dml
         IMLOperatorTensor* outputTensors[] = { tensor };
 
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            allocator,
             compiledOperator,
             nullptr, // persistent resource binding
             gsl::make_span(inputTensors),

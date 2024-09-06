@@ -98,6 +98,7 @@ public:
         if (!m_emptyInput)
         {
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(nonzeroCoordinatesInputTensors),
@@ -128,7 +129,7 @@ public:
             ComPtr<IDMLCompiledOperator> zeroOperator = InitializeZeroInt64Tensor(tensorSizeInBytes);
 
             // TODO: Remove this hack when DML supports native int64 for NonZero
-            ExecuteZeroInt64Tensor(zeroOperator.Get(), outputTensor.GetInterface().Get());
+            ExecuteZeroInt64Tensor(kernelContext.GetAllocator(), zeroOperator.Get(), outputTensor.GetInterface().Get());
 
             ComPtr<IDMLCompiledOperator> sliceOperator = InitializeSlice(m_intermediateTensorDescs[1], nonzeroElementCount);
 
@@ -137,6 +138,7 @@ public:
             std::array<IMLOperatorTensor*, 1> sliceOutputTensors = {outputTensor.GetInterface().Get()};
 
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 sliceOperator.Get(),
                 nullptr, // persistent resource binding
                 sliceInputTensors,

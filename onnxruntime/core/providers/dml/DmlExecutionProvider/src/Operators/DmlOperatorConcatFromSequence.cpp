@@ -149,6 +149,7 @@ public:
         auto outputTensors = gsl::span<IMLOperatorTensor*> { &outputTensor, 1 };
 
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            kernelContext.GetAllocator(),
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),

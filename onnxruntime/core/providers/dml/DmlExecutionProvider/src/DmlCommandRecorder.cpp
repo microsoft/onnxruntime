@@ -28,6 +28,7 @@ void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> a
 }
 
 void DmlCommandRecorder::InitializeOperator(
+    onnxruntime::IAllocator* allocator,
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,
     const DML_BINDING_DESC& inputArrayBinding)
@@ -57,8 +58,6 @@ void DmlCommandRecorder::InitializeOperator(
     UINT64 temporaryResourceSize = initBindingProps.TemporaryResourceSize;
     if (temporaryResourceSize > 0)
     {
-        auto allocator = m_bufferAllocator.lock();
-
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
         void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
@@ -67,7 +66,7 @@ void DmlCommandRecorder::InitializeOperator(
             ORT_THROW_HR(E_OUTOFMEMORY);
         }
 
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResource();
+        ID3D12Resource* buffer = Dml::GetD3D12ResourceFromAllocation(tempResourceHandle);
         allocator->Free(tempResourceHandle);
 
         // Bind the temporary resource.
@@ -107,6 +106,7 @@ void DmlCommandRecorder::InitializeOperator(
 }
 
 void DmlCommandRecorder::ExecuteOperator(
+    onnxruntime::IAllocator* allocator,
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,
     gsl::span<const DML_BINDING_DESC> inputBindings,
@@ -133,8 +133,6 @@ void DmlCommandRecorder::ExecuteOperator(
     UINT64 temporaryResourceSize = execBindingProps.TemporaryResourceSize;
     if (temporaryResourceSize > 0)
     {
-        auto allocator = m_bufferAllocator.lock();
-
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
         void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
@@ -143,7 +141,7 @@ void DmlCommandRecorder::ExecuteOperator(
             ORT_THROW_HR(E_OUTOFMEMORY);
         }
 
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResource();
+        ID3D12Resource* buffer = Dml::GetD3D12ResourceFromAllocation(tempResourceHandle);
         allocator->Free(tempResourceHandle);
 
         // Bind the temporary resource.
@@ -338,7 +336,7 @@ void DmlCommandRecorder::CloseAndExecute()
 }
 
 void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList)
-{   
+{
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
@@ -359,7 +357,7 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
         m_queue->ExecuteCommandLists(
                 gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
     }
-    
+
     m_cachedCommandList = m_currentCommandList;
     m_currentCommandList = nullptr;
     m_operationsRecordedInCurrentCommandList = false;

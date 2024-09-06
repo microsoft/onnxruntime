@@ -117,7 +117,7 @@ namespace Dml
         // It returns nullptr if there is no work to do (0 bytes).
         //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
-        void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
+        void ExecuteZeroInt64Tensor(onnxruntime::IAllocator* allocator, IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
 
         TensorDesc CreateTensorDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,

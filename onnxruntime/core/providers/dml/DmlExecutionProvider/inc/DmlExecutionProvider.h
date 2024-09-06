@@ -37,7 +37,7 @@ namespace Dml
         bool enableCpuSyncSpinning,
         bool disableMemoryArena);
 
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
+    ID3D12Resource* GetD3D12ResourceFromAllocation(void* ptr);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
 

@@ -40,12 +40,14 @@ namespace Dml
         STDMETHOD(AddUAVBarrier)() const noexcept = 0;
 
         STDMETHOD(InitializeOperator)(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
 
         STDMETHOD(ExecuteOperator)(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<IMLOperatorTensor*> inputTensors,
@@ -53,6 +55,7 @@ namespace Dml
             ) const noexcept = 0;
 
         STDMETHOD(ExecuteOperator)(
+            onnxruntime::IAllocator* allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<DML_BINDING_DESC> inputTensors,

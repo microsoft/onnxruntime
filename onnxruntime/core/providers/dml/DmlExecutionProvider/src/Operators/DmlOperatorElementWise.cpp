@@ -231,6 +231,7 @@ public:
 
         // Combine the first two inputs and store the result in the output tensor.
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            kernelContext.GetAllocator(),
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
@@ -248,6 +249,7 @@ public:
                                                    : m_compiledOperators[inputIndex - 2].Get();
 
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 compiledOperator,
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(inputTensors),
@@ -368,6 +370,7 @@ public:
 
             // Add the first two inputs and store the result in the output tensor.
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(inputTensors),
@@ -385,6 +388,7 @@ public:
                     : m_compiledOperators[inputIndex - 2].Get();
 
                 ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                    kernelContext.GetAllocator(),
                     compiledOperator,
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     gsl::make_span(inputTensors),
@@ -393,6 +397,7 @@ public:
 
             // Dispatch the identity w/ scale operator in-place on the output.
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 m_compiledIdentityOp.Get(),
                 nullptr, // persistent resoruce binding
                 outputTensors,

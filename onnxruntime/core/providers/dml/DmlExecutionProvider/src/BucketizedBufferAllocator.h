@@ -41,9 +41,6 @@ namespace Dml
             D3D12_RESOURCE_STATES initialState,
             std::unique_ptr<DmlSubAllocator>&& subAllocator);
 
-        // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
-        const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
-
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
     public: // onnxruntime::IAllocator
