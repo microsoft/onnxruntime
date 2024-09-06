@@ -15,7 +15,7 @@ Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                         ShaderVariable::UseUniform);
   shader.AppendImplementation(additional_impl_);
   shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                          "let a = ", input.GetByOffset("global_idx"), ";\n",
+                          "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
                           output.SetByOffset("global_idx", expression_));
 
   return Status::OK();
@@ -119,7 +119,7 @@ WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sigmoid, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sigmoid, 13, WebGpuSupportedFloatTypes())
 
 constexpr char HardSigmoidImpl[] = R"(
-fn hard_sigmoid_v(v: x_value_t) -> x_value_t {
+fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
   let alpha = x_element_t(uniforms.f32_attr[0]);
   let beta_v = vec4<x_element_t>(uniforms.f32_attr[1]);
   return max(vec4<x_element_t>(0.0),
@@ -129,7 +129,7 @@ fn hard_sigmoid_v(v: x_value_t) -> x_value_t {
 class HardSigmoid final : public UnaryElementwise {
  public:
   HardSigmoid(const OpKernelInfo& info)
-      : UnaryElementwise{info, "HardSigmoid", "hard_sigmoid_v(a)", HardSigmoidImpl, ShaderVariable::UseElementTypeAlias | ShaderVariable::UseValueTypeAlias} {
+      : UnaryElementwise{info, "HardSigmoid", "hard_sigmoid_v(a)", HardSigmoidImpl, ShaderVariable::UseElementTypeAlias} {
     // attr[0] is alpha, attr[1] is beta
     info.GetAttrOrDefault("alpha", attr, 0.2f);
     info.GetAttrOrDefault("beta", attr + 1, 0.5f);
