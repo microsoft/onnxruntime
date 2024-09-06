@@ -118,7 +118,7 @@ stages:
         condition: always()
 
       - task: PowerShell@2
-        displayName: 'Reconstruct Build Directory'
+        displayName: 'check installed VC tools'
         inputs:
           targetType: inline
           script: |
