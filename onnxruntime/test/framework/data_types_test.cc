@@ -480,7 +480,7 @@ TEST_F(DataTypeTest, MLFloat16Comparision) {
   const MLFloat16 right = MLFloat16(66.66f);
   const MLFloat16 right_same = MLFloat16(66.66f);
 
-  EXPECT_TRUE(MLFloat16::Epsilon < right);
+  EXPECT_TRUE(MLFloat16::One < right);
 
   EXPECT_EQ(left, left_same);
   EXPECT_NE(left, left_same.Negate());
@@ -513,14 +513,14 @@ TEST_F(DataTypeTest, MLFloat16NaNComparision) {
 
   EXPECT_FALSE(MLFloat16::MaxValue < MLFloat16::NaN);
   EXPECT_FALSE(MLFloat16::MaxValue == MLFloat16::NaN);
-  EXPECT_FALSE(MLFloat16::MinValue < MLFloat16::NaN);
+  EXPECT_FALSE(MLFloat16::MaxValue.Negate() < MLFloat16::NaN);
   EXPECT_FALSE(MLFloat16::NaN < MLFloat16::MaxValue);
 
-  EXPECT_TRUE(MLFloat16::MinValue < MLFloat16::MaxValue);
+  EXPECT_TRUE(MLFloat16::Zero < MLFloat16::MaxValue);
 }
 
 TEST_F(DataTypeTest, MLFloat16Infinity) {
-  EXPECT_FALSE(MLFloat16::MinValue.IsInfinity());
+  EXPECT_FALSE(MLFloat16::MaxValue.Negate().IsInfinity());
   EXPECT_FALSE(MLFloat16::MaxValue.IsInfinity());
   EXPECT_TRUE(MLFloat16::MaxValue.IsFinite());
 
@@ -625,7 +625,7 @@ TEST_F(DataTypeTest, BFloat16Comparision) {
   const BFloat16 right = BFloat16(66.66f);
   const BFloat16 right_same = BFloat16(66.66f);
 
-  EXPECT_TRUE(BFloat16::Epsilon < right);
+  EXPECT_TRUE(BFloat16::One < right);
 
   EXPECT_EQ(left, left_same);
   EXPECT_NE(left, left_same.Negate());
@@ -657,14 +657,14 @@ TEST_F(DataTypeTest, BFloat16NaNComparision) {
 
   EXPECT_FALSE(BFloat16::MaxValue < BFloat16::NaN);
   EXPECT_FALSE(BFloat16::MaxValue == BFloat16::NaN);
-  EXPECT_FALSE(BFloat16::MinValue < BFloat16::NaN);
+  EXPECT_FALSE(BFloat16::MaxValue.Negate() < BFloat16::NaN);
   EXPECT_FALSE(BFloat16::NaN < BFloat16::MaxValue);
 
-  EXPECT_TRUE(BFloat16::MinValue < BFloat16::MaxValue);
+  EXPECT_TRUE(BFloat16::Zero < BFloat16::MaxValue);
 }
 
 TEST_F(DataTypeTest, BFloat16Infinity) {
-  EXPECT_FALSE(BFloat16::MinValue.IsInfinity());
+  EXPECT_FALSE(BFloat16::MaxValue.Negate().IsInfinity());
   EXPECT_FALSE(BFloat16::MaxValue.IsInfinity());
   EXPECT_TRUE(BFloat16::MaxValue.IsFinite());
 

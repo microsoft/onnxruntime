@@ -89,7 +89,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                            device_config,
                                                            global_context_.ep_context_embed_mode,
                                                            subgraph_context_.subgraph_name);
-        // ie_cnn_network_ = exe_network_.Get().get_runtime_model();
+        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else if (global_context_.export_ep_ctx_blob &&
                  hw_target.find("NPU") != std::string::npos) {
         std::shared_ptr<ov::Model> ov_model;
