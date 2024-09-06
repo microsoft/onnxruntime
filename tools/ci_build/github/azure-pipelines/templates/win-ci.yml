@@ -117,14 +117,13 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-    - task: PowerShell@2
-      displayName: 'Reconstruct Build Directory'
-      inputs:
-        targetType: inline
-        script: |
-          Get-ChildItem -PATH "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
+      - task: PowerShell@2
+        displayName: 'Reconstruct Build Directory'
+        inputs:
+          targetType: inline
+          script: |
+            Get-ChildItem -PATH "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
 
-      displayName: 'Pack NPM packages'
       - checkout: self
         clean: true
         submodules: none
