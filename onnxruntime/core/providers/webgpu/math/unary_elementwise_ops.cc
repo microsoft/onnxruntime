@@ -242,7 +242,6 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 WEBGPU_LU_IMPL(Elu, "elu_v(a)", EluImpl, 1.0)
 WEBGPU_ELEMENTWISE_KERNEL(Elu, 6, WebGpuSupportedFloatTypes())
 
-// TODO: support attribute "approximate"
 class Gelu : public UnaryElementwise {
  public:
   Gelu(const OpKernelInfo& info)
