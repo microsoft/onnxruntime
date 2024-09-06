@@ -45,6 +45,11 @@ stages:
       steps:
         - checkout: self
           submodules: true
+
+        - task: powershell@2
+            Get-ChildItem -PATH "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
+          name: check installed VC
+
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'

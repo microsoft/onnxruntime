@@ -750,6 +750,7 @@ if (onnxruntime_USE_CUDA)
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.4)
     if (MSVC)
       # https://stackoverflow.com/questions/78515942/cuda-compatibility-with-visual-studio-2022-version-17-10
+      message(STATUS "VC platfrom toolset above v143 unsupported in Windows with CUDA compiler version < 12.4")
       set(CMAKE_VS_PLATFORM_TOOLSET "v143")
     endif()
   endif()
