@@ -19,9 +19,9 @@ class UnaryElementwiseProgram final : public Program<UnaryElementwiseProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"vec_size", ProgramUniformVariableDataType::Uint32},   // output size
-      {"f32_attr", ProgramUniformVariableDataType::Float32},  // float type attribute(s)
-      {"i32_attr", ProgramUniformVariableDataType::Int32});   // int type attribute(s)
+      {"vec_size", ProgramUniformVariableDataType::Uint32},  // output size
+      {"attr", ProgramUniformVariableDataType::Float32});    // float type attribute(s)
+                                                             // TODO: add u32/i32 attribute(s) if needed
 
  private:
   std::string_view expression_;
@@ -48,8 +48,8 @@ class UnaryElementwise : public WebGpuKernel {
   std::string cache_hint;
 
   Status ComputeInternal(ComputeContext& context) const final;
-  virtual Status ConfigureProgram(UnaryElementwiseProgram& program) const {
-    program.UniformVariables({{}, {}});  // empty for both float and int attribute(s)
+  virtual Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const {
+    program.UniformVariables({{}});  // empty for attribute(s)
     return Status::OK();
   }
 
