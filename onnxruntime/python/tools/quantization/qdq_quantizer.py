@@ -1029,6 +1029,68 @@ class QDQQuantizer(BaseQuantizer):
 
         return q_weight_name, zp_name, scale_name
 
+    def adjust_other_input_scales_for_int32_bias(
+        self,
+        input_scale_tp: onnx.TensorProto,
+        weight_scale_tp: onnx.TensorProto,
+        bias_tp: onnx.TensorProto,
+        beta: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Checks if the bias scale (input_scale * weight_scale) that we intend to use is too small.
+        A bias scale that is too small leads to quantized bias values that fall outside the range of a int32 and have to
+        be clipped, which decreases accuracy. If this function detects such a scenario, the weight_scale value will be
+        increased to prevent this from happening.
+        """
+        input_scale: np.ndarray = tensor_proto_to_array(input_scale_tp)
+        weight_scale: np.ndarray = tensor_proto_to_array(weight_scale_tp)
+        bias_float_data: np.ndarray = tensor_proto_to_array(bias_tp)
+        assert bias_float_data.size > 0, "Expect bias input to have some data"
+
+        # Check the shape of the weight's scale to determine if using per-channel or per-tensor quantization.
+        weight_scale_rank: int = len(weight_scale.shape)
+        is_per_tensor: bool = weight_scale_rank == 0 or (weight_scale_rank == 1 and weight_scale.shape[0] == 1)
+
+        qmin = np.asarray(np.iinfo(np.int32).min)
+        qmax = np.asarray(np.iinfo(np.int32).max)
+
+        if is_per_tensor:
+            _, bias_true_scale = compute_scale_zp(
+                rmin=bias_float_data.min(), rmax=bias_float_data.max(), qmin=qmin, qmax=qmax, symmetric=True
+            )
+            bias_true_scale = np.asarray(bias_true_scale, dtype=np.float64)
+            bias_candidate_scale = np.asarray(input_scale * weight_scale * beta, dtype=np.float64)
+            ratio = bias_true_scale / bias_candidate_scale
+
+            if ratio > 1.0:
+                # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
+                weight_scale *= np.asarray(ratio, dtype=weight_scale.dtype)
+                weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
+        else:
+            assert weight_scale_rank == 1, "per-channel scales should be a 1D tensor"
+            assert len(bias_float_data.shape) == 1, "bias should be a 1D tensor for per-channel quant"
+
+            num_elems = weight_scale.shape[0]
+            assert num_elems == bias_float_data.shape[0], "Bias shape should match per-channel weight scale's shape"
+
+            updated_an_elem = False
+
+            for i in range(num_elems):
+                bias_rmax = np.abs(bias_float_data[i])
+                bias_true_scale = (2.0 * bias_rmax) / (np.float64(qmax) - np.float64(qmin))
+                bias_candidate_scale = np.asarray(input_scale * weight_scale[i] * beta, dtype=np.float64)
+                ratio = bias_true_scale / bias_candidate_scale
+
+                if ratio > 1.0:
+                    # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
+                    weight_scale[i] *= np.asarray(ratio, dtype=weight_scale.dtype)
+                    updated_an_elem = True
+
+            if updated_an_elem:
+                weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
+
+        return (input_scale, weight_scale)
+
     def quantize_bias_static(self, bias_name: str, bias_info: QDQBiasQuantInfo) -> str:
         """
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
@@ -1038,17 +1100,25 @@ class QDQQuantizer(BaseQuantizer):
         if bias_name in self.quantized_value_map:
             return self.quantized_value_map[bias_name].original.q_name
 
+        bias_initializer = find_by_name(bias_name, self.model.initializer())
+        assert bias_initializer is not None, "Bias should be a weight"
+
         # get scale for weight
         weight_scale_name = self.quantized_value_map[bias_info.weight_name].original.scale_name
-        weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
-        weight_scale = tensor_proto_to_array(weight_initializer)
+        weight_scale_initializer = find_by_name(weight_scale_name, self.model.initializer())
 
         # get scale for input
         input_scale_name = (
             self.quantized_value_map[bias_info.input_name].get_for_consumer(bias_info.node_name).scale_name
         )
-        inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
-        input_scale = tensor_proto_to_array(inputscale_initializer)
+        input_scale_initializer = find_by_name(input_scale_name, self.model.initializer())
+
+        input_scale, weight_scale = self.adjust_other_input_scales_for_int32_bias(
+            input_scale_initializer,
+            weight_scale_initializer,
+            bias_initializer,
+            bias_info.beta,
+        )
 
         (
             quantized_bias_name,
