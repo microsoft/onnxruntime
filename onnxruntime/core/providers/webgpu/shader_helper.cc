@@ -160,7 +160,7 @@ Status ValidateVariableShape(const TensorShape& origin_shape,
                       "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
   } else if (num_components > 1) {
     // if shape is not overriden, assert origin_shape[-1] % 4 == 0
-    ORT_RETURN_IF_NOT(origin_shape.Size() > 0 && origin_shape[origin_shape.Size() - 1] % num_components == 0,
+    ORT_RETURN_IF_NOT(origin_shape.Size() > 0 && origin_shape[origin_shape.NumDimensions() - 1] % num_components == 0,
                       "Tensor original shape ", origin_shape, " cannot be divided by component number ", num_components);
   }
 
