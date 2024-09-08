@@ -6,36 +6,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
-          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
-        },
-        "comments": "git submodule at cmake/external/emsdk"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "7a2ed51a6b682a83e345ff49fc4cfd7ca47550db",
-          "repositoryUrl": "https://github.com/google/libprotobuf-mutator.git"
-        },
-        "comments": "git submodule at cmake/external/libprotobuf-mutator"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "595228d99e3977ac27cb79d5963adda262af99ad",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "git submodule at cmake/external/onnx"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "f46495ea96f68fc3f6c394f099b2992743f6ff7f",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
@@ -146,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "39FA5259EAEACE0547284B63D5CEDC4F05553F5A",
+          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -210,6 +180,16 @@
           "repositoryUrl": "https://github.com/intel/neural-speed.git"
         },
         "comments": "neural_speed"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "595228d99e3977ac27cb79d5963adda262af99ad",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
+        },
+        "comments": "onnx"
       }
     },
     {
