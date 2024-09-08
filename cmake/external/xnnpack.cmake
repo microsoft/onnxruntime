@@ -39,6 +39,10 @@ set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
 
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
 
+if(onnxruntime_target_platform MATCHES "ARM-like")
+  FetchContent_Declare(KleidiAI URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
+  set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} kleidiai)
 
 # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
