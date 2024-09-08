@@ -405,7 +405,6 @@ Status Execution::LoadModel() {
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
                           const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
                           const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
-  ORT_RETURN_IF_NOT(model_ != nil, "Execution::Predict requires Execution::LoadModel");
 
   if (HAS_COREML3_OR_LATER) {
     @autoreleasepool {
