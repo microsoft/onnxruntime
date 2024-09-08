@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 1ff85b538..37abdd0a7 100644
+index 1ff85b538..c3ef2183f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -253,7 +253,7 @@ ENDIF()
@@ -18,9 +18,9 @@ index 1ff85b538..37abdd0a7 100644
 -  TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing microkernels-prod subgraph)
 +  IF(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 +     # omit microkernels-prod as the list is manually created by ORT in cmake/external/xnnpack.cmake
-+     TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection jit logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing post-operation subgraph)
++     TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing subgraph)
 +  ELSE()
-+     TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection jit logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing post-operation microkernels-prod subgraph)
++     TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing microkernels-prod subgraph)
 +  ENDIF()  
    TARGET_LINK_LIBRARIES(XNNPACK PUBLIC xnnpack-base)
    SET_TARGET_PROPERTIES(XNNPACK PROPERTIES C_EXTENSIONS YES)
