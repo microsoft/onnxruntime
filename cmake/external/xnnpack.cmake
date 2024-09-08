@@ -30,15 +30,15 @@ set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
+FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
+onnxruntime_fetchcontent_makeavailable(kleidiai)
+
 FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
                      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
                     )
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
 set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
-
-FetchContent_Declare(KleidiAI URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
-onnxruntime_fetchcontent_makeavailable(kleidiai)
 
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool kleidiai)
 
