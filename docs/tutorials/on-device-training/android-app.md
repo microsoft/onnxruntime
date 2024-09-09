@@ -25,7 +25,7 @@ In this tutorial, we will use data to learn to:
 - Classify celebrities into one of four categories using a custom celebrities dataset.
 
 
-* TOC placeholder
+## Table of Contents
 {:toc}
 
 ## Prerequisites

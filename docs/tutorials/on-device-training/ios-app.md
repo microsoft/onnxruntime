@@ -29,7 +29,8 @@ In the tutorial, we will:
 - Export the trained model
 - Use the exported model to perform inference
 
-* TOC placeholder
+
+## Table of Contents
 {:toc}
 
 
