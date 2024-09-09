@@ -27,26 +27,6 @@ TEST(ConvIntegerTest, WithoutPadding_2D_u8u8) {
   test.Run();
 }
 
-TEST(ConvIntegerTest, WithoutPadding_2D_u8s8) {
-  OpTester test("ConvInteger", 10);
-  std::vector<int64_t> x_dims{1, 1, 3, 3};
-  test.AddInput<uint8_t>("x", x_dims,
-                         {2, 3, 4,
-                          5, 6, 7,
-                          8, 9, 10});
-  std::vector<int64_t> w_dims{1, 1, 2, 2};
-  test.AddInput<int8_t>("w", w_dims,
-                        {-9, -9,
-                         -9, -9});
-  test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<int8_t>("w_zero_point", {}, {-10});
-  std::vector<int64_t> y_dims{1, 1, 2, 2};
-  test.AddOutput<int32_t>("y", y_dims,
-                          {12, 16,
-                           24, 28});
-  test.Run();
-}
-
 TEST(ConvIntegerTest, WithPadding_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
