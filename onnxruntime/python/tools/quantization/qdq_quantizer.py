@@ -1051,20 +1051,14 @@ class QDQQuantizer(BaseQuantizer):
         weight_scale_rank: int = len(weight_scale.shape)
         is_per_tensor: bool = weight_scale_rank == 0 or (weight_scale_rank == 1 and weight_scale.shape[0] == 1)
 
-        qmin = np.asarray(np.iinfo(np.int32).min)
-        qmax = np.asarray(np.iinfo(np.int32).max)
+        int32_info = np.iinfo(np.int32)
+        qrange = np.array(int32_info.max, dtype=np.float64) - np.array(int32_info.min, dtype=np.float64)
 
         if is_per_tensor:
-            tiny_float = np.finfo(bias_float_data.dtype).tiny
-            _, bias_true_scale = compute_scale_zp(
-                rmin=bias_float_data.min(),
-                rmax=bias_float_data.max(),
-                qmin=qmin,
-                qmax=qmax,
-                symmetric=True,
-                min_real_range=tiny_float,  # Prevent compute_scale_zp() from using a scale of 1.0 for tiny scales
-            )
-            bias_true_scale = np.asarray(bias_true_scale, dtype=np.float64)
+            rmin = np.minimum(bias_float_data.min(), np.array(0, dtype=np.float64))
+            rmax = np.maximum(bias_float_data.max(), np.array(0, dtype=np.float64))
+            absmax = np.maximum(np.abs(rmin), np.abs(rmax))
+            bias_true_scale = (2.0 * absmax) / qrange
             bias_candidate_scale = np.asarray(input_scale * weight_scale * beta, dtype=np.float64)
             ratio = bias_true_scale / bias_candidate_scale
 
@@ -1072,18 +1066,14 @@ class QDQQuantizer(BaseQuantizer):
                 # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
                 weight_scale *= np.asarray(ratio, dtype=weight_scale.dtype)
                 weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
-        else:
-            assert weight_scale_rank == 1, "per-channel scales should be a 1D tensor"
-            assert len(bias_float_data.shape) == 1, "bias should be a 1D tensor for per-channel quant"
-
+        elif weight_scale_rank == 1 and weight_scale.shape == bias_float_data.shape:
+            # per-channel case
             num_elems = weight_scale.shape[0]
-            assert num_elems == bias_float_data.shape[0], "Bias shape should match per-channel weight scale's shape"
-
             updated_an_elem = False
 
             for i in range(num_elems):
                 bias_rmax = np.abs(bias_float_data[i])
-                bias_true_scale = (2.0 * bias_rmax) / (np.float64(qmax) - np.float64(qmin))
+                bias_true_scale = (2.0 * bias_rmax) / qrange
                 bias_candidate_scale = np.asarray(input_scale * weight_scale[i] * beta, dtype=np.float64)
                 ratio = bias_true_scale / bias_candidate_scale
 
