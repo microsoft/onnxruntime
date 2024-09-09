@@ -147,14 +147,14 @@ TEST(ConvIntegerTest, WithGroup_2D_u8s8) {
                           26, 27, 28});
   std::vector<int64_t> w_dims{3, 1, 2, 2};
   test.AddInput<int8_t>("w", w_dims,
-                        {-9, -8,
-                         -8, -9,
-                         -7, -6,
-                         -6, -7,
-                         -5, -4,
-                         -4, -5});
+                        {-2, -1,
+                         -2, -1,
+                         0, 1,
+                         1, 0,
+                         2, 3,
+                         3, 2});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<int8_t>("w_zero_point", {}, {-10});
+  test.AddInput<int8_t>("w_zero_point", {}, {-3});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1});
   test.AddAttribute("group", static_cast<int64_t>(3));
   std::vector<int64_t> y_dims{1, 3, 4, 4};
@@ -393,11 +393,11 @@ TEST(ConvIntegerTest, WithStride2_2D_u8s8) {
                           70, 71, 72, 73, 74, 75, 76});
   std::vector<int64_t> w_dims{1, 1, 3, 3};
   test.AddInput<int8_t>("w", w_dims,
-                        {-9, -8, -9,
-                         -8, -7, -8,
-                         -9, -8, -9});
+                        {-2, -1, -2,
+                         -1, 0, -1,
+                         -2, -1, -2});
   test.AddInput<uint8_t>("x_zero_point", {}, {10});
-  test.AddInput<int8_t>("w_zero_point", {}, {-10});
+  test.AddInput<int8_t>("w_zero_point", {}, {-3});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1});
   test.AddAttribute<std::vector<int64_t>>("strides", {2, 2});
   std::vector<int64_t> y_dims{1, 1, 4, 4};
@@ -452,11 +452,11 @@ TEST(ConvIntegerTest, WithStride3_2D_u8s8) {
                           70, 71, 72, 73, 74, 75, 76});
   std::vector<int64_t> w_dims{1, 1, 3, 3};
   test.AddInput<int8_t>("w", w_dims,
-                        {-9, -8, -9,
-                         -8, -7, -8,
-                         -9, -8, -9});
+                        {-2, -1, -2,
+                         -1, 0, -1,
+                         -2, -1, -2});
   test.AddInput<uint8_t>("x_zero_point", {}, {10});
-  test.AddInput<int8_t>("w_zero_point", {}, {-10});
+  test.AddInput<int8_t>("w_zero_point", {}, {-3});
   test.AddAttribute<std::vector<int64_t>>("pads", {2, 2, 1, 1});
   test.AddAttribute<std::vector<int64_t>>("strides", {3, 3});
   std::vector<int64_t> y_dims{1, 1, 3, 3};
