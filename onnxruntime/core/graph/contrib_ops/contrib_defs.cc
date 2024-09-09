@@ -1067,11 +1067,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GridSample, 1,
 ONNX_MS_OPERATOR_SET_SCHEMA(
     UnfoldTensor, 1,
     OpSchema()
-        .SetDoc("Returns a tensor which contains all slices of size size from input tensor in the dimension dim. "
-                "Step between two slices is given by step. "
-                "If sizedim is the size of dimension dim for input tensor, the size of dimension dim in "
-                "the returned tensor will be (sizedim - size) / step + 1. "
-                "An additional dimension of size size is appended in the returned tensor.")
+        .SetDoc("Returns a tensor which contains all slices of size `size` from input tensor in the dimension `dim`. "
+                "Step between two slices is given by `step`. "
+                "If sizedim is the size of dimension `dim` for input tensor, the size of dimension `dim` in "
+                "the returned tensor will be `(sizedim - size) / step + 1`. "
+                "An additional dimension of size `size` is appended in the returned tensor.")
         .Attr("dim", "specify the dimension to unfold", AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("size", "specify the size", AttributeProto::INT)
         .Attr("step", "specify the step.", AttributeProto::INT, static_cast<int64_t>(1))
