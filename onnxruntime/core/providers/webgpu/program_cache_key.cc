@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramTensorMetadataDependency dependency, bool& first) {
+// append the info of an input or output to the cachekey
+void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency, bool& first) {
   if (first) {
     first = false;
   } else {
@@ -17,9 +18,9 @@ void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramTenso
   }
   if ((dependency & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
 #ifndef NDEBUG  // if debug build
-    ss << DataTypeImpl::ToString(tensor.DataType());
+    ss << var_type;
 #else
-    ss << output.tensor->GetElementType();
+    ss << static_cast<int>(var_type);
 #endif
     ss << ';';
   }
@@ -87,13 +88,13 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
   ss << ":" D("Inputs=");
   first = true;
   for (const auto& input : program.Inputs()) {
-    AppendTensorInfo(ss, *input.tensor, input.dependency, first);
+    AppendTensorInfo(ss, *input.tensor, input.var_type, input.dependency, first);
   }
 
   ss << ":" D("Outputs=");
   first = true;
   for (const auto& output : program.Outputs()) {
-    AppendTensorInfo(ss, *output.tensor, output.dependency, first);
+    AppendTensorInfo(ss, *output.tensor, output.var_type, output.dependency, first);
   }
 
   return ss.str();

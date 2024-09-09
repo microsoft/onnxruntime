@@ -199,6 +199,9 @@ enum class ProgramVariableDataType {
   Uint64,
   Vec4Bool,
 };
+#ifndef NDEBUG
+std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
+#endif
 
 int NumberOfComponents(ProgramVariableDataType type);
 
