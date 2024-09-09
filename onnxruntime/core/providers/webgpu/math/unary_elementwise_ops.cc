@@ -9,12 +9,8 @@
 namespace onnxruntime {
 namespace webgpu {
 Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("x",
-                                      ToProgramVariableDataType(Inputs()[0].tensor->GetElementType(), 4),
-                                      ShaderVariable::UseUniform | additional_usage_);
-  const auto& output = shader.AddOutput("y",
-                                        ToProgramVariableDataType(Outputs()[0].tensor->GetElementType(), 4),
-                                        ShaderVariable::UseUniform);
+  const auto& input = shader.AddInput("x", ShaderVariable::UseUniform | additional_usage_);
+  const auto& output = shader.AddOutput("y", ShaderVariable::UseUniform);
   shader.AppendImplementation(additional_impl_);
   shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
                           "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
@@ -33,8 +29,8 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   SafeInt<uint32_t> vec_size = (size + 3) / 4;
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
-      .Inputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}}})
-      .Outputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}}})
+      .Inputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
+      .Outputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
       .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .UniformVariables({
           {static_cast<uint32_t>(vec_size)},

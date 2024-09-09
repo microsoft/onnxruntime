@@ -4,6 +4,7 @@
 #pragma once
 
 #include <sstream>
+#include <set>
 
 #include "core/framework/tensor_shape.h"
 
@@ -60,7 +61,7 @@ class ShaderVariable {
   ShaderVariable& operator=(ShaderVariable&&) = default;
 
   // get the name of the variable.
-  std::string_view Name() const;
+  inline std::string_view Name() const { return name_; }
 
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
@@ -147,7 +148,7 @@ class ShaderVariable {
   TensorShape dims_;
 
   mutable Usage usage_;
-  mutable std::vector<std::reference_wrapper<const ShaderVariable>> broadcasted_to_;
+  mutable std::set<const ShaderVariable*> broadcasted_to_;
 
   // unlike storage/element/value type, indices type is not a string view to a constant string. so we need to store it.
   std::string indices_type_;
@@ -202,7 +203,7 @@ inline std::string ShaderVariable::IndicesToOffset(std::string_view indices_expr
 
 inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const {
   usage_ |= UseBroadcastedIndicesToOffset | UseShapeAndStride;
-  broadcasted_to_.push_back(broadcasted_result);
+  broadcasted_to_.insert(&broadcasted_result);
   return rank_ == 0
              ? "0"
              : MakeStringWithClassicLocale(broadcasted_result.name_, "_bi2o_", name_, '(', indices_expr, ')');

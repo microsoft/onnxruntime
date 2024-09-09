@@ -81,14 +81,12 @@ class ShaderHelper final {
   //
   // depending on the usage of the variable, additional code may be generated.
   const ShaderVariable& AddInput(const std::string& name,
-                                 ProgramVariableDataType type,
                                  ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
 
   // Add an output variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
   const ShaderVariable& AddOutput(const std::string& name,
-                                  ProgramVariableDataType type,
                                   ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
 
   // Append additional implementation code to the shader.
@@ -140,7 +138,6 @@ class ShaderHelper final {
 
   const ShaderVariable& AddVariableImpl(ProgramVariableScope scope,
                                         const std::string& name,
-                                        ProgramVariableDataType type,
                                         ShaderVariable::Usage usage,
                                         const TensorShape& dims);
 
@@ -178,7 +175,6 @@ class ShaderHelper final {
   std::ostringstream additional_implementation_;
   std::ostringstream body_;
 
-  bool use_f16_ = false;
   bool body_set_ = false;
 };
 

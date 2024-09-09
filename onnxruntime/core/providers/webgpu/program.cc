@@ -82,6 +82,30 @@ std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) 
   return os;
 }
 
+#ifndef NDEBUG
+constexpr std::string_view ProgramVariableDataTypeName[] = {
+    "f32",     // f32
+    "f32x2",   // vec2f32
+    "f32x4",   // vec4f32
+    "f16",     // f16
+    "f16x2",   // vec2f16
+    "f16x4",   // vec4f16
+    "i32",     // i32
+    "i32x2",   // vec2i32
+    "i32x4",   // vec4i32
+    "u32",     // u32
+    "u32x2",   // vec2u32
+    "u32x4",   // vec4u32
+    "i64",     // int64
+    "u64",     // uint64
+    "boolx4",  // vec4bool
+};
+std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
+  os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
+  return os;
+}
+#endif
+
 int NumberOfComponents(ProgramVariableDataType type) {
   switch (type) {
     case ProgramVariableDataType::Float32:

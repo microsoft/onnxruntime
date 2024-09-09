@@ -163,34 +163,6 @@ inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependen
   return (ProgramTensorMetadataDependency&)((int&)a &= (int&)b);
 }
 
-struct ProgramInput {
-  ProgramInput(const Tensor* tensor)
-      : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency)
-      : tensor{tensor}, dependency{dependency}, use_override_shape{false}, override_shape{} {}
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape)
-      : tensor{tensor}, dependency{dependency}, use_override_shape{true}, override_shape{override_shape} {}
-
-  const Tensor* tensor;
-  ProgramTensorMetadataDependency dependency;
-  bool use_override_shape;
-  TensorShape override_shape;
-};
-
-struct ProgramOutput {
-  ProgramOutput(Tensor* tensor)
-      : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency)
-      : tensor{tensor}, dependency{dependency}, use_override_shape{false}, override_shape{} {}
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape)
-      : tensor{tensor}, dependency{dependency}, use_override_shape{true}, override_shape{override_shape} {}
-
-  Tensor* tensor;
-  ProgramTensorMetadataDependency dependency;
-  bool use_override_shape;
-  TensorShape override_shape;
-};
-
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 
 // represents the scope of a variable in a shader program.
@@ -227,10 +199,59 @@ enum class ProgramVariableDataType {
   Uint64,
   Vec4Bool,
 };
+#ifndef NDEBUG
+std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
+#endif
 
 int NumberOfComponents(ProgramVariableDataType type);
 
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
+
+struct ProgramInput {
+  ProgramInput(const Tensor* tensor)
+      : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1)
+      : tensor{tensor},
+        dependency{dependency},
+        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+        use_override_shape{false},
+        override_shape{} {}
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+      : tensor{tensor},
+        dependency{dependency},
+        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+        use_override_shape{true},
+        override_shape{override_shape} {}
+
+  const Tensor* tensor;
+  ProgramTensorMetadataDependency dependency;
+  ProgramVariableDataType var_type;
+  bool use_override_shape;
+  TensorShape override_shape;
+};
+
+struct ProgramOutput {
+  ProgramOutput(Tensor* tensor)
+      : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1)
+      : tensor{tensor},
+        dependency{dependency},
+        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+        use_override_shape{false},
+        override_shape{} {}
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+      : tensor{tensor},
+        dependency{dependency},
+        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+        use_override_shape{true},
+        override_shape{override_shape} {}
+
+  Tensor* tensor;
+  ProgramTensorMetadataDependency dependency;
+  ProgramVariableDataType var_type;
+  bool use_override_shape;
+  TensorShape override_shape;
+};
 
 namespace detail {
 class ProgramWrapper;

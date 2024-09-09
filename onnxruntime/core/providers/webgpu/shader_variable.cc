@@ -172,8 +172,8 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Implementation of "fn {res_name}_bi2o_{name}"
   if (usage_ & UseBroadcastedIndicesToOffset) {
     if (rank_ > 0) {
-      for (const auto& iter : broadcasted_to_) {
-        const auto& broadcasted_result = iter.get();
+      for (const auto& broadcasted_result_ptr : broadcasted_to_) {
+        const auto& broadcasted_result = *broadcasted_result_ptr;
         SS("fn ", broadcasted_result.name_, "_bi2o_", name_, "(indices : ", broadcasted_result.indices_type_, ")->u32 {\n");
         if (rank_ == 1) {
           SS("  return ", broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", shape, ";\n");
