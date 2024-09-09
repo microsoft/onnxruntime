@@ -66,7 +66,8 @@ interface TypedTensorBase<T extends Tensor.Type> {
 export declare namespace Tensor {
   interface DataTypeMap {
     float32: Float32Array;
-    uint8: Uint8Array | Uint8ClampedArray;
+    uint8: Uint8Array;
+    uint8c: Uint8ClampedArray;
     int8: Int8Array;
     uint16: Uint16Array;
     int16: Int16Array;
@@ -88,6 +89,7 @@ export declare namespace Tensor {
   interface ElementTypeMap {
     float32: number;
     uint8: number;
+    uint8c: number;
     int8: number;
     uint16: number;
     int16: number;
@@ -139,7 +141,7 @@ export declare namespace Tensor {
   /**
    * supported data types for constructing a tensor from a WebGPU buffer
    */
-  export type GpuBufferDataTypes = 'float32' | 'float16' | 'int32' | 'int64' | 'uint32' | 'uint8' | 'bool';
+  export type GpuBufferDataTypes = 'float32' | 'float16' | 'int32' | 'int64' | 'uint32' | 'uint8' | 'uint8c' | 'bool';
 
   /**
    * represent where the tensor data is stored
@@ -243,7 +245,15 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new (data: Uint8Array | Uint8ClampedArray, dims?: readonly number[]): TypedTensor<'uint8'>;
+  new (data: Uint8Array, dims?: readonly number[]): TypedTensor<'uint8'>;
+
+  /**
+   * Construct a new uint8 tensor object from the given data and dims.
+   *
+   * @param data - Specify the CPU tensor data.
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new (data: Uint8ClampedArray, dims?: readonly number[]): TypedTensor<'uint8c'>;
 
   /**
    * Construct a new uint16 tensor object from the given data and dims.
