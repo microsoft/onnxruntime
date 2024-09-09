@@ -49,6 +49,9 @@ struct OrtVitisAIEpAPI {
   void (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       vaip_core::DllSafe<std::vector<Node*>>* ret_value) = nullptr;
+  int (*vitisai_ep_on_run_start)(
+       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
+      vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) = nullptr;
   void Ensure() {
     if (handle_)
       return;
@@ -73,6 +76,7 @@ struct OrtVitisAIEpAPI {
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
   }
 
  private:
@@ -103,6 +107,15 @@ std::optional<std::vector<Node*>> create_ep_context_nodes(
     }
   }
   return std::nullopt;
+}
+
+int vitisai_ep_on_run_start(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, void* state,
+    vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) {
+  if (s_library_vitisaiep.vitisai_ep_on_run_start) {
+    return s_library_vitisaiep.vitisai_ep_on_run_start(eps, state, get_config_entry);
+  }
+  return 100;
 }
 
 struct MyCustomOpKernel : OpKernel {

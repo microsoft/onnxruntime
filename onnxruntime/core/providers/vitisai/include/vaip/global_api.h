@@ -16,3 +16,7 @@ std::shared_ptr<onnxruntime::KernelRegistry> get_kernel_registry_vitisaiep();
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep();
 std::optional<std::vector<onnxruntime::Node*>> create_ep_context_nodes(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps);
+
+int vitisai_ep_on_run_start(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
+    vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name));
