@@ -48,11 +48,51 @@
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
+
+    file(GLOB_RECURSE onnxruntime_cuda_flash_attention_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/flash_attention/*.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/flash_attention/*.cc"
+    )
+
+    file(GLOB_RECURSE onnxruntime_cuda_flash_attention_cu_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/flash_attention/*.cu"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/flash_attention/*.cuh"
+    )
+
+    file(GLOB_RECURSE onnxruntime_cuda_cutlass_fmha_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/cutlass_fmha/*.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/cutlass_fmha/*.cc"
+    )
+    
+    file(GLOB_RECURSE onnxruntime_cuda_cutlass_fmha_cu_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/cutlass_fmha/*.cu"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/cutlass_fmha/*.cuh"
+    )
+    list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs ${onnxruntime_cuda_flash_attention_cc_srcs} ${onnxruntime_cuda_cutlass_fmha_cc_srcs})
+    list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cu_srcs ${onnxruntime_cuda_flash_attention_cu_srcs} ${onnxruntime_cuda_cutlass_fmha_cu_srcs})
+
+    if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OR onnxruntime_USE_FLASH_ATTENTION)
+      add_library(fmha_cuda OBJECT)
+      # Flash attention and cutlass fmha requires excessive memory to compile, so restrict parallelism in ninja builds
+      set_property(GLOBAL PROPERTY JOB_POOLS fmha_cuda_pool=4)
+      set_property(TARGET fmha_cuda PROPERTY JOB_POOL_COMPILE fmha_cuda_pool)
+      target_sources(fmha_cuda PRIVATE ${onnxruntime_cuda_flash_attention_cu_srcs} ${onnxruntime_cuda_cutlass_fmha_cu_srcs})
+    endif()
+
+    if(USE_MEM_EFF_ATTENTION)
+      list(APPEND native_transformers_cuda_cu ${mem_eff_attention_cuda_cu})
+      list(APPEND native_transformers_cuda_cu ${mem_eff_attention_cuda_kernels_cu})
+      list(APPEND native_transformers_cuda_cpp ${mem_eff_attention_cuda_cpp})
+      list(APPEND MEM_EFF_ATTENTION_CUDA_SOURCES ${native_transformers_cuda_cu} ${mem_eff_attention_cuda_cu} ${mem_eff_attention_cuda_kernels_cu})
+      list(APPEND ATen_ATTENTION_KERNEL_SRCS ${mem_eff_attention_cuda_kernels_cu})
+    endif()
+
     if (NOT onnxruntime_ENABLE_ATEN)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
       )
     endif()
+
     if (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
