@@ -26,6 +26,7 @@ In this tutorial, we will use data to learn to:
 
 
 ## Table of Contents
+* TOC placeholder
 {:toc}
 
 ## Prerequisites
