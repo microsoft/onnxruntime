@@ -167,15 +167,15 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
     OpQuantParam quant_param = ParseQuantParamForOp(info, x_dtype, 1);
     xstatus = xnn_create_softmax_nc_qu8(
-                                        quant_param[0].first[0],  // x_scale, input scale
-                                        quant_param[1].second,    // y_zp,  output zero point
-                                        quant_param[1].first[0],  // y_scale, output scale
-                                        0,                        // flags,
-                                        &p);
+        quant_param[0].first[0],  // x_scale, input scale
+        quant_param[1].second,    // y_zp,  output zero point
+        quant_param[1].first[0],  // y_scale, output scale
+        0,                        // flags,
+        &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
     xstatus = xnn_create_softmax_nc_f32(
-                                        0,  // flags,
-                                        &p);
+        0,  // flags,
+        &p);
   }
 
   ORT_ENFORCE(xstatus == xnn_status_success && p != nullptr, "xnn_create_softmax_nc_",

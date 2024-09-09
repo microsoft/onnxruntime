@@ -228,7 +228,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   xnn_status xstatus = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_f32(channels, channels,flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_f32(channels, channels, flags, &p);
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     xstatus = xnn_create_resize_bilinear2d_nhwc_u8(channels, channels, flags, &p);
   } else {

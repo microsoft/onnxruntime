@@ -232,7 +232,7 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   }
 
   auto status = reshape_fn(op0_.get(), N, H, W,
-                            C, C, C, // channels, input_pixel_stride, output_pixel_stride
+                           C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);
   if (status != xnn_status_success) {
