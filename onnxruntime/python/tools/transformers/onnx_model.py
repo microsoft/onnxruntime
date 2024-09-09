@@ -74,9 +74,28 @@ class OnnxModel:
                         input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
+    def input_name_to_nodes_for_main_graph(self):
+        input_name_to_nodes = {}
+        for node in self.model.graph.node:
+            for input_name in node.input:
+                if input_name:  # could be empty when it is optional
+                    if input_name not in input_name_to_nodes:
+                        input_name_to_nodes[input_name] = [node]
+                    else:
+                        input_name_to_nodes[input_name].append(node)
+        return input_name_to_nodes
+
     def output_name_to_node(self):
         output_name_to_node = {}
         for node in self.nodes():
+            for output_name in node.output:
+                if output_name:  # could be empty when it is optional
+                    output_name_to_node[output_name] = node
+        return output_name_to_node
+
+    def output_name_to_node_for_main_graph(self):
+        output_name_to_node = {}
+        for node in self.model.graph.node:
             for output_name in node.output:
                 if output_name:  # could be empty when it is optional
                     output_name_to_node[output_name] = node
@@ -918,19 +937,36 @@ class OnnxModel:
             allow_remove_graph_inputs (bool): allow remove graph inputs.
         """
 
-        if len(self.graphs()) > 1:
-            # TODO(tianleiwu): handle subgraph
-            logger.debug("Skip prune_graph since graph has subgraph")
-            return
-
         keep_outputs = [output.name for output in self.model.graph.output] if outputs is None else outputs
 
+        input_name_to_nodes_for_main_graph = self.input_name_to_nodes_for_main_graph()
         output_name_to_node = self.output_name_to_node()
 
         def get_first_output(node):
             if node.output[0]:
                 return node.output[0]
             return next(iter([o for o in node.output if o]), None)
+
+        if len(self.graphs()) > 1:
+            # Get input names for all nodes in all subgraphs
+            subgraph_nodes = list(filter(lambda node: node.op_type in {"Loop", "Scan", "If"}, self.model.graph.node))
+            subgraph_nodes_inputs = set()
+            for parent_node in subgraph_nodes:
+                for attr in parent_node.attribute:
+                    if attr.type == AttributeProto.GRAPH:
+                        child_nodes = attr.g.node
+                        for child_node in child_nodes:
+                            subgraph_nodes_inputs.update(child_node.input)
+
+            # For graphs with subgraphs, add dangling outputs from parent graph nodes to list of outputs to keep
+            for node in self.model.graph.node:
+                if node in subgraph_nodes:
+                    continue
+
+                # Check if node output is an input of a subgraph node and not an input to a node in the main graph
+                for output in node.output:
+                    if output in subgraph_nodes_inputs and output not in input_name_to_nodes_for_main_graph:
+                        keep_outputs += [output]
 
         # Keep track of nodes to keep. The key is first output of node, and the value is the node.
         output_to_node = {}
@@ -956,7 +992,7 @@ class OnnxModel:
             first_output = get_first_output(node)
             kept_node = output_to_node.get(first_output)
 
-            # Need double check the node since fused node might reuse output name of some nodes to be removed.
+            # Need to double check the node since fused node might reuse output name of some nodes to be removed.
             # It is slow to compare whole node, so we compare op_type first to avoid comparing node in most cases.
             if kept_node and kept_node.op_type == node.op_type and kept_node == node:
                 nodes_to_keep.append(node)
@@ -1000,9 +1036,15 @@ class OnnxModel:
         remaining_input_names = []
         for node in graph.node:
             if node.op_type in ["Loop", "Scan", "If"]:
-                # TODO: handle inner graph
-                logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")
-                return
+                # Add input names of nodes in subgraphs
+                for attr in node.attribute:
+                    if attr.type == AttributeProto.GRAPH:
+                        child_nodes = attr.g.node
+                        for child_node in child_nodes:
+                            for input_name in child_node.input:
+                                if input_name not in remaining_input_names:
+                                    remaining_input_names.append(input_name)
+
             if node.op_type != "Constant":
                 for input_name in node.input:
                     if input_name not in remaining_input_names:

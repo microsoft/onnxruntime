@@ -98,7 +98,7 @@ class FusionGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node("Gelu", inputs=[subgraph_input], outputs=[subgraph_output])
+        fused_node = helper.make_node("Gelu", inputs=[subgraph_input], outputs=[subgraph_output], name=self.model.create_node_name("Gelu"))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
@@ -172,7 +172,7 @@ class FusionGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]])
+        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]], name=self.model.create_node_name("Gelu"))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
@@ -243,7 +243,7 @@ class FusionGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
+        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]], name=self.model.create_node_name("Gelu"))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
