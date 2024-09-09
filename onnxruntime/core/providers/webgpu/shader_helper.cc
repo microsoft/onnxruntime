@@ -27,9 +27,7 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
       program_{program},
-      program_metadata_{program_metadata},
-      use_f16_{false} {
-}
+      program_metadata_{program_metadata} {}
 
 Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
@@ -80,24 +78,24 @@ Status ShaderHelper::Init() {
   return Status::OK();
 }
 
-const ShaderVariable& ShaderHelper::AddInput(const std::string& name, ProgramVariableDataType type, ShaderVariable::Usage usage) {
+const ShaderVariable& ShaderHelper::AddInput(const std::string& name, ShaderVariable::Usage usage) {
   const size_t input_index = vars_[std::underlying_type<ProgramVariableScope>::type(ProgramVariableScope::Input)].size();
   ORT_ENFORCE(input_index < program_.Inputs().size(),
               "Too many inputs in the program (", program_.Inputs().size(), ")");
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(ProgramVariableScope::Input, name, type, usage, dims);
+  return AddVariableImpl(ProgramVariableScope::Input, name, usage, dims);
 }
 
-const ShaderVariable& ShaderHelper::AddOutput(const std::string& name, ProgramVariableDataType type, ShaderVariable::Usage usage) {
+const ShaderVariable& ShaderHelper::AddOutput(const std::string& name, ShaderVariable::Usage usage) {
   const size_t output_index = vars_[std::underlying_type<ProgramVariableScope>::type(ProgramVariableScope::Output)].size();
   ORT_ENFORCE(output_index < program_.Outputs().size(),
               "Too many outputs in the program (", program_.Outputs().size(), ")");
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(ProgramVariableScope::Output, name, type, usage, dims);
+  return AddVariableImpl(ProgramVariableScope::Output, name, usage, dims);
 }
 
 #ifndef NDEBUG  // if debug build
@@ -200,7 +198,6 @@ Status ValidateVariableDependency(ProgramTensorMetadataDependency dependency, Sh
 
 const ShaderVariable& ShaderHelper::AddVariableImpl(ProgramVariableScope scope,
                                                     const std::string& name,
-                                                    ProgramVariableDataType type,
                                                     ShaderVariable::Usage usage,
                                                     const TensorShape& dims) {
   if (scope == ProgramVariableScope::Input || scope == ProgramVariableScope::Output) {
@@ -210,15 +207,20 @@ const ShaderVariable& ShaderHelper::AddVariableImpl(ProgramVariableScope scope,
                 "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
   }
 
-  if (type == ProgramVariableDataType::Float16 || type == ProgramVariableDataType::Vec2Float16 || type == ProgramVariableDataType::Vec4Float16) {
-    use_f16_ = true;
-  }
+  auto& vars = vars_[std::underlying_type<decltype(scope)>::type(scope)];
+  ProgramVariableDataType type = ProgramVariableDataType::InvalidType;
 
-  if (scope == ProgramVariableScope::Local) {
+  if (scope == ProgramVariableScope::Input) {
+    const auto& input = program_.Inputs()[vars.size()];
+    type = input.var_type;
+  } else if (scope == ProgramVariableScope::Output) {
+    const auto& output = program_.Outputs()[vars.size()];
+    type = output.var_type;
+  } else {
     ORT_NOT_IMPLEMENTED("Local variables are not supported yet.");
   }
 
-  const auto& var = vars_[std::underlying_type<decltype(scope)>::type(scope)].emplace_back(std::make_unique<ShaderVariable>(name, type, usage, dims));
+  const auto& var = vars.emplace_back(std::make_unique<ShaderVariable>(name, type, usage, dims));
   return *var;
 }
 
@@ -311,7 +313,16 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Section feature enabling
   //
-  if (use_f16_) {
+  if (std::any_of(program_.Inputs().begin(),
+                  program_.Inputs().end(),
+                  [](const ProgramInput& input) {
+                    return input.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+                  }) ||
+      std::any_of(program_.Outputs().begin(),
+                  program_.Outputs().end(),
+                  [](const ProgramOutput& output) {
+                    return output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+                  })) {
     ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
     if (device_.HasFeature(wgpu::FeatureName::SubgroupsF16)) {
