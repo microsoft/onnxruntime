@@ -42,19 +42,6 @@ struct RightPaddingBatchHook {
 
     auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
 
-    // // When seqstart_k_ptr is provided, we interpret it as past sequence length. This is used for interactive mode in GQA
-    // if (p.seqstart_k_ptr) {
-    //   p.num_keys = p.seqstart_k_ptr[batch_id] + p.num_queries;
-    // } else if (p.seqlen_k_ptr) {
-    //   p.num_keys = p.seqlen_k_ptr[batch_id];
-    // }
-
-    // When seqstart_q_ptr is provided we interpret it as new sequence length, we use it to calculate past sequence length.
-    // Used primarily in interactive mode in GQA.
-    // if (p.seqstart_q_ptr && p.seqlen_k_ptr) {
-    //   const int past_seqlen = p.seqlen_k_ptr[batch_id] - p.seqstart_q_ptr[batch_id];
-    //   p.num_keys = past_seqlen + p.num_queries;
-    // } else
     if (p.seqlen_k_ptr) {
       p.num_keys = p.seqlen_k_ptr[batch_id];
     }

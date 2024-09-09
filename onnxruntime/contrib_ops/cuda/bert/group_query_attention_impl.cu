@@ -242,7 +242,9 @@ __global__ void ConcatKVInPlace(const int max_seqlen,
   const int kv_num_heads = blockDim.y;
   const int H = blockDim.x;
 
-  const int past_seq_len = seqlens_k == nullptr ? 0 : (seqlens_k[b] + 1 - new_seqlen);
+  const int past_seq_len = (total_seqlens_k != nullptr)
+                               ? (total_seqlens_k[b] - new_seqlen)
+                               : (seqlens_k == nullptr ? 0 : (seqlens_k[b] + 1 - new_seqlen));
 
   int out_offset = is_past_kv_bnsh_format
                        ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
@@ -273,7 +275,9 @@ __global__ void ConcatKVInPlaceLarge(const int max_seqlen,
     const int b = blockIdx.z;
     const int new_seqlen = gridDim.y;
 
-    const int past_seq_len = seqlens_k == nullptr ? 0 : (seqlens_k[b] + 1 - new_seqlen);
+    const int past_seq_len = (total_seqlens_k != nullptr)
+                                 ? (total_seqlens_k[b] - new_seqlen)
+                                 : (seqlens_k == nullptr ? 0 : (seqlens_k[b] + 1 - new_seqlen));
 
     int out_offset = is_past_kv_bnsh_format
                          ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)

@@ -275,7 +275,7 @@ def create_group_query_attention_graph_prompt(
         helper.make_tensor_value_info(
             "seqlens_k",
             TensorProto.INT32,
-            [2, config.batch_size] if interactive else [config.batch_size],
+            [config.batch_size],
         ),
         helper.make_tensor_value_info(
             "total_sequence_length",
@@ -2244,47 +2244,6 @@ def gqa_past_flash_attention_test_cases():
                                         packed,
                                         softcap,
                                     )
-
-
-def gqa_interactive_memory_efficient_test_cases():
-    batches = [5] if pipeline_mode else [1, 3, 5]
-    seqs = (
-        [(1, 128), (128, 128), (32, 128), (256, 2048)]
-        if pipeline_mode
-        else [
-            (1, 128),
-            (32, 128),
-            (128, 2048),
-            (1235, 5000),
-            (40, 800),
-            (1, 256),
-            (2, 799),
-            (41, 2048),
-            # (1, 128 * 512),
-            # (16, 128 * 512),
-            # (128, 128),
-        ]
-    )
-    num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-    h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-    random.seed(69)
-
-    for b in batches:
-        for s, s2 in seqs:
-            for n, n2 in num_h:
-                for h in h_sizes:
-                    for rotary, rotary_interleaved in rotary_options_for_current_os():
-                        for packed in [False, True]:
-                            for no_past in [False, True]:
-                                config = Config(b, s, s2, -1, n, n2, h)
-                                yield (
-                                    str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
-                                    config,
-                                    no_past,
-                                    rotary,
-                                    rotary_interleaved,
-                                    packed,
-                                )
 
 
 def gqa_interactive_one_batch_flash_attention_test_cases():
