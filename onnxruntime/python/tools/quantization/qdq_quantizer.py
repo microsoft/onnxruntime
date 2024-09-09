@@ -1034,7 +1034,6 @@ class QDQQuantizer(BaseQuantizer):
         input_scale_tp: onnx.TensorProto,
         weight_scale_tp: onnx.TensorProto,
         bias_tp: onnx.TensorProto,
-        beta: float,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Checks if the bias scale (input_scale * weight_scale) that we intend to use is too small.
@@ -1058,12 +1057,12 @@ class QDQQuantizer(BaseQuantizer):
             rmin = np.minimum(bias_float_data.min(), np.array(0, dtype=np.float64))
             rmax = np.maximum(bias_float_data.max(), np.array(0, dtype=np.float64))
             absmax = np.maximum(np.abs(rmin), np.abs(rmax))
-            bias_true_scale = (2.0 * absmax) / qrange
-            bias_candidate_scale = np.asarray(input_scale * weight_scale * beta, dtype=np.float64)
-            ratio = bias_true_scale / bias_candidate_scale
+            bias_smallest_valid_scale = (2.0 * absmax) / qrange
+            bias_candidate_scale = np.asarray(input_scale * weight_scale, dtype=np.float64)
 
-            if ratio > 1.0:
+            if bias_candidate_scale < bias_smallest_valid_scale:
                 # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
+                ratio = bias_smallest_valid_scale / bias_candidate_scale
                 weight_scale *= np.asarray(ratio, dtype=weight_scale.dtype)
                 weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
         elif weight_scale_rank == 1 and weight_scale.shape == bias_float_data.shape:
@@ -1073,12 +1072,12 @@ class QDQQuantizer(BaseQuantizer):
 
             for i in range(num_elems):
                 bias_rmax = np.abs(bias_float_data[i])
-                bias_true_scale = (2.0 * bias_rmax) / qrange
-                bias_candidate_scale = np.asarray(input_scale * weight_scale[i] * beta, dtype=np.float64)
-                ratio = bias_true_scale / bias_candidate_scale
+                bias_smallest_valid_scale = (2.0 * bias_rmax) / qrange
+                bias_candidate_scale = np.asarray(input_scale * weight_scale[i], dtype=np.float64)
 
-                if ratio > 1.0:
+                if bias_candidate_scale < bias_smallest_valid_scale:
                     # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
+                    ratio = bias_smallest_valid_scale / bias_candidate_scale
                     weight_scale[i] *= np.asarray(ratio, dtype=weight_scale.dtype)
                     updated_an_elem = True
 
@@ -1111,12 +1110,11 @@ class QDQQuantizer(BaseQuantizer):
         input_scale_initializer = find_by_name(input_scale_name, self.model.initializer())
         input_scale = tensor_proto_to_array(input_scale_initializer)
 
-        if self.weight_qType != onnx.TensorProto.FLOAT8E4M3FN:
+        if self.weight_qType != onnx.TensorProto.FLOAT8E4M3FN and bias_info.beta == 1.0:
             input_scale, weight_scale = self.adjust_weight_scale_for_int32_bias(
                 input_scale_initializer,
                 weight_scale_initializer,
                 bias_initializer,
-                bias_info.beta,
             )
 
         (
