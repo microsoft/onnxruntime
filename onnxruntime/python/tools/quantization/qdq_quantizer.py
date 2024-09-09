@@ -1029,19 +1029,18 @@ class QDQQuantizer(BaseQuantizer):
 
         return q_weight_name, zp_name, scale_name
 
-    def adjust_weight_scale_for_int32_bias(
+    def _adjust_weight_scale_for_int32_bias(
         self,
-        input_scale_tp: onnx.TensorProto,
+        input_scale: np.ndarray,
         weight_scale_tp: onnx.TensorProto,
         bias_float_data: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> np.ndarray:
         """
         Checks if the bias scale (input_scale * weight_scale) that we intend to use is too small.
         A bias scale that is too small leads to quantized bias values that fall outside the range of a int32 and have to
         be clipped, which decreases accuracy. If this function detects such a scenario, the weight_scale value will be
         increased to prevent this from happening.
         """
-        input_scale: np.ndarray = tensor_proto_to_array(input_scale_tp)
         weight_scale: np.ndarray = tensor_proto_to_array(weight_scale_tp)
 
         # Check the shape of the weight's scale to determine if using per-channel or per-tensor quantization.
@@ -1082,7 +1081,7 @@ class QDQQuantizer(BaseQuantizer):
             if updated_an_elem:
                 weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
 
-        return (input_scale, weight_scale)
+        return weight_scale
 
     def quantize_bias_static(self, bias_name: str, bias_info: QDQBiasQuantInfo) -> str:
         """
@@ -1109,8 +1108,8 @@ class QDQQuantizer(BaseQuantizer):
             bias_initializer = find_by_name(bias_name, self.model.initializer())
             bias_float_data = tensor_proto_to_array(bias_initializer)
 
-            input_scale, weight_scale = self.adjust_weight_scale_for_int32_bias(
-                input_scale_initializer,
+            weight_scale = self._adjust_weight_scale_for_int32_bias(
+                input_scale,
                 weight_scale_initializer,
                 bias_float_data,
             )
