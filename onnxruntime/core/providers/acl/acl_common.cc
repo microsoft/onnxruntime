@@ -12,16 +12,15 @@
 namespace onnxruntime {
 namespace acl {
 
-void PopulateWorkspace(const arm_compute::experimental::MemoryRequirements &reqs,
-    Workspace &workspace, arm_compute::MemoryGroup &memory_group,
-    arm_compute::ITensorPack &run_pack, arm_compute::ITensorPack &prep_pack) {
-
-  for (const arm_compute::experimental::MemoryInfo &req : reqs) {
+void PopulateWorkspace(const arm_compute::experimental::MemoryRequirements& reqs,
+                       Workspace& workspace, arm_compute::MemoryGroup& memory_group,
+                       arm_compute::ITensorPack& run_pack, arm_compute::ITensorPack& prep_pack) {
+  for (const arm_compute::experimental::MemoryInfo& req : reqs) {
     if (req.size == 0) {
       continue;
     }
 
-    arm_compute::Tensor *aux_tensor;
+    arm_compute::Tensor* aux_tensor;
     if (req.lifetime == arm_compute::experimental::MemoryLifetime::Temporary) {
       workspace.temporary_tensors.emplace_back(std::make_unique<arm_compute::Tensor>());
       aux_tensor = workspace.temporary_tensors.back().get();
@@ -44,7 +43,7 @@ void PopulateWorkspace(const arm_compute::experimental::MemoryRequirements &reqs
     aux_tensor->allocator()->init(aux_info, req.alignment);
   }
 
-  for (const std::unique_ptr<arm_compute::Tensor> &tensor : workspace.temporary_tensors) {
+  for (const std::unique_ptr<arm_compute::Tensor>& tensor : workspace.temporary_tensors) {
     tensor->allocator()->allocate();
   }
 }
@@ -69,8 +68,7 @@ arm_compute::TensorShape ACLTensorShape(const TensorShape& tensorShape, unsigned
   return shape;
 }
 
-Status GetArgShape(const NodeArg *tensor, TensorShape& outShape)
-{
+Status GetArgShape(const NodeArg* tensor, TensorShape& outShape) {
   const auto& inShape = tensor->Shape();
   TensorShapeVector shapeVec;
 
@@ -90,7 +88,7 @@ void ACLPrintTensorShape(const char* s, arm_compute::Tensor& t) {
   LOGS_DEFAULT(VERBOSE) << std::endl;
 }
 
-arm_compute::DataType ACLDataType(const std::string &dtype) {
+arm_compute::DataType ACLDataType(const std::string& dtype) {
   if (dtype == "tensor(float)") {
     return arm_compute::DataType::F32;
   }
@@ -112,7 +110,7 @@ arm_compute::DataType ACLDataType(const std::string &dtype) {
   ORT_THROW("ACL execution provider does not support data type ", dtype);
 }
 
-int GetIntScalar(const Tensor *tensor) {
+int GetIntScalar(const Tensor* tensor) {
   ORT_ENFORCE(tensor->Shape().Size() == 1, "Tensor is not a scalar");
   if (tensor->IsDataType<uint8_t>()) {
     return *tensor->Data<uint8_t>();
@@ -124,42 +122,40 @@ int GetIntScalar(const Tensor *tensor) {
 }
 
 Status LoadQuantizationInfo(const OpKernelInfo& info, arm_compute::Tensor* tensor,
-    const int scaleIdx, const int zpIdx, bool flipZeroPoint) {
-
-  const Tensor *scaleTensor = nullptr;
+                            const int scaleIdx, const int zpIdx, bool flipZeroPoint) {
+  const Tensor* scaleTensor = nullptr;
   ORT_RETURN_IF_NOT(info.TryGetConstantInput(scaleIdx, &scaleTensor), "Scale must be constant");
 
-  const Tensor *zeroPointTensor = nullptr;
+  const Tensor* zeroPointTensor = nullptr;
   ORT_RETURN_IF_NOT(info.TryGetConstantInput(zpIdx, &zeroPointTensor), "Zero point must be constant");
 
-  const float *scale = scaleTensor->Data<float>();
+  const float* scale = scaleTensor->Data<float>();
   const int zeroPoint = GetIntScalar(zeroPointTensor);
-  tensor->info()->set_quantization_info(arm_compute::QuantizationInfo(*scale, flipZeroPoint? -zeroPoint : zeroPoint));
+  tensor->info()->set_quantization_info(arm_compute::QuantizationInfo(*scale, flipZeroPoint ? -zeroPoint : zeroPoint));
 
   return Status::OK();
 }
 
 void GetPackingInfo(std::vector<std::unique_ptr<arm_compute::Tensor>>& state, size_t& packedSize, size_t& alignment) {
   alignment = 0;
-  for (auto &tensor : state) {
+  for (auto& tensor : state) {
     alignment = std::max(alignment, tensor->allocator()->alignment());
   }
 
   packedSize = 0;
-  for (auto &tensor : state) {
+  for (auto& tensor : state) {
     const size_t size = tensor->info()->total_size();
     packedSize += ((size - 1) / alignment + 1) * alignment;
   }
 }
 
 Status LoadPackedTensors(std::vector<std::unique_ptr<arm_compute::Tensor>>& state, void* packed,
-        const size_t packedSize, const size_t alignment) {
-
+                         const size_t packedSize, const size_t alignment) {
   auto buffSize = packedSize + alignment;
-  uint8_t *alignedPtr = (uint8_t *) (alignment == 0? packed : std::align(alignment, packedSize, packed, buffSize));
+  uint8_t* alignedPtr = (uint8_t*)(alignment == 0 ? packed : std::align(alignment, packedSize, packed, buffSize));
 
-  uint8_t *currentPtr = alignedPtr;
-  for (auto &tensor : state) {
+  uint8_t* currentPtr = alignedPtr;
+  for (auto& tensor : state) {
     ORT_RETURN_IF_ERROR(ACLImportMemory(tensor->allocator(), currentPtr, 0));
 
     const size_t size = tensor->info()->total_size();

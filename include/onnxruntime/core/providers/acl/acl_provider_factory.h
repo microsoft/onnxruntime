@@ -12,7 +12,7 @@ extern "C" {
  * \param use_arena zero: false. non-zero: true.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ACL, _In_ OrtSessionOptions* options,
-    bool enable_fast_math)
+               bool enable_fast_math)
 ORT_ALL_ARGS_NONNULL;
 
 #ifdef __cplusplus

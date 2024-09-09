@@ -198,7 +198,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
-                                                      onnxruntime::kAclExecutionProvider};
+                                                        onnxruntime::kAclExecutionProvider};
 #endif
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
@@ -289,10 +289,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                       onnxruntime::kRocmExecutionProvider,
                                                                       onnxruntime::kDmlExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_rocm_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                      onnxruntime::kAclExecutionProvider,
-                                                                      onnxruntime::kCudaExecutionProvider,
-                                                                      onnxruntime::kRocmExecutionProvider,
-                                                                      onnxruntime::kDmlExecutionProvider};
+                                                                          onnxruntime::kAclExecutionProvider,
+                                                                          onnxruntime::kCudaExecutionProvider,
+                                                                          onnxruntime::kRocmExecutionProvider,
+                                                                          onnxruntime::kDmlExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
                                                                           onnxruntime::kRocmExecutionProvider,
                                                                           onnxruntime::kAclExecutionProvider,
@@ -305,8 +305,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                onnxruntime::kArmNNExecutionProvider,
                                                                                onnxruntime::kJsExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_acl_eps = {onnxruntime::kCpuExecutionProvider,
-                                                            onnxruntime::kDmlExecutionProvider,
-                                                            onnxruntime::kAclExecutionProvider};
+                                                                onnxruntime::kDmlExecutionProvider,
+                                                                onnxruntime::kAclExecutionProvider};
       const int64_t qdq_matmulnbits_accuracy_level =
           ParseStringWithClassicLocale<int64_t>(
               session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,

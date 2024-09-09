@@ -26,7 +26,6 @@
 // NEON
 #include "arm_compute/runtime/NEON/functions/NEDepthwiseConvolutionLayer.h"
 
-
 #define CONV_ACL
 #undef DEPTHWISE_CPU
 
@@ -42,11 +41,11 @@ struct ConvConfig {
   bool isDepthwise;
   TensorShape inShapeIn;
   TensorShape kShapeIn;
-  const std::string *inType;
-  const std::string *kType;
+  const std::string* inType;
+  const std::string* kType;
 };
 
-Status ParseConv(const onnxruntime::Node& node, ConvConfig &config) {
+Status ParseConv(const onnxruntime::Node& node, ConvConfig& config) {
   onnxruntime::ProtoHelperNodeContext ctx(node);
   onnxruntime::OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
   const auto inputDefs = node.InputDefs();
@@ -63,13 +62,13 @@ Status ParseConv(const onnxruntime::Node& node, ConvConfig &config) {
   if (!config.is_channels_last) {
     int64_t cl_ret = 0;
     attrs.GetAttr("channels_last", &cl_ret);
-    config.is_channels_last = (bool) cl_ret;
+    config.is_channels_last = (bool)cl_ret;
   }
 
   int64_t group = 1;
   attrs.GetAttr("group", &group);
 
-  const NodeArg *kDef = inputDefs[config.isQuantized? 3 : 1];
+  const NodeArg* kDef = inputDefs[config.isQuantized ? 3 : 1];
 
   ORT_RETURN_IF_ERROR(GetArgShape(inputDefs[0], config.inShapeIn));
   ORT_RETURN_IF_ERROR(GetArgShape(kDef, config.kShapeIn));
@@ -82,7 +81,7 @@ Status ParseConv(const onnxruntime::Node& node, ConvConfig &config) {
 
   config.isDepthwise = group > 1;
   if (config.isDepthwise) {
-    const size_t channels = config.inShapeIn[config.is_channels_last? config.inShapeIn.NumDimensions() - 1 : 1];
+    const size_t channels = config.inShapeIn[config.is_channels_last ? config.inShapeIn.NumDimensions() - 1 : 1];
     ORT_RETURN_IF(group != channels, "ACL does not support grouping unless group == channels");
     ORT_RETURN_IF(mixedType, "ACL does not support mixed input types for depthwise Conv");
   }
@@ -113,9 +112,9 @@ Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(
   is_channels_last = config.is_channels_last;
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  has_bias = isQuantized? (num_inputs == 9) : (num_inputs == 3);
+  has_bias = isQuantized ? (num_inputs == 9) : (num_inputs == 3);
 
-  const Tensor *tmp = nullptr;
+  const Tensor* tmp = nullptr;
   const bool kIsConst = info.TryGetConstantInput(1, &tmp);
   ORT_ENFORCE(kIsConst, "ACL does not support Conv with mutable weights");
 
@@ -125,8 +124,7 @@ Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(
     b = std::make_shared<arm_compute::Tensor>();
   out = std::make_shared<arm_compute::Tensor>();
 
-  const arm_compute::DataLayout data_layout = is_channels_last?
-      arm_compute::DataLayout::NHWC : arm_compute::DataLayout::NCHW;
+  const arm_compute::DataLayout data_layout = is_channels_last ? arm_compute::DataLayout::NHWC : arm_compute::DataLayout::NCHW;
 
   TensorShape inShape = config.inShapeIn;
   if (is_channels_last && config.inShapeIn.NumDimensions() < 4) {
@@ -139,22 +137,21 @@ Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(
   arm_compute::DataType kType = ACLDataType(*config.kType);
 
   TensorShapeVector kShapeVec = config.kShapeIn.AsShapeVector();
-  while(kShapeVec.size() < 4) {
+  while (kShapeVec.size() < 4) {
     kShapeVec.push_back(1);
   }
 
-  const TensorShape kShape = is_channels_last?
-      TensorShape({kShapeVec[0], kShapeVec[2], kShapeVec[3], kShapeVec[1]}) : TensorShape(kShapeVec);
+  const TensorShape kShape = is_channels_last ? TensorShape({kShapeVec[0], kShapeVec[2], kShapeVec[3], kShapeVec[1]}) : TensorShape(kShapeVec);
 
   k->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(kShape), 1, kType, data_layout));
 
   TensorShape bShape;
   if (has_bias) {
-    const Tensor *bias = nullptr;
-    const bool biasIsConst = info.TryGetConstantInput(isQuantized? 8 : 2, &bias);
+    const Tensor* bias = nullptr;
+    const bool biasIsConst = info.TryGetConstantInput(isQuantized ? 8 : 2, &bias);
     ORT_ENFORCE(biasIsConst, "ACL does not support Conv with mutable bias");
 
-    const auto bDef = OpKernel::Node().InputDefs()[isQuantized? 8 : 2];
+    const auto bDef = OpKernel::Node().InputDefs()[isQuantized ? 8 : 2];
     ORT_THROW_IF_ERROR(GetArgShape(bDef, bShape));
     arm_compute::DataType bType = ACLDataType(*bDef->Type());
     b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(bShape), 1, bType, data_layout));
@@ -262,9 +259,9 @@ Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(
   }
 
   arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(
-      (unsigned int) aclStrides[0], (unsigned int) aclStrides[1],
-      (unsigned int) aclPads[0], (unsigned int) aclPads[1],
-      (unsigned int) aclPads[2], (unsigned int) aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
+      (unsigned int)aclStrides[0], (unsigned int)aclStrides[1],
+      (unsigned int)aclPads[0], (unsigned int)aclPads[1],
+      (unsigned int)aclPads[2], (unsigned int)aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
   size_t aclDilation0 = (dilations.size() == 2) ? dilations[1] : 1;
 
   LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
@@ -287,12 +284,11 @@ Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(
                   aclPadStride,
                   arm_compute::WeightsInfo(), arm_compute::Size2D(aclDilation0, dilations[0]),
                   acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                  provider_->info.enable_fast_math, (unsigned int) conv_attrs_.group);
+                  provider_->info.enable_fast_math, (unsigned int)conv_attrs_.group);
     conv_layer = std::move(cl);
 
     memory_group = arm_compute::MemoryGroup(provider_->memory_manager);
-    run_pack = {{arm_compute::ACL_SRC_0, in.get()}, {arm_compute::ACL_SRC_1, k.get()},
-                {arm_compute::ACL_SRC_2, b.get()}, {arm_compute::ACL_DST, out.get()}};
+    run_pack = {{arm_compute::ACL_SRC_0, in.get()}, {arm_compute::ACL_SRC_1, k.get()}, {arm_compute::ACL_SRC_2, b.get()}, {arm_compute::ACL_DST, out.get()}};
     prep_pack = {{arm_compute::ACL_SRC_1, k.get()}, {arm_compute::ACL_SRC_2, b.get()}};
 
     PopulateWorkspace(conv_layer->workspace(), workspace, memory_group, run_pack, prep_pack);
@@ -304,10 +300,9 @@ Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(
 
 #ifdef CONV_ACL
 Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-        /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) {
-
+                     /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  if (isQuantized? (input_idx != 3) : ( input_idx != 1)) {
+  if (isQuantized ? (input_idx != 3) : (input_idx != 1)) {
     return Status::OK();
   }
 
@@ -338,7 +333,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
     arm_compute::Tensor kIn;
     kIn.allocator()->init(arm_compute::TensorInfo(ACLTensorShape(shape), 1,
-        k->info()->data_type(), arm_compute::DataLayout::NCHW));
+                                                  k->info()->data_type(), arm_compute::DataLayout::NCHW));
     kIn.info()->set_quantization_info(k->info()->quantization_info());
 
     ORT_RETURN_IF_ERROR(ACLImportMemory(kIn.allocator(), (void*)k_data, 0));
@@ -353,7 +348,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     ORT_RETURN_IF_ERROR(ACLImportMemory(k->allocator(), (void*)k_data, 0));
   }
 
-  for (std::unique_ptr<arm_compute::Tensor> &prep_tensor : workspace.prepare_tensors) {
+  for (std::unique_ptr<arm_compute::Tensor>& prep_tensor : workspace.prepare_tensors) {
     prep_tensor->allocator()->allocate();
   }
 
@@ -363,7 +358,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     depthwise_layer->prepare();
   }
 
-  for (std::unique_ptr<arm_compute::Tensor> &prep_tensor : workspace.prepare_tensors) {
+  for (std::unique_ptr<arm_compute::Tensor>& prep_tensor : workspace.prepare_tensors) {
     prep_tensor->allocator()->free();
   }
 
@@ -375,10 +370,9 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 }
 
 Status Conv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                 int input_idx, /*out*/ bool& used_shared_buffers) {
-
+                                       int input_idx, /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
-  if (isQuantized? (input_idx != 3) : ( input_idx != 1)) {
+  if (isQuantized ? (input_idx != 3) : (input_idx != 1)) {
     return Status::OK();
   }
 
@@ -388,7 +382,7 @@ Status Conv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_b
     GetPackingInfo(workspace.persistent_tensors, packedSize, alignment);
 
     ORT_RETURN_IF_ERROR(LoadPackedTensors(workspace.persistent_tensors, prepacked_buffers[0].get(),
-      packedSize, alignment));
+                                          packedSize, alignment));
 
     used_shared_buffers = true;
   }

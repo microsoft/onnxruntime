@@ -92,9 +92,9 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       }
 
       arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(
-          (unsigned int) aclStrides[0], (unsigned int) aclStrides[1],
-          (unsigned int) aclPads[0], (unsigned int) aclPads[1],
-          (unsigned int) aclPads[2], (unsigned int) aclPads[3],
+          (unsigned int)aclStrides[0], (unsigned int)aclStrides[1],
+          (unsigned int)aclPads[0], (unsigned int)aclPads[1],
+          (unsigned int)aclPads[2], (unsigned int)aclPads[3],
           arm_compute::DimensionRoundingType::FLOOR);
 
       TensorShapeVector aclKernelShape(2);

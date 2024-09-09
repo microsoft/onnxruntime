@@ -136,10 +136,10 @@ std::shared_ptr<arm_compute::MemoryManagerOnDemand> ACLCreateMemoryManager() {
 
 }  // namespace acl
 
-ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo &info)
+ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kAclExecutionProvider},
-    info(info), memory_manager(onnxruntime::acl::ACLCreateMemoryManager()) {
-
+      info(info),
+      memory_manager(onnxruntime::acl::ACLCreateMemoryManager()) {
   arm_compute::Scheduler::set(std::make_shared<acl::ORTScheduler>(this));
 }
 
@@ -152,12 +152,11 @@ std::shared_ptr<KernelRegistry> ACLExecutionProvider::GetKernelRegistry() const 
 
 std::vector<std::unique_ptr<ComputeCapability>>
 ACLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                  const IKernelLookup& kernel_lookup) const {
+                                    const IKernelLookup& kernel_lookup) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {
     if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
         kernel_create_info != nullptr) {
-
       Status support_status = Status::OK();
       const std::string op_name = kernel_create_info->kernel_def->OpName();
 
@@ -174,8 +173,8 @@ ACLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
       } else {
         LOGS_DEFAULT(WARNING) << "ACL supports operator " << op_name
-          << ", but not with these parameters. Using fallback for node: " << node.Name()
-          << " Reason: " << support_status.ErrorMessage();
+                              << ", but not with these parameters. Using fallback for node: " << node.Name()
+                              << " Reason: " << support_status.ErrorMessage();
       }
     }
   }

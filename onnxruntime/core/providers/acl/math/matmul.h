@@ -31,10 +31,10 @@ class MatMul : public OpKernel {
   explicit MatMul(const OpKernelInfo& info);
 
   Status PrePack(const Tensor&, int, AllocatorPtr,
-          bool& is_packed, PrePackedWeights*) override;
+                 bool& is_packed, PrePackedWeights*) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>&,
-          int, bool&) override;
+                                   int, bool&) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -53,9 +53,9 @@ class MatMul : public OpKernel {
   std::shared_ptr<arm_compute::Tensor> a;
   std::shared_ptr<arm_compute::Tensor> b;
   std::shared_ptr<arm_compute::Tensor> a_transposed;
-  arm_compute::Tensor *b_transposed = nullptr;
+  arm_compute::Tensor* b_transposed = nullptr;
   std::shared_ptr<arm_compute::Tensor> out;
-  arm_compute::Tensor *pb;
+  arm_compute::Tensor* pb;
 
   IAllocatorUniquePtr<void> pbRaw;
   TensorShape outShape;

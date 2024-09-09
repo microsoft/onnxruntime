@@ -33,10 +33,10 @@ class Conv : public onnxruntime::OpKernel {
   explicit Conv(const OpKernelInfo& info);
 
   Status PrePack(const Tensor&, int, AllocatorPtr,
-          bool& is_packed, PrePackedWeights*) override;
+                 bool& is_packed, PrePackedWeights*) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>&,
-          int, bool&) override;
+                                   int, bool&) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -56,7 +56,7 @@ class Conv : public onnxruntime::OpKernel {
 
   std::shared_ptr<arm_compute::Tensor> in;
   std::shared_ptr<arm_compute::Tensor> k;
-  IAllocatorUniquePtr<void>            pkRaw;
+  IAllocatorUniquePtr<void> pkRaw;
   std::shared_ptr<arm_compute::Tensor> b;
   std::shared_ptr<arm_compute::Tensor> out;
   TensorShape outShape;

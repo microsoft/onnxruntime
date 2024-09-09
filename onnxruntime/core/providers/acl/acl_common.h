@@ -21,22 +21,22 @@ struct Workspace {
   std::vector<std::unique_ptr<arm_compute::Tensor>> persistent_tensors;
 };
 
-void PopulateWorkspace(const arm_compute::experimental::MemoryRequirements &reqs,
-    Workspace &workspace, arm_compute::MemoryGroup &memory_group,
-    arm_compute::ITensorPack &run_pack, arm_compute::ITensorPack &prep_pack);
+void PopulateWorkspace(const arm_compute::experimental::MemoryRequirements& reqs,
+                       Workspace& workspace, arm_compute::MemoryGroup& memory_group,
+                       arm_compute::ITensorPack& run_pack, arm_compute::ITensorPack& prep_pack);
 
 arm_compute::TensorShape ACLTensorShape(const TensorShape& tensorShape, unsigned int extDim = 0);
-Status GetArgShape(const NodeArg *tensor, TensorShape& outShape);
+Status GetArgShape(const NodeArg* tensor, TensorShape& outShape);
 void ACLPrintTensorShape(const char*, arm_compute::Tensor& t);
-arm_compute::DataType ACLDataType(const std::string &dtype);
+arm_compute::DataType ACLDataType(const std::string& dtype);
 
-int GetIntScalar(const Tensor *tensor);
+int GetIntScalar(const Tensor* tensor);
 Status LoadQuantizationInfo(const OpKernelInfo& info, arm_compute::Tensor* tensor,
-    const int scaleIdx, const int zpIdx, bool flipZeroPoint);
+                            const int scaleIdx, const int zpIdx, bool flipZeroPoint);
 
 void GetPackingInfo(std::vector<std::unique_ptr<arm_compute::Tensor>>& state, size_t& packedSize, size_t& alignment);
 Status LoadPackedTensors(std::vector<std::unique_ptr<arm_compute::Tensor>>& state, void* packed,
-        const size_t packedSize, const size_t alignment);
+                         const size_t packedSize, const size_t alignment);
 
 Status ACLImportMemory(arm_compute::TensorAllocator* allocator, void* memory, size_t size);
 template <typename T>

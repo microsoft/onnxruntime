@@ -33,7 +33,7 @@ std::shared_ptr<IExecutionProviderFactory> ACLProviderFactoryCreator::Create(boo
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ACL, _In_ OrtSessionOptions* options,
-      bool enable_fast_math) {
+                    bool enable_fast_math) {
   options->provider_factories.push_back(onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math));
   return nullptr;
 }

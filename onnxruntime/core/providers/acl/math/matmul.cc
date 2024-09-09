@@ -29,12 +29,11 @@
 #include "src/cpu/operators/CpuGemmLowpMatrixMultiplyCore.h"
 #include "src/cpu/operators/CpuMatMul.h"
 
-
 namespace onnxruntime {
 
 namespace acl {
 
-TensorShape BroadcastInput(const TensorShape &shape, bool prependDim) {
+TensorShape BroadcastInput(const TensorShape& shape, bool prependDim) {
   const auto nd = shape.NumDimensions();
   if (nd == 0) {
     ORT_THROW("MatMul by scalar not allowed");
@@ -50,7 +49,7 @@ TensorShape BroadcastInput(const TensorShape &shape, bool prependDim) {
   }
 
   for (size_t i = 0; i < nd - 2; i++) {
-      batchSize *= shape[i];
+    batchSize *= shape[i];
   }
 
   return {batchSize, shape[nd - 2], shape[nd - 1]};
@@ -65,7 +64,7 @@ struct MatMulConfig {
   TensorShape bShapeBroadcast;
 };
 
-Status ParseMatMul(const onnxruntime::Node& node, MatMulConfig &config) {
+Status ParseMatMul(const onnxruntime::Node& node, MatMulConfig& config) {
   onnxruntime::ProtoHelperNodeContext ctx(node);
   onnxruntime::OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
   const auto inputDefs = node.InputDefs();
@@ -101,10 +100,10 @@ Status ParseMatMul(const onnxruntime::Node& node, MatMulConfig &config) {
   config.bShapeBroadcast = BroadcastInput(bShapeIn, config.transB);
 
   ORT_RETURN_IF(!(config.bShapeBroadcast[0] == 1 || (config.aShapeBroadcast[0] == config.bShapeBroadcast[0])),
-      "ACL does not support broadcasting");
+                "ACL does not support broadcasting");
 
   ORT_RETURN_IF(config.alpha != 1 && config.bShapeBroadcast[0] > 1,
-      "ACL does not support alpha scaling with batched B");
+                "ACL does not support alpha scaling with batched B");
 
   return Status::OK();
 }
@@ -114,14 +113,14 @@ Status ValidateMatMul(const onnxruntime::Node& node) {
   return ParseMatMul(node, config);
 }
 
-MatMul::MatMul(const OpKernelInfo& info): onnxruntime::OpKernel(info) {
+MatMul::MatMul(const OpKernelInfo& info) : onnxruntime::OpKernel(info) {
   provider_ = (const_cast<ACLExecutionProvider*>(
       static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
 
   const auto inputDefs = OpKernel::Node().InputDefs();
   const auto outputDefs = OpKernel::Node().OutputDefs();
 
-  const Tensor *tmp = nullptr;
+  const Tensor* tmp = nullptr;
   const bool aIsConst = info.TryGetConstantInput(0, &tmp);
   const bool bIsConst = info.TryGetConstantInput(1, &tmp);
 
@@ -133,19 +132,17 @@ MatMul::MatMul(const OpKernelInfo& info): onnxruntime::OpKernel(info) {
     return;
   }
 
-  const TensorShape aShape {
-    config.aShapeBroadcast[0],
-    config.aShapeBroadcast[config.transA? 2 : 1],
-    config.aShapeBroadcast[config.transA? 1 : 2]
-  };
+  const TensorShape aShape{
+      config.aShapeBroadcast[0],
+      config.aShapeBroadcast[config.transA ? 2 : 1],
+      config.aShapeBroadcast[config.transA ? 1 : 2]};
 
-  const TensorShape bShape {
-    config.bShapeBroadcast[0],
-    config.bShapeBroadcast[config.transB? 2 : 1],
-    config.bShapeBroadcast[config.transB? 1 : 2]
-  };
+  const TensorShape bShape{
+      config.bShapeBroadcast[0],
+      config.bShapeBroadcast[config.transB ? 2 : 1],
+      config.bShapeBroadcast[config.transB ? 1 : 2]};
 
-  const TensorShape outShapeBroadcast {aShape[0], aShape[1], bShape[2]};
+  const TensorShape outShapeBroadcast{aShape[0], aShape[1], bShape[2]};
 
   ORT_ENFORCE(outShape.Size() == outShapeBroadcast.Size(), "Output sizes do not match");
 
@@ -169,7 +166,7 @@ MatMul::MatMul(const OpKernelInfo& info): onnxruntime::OpKernel(info) {
     ORT_THROW_IF_ERROR(LoadQuantizationInfo(info, b.get(), 3, 5, true));
   }
 
-  arm_compute::ITensor *a_to_use = a.get();
+  arm_compute::ITensor* a_to_use = a.get();
   if (config.transA) {
     a_transposed = std::make_shared<arm_compute::Tensor>();
     a_transposed->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(aShape), 1, aType));
@@ -179,7 +176,7 @@ MatMul::MatMul(const OpKernelInfo& info): onnxruntime::OpKernel(info) {
     a_permute->configure(a.get(), a_transposed.get(), {1, 0, 2});
   }
 
-  arm_compute::ITensor *b_to_use = b.get();
+  arm_compute::ITensor* b_to_use = b.get();
   if (config.transB) {
     if (bIsConst) {
       workspace.persistent_tensors.emplace_back(std::make_unique<arm_compute::Tensor>());
@@ -220,24 +217,22 @@ MatMul::MatMul(const OpKernelInfo& info): onnxruntime::OpKernel(info) {
   }
 
   memory_group = arm_compute::MemoryGroup(provider_->memory_manager);
-  run_pack = {{arm_compute::ACL_SRC_0, a_to_use}, {arm_compute::ACL_SRC_1, b_to_use},
-              {arm_compute::ACL_DST, out.get()}};
+  run_pack = {{arm_compute::ACL_SRC_0, a_to_use}, {arm_compute::ACL_SRC_1, b_to_use}, {arm_compute::ACL_DST, out.get()}};
   prep_pack = {{arm_compute::ACL_SRC_1, b_to_use}};
 
   PopulateWorkspace(layer->workspace(), workspace, memory_group, run_pack, prep_pack);
 }
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-        /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) {
-
+                       /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  if (input_idx != 1  || outShape.Size() == 0) {
+  if (input_idx != 1 || outShape.Size() == 0) {
     return Status::OK();
   }
 
-  const uint8_t *data = (uint8_t *) tensor.DataRaw();
+  const uint8_t* data = (uint8_t*)tensor.DataRaw();
 
-  ORT_RETURN_IF_ERROR(ACLImportMemory(b->allocator(), (void *) data, 0));
+  ORT_RETURN_IF_ERROR(ACLImportMemory(b->allocator(), (void*)data, 0));
 
   if (!workspace.persistent_tensors.empty()) {
     size_t packedSize = 0;
@@ -260,13 +255,13 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     b_permute->run();
   }
 
-  for (std::unique_ptr<arm_compute::Tensor> &prep_tensor : workspace.prepare_tensors) {
+  for (std::unique_ptr<arm_compute::Tensor>& prep_tensor : workspace.prepare_tensors) {
     prep_tensor->allocator()->allocate();
   }
 
   layer->prepare(prep_pack);
 
-  for (std::unique_ptr<arm_compute::Tensor> &prep_tensor : workspace.prepare_tensors) {
+  for (std::unique_ptr<arm_compute::Tensor>& prep_tensor : workspace.prepare_tensors) {
     prep_tensor->allocator()->free();
   }
 
@@ -274,8 +269,7 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 }
 
 Status MatMul::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                 int input_idx, /*out*/ bool& used_shared_buffers) {
-
+                                         int input_idx, /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
   if (input_idx != 1) {
     return Status::OK();
@@ -298,7 +292,7 @@ Status MatMul::Compute(OpKernelContext* context) const {
   provider_->SetThreadPool(context->GetOperatorThreadPool());
 
   const Tensor* A = context->Input<Tensor>(0);
-  const Tensor* B = pbRaw? nullptr : context->Input<Tensor>(1);
+  const Tensor* B = pbRaw ? nullptr : context->Input<Tensor>(1);
 
   Tensor* outOrt = context->Output(0, outShape);
 
@@ -307,7 +301,7 @@ Status MatMul::Compute(OpKernelContext* context) const {
   }
 
   const void* a_data = A->DataRaw();
-  const void* b_data = B == nullptr? nullptr : B->DataRaw();
+  const void* b_data = B == nullptr ? nullptr : B->DataRaw();
   void* out_data = outOrt->MutableDataRaw();
 
   ORT_RETURN_IF(A->Shape().Size() != 0 && a->info()->has_padding(), "Padded ACL input tensor not supported");
