@@ -55,7 +55,7 @@
 
 			<h2 class="text-3xl">What is Generative AI?</h2>
 			<p>
-				Generative AI refers to a type of artificial intelligence that creates new content—such as
+Generative AI refers to a type of artificial intelligence that creates new content—such as text, images, audio, or code— in response to a user prompt or instruction. 
 				text, images, audio, or code—based on patterns learned from existing data. Unlike
 				traditional AI models, which primarily classify or predict based on given inputs, generative
 				AI models produce entirely new outputs.
