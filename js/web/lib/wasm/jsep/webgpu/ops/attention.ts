@@ -524,7 +524,7 @@ const createAttentionProbsProgramInfo = (
 };
 
 const createVxAttentionScoreProgramInfo = (
-  context: ComputeContext,
+  outputCount: number,
   probs: TensorView,
   v: TensorView,
   pastValue: TensorView | undefined,
@@ -534,7 +534,7 @@ const createVxAttentionScoreProgramInfo = (
   const totalSequenceLength = pastSequenceLength + params.kvSequenceLength;
   const nReps = params.nReps ? params.nReps : 1;
   const repeatedVHiddenSize = params.vHiddenSize * nReps;
-  const presentValue = params.kvNumHeads === undefined && context.outputCount > 1;
+  const presentValue = params.kvNumHeads == null && outputCount > 1 && pastValue;
   const presentValueShape = presentValue
     ? [params.batchSize, params.numHeads, totalSequenceLength, params.headSize]
     : undefined;
