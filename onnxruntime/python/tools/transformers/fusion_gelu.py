@@ -104,6 +104,7 @@ class FusionGelu(Fusion):
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("Gelu")
         return True
 
     def fuse_2(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
@@ -180,6 +181,7 @@ class FusionGelu(Fusion):
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("Gelu")
         return True
 
     def fuse_3(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
@@ -253,4 +255,5 @@ class FusionGelu(Fusion):
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("Gelu")
         return True
