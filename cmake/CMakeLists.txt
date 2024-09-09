@@ -409,8 +409,8 @@ endif(MSVC_Z7_OVERRIDE)
 set_msvc_c_cpp_compiler_warning_level(3)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
-# using the MSVC compiler and on windows OS.
-if (MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
+# using the MSVC compiler and on windows OS and clang/gcc compiler on Linux.
+if (onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
   set(onnxruntime_FUZZ_ENABLED ON)

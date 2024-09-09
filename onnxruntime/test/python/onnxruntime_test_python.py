@@ -1694,8 +1694,9 @@ class TestInferenceSession(unittest.TestCase):
 
         available_eps = C.get_available_providers()
         # skip amd gpu build
-        if "ROCMExecutionProvider" in available_eps:
+        if "RocmExecutionProvider" in available_eps:
             return
+
         if sys.platform.startswith("win"):
             shared_library = "test_execution_provider.dll"
 

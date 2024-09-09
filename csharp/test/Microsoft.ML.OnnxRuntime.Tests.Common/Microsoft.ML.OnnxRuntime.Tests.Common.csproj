@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- netstandard2.0 is used by most platforms. net6.0 is required for linux. -->
-    <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
+    <!-- netstandard2.0 is used by most platforms. net8.0 is required for linux. -->
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU</Platforms>
@@ -11,6 +11,9 @@
     <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx</ProtoSrc>
+
+    <!-- Generated OnnxML.cs triggers this warning. -->
+    <NoWarn>8981</NoWarn>
 
     <!-- following attributes were necessary for the migrated Tensor tests -->
     <LangVersion>default</LangVersion>
@@ -99,8 +102,13 @@
     </None>
   </ItemGroup>
 
-  <ItemGroup>
-    <None Condition="'$(IsWindowsBuild)'=='true'" Include="$(NativeBuildOutputDir)\onnxruntime.dll;$(NativeBuildOutputDir)\onnxruntime.pdb">
+  <!--
+  Microsoft.ML.OnnxRuntime.Tests.MAUI.csproj handles the native lib coming from a local build or a nuget package so we
+  don't need to duplicate that logic to include the native lib here.
+  -->
+  <ItemGroup Condition="$(SkipNativeLibInclude) != 'true'">
+    <None Condition="'$(IsWindowsBuild)'=='true'"
+          Include="$(NativeBuildOutputDir)\onnxruntime.dll;$(NativeBuildOutputDir)\onnxruntime.pdb">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
