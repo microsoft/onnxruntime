@@ -7,7 +7,7 @@ nav_order: 1
 ---
 
 # On-Device Training: Building an Android Application
-
+{: .no_toc }
 In this tutorial, we will explore how to build an Android application that incorporates ONNX Runtime's On-Device Training solution. On-device training refers to the process of training a machine learning model directly on an edge device without relying on cloud services or external servers.
 
 Here is what the application will look like at the end of this tutorial:
@@ -15,7 +15,7 @@ Here is what the application will look like at the end of this tutorial:
 <img src="../../../images/on-device-training-application-prediction-tom.jpg"  alt="an image classification app with Tom Cruise in the middle." width="30%" height="30%">
 
 ## Introduction
-
+{: .no_toc }
 We will guide you through the steps to create an Android app that can train a simple image classification model using on-device training techniques. This tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
 For this tutorial, we will leverage the `MobileNetV2` model which has been trained on large-scale image datasets such as ImageNet (which has 1,000 classes). We will use this model for classifying custom data into one of four classes. The initial layers of MobileNetV2 serve as a feature extractor, capturing generic visual features applicable to various tasks, and only the final classifier layer will be trained for the task at hand.
@@ -24,24 +24,9 @@ In this tutorial, we will use data to learn to:
 - Classify animals into one of four categories using a pre-packed animals dataset.
 - Classify celebrities into one of four categories using a custom celebrities dataset.
 
-## Contents
 
-- [On-Device Training: Building an Android Application](#on-device-training-building-an-android-application)
-  - [Introduction](#introduction)
-  - [Contents](#contents)
-  - [Prerequisites](#prerequisites)
-  - [Offline Phase - Building the training artifacts](#offline-phase---building-the-training-artifacts)
-- [The original model is trained on imagenet which has 1000 classes.](#the-original-model-is-trained-on-imagenet-which-has-1000-classes)
-- [For our image classification scenario, we need to classify among 4 categories.](#for-our-image-classification-scenario-we-need-to-classify-among-4-categories)
-- [So we need to change the last layer of the model to have 4 outputs.](#so-we-need-to-change-the-last-layer-of-the-model-to-have-4-outputs)
-- [Export the model to ONNX.](#export-the-model-to-onnx)
-- [Load the onnx model.](#load-the-onnx-model)
-- [Define the parameters that require their gradients to be computed](#define-the-parameters-that-require-their-gradients-to-be-computed)
-- [(trainable parameters) and those that do not (frozen/non trainable parameters).](#trainable-parameters-and-those-that-do-not-frozennon-trainable-parameters)
-- [Generate the training artifacts.](#generate-the-training-artifacts)
-  - [Training Phase - Android application development](#training-phase---android-application-development)
-  - [Training Phase - Running the application on a device](#training-phase---running-the-application-on-a-device)
-  - [Conclusion](#conclusion)
+* TOC placeholder
+{:toc}
 
 ## Prerequisites
 
