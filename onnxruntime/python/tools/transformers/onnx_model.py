@@ -967,10 +967,10 @@ class OnnxModel:
 
             # For graphs with subgraphs, add dangling outputs from parent graph nodes to list of outputs to keep
             for node in self.model.graph.node:
+                # TODO: This for-loop logic currently assumes that Loop/Scan/If nodes will not be
+                # pruned because their subgraphs are needed for computations. This might not be
+                # true in all cases.
                 if node in subgraph_nodes:
-                    # TODO: This logic currently assumes that Loop/Scan/If nodes will not be pruned
-                    # because their subgraphs are needed for computations. This might not be true in
-                    # all cases.
                     continue
 
                 # Check if node output is an input of a subgraph node and not an input to a node in the main graph
