@@ -22,7 +22,7 @@ export type SupportedTypedArray = InstanceType<SupportedTypedArrayConstructors>;
 export const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTypedArrayConstructors>([
   ['float32', Float32Array],
   ['uint8', Uint8Array],
-  ['uint8c', Uint8ClampedArray],
+  ['uint8', Uint8ClampedArray],
   ['int8', Int8Array],
   ['uint16', Uint16Array],
   ['int16', Int16Array],
@@ -38,7 +38,7 @@ export const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTy
 export const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<SupportedTypedArrayConstructors, Tensor.Type>([
   [Float32Array, 'float32'],
   [Uint8Array, 'uint8'],
-  [Uint8ClampedArray, 'uint8c'],
+  [Uint8ClampedArray, 'uint8'],
   [Int8Array, 'int8'],
   [Uint16Array, 'uint16'],
   [Int16Array, 'int16'],

@@ -86,8 +86,8 @@ describe('Tensor Constructor Tests - check types', () => {
     const uint8ClampedArray = new Uint8ClampedArray(2);
     uint8ClampedArray[0] = 0;
     uint8ClampedArray[1] = 256; // clamped
-    const tensor = new Tensor('uint8c', uint8ClampedArray, [2]);
-    assert.equal(tensor.type, 'uint8c', "tensor.type should be 'uint8c'");
+    const tensor = new Tensor('uint8', uint8ClampedArray, [2]);
+    assert.equal(tensor.type, 'uint8', "tensor.type should be 'uint8'");
   });
 
   it("[bool] new Tensor('bool', uint8Array, dims): tensor can be constructed from Uint8Array", () => {
