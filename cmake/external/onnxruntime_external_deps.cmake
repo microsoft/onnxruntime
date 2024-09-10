@@ -623,7 +623,9 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (WIN32)
+    # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
     set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
+    set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
 
     # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
     set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
