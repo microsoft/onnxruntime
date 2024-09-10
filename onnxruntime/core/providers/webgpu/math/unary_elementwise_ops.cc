@@ -12,9 +12,9 @@ Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("x", ShaderVariable::UseUniform | additional_usage_);
   const auto& output = shader.AddOutput("y", ShaderVariable::UseUniform);
   shader.AppendImplementation(additional_impl_);
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                          "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
-                          output.SetByOffset("global_idx", expression_));
+  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
+                             "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
+                             output.SetByOffset("global_idx", expression_));
 
   return Status::OK();
 }
@@ -29,10 +29,10 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   SafeInt<uint32_t> vec_size = (size + 3) / 4;
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
-      .Inputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
-      .Outputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
-      .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .UniformVariables({
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
+      .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });
   if (!cache_hint.empty()) {
@@ -143,7 +143,7 @@ class HardSigmoid final : public UnaryElementwise {
   }
 
   Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const override {
-    program.UniformVariables({gsl::make_span(attr, 2)});
+    program.AddUniformVariables({gsl::make_span(attr, 2)});
     return Status::OK();
   }
 
@@ -221,11 +221,11 @@ class Clip final : public UnaryElementwise {
     if constexpr (std::is_same_v<T, MLFloat16>) {
       // F16: stores span<f16, 2> as a single float
       float encoded_value = *reinterpret_cast<const float*>(attr);
-      program.UniformVariables({encoded_value});
+      program.AddUniformVariable({encoded_value});
     } else {
       static_assert(sizeof(T) == sizeof(float), "T must be f32, i32 or u32");
       // stores span<f32, 2> as-is
-      program.UniformVariables({gsl::make_span(attr, 2)});
+      program.AddUniformVariable({gsl::make_span(attr, 2)});
     }
     return Status::OK();
   }
@@ -276,7 +276,7 @@ class LinearUnit : public UnaryElementwise {
   }
 
   Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const override {
-    program.UniformVariables({alpha_});
+    program.AddUniformVariables({alpha_});
     return Status::OK();
   }
 

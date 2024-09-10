@@ -102,7 +102,7 @@ class ShaderHelper final {
   //
   // can be called only once.
   template <typename... Strs>
-  inline void MainFunctionBody(const Strs&... body) {
+  inline void SetMainFunctionBody(const Strs&... body) {
     ORT_ENFORCE(!body_set_, "Main function body is already set");
     onnxruntime::detail::MakeStringImpl(body_, std::forward<onnxruntime::detail::if_char_array_make_ptr_t<Strs const&>>(body)...);
     body_set_ = true;

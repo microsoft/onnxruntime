@@ -35,11 +35,11 @@ Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                      : "  x += " + bias.GetByOffset("global_idx % uniforms.bias_shape") + ";\n";
   }
 
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                          "  var x = ", input.GetByOffset("global_idx"), ";\n",
-                          add_bias,
-                          "  let y = x * (0.5 + 0.5 * tanh(x * (0.035677408136300125 * x * x + 0.7978845608028654)));\n  ",
-                          output.SetByOffset("global_idx", "y"));
+  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
+                             "  var x = ", input.GetByOffset("global_idx"), ";\n",
+                             add_bias,
+                             "  let y = x * (0.5 + 0.5 * tanh(x * (0.035677408136300125 * x * x + 0.7978845608028654)));\n  ",
+                             output.SetByOffset("global_idx", "y"));
 
   return Status::OK();
 }
@@ -67,13 +67,13 @@ Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
   }
 
   FastGeluProgram program{bias_components};
-  program.Input({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
-      .Output({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
-      .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .UniformVariable({vec_size});
+  program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+      .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariable({vec_size});
 
   if (bias != nullptr) {
-    program.Input({bias, ProgramTensorMetadataDependency::TypeAndRank, {bias_size}, bias_components})
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, {bias_size}, bias_components})
         .CacheHint(std::to_string(bias_components));
   }
   return context.RunProgram(program);

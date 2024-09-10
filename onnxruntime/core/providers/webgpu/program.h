@@ -272,45 +272,45 @@ class ProgramBase {
     return *this;
   }
 
-  // append a program input
-  ProgramBase& Input(ProgramInput&& input);
-  // append multiple program inputs
-  ProgramBase& Inputs(std::initializer_list<ProgramInput> inputs);
-  // append a program output
-  ProgramBase& Output(ProgramOutput&& output);
-  // set one or more program outputs
-  ProgramBase& Outputs(std::initializer_list<ProgramOutput> outputs);
+  // add a program input
+  ProgramBase& AddInput(ProgramInput&& input);
+  // add multiple program inputs
+  ProgramBase& AddInputs(std::initializer_list<ProgramInput> inputs);
+  // add a program output
+  ProgramBase& AddOutput(ProgramOutput&& output);
+  // add multiple program outputs
+  ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
-  ProgramBase& DispatchGroupSize(uint32_t x);
+  ProgramBase& SetDispatchGroupSize(uint32_t x);
   // set the size of dispatch groups. Z is 1 if not specified.
-  ProgramBase& DispatchGroupSize(uint32_t x, uint32_t y);
+  ProgramBase& SetDispatchGroupSize(uint32_t x, uint32_t y);
   // set the size of dispatch groups.
-  ProgramBase& DispatchGroupSize(uint32_t x, uint32_t y, uint32_t z);
+  ProgramBase& SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t z);
 
   // set the size of a workgroup grid. Y and Z are 1 if not specified.
-  ProgramBase& WorkgroupSize(uint32_t x);
+  ProgramBase& SetWorkgroupSize(uint32_t x);
   // set the size of a workgroup grid. Z is 1 if not specified.
-  ProgramBase& WorkgroupSize(uint32_t x, uint32_t y);
+  ProgramBase& SetWorkgroupSize(uint32_t x, uint32_t y);
   // set the size of a workgroup grid.
-  ProgramBase& WorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
+  ProgramBase& SetWorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
 
-  // append a uniform variable.
+  // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
   // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
-  ProgramBase& UniformVariable(ProgramUniformVariableValue&& variable);
-  // append multiple uniform variables.
+  ProgramBase& AddUniformVariable(ProgramUniformVariableValue&& variable);
+  // add multiple uniform variables.
   //
   // the specified uniform variables should match the uniform definition in the class,
   // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
-  ProgramBase& UniformVariables(std::initializer_list<ProgramUniformVariableValue> variables);
+  ProgramBase& AddUniformVariables(std::initializer_list<ProgramUniformVariableValue> variables);
 
   // set the overridable constants
   //
   // the specified overridable constants should match the overridable constant definition in the class,
   // specified by macro WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS.
-  ProgramBase& OverridableConstants(std::initializer_list<ProgramOverridableConstantValue> overridable_constants);
+  ProgramBase& SetOverridableConstants(std::initializer_list<ProgramOverridableConstantValue> overridable_constants);
 
   //
   // shader code generation

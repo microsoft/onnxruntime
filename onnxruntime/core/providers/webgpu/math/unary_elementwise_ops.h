@@ -49,7 +49,7 @@ class UnaryElementwise : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const final;
   virtual Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const {
-    program.UniformVariables({{}});  // empty for attribute(s)
+    program.AddUniformVariables({{}});  // empty for attribute(s)
     return Status::OK();
   }
 

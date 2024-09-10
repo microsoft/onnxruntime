@@ -192,67 +192,67 @@ ProgramBase::ProgramBase(const std::string& name)
       workgroup_size_z_{0} {
 }
 
-ProgramBase& ProgramBase::Input(ProgramInput&& input) {
+ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
   inputs_.emplace_back(input);
   return *this;
 }
 
-ProgramBase& ProgramBase::Inputs(std::initializer_list<ProgramInput> inputs) {
+ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) {
   inputs_.insert(inputs_.end(), inputs.begin(), inputs.end());
   return *this;
 }
 
-ProgramBase& ProgramBase::Output(ProgramOutput&& output) {
+ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
   outputs_.emplace_back(output);
   return *this;
 }
 
-ProgramBase& ProgramBase::Outputs(std::initializer_list<ProgramOutput> outputs) {
+ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
   return *this;
 }
 
-ProgramBase& ProgramBase::DispatchGroupSize(uint32_t x) {
-  return DispatchGroupSize(x, 1, 1);
+ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x) {
+  return SetDispatchGroupSize(x, 1, 1);
 }
 
-ProgramBase& ProgramBase::DispatchGroupSize(uint32_t x, uint32_t y) {
-  return DispatchGroupSize(x, y, 1);
+ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y) {
+  return SetDispatchGroupSize(x, y, 1);
 }
 
-ProgramBase& ProgramBase::DispatchGroupSize(uint32_t x, uint32_t y, uint32_t z) {
+ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t z) {
   dispatch_group_size_x_ = x;
   dispatch_group_size_y_ = y;
   dispatch_group_size_z_ = z;
   return *this;
 }
 
-ProgramBase& ProgramBase::WorkgroupSize(uint32_t x) {
-  return WorkgroupSize(x, 1, 1);
+ProgramBase& ProgramBase::SetWorkgroupSize(uint32_t x) {
+  return SetWorkgroupSize(x, 1, 1);
 }
 
-ProgramBase& ProgramBase::WorkgroupSize(uint32_t x, uint32_t y) {
-  return WorkgroupSize(x, y, 1);
+ProgramBase& ProgramBase::SetWorkgroupSize(uint32_t x, uint32_t y) {
+  return SetWorkgroupSize(x, y, 1);
 }
 
-ProgramBase& ProgramBase::WorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
+ProgramBase& ProgramBase::SetWorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
   workgroup_size_x_ = x;
   workgroup_size_y_ = y;
   workgroup_size_z_ = z;
   return *this;
 }
 
-ProgramBase& ProgramBase::UniformVariable(ProgramUniformVariableValue&& variable) {
+ProgramBase& ProgramBase::AddUniformVariable(ProgramUniformVariableValue&& variable) {
   variables_.emplace_back(variable);
   return *this;
 }
 
-ProgramBase& ProgramBase::UniformVariables(std::initializer_list<ProgramUniformVariableValue> variables) {
+ProgramBase& ProgramBase::AddUniformVariables(std::initializer_list<ProgramUniformVariableValue> variables) {
   variables_.insert(variables_.end(), variables.begin(), variables.end());
   return *this;
 }
 
-ProgramBase& ProgramBase::OverridableConstants(std::initializer_list<ProgramOverridableConstantValue> overridable_constants) {
+ProgramBase& ProgramBase::SetOverridableConstants(std::initializer_list<ProgramOverridableConstantValue> overridable_constants) {
   overridable_constants_.insert(overridable_constants_.end(), overridable_constants.begin(), overridable_constants.end());
   return *this;
 }

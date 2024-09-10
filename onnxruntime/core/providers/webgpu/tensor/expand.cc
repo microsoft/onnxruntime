@@ -14,10 +14,10 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderVariable::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderVariable::UseUniform);
 
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size"),
-                          "let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
-                          "let input_offset = ", input.BroadcastedIndicesToOffset("output_indices", output), ";\n",
-                          output.SetByOffset("global_idx", input.GetByOffset("input_offset")));
+  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size"),
+                             "  let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
+                             "  let input_offset = ", input.BroadcastedIndicesToOffset("output_indices", output), ";\n  ",
+                             output.SetByOffset("global_idx", input.GetByOffset("input_offset")));
 
   return Status::OK();
 }
@@ -34,10 +34,10 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   uint32_t data_size = SafeInt<uint32_t>(output_shape.Size());
   ExpandProgram program{};
   program
-      .Inputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .Outputs({{output_tensor, ProgramTensorMetadataDependency::Rank}})
-      .DispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .UniformVariables({
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank}})
+      .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({
           {data_size},
       });
   return context.RunProgram(program);
