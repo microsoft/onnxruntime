@@ -230,7 +230,9 @@ class BaseQuantizer:
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
 
-            quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
+            quantized_data = (np.asarray(bias_data) / bias_scale).round()
+            quantized_data = np.clip(quantized_data, np.iinfo(np.int32).min, np.iinfo(np.int32).max)
+            quantized_data = quantized_data.astype(np.int32)
 
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
@@ -418,6 +420,9 @@ class BaseQuantizer:
         zero_point_list = []
         scale_list = []
         quantized_per_channel_data_list = []
+        weights_shape = list(weights.shape)
+        reshape_dims = list(weights_shape)  # deep copy
+        reshape_dims[channel_axis] = 1  # only one per channel for reshape
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             channel_override_index = i if i < num_channel_overrides else 0
@@ -460,17 +465,10 @@ class BaseQuantizer:
 
             zero_point_list.append(zero_point)
             scale_list.append(scale)
-            quantized_per_channel_data_list.append(quantized_per_channel_data)
+            quantized_per_channel_data_list.append(np.asarray(quantized_per_channel_data).reshape(reshape_dims))
 
         # combine per_channel_data into one
-        weights_shape = list(weights.shape)
-        reshape_dims = list(weights_shape)  # deep copy
-        reshape_dims[channel_axis] = 1  # only one per channel for reshape
-        quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        for i in range(1, len(quantized_per_channel_data_list)):
-            channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
-
+        quantized_weights = np.concatenate(quantized_per_channel_data_list, channel_axis)
         q_weight_name = weight_name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight_name + "_zero_point"
         scale_name = weight_name + "_scale"
@@ -519,8 +517,6 @@ class BaseQuantizer:
         for node in self.model.nodes():
             # adjust tensor_ranges for input of Clip and Relu node
             if node.op_type in ["Clip", "Relu"]:
-                if self.is_activation_symmetric:
-                    continue
                 if not self.should_quantize_node(node):
                     continue
                 if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:

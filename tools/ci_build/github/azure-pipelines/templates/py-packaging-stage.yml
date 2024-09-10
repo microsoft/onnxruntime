@@ -40,6 +40,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_arm64ec_qnn
+  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
+  type: boolean
+  default: true
+
 - name: enable_windows_x64_qnn
   displayName: 'Whether Windows x86_64 package with QNN EP is built.'
   type: boolean
@@ -63,7 +68,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.24.0.240626
+  default: 2.25.0.240728
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -266,7 +271,7 @@ stages:
             SymbolServerType: TeamServices
             SymbolExpirationInDays: 3650
             SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
- 
+
       - task: TSAUpload@2
         displayName: 'TSA upload'
         condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
@@ -288,7 +293,7 @@ stages:
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.8'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.2.0.19.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
@@ -298,7 +303,7 @@ stages:
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.9'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.2.0.19.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
@@ -308,7 +313,7 @@ stages:
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.2.0.19.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
@@ -318,7 +323,7 @@ stages:
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.11'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.2.0.19.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
@@ -328,7 +333,7 @@ stages:
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.12'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.2.0.19.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
@@ -485,7 +490,7 @@ stages:
       - template: py-linux.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'          
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -498,7 +503,7 @@ stages:
           docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          trt_version: '10.2.0.19-1.cuda11.8'
+          trt_version: '10.3.0.26-1.cuda11.8'
           cuda_version: '11.8'
 
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
@@ -511,6 +516,16 @@ stages:
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
           PYTHON_VERSION: '3.11'
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+
+  - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
+    - stage: Python_Packaging_Windows_arm64ec_QNN
+      dependsOn: []
+      jobs:
+        - template: py-win-arm64ec-qnn.yml
+          parameters:
+            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}
+            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
 
   - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
     - stage: Python_Packaging_Windows_x64_QNN

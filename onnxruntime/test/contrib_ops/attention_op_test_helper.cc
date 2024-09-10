@@ -104,7 +104,8 @@ void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData&
 
   data.skip_kernel_types = {AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
                             AttentionKernelType::AttentionKernel_TrtFusedAttention,
-                            AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
+                            AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
+                            AttentionKernelType::AttentionKernel_CudnnFlashAttention};
 
   LoadTensor("CrossAttentionData_Batch2_HeadSize32_RightSidePadding.query_data", data.query_data);
   LoadTensor("CrossAttentionData_Batch2_HeadSize32_RightSidePadding.key_data", data.key_data);
@@ -297,7 +298,7 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
   data.fp16_output_data = data.fp32_output_data;
 }
 
-void GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(AttentionTestData& data) {
+void GetSelfAttentionData_WithPast_WithAttnBias_ForT5(AttentionTestData& data) {
   data.hidden_size = 8;
   data.v_hidden_size = 8;
   data.num_heads = 2;
@@ -313,21 +314,21 @@ void GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(AttentionTestData& data)
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
   };
 
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.query_data", data.query_data);
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.key_data", data.key_data);
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.value_data", data.value_data);
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.rel_pos_bias_data", data.rel_pos_bias_data);
-  data.broadcast_rel_pos_bias = false;
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.past_key_data", data.past_key_data);
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.past_value_data", data.past_value_data);
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.fp32_output_data", data.fp32_output_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.query_data", data.query_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.key_data", data.key_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.value_data", data.value_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.attention_bias_data", data.attention_bias_data);
+  data.broadcast_attention_bias = false;
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.past_key_data", data.past_key_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.past_value_data", data.past_value_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.fp32_output_data", data.fp32_output_data);
   data.fp16_output_data = data.fp32_output_data;
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.present_key_data", data.present_key_data);
-  LoadTensor("SelfAttentionData_WithPast_WithRelPosBias_ForT5.present_value_data", data.present_value_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.present_key_data", data.present_key_data);
+  LoadTensor("SelfAttentionData_WithPast_WithAttnBias_ForT5.present_value_data", data.present_value_data);
   data.is_static_kv = false;
 }
 
-void GetAttentionDataCutlassRelPosBias(AttentionTestData& data) {
+void GetAttentionDataCutlassAttnBias(AttentionTestData& data) {
   data.hidden_size = 8;
   data.v_hidden_size = 8;
   data.num_heads = 2;
@@ -343,13 +344,13 @@ void GetAttentionDataCutlassRelPosBias(AttentionTestData& data) {
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
       AttentionKernelType::AttentionKernel_TrtFusedAttention};
 
-  LoadTensor("AttentionDataCutlassRelPosBias.query_data", data.query_data);
-  LoadTensor("AttentionDataCutlassRelPosBias.key_data", data.key_data);
-  LoadTensor("AttentionDataCutlassRelPosBias.value_data", data.value_data);
-  LoadTensor("AttentionDataCutlassRelPosBias.bias_data", data.bias_data);
-  LoadTensor("AttentionDataCutlassRelPosBias.rel_pos_bias_data", data.rel_pos_bias_data);
-  data.broadcast_rel_pos_bias = false;
-  LoadTensor("AttentionDataCutlassRelPosBias.fp16_output_data", data.fp16_output_data);
+  LoadTensor("AttentionDataCutlassAttnBias.query_data", data.query_data);
+  LoadTensor("AttentionDataCutlassAttnBias.key_data", data.key_data);
+  LoadTensor("AttentionDataCutlassAttnBias.value_data", data.value_data);
+  LoadTensor("AttentionDataCutlassAttnBias.bias_data", data.bias_data);
+  LoadTensor("AttentionDataCutlassAttnBias.attention_bias_data", data.attention_bias_data);
+  data.broadcast_attention_bias = false;
+  LoadTensor("AttentionDataCutlassAttnBias.fp16_output_data", data.fp16_output_data);
   data.fp32_output_data = {};
   data.is_static_kv = false;
 }
@@ -417,7 +418,7 @@ void GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(AttentionTestDat
   data.is_static_kv = true;
 }
 
-void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestData& data) {
+void GetSelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias(AttentionTestData& data) {
   data.hidden_size = 8;
   data.v_hidden_size = 8;
   data.num_heads = 2;
@@ -433,19 +434,19 @@ void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestDa
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
   };
 
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.query_data", data.query_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.key_data", data.key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.value_data", data.value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.bias_data", data.bias_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.past_key_data", data.past_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.past_value_data", data.past_value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.fp32_output_data", data.fp32_output_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.present_key_data", data.present_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias.present_value_data", data.present_value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.query_data", data.query_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.key_data", data.key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.value_data", data.value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.bias_data", data.bias_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.past_key_data", data.past_key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.past_value_data", data.past_value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.fp32_output_data", data.fp32_output_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.present_key_data", data.present_key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias.present_value_data", data.present_value_data);
   data.is_static_kv = false;
 }
 
-void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(AttentionTestData& data) {
+void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias(AttentionTestData& data) {
   data.hidden_size = 16;
   data.v_hidden_size = 16;
   data.num_heads = 2;
@@ -461,37 +462,37 @@ void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(Atten
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
   };
 
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.query_data", data.query_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.key_data", data.key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.value_data", data.value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.bias_data", data.bias_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.past_key_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.query_data", data.query_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.key_data", data.key_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.value_data", data.value_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.bias_data", data.bias_data);
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.past_key_data",
              data.past_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.past_value_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.past_value_data",
              data.past_value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.fp32_output_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.fp32_output_data",
              data.fp32_output_data);
   data.fp16_output_data = data.fp32_output_data;
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.present_key_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.present_key_data",
              data.present_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias.present_value_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias.present_value_data",
              data.present_value_data);
   data.is_static_kv = false;
 }
 
-void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(AttentionTestData& data) {
-  GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(data);
+void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias(AttentionTestData& data) {
+  GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias(data);
   data.bias_data.clear();
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.past_key_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias.past_key_data",
              data.past_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.past_value_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias.past_value_data",
              data.past_value_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.fp32_output_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias.fp32_output_data",
              data.fp32_output_data);
   data.fp16_output_data = data.fp32_output_data;
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.present_key_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias.present_key_data",
              data.present_key_data);
-  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias.present_value_data",
+  LoadTensor("SelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias.present_value_data",
              data.present_value_data);
   data.is_static_kv = false;
 }
@@ -535,7 +536,7 @@ void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input,
   LoadTensor("AttentionDataWithNeoXRotaryEmbedding.output", output);
 }
 
-void GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(PackedAttentionTestData& data) {
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias(PackedAttentionTestData& data) {
   data.hidden_size = 32;
   data.v_hidden_size = 32;
   data.num_heads = 1;
@@ -550,19 +551,19 @@ void GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(PackedAttent
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias.query_data", data.query_data);
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias.key_data", data.key_data);
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias.value_data", data.value_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias.query_data", data.query_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias.key_data", data.key_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias.value_data", data.value_data);
   data.bias_data = {};
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias.qkv_data", data.qkv_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias.qkv_data", data.qkv_data);
 
   // Do not test fp32
   data.fp32_output_data = {};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias.fp16_output_data", data.fp16_output_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias.fp16_output_data", data.fp16_output_data);
 }
 
-void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias(PackedAttentionTestData& data) {
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias(PackedAttentionTestData& data) {
   data.hidden_size = 16;
   data.v_hidden_size = 16;
   data.num_heads = 2;
@@ -576,23 +577,23 @@ void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias(PackedAttention
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias.query_data", data.query_data);
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias.key_data", data.key_data);
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias.value_data", data.value_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias.query_data", data.query_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias.key_data", data.key_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias.value_data", data.value_data);
   data.bias_data = {};
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias.qkv_data", data.qkv_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias.qkv_data", data.qkv_data);
 
   // shape: batch_size, num_heads, sequence_length, sequence_length
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias.rel_pos_bias_data", data.rel_pos_bias_data);
-  data.broadcast_rel_pos_bias = false;
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias.attention_bias_data", data.attention_bias_data);
+  data.broadcast_attention_bias = false;
 
   // Do not test fp32
   data.fp32_output_data = {};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias.fp16_output_data", data.fp16_output_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias.fp16_output_data", data.fp16_output_data);
 }
 
-void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias(PackedAttentionTestData& data) {
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias(PackedAttentionTestData& data) {
   data.hidden_size = 16;
   data.v_hidden_size = 16;
   data.num_heads = 2;
@@ -606,21 +607,21 @@ void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias(Packed
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.query_data", data.query_data);
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.key_data", data.key_data);
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.value_data", data.value_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias.query_data", data.query_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias.key_data", data.key_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias.value_data", data.value_data);
   data.bias_data = {};
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.qkv_data", data.qkv_data);
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias.qkv_data", data.qkv_data);
 
   // shape: 1, num_heads, sequence_length, sequence_length
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.rel_pos_bias_data",
-             data.rel_pos_bias_data);
-  data.broadcast_rel_pos_bias = true;
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias.attention_bias_data",
+             data.attention_bias_data);
+  data.broadcast_attention_bias = true;
 
   // Do not test fp32
   data.fp32_output_data = {};
 
-  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias.fp16_output_data",
+  LoadTensor("PackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias.fp16_output_data",
              data.fp16_output_data);
 }
 

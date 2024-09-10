@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from 'onnxruntime-common';
+import { Env } from 'onnxruntime-common';
 
-import {logLevelStringToEnum} from '../wasm-common';
+import { logLevelStringToEnum } from '../wasm-common';
 
 type LogLevel = NonNullable<Env['logLevel']>;
 type MessageString = string;
 type MessageFunction = () => string;
-type Message = MessageString|MessageFunction;
+type Message = MessageString | MessageFunction;
 
 const logLevelPrefix = ['V', 'I', 'W', 'E', 'F'];
 
@@ -17,8 +17,8 @@ const doLog = (level: number, message: string): void => {
   console.log(`[${logLevelPrefix[level]},${new Date().toISOString()}]${message}`);
 };
 
-let configLogLevel: LogLevel|undefined;
-let debug: boolean|undefined;
+let configLogLevel: LogLevel | undefined;
+let debug: boolean | undefined;
 
 export const configureLogger = ($configLogLevel: LogLevel, $debug: boolean): void => {
   configLogLevel = $configLogLevel;

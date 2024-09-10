@@ -122,7 +122,7 @@ namespace Dml
                     {
                         if (initializerIter->second.first->raw_data().length() == inputProto.raw_data().length())
                         {
-                            for (int i = 0; i < inputProto.raw_data().length(); ++i)
+                            for (size_t i = 0; i < inputProto.raw_data().length(); ++i)
                             {
                                 if (initializerIter->second.first->raw_data()[i] != inputProto.raw_data()[i])
                                 {
@@ -170,11 +170,11 @@ namespace Dml
                 const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
                 std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
                 std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
-                auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
+                const ExecutionProviderImpl* cProviderImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
 
                 // Convert partitionONNXGraph into DML EP GraphDesc
                 ComPtr<IDMLDevice> device;
-                ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+                ORT_THROW_IF_FAILED(cProviderImpl->GetDmlDevice(device.GetAddressOf()));
                 // This map will be used to transfer the initializer to D3D12 system heap memory.
                 // 'serializedDmlGraphDesc' will have constant input as intermediate edges, that's why
                 // we need a mapping between intermediateEdgeIndex and indexedSubGraph's (a given partition)
@@ -192,7 +192,7 @@ namespace Dml
                     isInputsUploadedByDmlEP.size(),
                     m_isInitializerTransferable,
                     m_partitionNodePropsMap,
-                    providerImpl,
+                    cProviderImpl,
                     m_modelPath,
                     m_subgraphNodePointers,
                     m_subgraphInputs,
@@ -220,7 +220,7 @@ namespace Dml
                 m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                     graphDesc,
                     *m_indexedSubGraph,
-                    providerImpl,
+                    cProviderImpl,
                     &serializedGraphInputIndexToSubgraphInputIndex,
                     &serializedGraphLargeConstantNameToSubgraphInputIndex);
 

@@ -42,7 +42,7 @@ MlasFp16MagicDenormal           DD      4 DUP (38800000h)
 ;   Source (rcx) - Supplies the address of the source buffer of half-precision
 ;       floats.
 ;
-;   Destination (edx) - Supplies the address of the destination buffer of
+;   Destination (rdx) - Supplies the address of the destination buffer of
 ;       single-precision floats.
 ;
 ;   Count (r8) - Supplies the number of elements to convert.
@@ -53,7 +53,7 @@ MlasFp16MagicDenormal           DD      4 DUP (38800000h)
 ;
 ;--
 
-        LEAF_ENTRY MlasConvertHalfToFloatBuffer, _TEXT
+        LEAF_ENTRY MlasCastF16ToF32KernelSse, _TEXT
 
         test    r8,r8
         jz      ExitRoutine
@@ -119,6 +119,6 @@ StoreLastElement:
 ExitRoutine:
         ret
 
-        LEAF_END MlasConvertHalfToFloatBuffer, _TEXT
+        LEAF_END MlasCastF16ToF32KernelSse, _TEXT
 
         END

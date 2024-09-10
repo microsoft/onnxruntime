@@ -208,7 +208,26 @@ try:
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
+                    "libcudnn_adv_infer.so.8",
+                    "libcudnn_adv_train.so.8",
+                    "libcudnn_cnn_infer.so.8",
+                    "libcudnn_cnn_train.so.8",
+                    "libcudnn_ops_infer.so.8",
+                    "libcudnn_ops_train.so.8",
+                    "libcudnn_adv.so.9",
+                    "libcudnn_cnn.so.9",
+                    "libcudnn_engines_precompiled.so.9",
+                    "libcudnn_engines_runtime_compiled.so.9",
+                    "libcudnn_graph.so.9",
+                    "libcudnn_heuristic.so.9",
+                    "libcudnn_ops.so.9",
+                    "libnvJitLink.so.12",
+                    "libnvrtc.so.11",
+                    "libnvrtc.so.12",
+                    "libnvrtc-builtins.so.11",
+                    "libnvrtc-builtins.so.12",
                 ]
+
                 rocm_dependencies = [
                     "libamd_comgr.so.2",
                     "libamdhip64.so.5",
@@ -306,7 +325,7 @@ elif platform.system() == "Windows":
 dl_libs = []
 libs = []
 
-if platform.system() == "Linux":
+if platform.system() == "Linux" or platform.system() == "AIX":
     libs = [
         "onnxruntime_pybind11_state.so",
         "libdnnl.so.2",
@@ -336,7 +355,7 @@ elif platform.system() == "Darwin":
         "onnxruntime_pybind11_state.so",
         "libdnnl.2.dylib",
         "mimalloc.so",
-        "libonnxruntime.dylib*",
+        "libonnxruntime*.dylib",
     ]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.dylib"])

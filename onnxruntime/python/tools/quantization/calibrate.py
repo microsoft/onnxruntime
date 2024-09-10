@@ -565,16 +565,29 @@ class HistogramCalibrater(CalibraterBase):
         """
         Entropy Calibrator collects operators' tensors as well as generates tensor histogram for each operator.
         """
+        input_names_set = {node_arg.name for node_arg in self.infer_session.get_inputs()}
+        output_names = [node_arg.name for node_arg in self.infer_session.get_outputs()]
+
         while True:
             inputs = data_reader.get_next()
             if not inputs:
                 break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            outputs = self.infer_session.run(None, inputs)
+
+            # Copy np.ndarray only for graph outputs that are also graph inputs to workaround bug:
+            # https://github.com/microsoft/onnxruntime/issues/21922
+            fixed_outputs = []
+            for output_index, output in enumerate(outputs):
+                if output_names[output_index] in input_names_set:
+                    fixed_outputs.append(copy.copy(output))
+                else:
+                    fixed_outputs.append(output)
+
+            self.intermediate_outputs.append(fixed_outputs)
 
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
-        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
             dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
