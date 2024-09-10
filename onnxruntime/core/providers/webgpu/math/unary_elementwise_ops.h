@@ -60,5 +60,55 @@ class UnaryElementwise : public WebGpuKernel {
   ShaderVariable::Usage additional_usage_;
 };
 
+constexpr const char ErfImpl[] = R"(
+const r0 = 0.3275911;
+const r1 = 0.254829592;
+const r2 = -0.284496736;
+const r3 = 1.421413741;
+const r4 = -1.453152027;
+const r5 = 1.061405429;
+
+fn erf_v(v: x_value_t) -> x_value_t {
+  let absv = abs(v);
+  let x = 1.0 / (1.0 + r0 * absv);
+  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
+}
+)";
+
+constexpr const char HardSigmoidImpl[] = R"(
+fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
+  let alpha = x_element_t(uniforms.attr[0]);
+  let beta_v = vec4<x_element_t>(uniforms.attr[1]);
+  return max(vec4<x_element_t>(0.0),
+             min(vec4<x_element_t>(1.0), alpha * v + beta_v));
+}
+)";
+
+// built-in function tanh() does not work with large input (f32 88.7 or f16 11.09)
+// https://github.com/gpuweb/gpuweb/issues/4458
+constexpr const char TanhImpl[] = R"(
+fn tanh_v(a: x_value_t) -> x_value_t {
+  let expr = exp(-2 * abs(a));
+  return sign(a) * (1 - expr) / (1 + expr);
+}
+)";
+
+constexpr const char EluImpl[] = R"(
+fn elu(a: x_element_t) -> x_element_t {
+  let alpha = x_element_t(uniforms.attr);
+  return select((exp(a) - 1.0) * alpha, a, a >= 0.0);
+}
+
+fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
+  return vec4(elu(v.x), elu(v.y), elu(v.z), elu(v.w));
+}
+)";
+
+// default GELU expression, depending on ErfImpl
+constexpr const char GeluExpr[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475))";
+
+// fast GELU expression, depending on TanhImpl
+constexpr const char FastGeluExpr[] = "a * (0.5 + 0.5 * tanh_v(a * (0.035677408136300125 * a * a + 0.7978845608028654)))";
+
 }  // namespace webgpu
 }  // namespace onnxruntime
