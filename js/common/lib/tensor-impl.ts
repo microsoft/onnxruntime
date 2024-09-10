@@ -6,19 +6,19 @@ import { TensorToDataUrlOptions, TensorToImageDataOptions } from './tensor-conve
 import {
   tensorFromGpuBuffer,
   tensorFromImage,
-  tensorFromMLBuffer,
+  tensorFromMLTensor,
   tensorFromPinnedBuffer,
   tensorFromTexture,
 } from './tensor-factory-impl.js';
 import {
   CpuPinnedConstructorParameters,
   GpuBufferConstructorParameters,
-  MLBufferConstructorParameters,
+  MLTensorConstructorParameters,
   TensorFromGpuBufferOptions,
   TensorFromImageBitmapOptions,
   TensorFromImageDataOptions,
   TensorFromImageElementOptions,
-  TensorFromMLBufferOptions,
+  TensorFromMLTensorOptions,
   TensorFromTextureOptions,
   TensorFromUrlOptions,
   TextureConstructorParameters,
@@ -40,7 +40,7 @@ type TensorDataType = TensorInterface.DataType;
 type TensorDataLocation = TensorInterface.DataLocation;
 type TensorTextureType = TensorInterface.TextureType;
 type TensorGpuBufferType = TensorInterface.GpuBufferType;
-type TensorMLBufferType = TensorInterface.MLBufferType;
+type TensorMLTensorType = TensorInterface.MLTensorType;
 
 /**
  * the implementation of Tensor interface.
@@ -90,11 +90,11 @@ export class Tensor implements TensorInterface {
   /**
    * Construct a new tensor object from the WebNN buffer with the given type and dims.
    *
-   * Tensor's location will be set to 'ml-buffer'.
+   * Tensor's location will be set to 'ml-tensor'.
    *
    * @param params - Specify the parameters to construct the tensor.
    */
-  constructor(params: MLBufferConstructorParameters);
+  constructor(params: MLTensorConstructorParameters);
 
   /**
    * implementation.
@@ -108,7 +108,7 @@ export class Tensor implements TensorInterface {
       | CpuPinnedConstructorParameters
       | TextureConstructorParameters
       | GpuBufferConstructorParameters
-      | MLBufferConstructorParameters,
+      | MLTensorConstructorParameters,
     arg1?: TensorDataType | readonly number[] | readonly string[] | readonly boolean[],
     arg2?: readonly number[],
   ) {
@@ -165,7 +165,7 @@ export class Tensor implements TensorInterface {
           this.disposer = arg0.dispose;
           break;
         }
-        case 'ml-buffer': {
+        case 'ml-tensor': {
           if (
             type !== 'float32' &&
             type !== 'float16' &&
@@ -177,9 +177,9 @@ export class Tensor implements TensorInterface {
             type !== 'uint8' &&
             type !== 'bool'
           ) {
-            throw new TypeError(`unsupported type "${type}" to create tensor from MLBuffer`);
+            throw new TypeError(`unsupported type "${type}" to create tensor from MLTensor`);
           }
-          this.mlBufferData = arg0.mlBuffer;
+          this.mlTensorData = arg0.mlTensor;
           this.downloader = arg0.download;
           this.disposer = arg0.dispose;
           break;
@@ -345,11 +345,11 @@ export class Tensor implements TensorInterface {
     return tensorFromGpuBuffer(gpuBuffer, options);
   }
 
-  static fromMLBuffer<T extends TensorInterface.MLBufferDataTypes>(
-    mlBuffer: TensorMLBufferType,
-    options: TensorFromMLBufferOptions<T>,
+  static fromMLTensor<T extends TensorInterface.MLTensorDataTypes>(
+    mlTensor: TensorMLTensorType,
+    options: TensorFromMLTensorOptions<T>,
   ): TensorInterface {
-    return tensorFromMLBuffer(mlBuffer, options);
+    return tensorFromMLTensor(mlTensor, options);
   }
 
   static fromPinnedBuffer<T extends TensorInterface.CpuPinnedDataTypes>(
@@ -401,9 +401,9 @@ export class Tensor implements TensorInterface {
   private gpuBufferData?: TensorGpuBufferType;
 
   /**
-   * stores the underlying WebNN MLBuffer when location is 'ml-buffer'. otherwise empty.
+   * stores the underlying WebNN MLTensor when location is 'ml-tensor'. otherwise empty.
    */
-  private mlBufferData?: TensorMLBufferType;
+  private mlTensorData?: TensorMLTensorType;
 
   /**
    * stores an optional downloader function to download data from GPU to CPU.
@@ -453,12 +453,12 @@ export class Tensor implements TensorInterface {
     return this.gpuBufferData;
   }
 
-  get mlBuffer(): TensorMLBufferType {
+  get mlTensor(): TensorMLTensorType {
     this.ensureValid();
-    if (!this.mlBufferData) {
+    if (!this.mlTensorData) {
       throw new Error('The data is not stored as a WebNN buffer.');
     }
-    return this.mlBufferData;
+    return this.mlTensorData;
   }
   // #endregion
 
@@ -472,7 +472,7 @@ export class Tensor implements TensorInterface {
         return this.data;
       case 'texture':
       case 'gpu-buffer':
-      case 'ml-buffer': {
+      case 'ml-tensor': {
         if (!this.downloader) {
           throw new Error('The current tensor is not created with a specified data downloader.');
         }
@@ -513,7 +513,7 @@ export class Tensor implements TensorInterface {
     this.cpuData = undefined;
     this.gpuTextureData = undefined;
     this.gpuBufferData = undefined;
-    this.mlBufferData = undefined;
+    this.mlTensorData = undefined;
     this.downloader = undefined;
     this.isDownloading = undefined;
 

@@ -154,7 +154,7 @@ onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, Onn
 
 onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                             const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
-  auto jsepEnsureBuffer = emscripten::val::module_property("jsepEnsureBuffer");
+  auto jsepEnsureTensor = emscripten::val::module_property("jsepEnsureTensor");
   auto promises = emscripten::val::array();
   for (const auto& [_, tensor] : inputs) {
     emscripten::val shape = emscripten::val::array();
@@ -162,7 +162,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
+    auto buffer = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
     promises.call<void>("push", buffer);
   }
   for (const auto& [_, tensor] : outputs) {
@@ -171,7 +171,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
+    auto buffer = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
     promises.call<void>("push", buffer);
   }
   auto buffers = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
@@ -200,7 +200,7 @@ void Model::SetOutputMap(InlinedHashMap<std::string, size_t>&& output_map) {
 
 // Pre-allocate the input and output buffers for the WebNN graph.
 void Model::AllocateInputOutputBuffers() {
-  // We don't need to allocate JS array buffers if the WebNN API supports MLBuffer.
+  // We don't need to allocate JS array buffers if the WebNN API supports MLTensor.
   if (use_dispatch_) {
     return;
   }

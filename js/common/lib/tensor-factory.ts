@@ -86,18 +86,18 @@ export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTy
   readonly gpuBuffer: Tensor.GpuBufferType;
 }
 
-export interface MLBufferConstructorParameters<T extends Tensor.MLBufferDataTypes = Tensor.MLBufferDataTypes>
+export interface MLTensorConstructorParameters<T extends Tensor.MLTensorDataTypes = Tensor.MLTensorDataTypes>
   extends CommonConstructorParameters<T>,
     GpuResourceConstructorParameters<T> {
   /**
-   * Specify the location of the data to be 'ml-buffer'.
+   * Specify the location of the data to be 'ml-tensor'.
    */
-  readonly location: 'ml-buffer';
+  readonly location: 'ml-tensor';
 
   /**
    * Specify the WebNN buffer that holds the tensor data.
    */
-  readonly mlBuffer: Tensor.MLBufferType;
+  readonly mlTensor: Tensor.MLTensorType;
 }
 
 // #endregion
@@ -233,7 +233,7 @@ export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes>
   dataType?: T;
 }
 
-export interface TensorFromMLBufferOptions<T extends Tensor.MLBufferDataTypes>
+export interface TensorFromMLTensorOptions<T extends Tensor.MLTensorDataTypes>
   extends Pick<Tensor, 'dims'>,
     GpuResourceConstructorParameters<T> {
   /**
@@ -360,26 +360,26 @@ export interface TensorFactory {
   ): TypedTensor<T>;
 
   /**
-   * create a tensor from a WebNN MLBuffer
+   * create a tensor from a WebNN MLTensor
    *
-   * @param buffer - the MLBuffer object to create tensor from
-   * @param options - An optional object representing options for creating tensor from a WebNN MLBuffer.
+   * @param buffer - the MLTensor object to create tensor from
+   * @param options - An optional object representing options for creating tensor from a WebNN MLTensor.
    *
    * The options include following properties:
    * - `dataType`: the data type of the tensor. If omitted, assume 'float32'.
    * - `dims`: the dimension of the tensor. Required.
-   * - `download`: an optional function to download the tensor data from the MLBuffer to CPU. If omitted, the MLBuffer
+   * - `download`: an optional function to download the tensor data from the MLTensor to CPU. If omitted, the MLTensor
    * data will not be able to download. Usually, this is provided by the WebNN backend for the inference outputs.
    * Users don't need to provide this function.
-   * - `dispose`: an optional function to dispose the tensor data on the WebNN MLBuffer. If omitted, the MLBuffer will
+   * - `dispose`: an optional function to dispose the tensor data on the WebNN MLTensor. If omitted, the MLTensor will
    * not be disposed. Usually, this is provided by the WebNN backend for the inference outputs. Users don't need to
    * provide this function.
    *
    * @returns a tensor object
    */
-  fromMLBuffer<T extends Tensor.MLBufferDataTypes>(
-    buffer: Tensor.MLBufferType,
-    options: TensorFromMLBufferOptions<T>,
+  fromMLTensor<T extends Tensor.MLTensorDataTypes>(
+    buffer: Tensor.MLTensorType,
+    options: TensorFromMLTensorOptions<T>,
   ): TypedTensor<T>;
 
   /**

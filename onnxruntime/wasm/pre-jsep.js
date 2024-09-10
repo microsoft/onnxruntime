@@ -208,15 +208,15 @@ Module['jsepInit'] = (name, params) => {
     // change the name.
 
     [Module.jsepBackend,
-     Module.jsepReserveBufferId,
-     Module.jsepReleaseBufferId,
-     Module['jsepEnsureBuffer'],
-     Module.jsepUploadBuffer,
-     Module['jsepDownloadBuffer'],
+     Module.jsepReserveTensorId,
+     Module.jsepReleaseTensorId,
+     Module['jsepEnsureTensor'],
+     Module.jsepUploadTensor,
+     Module['jsepDownloadTensor'],
     ] = params;
 
     // This function is called from both JS and an EM_ASM block, it needs both a minifiable name and an explicit name.
-    Module['jsepReleaseBufferId'] = Module.jsepReleaseBufferId;
+    Module['jsepReleaseTensorId'] = Module.jsepReleaseTensorId;
 
     // Functions called from JS also need to have explicit names.
     const backend = Module.jsepBackend;
@@ -229,11 +229,11 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepOnReleaseSession'] = sessionId => {
       backend['onReleaseSession'](sessionId);
     };
-    Module['jsepCreateMLBufferDownloader'] = (bufferId, type) => {
-      return backend['createMLBufferDownloader'](bufferId, type);
+    Module['jsepCreateMLTensorDownloader'] = (tensorId, type) => {
+      return backend['createMLTensorDownloader'](tensorId, type);
     }
-    Module['jsepRegisterMLBuffer'] = (buffer, dataType, dimensions) => {
-      return backend['registerMLBuffer'](buffer, dataType, dimensions);
+    Module['jsepRegisterMLTensor'] = (tensor, dataType, dimensions) => {
+      return backend['registerMLTensor'](tensor, dataType, dimensions);
     }
   }
 };

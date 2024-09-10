@@ -24,7 +24,7 @@ import { createView } from '../lib/wasm/jsep/tensor-view';
 import {
   calculateTensorSizeInBytes,
   isGpuBufferSupportedType,
-  isMLBufferSupportedType,
+  isMLTensorSupportedType,
   tensorDataTypeStringToEnum,
 } from '../lib/wasm/wasm-common';
 
@@ -180,7 +180,7 @@ async function initializeSession(
   if (ioBindingMode === 'gpu-location') {
     preferredOutputLocation = 'gpu-buffer';
   } else if (ioBindingMode === 'ml-location') {
-    preferredOutputLocation = 'ml-buffer';
+    preferredOutputLocation = 'ml-tensor';
   }
 
   const profilerConfig = profile ? { maxNumberEvents: 65536 } : undefined;
@@ -655,44 +655,44 @@ function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]
 }
 
 async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Type, dims: readonly number[]) {
-  if (!isMLBufferSupportedType(type)) {
+  if (!isMLTensorSupportedType(type)) {
     throw new Error(`createMLTensorForOutput can not work with ${type} tensor`);
   }
 
   const dataType = type === 'bool' ? 'uint8' : type;
 
-  const mlBuffer = await mlContext.createBuffer({
+  const mlTensor = await mlContext.createTensor({
     dataType,
     dimensions: dims as number[],
-    usage: MLBufferUsage.READ_FROM,
+    usage: MLTensorUsage.READ_FROM,
   });
 
-  return ort.Tensor.fromMLBuffer(mlBuffer, {
+  return ort.Tensor.fromMLTensor(mlTensor, {
     dataType: type,
     dims,
-    dispose: () => mlBuffer.destroy(),
+    dispose: () => mlTensor.destroy(),
     download: async () => {
-      const arrayBuffer = await mlContext.readBuffer(mlBuffer);
-      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.MLBufferDataTypes];
+      const arrayBuffer = await mlContext.readTensor(mlTensor);
+      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.MLTensorDataTypes];
     },
   });
 }
 
 async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tensor): Promise<ort.Tensor> {
-  if (!isMLBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
+  if (!isMLTensorSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
     throw new Error(`createMLTensorForInput can not work with ${cpuTensor.type} tensor`);
   }
   const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
-  const mlBuffer = await mlContext.createBuffer({
+  const mlTensor = await mlContext.createTensor({
     dataType,
     dimensions: cpuTensor.dims as number[],
-    usage: MLBufferUsage.WRITE_TO,
+    usage: MLTensorUsage.WRITE_TO,
   });
-  mlContext.writeBuffer(mlBuffer, cpuTensor.data);
-  return ort.Tensor.fromMLBuffer(mlBuffer, {
+  mlContext.writeTensor(mlTensor, cpuTensor.data);
+  return ort.Tensor.fromMLTensor(mlTensor, {
     dataType: cpuTensor.type,
     dims: cpuTensor.dims,
-    dispose: () => mlBuffer.destroy(),
+    dispose: () => mlTensor.destroy(),
   });
 }
 

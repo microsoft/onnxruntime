@@ -271,18 +271,18 @@ export const init = async (
     jsepInit('webnn', [
       backend,
       // jsepReserveBufferId
-      () => backend.reserveBufferId(),
+      () => backend.reserveTensorId(),
       // jsepReleaseBufferId,
-      (bufferId: number) => backend.releaseBufferId(bufferId),
+      (bufferId: number) => backend.releaseTensorId(bufferId),
       // jsepEnsureBuffer
       async (bufferId: number, onnxDataType: number, dimensions: number[], copyOld) =>
-        backend.ensureBuffer(bufferId, onnxDataType, dimensions, copyOld),
+        backend.ensureTensor(bufferId, onnxDataType, dimensions, copyOld),
       // jsepUploadBuffer
       (bufferId: number, data: Uint8Array) => {
-        backend.uploadBuffer(bufferId, data);
+        backend.uploadTensor(bufferId, data);
       },
       // jsepDownloadBuffer
-      async (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadBuffer(bufferId, dstBuffer),
+      async (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(bufferId, dstBuffer),
     ]);
   }
 };

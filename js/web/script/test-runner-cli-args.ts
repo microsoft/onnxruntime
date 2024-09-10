@@ -62,8 +62,8 @@ Options:
                                  none            (default)
                                  gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
                                  gpu-location    use pre-allocated GPU tensors for inputs and set preferredOutputLocation to 'gpu-buffer'
-                                 ml-tensor       use pre-allocated MLBuffer tensors for inputs and outputs
-                                 ml-location     use pre-allocated MLBuffer tensors for inputs and set preferredOutputLocation to 'ml-buffer'
+                                 ml-tensor       use pre-allocated MLTensor tensors for inputs and outputs
+                                 ml-location     use pre-allocated MLTensor tensors for inputs and set preferredOutputLocation to 'ml-tensor'
 
 *** Logging Options ***
 

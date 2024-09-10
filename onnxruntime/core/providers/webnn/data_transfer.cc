@@ -10,14 +10,14 @@ namespace onnxruntime {
 namespace webnn {
 
 bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  // Copying data between MLBuffers is not supported by WebNN.
+  // Copying data between MLTensors is not supported by WebNN.
   return (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::CPU) ||
          (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
 }
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  if (!emscripten::val::module_property("shouldTransferToMLBuffer").as<bool>()) {
-    // We don't need to transfer the buffer to an MLBuffer, so we don't need to copy the buffer.
+  if (!emscripten::val::module_property("shouldTransferToMLTensor").as<bool>()) {
+    // We don't need to transfer the buffer to an MLTensor, so we don't need to copy the buffer.
     return Status::OK();
   }
 
@@ -29,11 +29,11 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     const auto& dst_device = dst.Location().device;
 
     if (dst_device.Type() == OrtDevice::GPU) {
-      EM_ASM({ Module.jsepUploadBuffer($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
+      EM_ASM({ Module.jsepUploadTensor($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
     } else {
-      auto jsepDownloadBuffer = emscripten::val::module_property("jsepDownloadBuffer");
+      auto jsepDownloadTensor = emscripten::val::module_property("jsepDownloadTensor");
       auto subarray = emscripten::typed_memory_view(bytes, static_cast<char*>(dst_data));
-      jsepDownloadBuffer(reinterpret_cast<intptr_t>(src_data), subarray).await();
+      jsepDownloadTensor(reinterpret_cast<intptr_t>(src_data), subarray).await();
     }
   }
 

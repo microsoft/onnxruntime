@@ -53,8 +53,8 @@ export declare namespace Test {
    * - gpu-tensor: inputs and outputs will all be pre-allocated as GPU tensors. `preferredOutputLocation`
    * will not be set.
    * - ml-location: inputs will be pre-allocated as ML tensors; no output will be pre-allocated;
-   * `preferredOutputLocation` will be set to `ml-buffer`.
-   * - ml-tensor: inputs and outputs will all be pre-allocated as MLBuffer tensors. `preferredOutputLocation`
+   * `preferredOutputLocation` will be set to `ml-tensor`.
+   * - ml-tensor: inputs and outputs will all be pre-allocated as MLTensor tensors. `preferredOutputLocation`
    * will not be set.
    */
   export type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location' | 'ml-tensor' | 'ml-location';

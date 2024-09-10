@@ -24,7 +24,7 @@ enum DataLocation {
   DATA_LOCATION_CPU_PINNED = 2,
   DATA_LOCATION_TEXTURE = 3,
   DATA_LOCATION_GPU_BUFFER = 4,
-  DATA_LOCATION_ML_BUFFER = 5
+  DATA_LOCATION_ML_TENSOR = 5
 };
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
@@ -237,7 +237,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
   if (data_location != DATA_LOCATION_CPU &&
       data_location != DATA_LOCATION_CPU_PINNED &&
       data_location != DATA_LOCATION_GPU_BUFFER &&
-      data_location != DATA_LOCATION_ML_BUFFER) {
+      data_location != DATA_LOCATION_ML_TENSOR) {
     std::ostringstream ostr;
     ostr << "Invalid data location: " << data_location;
     CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
@@ -270,7 +270,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
       case DATA_LOCATION_GPU_BUFFER:
         RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
         break;
-      case DATA_LOCATION_ML_BUFFER:
+      case DATA_LOCATION_ML_TENSOR:
         RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebNN_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
         break;
       default:
@@ -426,16 +426,16 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
         output_location != DATA_LOCATION_CPU &&
         output_location != DATA_LOCATION_CPU_PINNED &&
         output_location != DATA_LOCATION_GPU_BUFFER &&
-        output_location != DATA_LOCATION_ML_BUFFER) {
+        output_location != DATA_LOCATION_ML_TENSOR) {
       std::ostringstream ostr;
       ostr << "Invalid data location (" << output_location << ") for output: \"" << name << "\".";
       return CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
     }
 
     OrtMemoryInfo* memory_info = nullptr;
-    if (output_location != DATA_LOCATION_GPU_BUFFER && output_location != DATA_LOCATION_ML_BUFFER) {
+    if (output_location != DATA_LOCATION_GPU_BUFFER && output_location != DATA_LOCATION_ML_TENSOR) {
       RETURN_ERROR_CODE_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
-    } else if (output_location == DATA_LOCATION_ML_BUFFER) {
+    } else if (output_location == DATA_LOCATION_ML_TENSOR) {
       RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebNN_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
     } else {
       RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);

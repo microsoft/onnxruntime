@@ -4,7 +4,7 @@
 import {
   CpuPinnedConstructorParameters,
   GpuBufferConstructorParameters,
-  MLBufferConstructorParameters,
+  MLTensorConstructorParameters,
   TextureConstructorParameters,
 } from './tensor-factory.js';
 import { Tensor } from './tensor-impl.js';
@@ -57,11 +57,11 @@ export const tensorReshape = (tensor: Tensor, dims: readonly number[]): Tensor =
         type: tensor.type as GpuBufferConstructorParameters['type'],
         dims,
       });
-    case 'ml-buffer':
+    case 'ml-tensor':
       return new Tensor({
-        location: 'ml-buffer',
-        mlBuffer: tensor.mlBuffer,
-        type: tensor.type as MLBufferConstructorParameters['type'],
+        location: 'ml-tensor',
+        mlTensor: tensor.mlTensor,
+        type: tensor.type as MLTensorConstructorParameters['type'],
         dims,
       });
     default:

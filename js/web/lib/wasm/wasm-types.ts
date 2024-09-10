@@ -28,16 +28,16 @@ export declare namespace JSEP {
   type CaptureBeginFunction = () => void;
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
-  type ReserveBufferIdFunction = () => number;
-  type ReleaseBufferIdFunction = (bufferId: number) => void;
-  type EnsureBufferFunction = (
-    bufferId: number,
+  type ReserveTensorIdFunction = () => number;
+  type ReleaseTensorIdFunction = (tensorId: number) => void;
+  type EnsureTensorFunction = (
+    tensorId: number,
     dataType: DataType,
     dimensions: readonly number[],
     copyOld: boolean,
-  ) => Promise<MLBuffer>;
-  type UploadBufferFunction = (bufferId: number, data: Uint8Array) => void;
-  type DownloadBufferFunction = (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+  ) => Promise<MLTensor>;
+  type UploadTensorFunction = (tensorId: number, data: Uint8Array) => void;
+  type DownloadTensorFunction = (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
 
   export interface Module extends WebGpuModule, WebNnModule {
     /**
@@ -77,11 +77,11 @@ export declare namespace JSEP {
       name: 'webnn',
       initParams: [
         backend: BackendType,
-        reserveBufferId: ReserveBufferIdFunction,
-        releaseBufferId: ReleaseBufferIdFunction,
-        ensureBuffer: EnsureBufferFunction,
-        uploadBuffer: UploadBufferFunction,
-        downloadBuffer: DownloadBufferFunction,
+        reserveTensorId: ReserveTensorIdFunction,
+        releaseTensorId: ReleaseTensorIdFunction,
+        ensureTensor: EnsureTensorFunction,
+        uploadTensor: UploadTensorFunction,
+        downloadTensor: DownloadTensorFunction,
       ],
     ): void;
   }
@@ -157,9 +157,9 @@ export declare namespace JSEP {
     currentContext: MLContext;
 
     /**
-     * Disables creating MLBuffers. This is used to avoid creating MLBuffers for graph initializers.
+     * Disables creating MLTensors. This is used to avoid creating MLTensors for graph initializers.
      */
-    shouldTransferToMLBuffer: boolean;
+    shouldTransferToMLTensor: boolean;
 
     /**
      * [exported from pre-jsep.js] Register MLContext for a session.
@@ -169,67 +169,62 @@ export declare namespace JSEP {
      */
     jsepRegisterMLContext: (sessionId: number, context: MLContext) => void;
     /**
-     * [exported from pre-jsep.js] Reserve a MLBuffer ID attached to the current session.
-     * @returns the MLBuffer ID.
+     * [exported from pre-jsep.js] Reserve a MLTensor ID attached to the current session.
+     * @returns the MLTensor ID.
      */
-    jsepReserveBufferId: () => number;
+    jsepReserveTensorId: () => number;
     /**
-     * [exported from pre-jsep.js] Release a MLBuffer ID from use and destroy buffer if no longer in use.
-     * @param bufferId - specify the MLBuffer ID.
+     * [exported from pre-jsep.js] Release a MLTensor ID from use and destroy buffer if no longer in use.
+     * @param tensorId - specify the MLTensor ID.
      * @returns
      */
-    jsepReleaseBufferId: (bufferId: number) => void;
+    jsepReleaseTensorId: (tensorId: number) => void;
     /**
-     * [exported from pre-jsep.js] Ensure a MLBuffer of a given type and shape has exists for a buffer ID.
-     * @param bufferId - specify the buffer ID.
+     * [exported from pre-jsep.js] Ensure a MLTensor of a given type and shape has exists for a buffer ID.
+     * @param tensorId - specify the tensor ID.
      * @param onnxDataType - specify the data type.
      * @param dimensions - specify the dimensions.
-     * @param copyOld - specify whether to copy the old buffer if a new buffer was created.
-     * @returns the MLBuffer associated with the buffer ID.
+     * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
+     * @returns the MLTensor associated with the tensor ID.
      */
-    jsepEnsureBuffer: (
-      bufferId: number,
+    jsepEnsureTensor: (
+      tensorId: number,
       dataType: DataType,
       dimensions: number[],
       copyOld: boolean,
-    ) => Promise<MLBuffer>;
+    ) => Promise<MLTensor>;
     /**
-     * [exported from pre-jsep.js] Upload data to MLBuffer.
-     * @param bufferId - specify the MLBuffer ID.
+     * [exported from pre-jsep.js] Upload data to MLTensor.
+     * @param tensorId - specify the MLTensor ID.
      * @param data - specify the data to upload. It can be a TensorProto::data_type or a WebNN MLOperandDataType.
      * @param dimensions - specify the dimensions.
      * @returns
      */
-    jsepUploadBuffer: (bufferId: number, data: Uint8Array) => void;
+    jsepUploadTensor: (tensorId: number, data: Uint8Array) => void;
     /**
-     * [exported from pre-jsep.js] Download data from MLBuffer.
-     * @param bufferId - specify the MLBuffer ID.
+     * [exported from pre-jsep.js] Download data from MLTensor.
+     * @param tensorId - specify the MLTensor ID.
      * @returns the downloaded data.
      */
-    jsepDownloadBuffer: (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+    jsepDownloadTensor: (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
     /**
-     * [exported from pre-jsep.js] Download data from MLBuffer.
-     * @param bufferId - specify the MLBuffer ID.
-     * @returns the downloaded data.
-     */
-    /**
-     * [exported from pre-jsep.js] Create a downloader function to download data from MLBuffer.
-     * @param bufferId - specify the MLBuffer ID.
+     * [exported from pre-jsep.js] Create a downloader function to download data from MLTensor.
+     * @param tensorId - specify the MLTensor ID.
      * @param type - specify the data type.
      * @returns the downloader function.
      */
-    jsepCreateMLBufferDownloader: (
-      bufferId: number,
-      type: Tensor.MLBufferDataTypes,
-    ) => () => Promise<Tensor.DataTypeMap[Tensor.MLBufferDataTypes]>;
+    jsepCreateMLTensorDownloader: (
+      tensorId: number,
+      type: Tensor.MLTensorDataTypes,
+    ) => () => Promise<Tensor.DataTypeMap[Tensor.MLTensorDataTypes]>;
     /**
-     * [exported from pre-jsep.js] Register MLBuffer for a session.
-     * @param mlBuffer - specify the MLBuffer.
+     * [exported from pre-jsep.js] Register MLTensor for a session.
+     * @param tensor - specify the MLTensor.
      * @param dataType - specify the data type.
      * @param dimensions - specify the dimensions.
-     * @returns the MLBuffer ID.
+     * @returns the MLTensor ID.
      */
-    jsepRegisterMLBuffer: (buffer: MLBuffer, onnxDataType: DataType, dimensions: readonly number[]) => number;
+    jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
   }
 }
 

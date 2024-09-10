@@ -23,9 +23,9 @@ namespace onnxruntime {
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
     : IExecutionProvider{
           onnxruntime::kWebNNExecutionProvider,
-          // If MLBuffer is supported, we force all the tensors to be allocated as MLBuffer.
+          // If MLTensor is supported, we force all the tensors to be allocated as MLTensor.
           OrtDevice(
-              webnn::IsMLBufferSupported() ? OrtDevice::GPU : OrtDevice::CPU,
+              webnn::IsMLTensorSupported() ? OrtDevice::GPU : OrtDevice::CPU,
               OrtDevice::MemType::DEFAULT,
               0)},
       wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
@@ -398,14 +398,14 @@ WebNNExecutionProvider::GetKernelRegistry() const {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebNNExecutionProvider::GetDataTransfer() const {
-  if (!webnn::IsMLBufferSupported()) {
+  if (!webnn::IsMLTensorSupported()) {
     return nullptr;
   }
   return std::make_unique<webnn::DataTransfer>();
 }
 
 std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {
-  if (!webnn::IsMLBufferSupported()) {
+  if (!webnn::IsMLTensorSupported()) {
     return {};
   }
   AllocatorCreationInfo customAllocatorCreationInfo([&](OrtDevice::DeviceId) {

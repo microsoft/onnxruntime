@@ -381,32 +381,32 @@ interface MLGraphBuilder {
   where(condition: MLOperand, input: MLOperand, other: MLOperand): MLOperand;
 }
 
-// Experimental MLBuffer interface
+// Experimental MLTensor interface
 
-interface MLBuffer {
+interface MLTensor {
   destroy(): void;
 }
 
-type MLNamedBuffers = Record<string, MLBuffer>;
+type MLNamedBuffers = Record<string, MLTensor>;
 
-type MLBufferUsageFlags = number;
+type MLTensorUsageFlags = number;
 
-declare const MLBufferUsage: {
-  readonly WEBGPU_INTEROP: MLBufferUsageFlags;
-  readonly READ_FROM: MLBufferUsageFlags;
-  readonly WRITE_TO: MLBufferUsageFlags;
+declare const MLTensorUsage: {
+  readonly WEBGPU_INTEROP: MLTensorUsageFlags;
+  readonly READ_FROM: MLTensorUsageFlags;
+  readonly WRITE_TO: MLTensorUsageFlags;
 };
 
-interface MLBufferDescriptor extends MLOperandDescriptor {
-  usage: MLBufferUsageFlags;
+interface MLTensorDescriptor extends MLOperandDescriptor {
+  usage: MLTensorUsageFlags;
 }
 
 interface MLContext {
-  createBuffer(descriptor: MLBufferDescriptor): Promise<MLBuffer>;
-  writeBuffer(
-      dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: number,
+  createTensor(descriptor: MLTensorDescriptor): Promise<MLTensor>;
+  writeTensor(
+      destinationTensor: MLTensor, sourceData: ArrayBufferView|ArrayBuffer, sourceElementOffset?: number,
       srcElementSize?: number): void;
-  readBuffer(srcBuffer: MLBuffer): Promise<ArrayBuffer>;
-  readBuffer(srcBuffer: MLBuffer, dstBuffer: ArrayBufferView|ArrayBuffer): Promise<undefined>;
+  readTensor(sourceTensor: MLTensor): Promise<ArrayBuffer>;
+  readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView|ArrayBuffer): Promise<undefined>;
   dispatch(graph: MLGraph, inputs: MLNamedBuffers, outputs: MLNamedBuffers): void;
 }

@@ -12,11 +12,11 @@ void* WebNNBufferAllocator::Alloc(size_t size) {
   if (size == 0) {
     return nullptr;
   }
-  if (!emscripten::val::module_property("shouldTransferToMLBuffer").as<bool>()) {
-    // We don't need to transfer the buffer to an MLBuffer, so we don't need to allocate buffer id.
+  if (!emscripten::val::module_property("shouldTransferToMLTensor").as<bool>()) {
+    // We don't need to transfer the buffer to an MLTensor, so we don't need to allocate buffer id.
     return nullptr;
   }
-  void* p = EM_ASM_PTR({ return Module.jsepReserveBufferId(); });
+  void* p = EM_ASM_PTR({ return Module.jsepReserveTensorId(); });
   allocations_[p] = size;
   stats_.num_allocs++;
   stats_.bytes_in_use += SafeInt<int64_t>(size);
@@ -27,7 +27,7 @@ void WebNNBufferAllocator::Free(void* p) {
   if (p == nullptr) {
     return;
   }
-  EM_ASM({ Module.jsepReleaseBufferId($0); }, p);
+  EM_ASM({ Module.jsepReleaseTensorId($0); }, p);
   size_t size = allocations_[p];
   stats_.bytes_in_use -= size;
   allocations_.erase(p);

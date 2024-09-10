@@ -12,7 +12,7 @@ import { DataType } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { BufferId, createBufferManager } from './webnn/buffer-manager';
+import { TensorId, createTensorManager } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -31,14 +31,14 @@ const onnxDataTypeToWebnnDataType = new Map<DataType, MLOperandDataType>([
 ]);
 
 /**
- * WebNN backend implementation. This class is used to keep track of the MLBuffers created by the backend and keep track
+ * WebNN backend implementation. This class is used to keep track of the MLTensors created by the backend and keep track
  * of the current MLContext being used by the sessions.
  */
 export class WebNNBackend {
   /**
-   * Buffer managers for each session.
+   * Tensor managers for each session.
    */
-  private bufferManager = createBufferManager(this);
+  private tensorManager = createTensorManager(this);
   /**
    * Maps from session id to MLContexts.
    */
@@ -96,7 +96,7 @@ export class WebNNBackend {
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
       this.sessionIdsByMLContext.delete(mlContext);
-      this.bufferManager.releaseBuffersForContext(mlContext);
+      this.tensorManager.releaseTensorsForContext(mlContext);
     }
   }
 
@@ -104,53 +104,63 @@ export class WebNNBackend {
     return this.mlContextBySessionId.get(sessionId);
   }
 
-  public reserveBufferId(): BufferId {
-    return this.bufferManager.reserveBufferId();
+  public reserveTensorId(): TensorId {
+    return this.tensorManager.reserveTensorId();
   }
 
-  public releaseBufferId(bufferId: BufferId): void {
-    LOG_DEBUG('verbose', () => `[WebNN] releaseBufferId {bufferId: ${bufferId}}`);
-    this.bufferManager.releaseBufferId(bufferId);
+  public releaseTensorId(tensorId: TensorId): void {
+    LOG_DEBUG('verbose', () => `[WebNN] releaseTensorId {tensorId: ${tensorId}}`);
+    this.tensorManager.releaseTensorId(tensorId);
   }
 
-  public async ensureBuffer(
-    bufferId: BufferId,
+  public async ensureTensor(
+    tensorId: TensorId,
     onnxDataType: DataType,
     dimensions: number[],
     copyOld: boolean,
-  ): Promise<MLBuffer> {
+  ): Promise<MLTensor> {
     const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
     if (!webnnDataType) {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
-    return this.bufferManager.ensureBuffer(bufferId, webnnDataType, dimensions, copyOld);
+    return this.tensorManager.ensureTensor(tensorId, webnnDataType, dimensions, copyOld);
   }
 
-  public uploadBuffer(bufferId: BufferId, data: Uint8Array): void {
+  public uploadTensor(tensorId: TensorId, data: Uint8Array): void {
     const wasm = getInstance();
-    if (!wasm.shouldTransferToMLBuffer) {
-      throw new Error('Trying to upload to a MLBuffer while shouldTransferToMLBuffer is false');
+    if (!wasm.shouldTransferToMLTensor) {
+      throw new Error('Trying to upload to a MLTensor while shouldTransferToMLTensor is false');
     }
-    this.bufferManager.upload(bufferId, data);
+    LOG_DEBUG('verbose', () => `[WebNN] uploadBuffer {tensorId: ${tensorId}, data: ${data.byteLength}}`);
+    this.tensorManager.upload(tensorId, data);
   }
 
-  public async downloadBuffer(bufferId: BufferId, dstBuffer: ArrayBufferView | ArrayBuffer): Promise<undefined> {
-    return this.bufferManager.download(bufferId, dstBuffer);
+  public async downloadTensor(tensorId: TensorId, dstBuffer: ArrayBufferView | ArrayBuffer): Promise<undefined> {
+    return this.tensorManager.download(tensorId, dstBuffer);
   }
 
-  public createMLBufferDownloader(bufferId: BufferId, type: Tensor.MLBufferDataTypes): () => Promise<Tensor.DataType> {
+  public createMLTensorDownloader(tensorId: TensorId, type: Tensor.MLTensorDataTypes): () => Promise<Tensor.DataType> {
     return async () => {
-      const data = await this.bufferManager.download(bufferId);
+      const data = await this.tensorManager.download(tensorId);
       return createView(data, type);
     };
   }
 
-  public registerMLBuffer(buffer: MLBuffer, onnxDataType: DataType, dimensions: number[]): BufferId {
+  public registerMLTensor(tensor: MLTensor, onnxDataType: DataType, dimensions: number[]): TensorId {
     const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
     if (!webnnDataType) {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
-    return this.bufferManager.registerBuffer(this.currentContext, buffer, webnnDataType, dimensions);
+
+    const id = this.tensorManager.registerTensor(this.currentContext, tensor, webnnDataType, dimensions);
+    LOG_DEBUG(
+      'verbose',
+      () =>
+        `[WebNN] registerMLTensor {tensor: ${tensor}, dataType: ${webnnDataType}, dimensions: ${
+          dimensions
+        }} -> {bufferId: ${id}}`,
+    );
+    return id;
   }
 
   public flush(): void {
