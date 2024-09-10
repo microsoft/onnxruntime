@@ -57,7 +57,10 @@ export class Tensor implements TensorInterface {
   /**
    * Construct a new CPU tensor object from the given data and dims. Type is inferred from data.
    */
-  constructor(data: TensorDataType | Uint8ClampedArray | readonly string[] | readonly boolean[], dims?: readonly number[]);
+  constructor(
+    data: TensorDataType | Uint8ClampedArray | readonly string[] | readonly boolean[],
+    dims?: readonly number[],
+  );
   /**
    * Construct a new tensor object from the pinned CPU data with the given type and dims.
    *
@@ -247,8 +250,8 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`Invalid element type of data array: ${firstElementType}.`);
           }
         } else if (arg0 instanceof Uint8ClampedArray) {
-            type = 'uint8'
-            data = Uint8Array.from(arg0);
+          type = 'uint8';
+          data = Uint8Array.from(arg0);
         } else {
           // get tensor type from TypedArray
           const mappedType = NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.get(
