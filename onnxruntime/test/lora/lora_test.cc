@@ -78,7 +78,7 @@ struct ReadAndValidateData<MLFloat16> {
   }
 };
 
-auto verify_load = [](const lora::LoraAdapter& adapter) {
+auto verify_load = [](const lora::LoadedAdapter& adapter) {
   ASSERT_EQ(kAdapterVersion, adapter.AdapterVersion());
   ASSERT_EQ(kModelVersion, adapter.ModelVersion());
 
@@ -164,7 +164,7 @@ template <class T>
 struct TestDataType {
   void operator()() const {
     const auto test_params = GenerateTestParameters<T>()();
-    lora::LoraAdapter lora_adapter;
+    lora::LoadedAdapter lora_adapter;
     lora_adapter.Load(std::move(test_params));
     verify_load(lora_adapter);
   }

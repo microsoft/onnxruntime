@@ -824,7 +824,7 @@ void CheckAndAdjustForLora(const OrtRunOptions* run_options,
                            gsl::span<const OrtValue* const>& inputs) {
   if (!run_options->active_adapters_.empty()) {
     size_t total_lora_params = 0;
-    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
+    for (const lora::LoadedAdapter* ad : run_options->active_adapters_) {
       total_lora_params += ad->GetParamNum();
     }
 
@@ -833,8 +833,7 @@ void CheckAndAdjustForLora(const OrtRunOptions* run_options,
     std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
     std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
 
-    // XXX: Currently only on CPU.
-    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
+    for (const lora::LoadedAdapter* ad : run_options->active_adapters_) {
       ad->OutputLoadedAdaptersParameters(std::back_inserter(input_names_with_lora),
                                          std::back_inserter(input_with_lora));
     }
@@ -861,7 +860,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
   Status status;
   if (run_options) {
-
     InlinedVector<const char*> input_names_with_lora;
     InlinedVector<const OrtValue*> input_with_lora;
 
@@ -873,7 +871,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                           output_name_span,
                           output_span);
   } else {
-
     const RunOptions default_run_options;
     status = session->Run(default_run_options,
                           input_names_span,

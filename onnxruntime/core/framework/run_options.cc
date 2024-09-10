@@ -67,7 +67,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddRunConfigEntry, _Inout_ OrtRunOptions* options,
 ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetActiveLoraAdapter, _Inout_ OrtRunOptions* options,
                     const _In_ OrtLoraAdapter* adapter) {
   API_IMPL_BEGIN
-  auto* lora_adapter = reinterpret_cast<const onnxruntime::lora::LoraAdapter*>(adapter);
+  auto* lora_adapter = reinterpret_cast<const onnxruntime::lora::LoadedAdapter*>(adapter);
   options->active_adapters_.push_back(lora_adapter);
   return nullptr;
   API_IMPL_END

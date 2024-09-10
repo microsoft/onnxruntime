@@ -22,17 +22,45 @@ namespace lora {
 /// <summary>
 /// Container to hold and access Lora Parameters
 /// </summary>
-class LoraAdapter {
+class LoadedAdapter {
  public:
-  LoraAdapter() = default;
-  explicit LoraAdapter(AllocatorPtr device_allocator)
+  LoadedAdapter() = default;
+  explicit LoadedAdapter(AllocatorPtr device_allocator)
       : device_allocator_(std::move(device_allocator)) {}
-  ~LoraAdapter() = default;
-  LoraAdapter(const LoraAdapter&) = delete;
-  LoraAdapter& operator=(const LoraAdapter&) = delete;
+  ~LoadedAdapter() = default;
+  LoadedAdapter(const LoadedAdapter&) = delete;
+  LoadedAdapter& operator=(const LoadedAdapter&) = delete;
 
-  LoraAdapter(LoraAdapter&&) = default;
-  LoraAdapter& operator=(LoraAdapter&&) = default;
+  LoadedAdapter(LoadedAdapter&&) = default;
+  LoadedAdapter& operator=(LoadedAdapter&&) = default;
+
+  /// <summary>
+  /// Represents a named lora parameter (tensor)
+  /// </summary>
+  class Param {
+   public:
+    Param() = default;
+    explicit Param(OrtValue ort_value_mapped) noexcept;
+    Param(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept;
+
+    const OrtValue& GetMapped() const {
+      return ort_value_mapped_;
+    }
+
+   private:
+    OrtValue ort_value_mapped_;
+    OrtValue ort_value_device_;
+  };
+
+  using param_iterator = InlinedHashMap<std::string, Param>::const_iterator;
+
+  /// <summary>
+  /// Obtain a range of the iterators
+  /// </summary>
+  /// <returns></returns>
+  std::pair<param_iterator, param_iterator> GetParamIterators() const {
+    return std::make_pair(params_values_.cbegin(), params_values_.cend());
+  }
 
   /// <summary>
   /// Load parameters into memory from an adapter file and validates its format.
@@ -65,7 +93,7 @@ class LoraAdapter {
   /// Gets lora format version
   /// </summary>
   /// <returns></returns>
-  int LoraFormatVersion() const noexcept {
+  int FormatVersion() const noexcept {
     return adapter_->format_version();
   }
 
@@ -95,11 +123,11 @@ class LoraAdapter {
   /// <param name="tensor_out">output iterator that accepts const OrtValue*</param>
   template <class NamesOutputIter, class TensorOutputIter>
   void OutputLoadedAdaptersParameters(NamesOutputIter names_out,
-                                TensorOutputIter tensor_out) const {
+                                      TensorOutputIter tensor_out) const {
     for (const auto& [name, param] : params_values_) {
       *names_out = name.c_str();
       ++names_out;
-      *tensor_out = &param.ort_value_mapped_;
+      *tensor_out = &param.GetMapped();
       ++tensor_out;
     }
   }
@@ -123,21 +151,9 @@ class LoraAdapter {
 
   std::variant<std::monostate, MemMapHolder, BufferHolder> buffer_;
 
-  /// <summary>
-  /// Represents a named lora parameter (tensor)
-  /// </summary>
-  struct LoraParam {
-    LoraParam() = default;
-    explicit LoraParam(OrtValue ort_value_mapped) noexcept;
-    LoraParam(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept;
-
-    OrtValue ort_value_mapped_;
-    OrtValue ort_value_device_;
-  };
-
   AllocatorPtr device_allocator_;
   const Adapter* adapter_{nullptr};
-  InlinedHashMap<std::string, LoraParam> params_values_;
+  InlinedHashMap<std::string, Param> params_values_;
 };
 
 }  // namespace lora
