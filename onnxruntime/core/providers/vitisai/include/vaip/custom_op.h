@@ -46,6 +46,17 @@ class CustomOp {
 
  public:
   virtual void Compute_base(const OrtApi* api, OrtKernelContext* context) const = 0;
+
+ public:
+  inline void set_subgraph(const onnxruntime::Graph* subgraph) {
+    subgraph_ = subgraph;
+  }
+  inline const onnxruntime::Graph* get_subgraph() const {
+    return subgraph_;
+  }
+
+ private:
+  const onnxruntime::Graph* subgraph_ = nullptr;
 };
 
 }  // namespace vaip_core

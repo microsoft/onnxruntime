@@ -7,6 +7,7 @@
 #include <fstream>
 #include <istream>
 #include <filesystem>
+#include <iostream>
 
 // 1st-party headers/libs.
 #include "core/platform/env_var_utils.h"
@@ -77,8 +78,9 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     assert(attrs.count("index"));
     size_t index = attrs.at("index").i();
     (**this->execution_providers_)[index]->set_fused_node(&fused_node_graph.fused_node.get());
-    compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
+    compute_info.create_state_func = [this, index,fused_node_graph](ComputeContext* context, FunctionState* state) {
       auto* p = (**this->execution_providers_)[index]->compile().release();
+      p->set_subgraph(&fused_node_graph.filtered_graph.get().GetGraph());
       *state = p;
       return 0;
     };
