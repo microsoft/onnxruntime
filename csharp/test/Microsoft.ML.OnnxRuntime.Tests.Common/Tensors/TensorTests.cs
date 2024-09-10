@@ -2220,7 +2220,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
                 new[] { 0, 0, 1, 2, 3, 4, 5, 6 };
             Assert.Equal(expected, actual);
 
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentNullException>(() => tensorCollection.CopyTo(null, 0));
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[3, 4], 0));
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[5], 0));
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[6], 1));
@@ -2311,7 +2313,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
                 new[] { 0, 0, 1, 2, 3, 4, 5, 6 };
             Assert.Equal(expected, actual);
 
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentNullException>(() => tensorCollection.CopyTo(null, 0));
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[5], 0));
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[6], 1));
 

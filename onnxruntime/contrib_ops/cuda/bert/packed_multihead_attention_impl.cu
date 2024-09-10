@@ -639,6 +639,7 @@ Status FlashAttention(
           sequence_length,
           sequence_length,
           scale,
+          0.0,
           false,  // is causal
           false   // is bf16
           ));
@@ -693,6 +694,7 @@ Status FusedAttentionCutlass(
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;
+  p.use_smooth_softmax = false;
   p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   p.seqlen_k_ptr = nullptr;

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 
-void* JsCustomAllocator::Alloc(size_t size) {
+void* WebGpuAllocator::Alloc(size_t size) {
   if (size == 0) {
     return nullptr;
   }
@@ -20,14 +20,14 @@ void* JsCustomAllocator::Alloc(size_t size) {
   return p;
 }
 
-void JsCustomAllocator::Free(void* p) {
+void WebGpuAllocator::Free(void* p) {
   if (p != nullptr) {
     size_t size = (size_t)(void*)EM_ASM_PTR({ return Module.jsepFree($0); }, p);
     stats_.bytes_in_use -= size;
   }
 }
 
-void JsCustomAllocator::GetStats(AllocatorStats* stats) {
+void WebGpuAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 

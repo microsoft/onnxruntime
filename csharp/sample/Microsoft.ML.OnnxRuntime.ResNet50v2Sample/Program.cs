@@ -12,6 +12,11 @@ namespace Microsoft.ML.OnnxRuntime.ResNet50v2Sample
     {
         public static void Main(string[] args)
         {
+            if (args.Length < 2) {
+                Console.WriteLine("Usage: prog <model.onnx> <image.jpg>");
+                return;
+            }
+
             // Read paths
             string modelFilePath = args[0];
             string imageFilePath = args[1];

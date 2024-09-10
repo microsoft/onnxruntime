@@ -135,7 +135,7 @@ jobs:
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          ArtifactName: onnxruntime_qnn
+          ArtifactName: onnxruntime_qnn_x64
 
       - script: |
           7z x *.whl

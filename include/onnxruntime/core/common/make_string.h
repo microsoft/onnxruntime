@@ -19,6 +19,7 @@
 
 #include <locale>
 #include <sstream>
+#include <string>
 #include <type_traits>
 
 namespace onnxruntime {
@@ -43,6 +44,14 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... ar
 template <typename... Args>
 inline std::string MakeStringImpl(const Args&... args) noexcept {
   std::ostringstream ss;
+  MakeStringImpl(ss, args...);
+  return ss.str();
+}
+
+template <typename... Args>
+inline std::string MakeStringWithClassicLocaleImpl(const Args&... args) noexcept {
+  std::ostringstream ss;
+  ss.imbue(std::locale::classic());
   MakeStringImpl(ss, args...);
   return ss.str();
 }
@@ -78,7 +87,7 @@ using if_char_array_make_ptr_t = typename if_char_array_make_ptr<T>::type;
  * This version uses the current locale.
  */
 template <typename... Args>
-std::string MakeString(const Args&... args) {
+inline std::string MakeString(const Args&... args) {
   // We need to update the types from the MakeString template instantiation to decay any char[n] to char*.
   //   e.g. MakeString("in", "out") goes from MakeString<char[2], char[3]> to MakeStringImpl<char*, char*>
   //        so that MakeString("out", "in") will also match MakeStringImpl<char*, char*> instead of requiring
@@ -98,11 +107,8 @@ std::string MakeString(const Args&... args) {
  * This version uses std::locale::classic().
  */
 template <typename... Args>
-std::string MakeStringWithClassicLocale(const Args&... args) {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
-  detail::MakeStringImpl(ss, args...);
-  return ss.str();
+inline std::string MakeStringWithClassicLocale(const Args&... args) {
+  return detail::MakeStringWithClassicLocaleImpl(detail::if_char_array_make_ptr_t<Args const&>(args)...);
 }
 
 // MakeString versions for already-a-string types.

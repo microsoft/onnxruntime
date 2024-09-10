@@ -25,8 +25,10 @@ struct MemoryEfficientAttentionParams {
   int32_t qk_head_size;
   int32_t v_head_size;
   bool causal;
+  bool use_smooth_softmax;
 
   float scale;
+  float softcap = 0.0;
 
   int32_t* seqstart_q_ptr;
   int32_t* seqstart_k_ptr;

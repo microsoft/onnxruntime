@@ -3654,6 +3654,9 @@ struct OrtApi {
        Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
          - "0": Default. With fp32 precision.
          - "1": With fp16 precision.
+       "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
+         - "0": Default. Disabled.
+         - "1": Enabled.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

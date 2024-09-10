@@ -64,3 +64,59 @@ steps:
     SessionTimeout: 90
     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
     MaxConcurrency: 25
+
+- task: PowerShell@2
+  displayName: 'Signature validation for signed file(s)'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "FolderPath: ${{ parameters.FolderPath }}"
+      Write-Host "Pattern(s): ${{ parameters.Pattern }}"
+
+      if ("${{ parameters.Pattern }}" -eq "")
+      {
+          Write-Host "Pattern is empty."
+          exit 0
+      }
+
+      $valid_flag=$true
+      $normal_sign_status="Valid"
+
+      $patterns="${{ parameters.Pattern }}" -split ','
+
+      foreach($pattern_original in $patterns)
+      {
+          $pattern=$pattern_original.Trim()
+          Write-Host "Validating pattern:" $pattern
+
+          $file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\$pattern -Name -Recurse -Force
+
+          foreach($file in $file_names)
+          {
+              $file_path=Join-Path ${{ parameters.FolderPath }} -ChildPath $file
+              $sign=Get-AuthenticodeSignature -FilePath $file_path
+              $sign_status=$sign.Status.ToString()
+              Write-Host "File:" $file
+              Write-Host "Signature Status:" $sign_status
+              if ($sign_status -ne $normal_sign_status)
+              {
+                  Write-Host "File" $file "does not have valid signature."
+                  Write-Host "Signature status:" $sign.status
+                  Write-Host "Signature message:" $sign.StatusMessage
+                  $valid_flag=$false
+                  break
+              }
+          }
+      }
+
+      if ($valid_flag -eq $false)
+      {
+          Write-Host "Signature validation failed."
+          exit 1
+      }
+      else
+      {
+          Write-Host "Signature validation passed."
+          exit 0
+      }
+    workingDirectory: ${{ parameters.FolderPath }}

@@ -26,9 +26,12 @@ class GQAAttentionBase {
     kv_num_heads_ = static_cast<int>(kv_num_heads);
 
     scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+    softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
 
     do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+
+    use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
   }
@@ -36,9 +39,12 @@ class GQAAttentionBase {
   int num_heads_;     // number of attention heads of Q
   int kv_num_heads_;  // number of attention heads of K or V
   float scale_;       // the scaling factor applied before softmax
-  bool do_rotary_;    // whether or not to use rotary embeddings
+  float softcap_;
+  bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
   int local_window_size_;
+
+  bool use_smooth_softmax_;
 
   template <typename T>
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
@@ -195,10 +201,26 @@ class GQAAttentionBase {
             for (int total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
               output_softmax[total_seq_id] = 0.f;
             }
-            ComputeAttentionSoftmaxInplace(output_softmax + seq_causal_length - local_window_size_ - 1, 1,
-                                           local_window_size_ + 1, nullptr);
+            if (softcap_ > 0.f) {
+              ComputeAttentionSoftcapInplace(output_softmax + seq_causal_length - local_window_size_ - 1,
+                                             local_window_size_ + 1, softcap_);
+            }
+            if (use_smooth_softmax_) {
+              ComputeSmoothSoftmaxInplace(output_softmax + seq_causal_length - local_window_size_ - 1, 1,
+                                          local_window_size_ + 1, nullptr);
+            } else {
+              ComputeAttentionSoftmaxInplace(output_softmax + seq_causal_length - local_window_size_ - 1, 1,
+                                             local_window_size_ + 1, nullptr);
+            }
           } else {
-            ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+            if (softcap_ > 0.f) {
+              ComputeAttentionSoftcapInplace(output_softmax, seq_causal_length, softcap_);
+            }
+            if (use_smooth_softmax_) {
+              ComputeSmoothSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+            } else {
+              ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+            }
           }
 
           // set causal [seq_causal_length, total_seqlen) to 0.f
