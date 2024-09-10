@@ -60,11 +60,7 @@ Generative AI refers to a type of artificial intelligence that creates new conte
 				traditional AI models, which primarily classify or predict based on given inputs, generative
 				AI models produce entirely new outputs.
 				<br /><br />
-				They accomplish this through advanced techniques like deep learning, often using models such
-				as Transformers and Generative Adversarial Networks (GANs). Examples include AI that generates
-				human-like text responses, creates realistic images from descriptions, or composes music. Generative
-				AI is driving innovation across industries by enabling personalized experiences, automating creative
-				processes, and opening new possibilities for content generation!
+Generative AI models accomplish this through deep learning, using for example, Transformers for text and Diffusion models for images. Examples include AI that generates human-like text responses, creates realistic images from descriptions, transcribes and summarizes audio, and composes music. Generative AI is driving innovation across industries by driving business productivity, enabling personalized experiences, automating creative processes, and opening new possibilities for content generation!
 			</p>
 		</div>
 		
