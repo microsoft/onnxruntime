@@ -908,7 +908,7 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def get_subgraph_nodes_and_inputs(self, ops_with_graph_attrs={"Loop", "Scan", "If"}):
+    def get_subgraph_nodes_and_inputs(self, ops_with_graph_attrs):
         """
         Get input names to all nodes in all subgraphs where subgraphs are
         graph attributes of a node in the main graph
@@ -948,7 +948,9 @@ class OnnxModel:
 
         if len(self.graphs()) > 1:
             # Get input names for all nodes in all subgraphs
-            subgraph_nodes, subgraph_nodes_inputs = self.get_subgraph_nodes_and_inputs()
+            subgraph_nodes, subgraph_nodes_inputs = self.get_subgraph_nodes_and_inputs(
+                ops_with_graph_attrs={"Loop", "Scan", "If"}
+            )
             if len(subgraph_nodes) == 0:
                 # TODO: support other ops such as `BeamSearch` that have subgraphs as op attributes
                 logger.debug("Skip prune_graph since graph has subgraph")
