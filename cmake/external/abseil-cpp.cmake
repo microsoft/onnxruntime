@@ -142,4 +142,6 @@ absl::throw_delegate
 absl::memory
 absl::charset
 absl::endian
-absl::config)
+absl::config
+absl::poison
+)
