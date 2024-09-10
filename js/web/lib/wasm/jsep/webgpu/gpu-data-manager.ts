@@ -230,7 +230,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (!gpuDataCache) {
       throw new Error('gpu data for uploading does not exist');
     }
-    if (gpuDataCache.originalSize !== srcLength) {
+    if (Number(gpuDataCache.originalSize) !== srcLength) {
       throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
     }
 
