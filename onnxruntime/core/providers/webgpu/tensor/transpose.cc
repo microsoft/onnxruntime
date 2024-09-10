@@ -58,11 +58,11 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput(output_name,
                                         ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
   shader.AppendImplementation(AppendPermFunction(input_name, output_name, this->perm_));
-  shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
-                          "  let indices = ", output.OffsetToIndices("global_idx"),
-                          ";\n"
-                          "  let x_indices = perm(indices); \n",
-                          output.SetByOffset("global_idx", input.GetByIndices("x_indices")));
+  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
+                             "  let indices = ", output.OffsetToIndices("global_idx"),
+                             ";\n"
+                             "  let x_indices = perm(indices); \n",
+                             output.SetByOffset("global_idx", input.GetByIndices("x_indices")));
   return Status::OK();
 }
 
@@ -82,10 +82,10 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   TransposeProgram program{*p_perm};
   program
       .CacheHint(absl::StrJoin(*p_perm, "-"))
-      .Inputs({{input_tensor, ProgramTensorMetadataDependency::Rank}})
-      .Outputs({output_tensor})
-      .DispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .UniformVariables({
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Rank}})
+      .AddOutputs({output_tensor})
+      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({
           {static_cast<uint32_t>(output_size)},
       });
   return context.RunProgram(program);
