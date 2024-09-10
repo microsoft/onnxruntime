@@ -542,8 +542,8 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
 
-if(onnxruntime_USE_VCPKG)
-  find_package(Eigen3 CONFIG REQUIRED)
+find_package(Eigen3 CONFIG)
+if(Eigen3_FOUND)
   get_target_property(eigen_INCLUDE_DIRS Eigen3::Eigen INTERFACE_INCLUDE_DIRECTORIES)
 else()
   include(eigen) # FetchContent

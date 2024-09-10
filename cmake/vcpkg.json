@@ -19,7 +19,6 @@
     "cxxopts",
     "date",
     "dlpack",
-    "eigen3",
     {
       "name": "flatbuffers",
       "host": true,
@@ -39,10 +38,6 @@
       "name": "nsync",
       "platform": "!windows",
       "version>=": "1.26.0"
-    },
-    {
-      "name": "onnx",
-      "version>=": "1.16.0"
     },
     "optional-lite",
     {
@@ -79,11 +74,5 @@
         "gtest"
       ]
     }
-  },
-  "overrides": [
-    {
-      "name": "eigen3",
-      "version": "2024-01-16"
-    }
-  ]
+  }
 }
