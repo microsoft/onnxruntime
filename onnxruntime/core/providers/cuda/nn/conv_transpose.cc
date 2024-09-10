@@ -345,8 +345,9 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
     conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
                                                     strides, dilations, local_output_padding, N, &pads, &y_dims, channels_last);
-    TensorShape Yshape(y_dims);
-    s_.Y = context->Output(0, Yshape);
+
+    s_.y_dims = gsl::make_span(y_dims);
+    s_.Y = context->Output(0, s_.y_dims);
 
     s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
     const CUDAExecutionProvider* cuda_ep =
