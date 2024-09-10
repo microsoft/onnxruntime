@@ -34,6 +34,7 @@ onnxruntime_fetchcontent_makeavailable(pthreadpool)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL "MSVC")
   FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
   onnxruntime_fetchcontent_makeavailable(kleidiai)
+  set(KLEIDIAI_SOURCE_DIR ${kleidiai_SOURCE_DIR})
 endif()
 
 
