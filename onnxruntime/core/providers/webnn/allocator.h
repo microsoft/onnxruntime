@@ -13,9 +13,9 @@
 namespace onnxruntime {
 namespace webnn {
 
-class WebNNBufferAllocator : public IAllocator {
+class WebNNTensorAllocator : public IAllocator {
  public:
-  WebNNBufferAllocator() : IAllocator(OrtMemoryInfo(WEBNN_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), 0, OrtMemTypeDefault)) {}
+  WebNNTensorAllocator() : IAllocator(OrtMemoryInfo(WEBNN_TENSOR, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), 0, OrtMemTypeDefault)) {}
 
   void* Alloc(size_t size) override;
 

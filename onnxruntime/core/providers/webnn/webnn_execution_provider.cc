@@ -325,7 +325,7 @@ class WebNNMemcpy : public OpKernel {
   explicit WebNNMemcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    auto jsepEnsureBuffer = emscripten::val::module_property("jsepEnsureBuffer");
+    auto jsepEnsureTensor = emscripten::val::module_property("jsepEnsureTensor");
     const auto* X = context->Input<Tensor>(0);
     ORT_ENFORCE(X != nullptr, "Memcpy: input tensor is null");
     auto* Y = context->Output(0, X->Shape());
@@ -335,7 +335,7 @@ class WebNNMemcpy : public OpKernel {
       shape.call<void>("push", SafeInt<uint32_t>(dim).Ref());
     }
 
-    jsepEnsureBuffer(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
+    jsepEnsureTensor(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
                      Y->GetElementType(),
                      shape, false)
         .await();
@@ -409,7 +409,7 @@ std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {
     return {};
   }
   AllocatorCreationInfo customAllocatorCreationInfo([&](OrtDevice::DeviceId) {
-    return std::make_unique<webnn::WebNNBufferAllocator>();
+    return std::make_unique<webnn::WebNNTensorAllocator>();
   },
                                                     0, false);
   return {CreateAllocator(customAllocatorCreationInfo)};

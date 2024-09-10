@@ -162,8 +162,8 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto buffer = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
-    promises.call<void>("push", buffer);
+    auto ml_tensor = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
+    promises.call<void>("push", ml_tensor);
   }
   for (const auto& [_, tensor] : outputs) {
     emscripten::val shape = emscripten::val::array();
@@ -171,15 +171,15 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto buffer = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
-    promises.call<void>("push", buffer);
+    auto ml_tensor = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
+    promises.call<void>("push", ml_tensor);
   }
-  auto buffers = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
+  auto ml_tensors = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
   for (const auto& [name, _] : inputs) {
-    wnn_inputs_.set(name, buffers.call<emscripten::val>("shift"));
+    wnn_inputs_.set(name, ml_tensors.call<emscripten::val>("shift"));
   }
   for (const auto& [name, _] : outputs) {
-    wnn_outputs_.set(name, buffers.call<emscripten::val>("shift"));
+    wnn_outputs_.set(name, ml_tensors.call<emscripten::val>("shift"));
   }
   wnn_context_.call<void>("dispatch", wnn_graph_, wnn_inputs_, wnn_outputs_);
 

@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace webnn {
 
-void* WebNNBufferAllocator::Alloc(size_t size) {
+void* WebNNTensorAllocator::Alloc(size_t size) {
   if (size == 0) {
     return nullptr;
   }
@@ -23,7 +23,7 @@ void* WebNNBufferAllocator::Alloc(size_t size) {
   return p;
 }
 
-void WebNNBufferAllocator::Free(void* p) {
+void WebNNTensorAllocator::Free(void* p) {
   if (p == nullptr) {
     return;
   }
@@ -33,7 +33,7 @@ void WebNNBufferAllocator::Free(void* p) {
   allocations_.erase(p);
 }
 
-void WebNNBufferAllocator::GetStats(AllocatorStats* stats) {
+void WebNNTensorAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
