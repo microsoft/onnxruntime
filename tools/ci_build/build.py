@@ -460,6 +460,12 @@ def parse_arguments():
         action="store_true",
         help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only.",
     )
+    # Dependency search with vcpkg
+    parser.add_argument(
+        "--use_vcpkg",
+        action="store_true",
+        help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
+    )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
@@ -999,6 +1005,7 @@ def generate_build_tree(
         # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
+        "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),

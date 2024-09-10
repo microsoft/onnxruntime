@@ -42,3 +42,90 @@ jobs:
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
         run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+
+  Vcpkg:
+    runs-on: "windows-latest"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.x'
+          architecture: 'x64'
+
+      - name: "Run vcpkg(x64-windows)"
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
+          doNotUpdateVcpkg: true
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "cmake/vcpkg.json"
+          vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+        env:
+          VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+          VCPKG_DEFAULT_TRIPLET: "x64-windows"
+          # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
+
+      - name: "Run compile_schema.py"
+        run: |
+          # Runner's host triplet should be x64-windows or arm64-windows
+          $FLATC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-windows/tools/flatbuffers"
+          $env:PATH="$FLATC_DIR;$env:PATH"
+          flatc --version
+          $FLATC_PATH = Join-Path "$FLATC_DIR" "flatc.exe"
+          python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$FLATC_PATH"
+        shell: pwsh
+
+      - name: "Detect protoc"
+        id: protoc-detect
+        run: |
+          $PROTOC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-windows/tools/protobuf"
+          $env:PATH="$PROTOC_DIR;$env:PATH"
+          protoc --version
+          $PROTOC_PATH = Join-Path "$PROTOC_DIR" "protoc.exe"
+          "protoc_path=$PROTOC_PATH" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: "Run build.py(x64-windows)"
+        run: |
+          python tools\ci_build\build.py `
+            --build_dir "cmake_build/x64-windows" `
+            --skip_submodule_sync `
+            --skip_tests `
+            --compile_no_warning_as_error `
+            --parallel `
+            --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" `
+            --use_vcpkg `
+            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-windows" `
+            --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
+            --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+        shell: pwsh
+
+      - name: "Run vcpkg(arm64-windows)"
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
+          doNotUpdateVcpkg: true
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "cmake/vcpkg.json"
+          vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+        env:
+          VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+          VCPKG_DEFAULT_TRIPLET: "arm64-windows"
+          # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
+
+      - name: "Run build.py(arm64-windows)"
+        run: |
+          python tools\ci_build\build.py `
+            --build_dir "cmake_build/arm64-windows" --arm64 `
+            --skip_submodule_sync `
+            --skip_tests `
+            --compile_no_warning_as_error `
+            --parallel `
+            --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" `
+            --use_vcpkg `
+            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-windows" `
+            --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
+            --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+        shell: pwsh
