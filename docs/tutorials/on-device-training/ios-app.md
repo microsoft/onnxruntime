@@ -7,7 +7,7 @@ nav_order: 2
 ---
 
 # Building an iOS Application
-
+{: .no_toc }
 In this tutorial, we will explore how to build an iOS application that incorporates ONNX Runtime's On-Device Training solution. On-device training refers to the process of training a machine learning model directly on an edge device without relying on cloud services or external servers.
 
 In this tutorial, we will build a simple speaker identification app that learns to identify a speaker's voice. We will take a look at how to train a model on-device, export the trained model, and use the trained model to perform inference.
@@ -18,6 +18,7 @@ Here is what the application will look like:
 <img src="../../../images/iOS_speaker_identification_app.png" alt="application demo, with buttons for voice, train, and infer." width="30%" height="30%">
 
 ## Introduction
+{: .no_toc }
 We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
 In this tutorial, we will leverage the [`wav2vec`](https://huggingface.co/superb/wav2vec2-base-superb-sid) model which has been trained on large-scale celebrity speech data such as `VoxCeleb1`. We will use the pre-trained model to extract features from the audio data and train a binary classifier to identify the speaker. The initial layers of the model serve as a feature extractor, capturing the important features of the audio data. Only the last layer of the model is trained to perform the classification task.
@@ -29,23 +30,9 @@ In the tutorial, we will:
 - Use the exported model to perform inference
 
 
-## Contents
-- [Building an iOS Application](#building-an-ios-application)
-  - [Introduction](#introduction)
-  - [Contents](#contents)
-  - [Prerequisites](#prerequisites)
-  - [Generating the training artifacts](#generating-the-training-artifacts)
-  - [Building the iOS application](#building-the-ios-application)
-    - [Xcode Setup](#xcode-setup)
-    - [Application Overview](#application-overview)
-    - [Training the model](#training-the-model)
-    - [Inference with the trained model](#inference-with-the-trained-model)
-    - [Recording Audio](#recording-audio)
-    - [Train View](#train-view)
-    - [Infer View](#infer-view)
-    - [ContentView](#contentview)
-  - [Running the iOS application](#running-the-ios-application)
-  - [Conclusion](#conclusion)
+## Table of Contents
+* TOC placeholder
+{:toc}
 
 
 ## Prerequisites
@@ -947,27 +934,27 @@ Now, we are ready to run the application. You can run the application on the sim
 
 a. Now, when you run the application, you should see the following screen:
 
-<img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_app.png" alt="My Voice application with Train and Infer buttons" width="30%" height="30%">
 
 
 b. Next, click on the `Train` button to navigate to the `TrainView`. The `TrainView` will prompt you to record your voice. You will need to record your voice `kNumRecordings` times. 
 
-<img src="../../../images/iOS_speaker_identification_training_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_screen.jpg" alt="My Voice application with words to record" width="30%" height="30%">
 
 
 c. Once all the recordings are complete, the application will train the model on the given data. You will see the progress bar indicating the progress of the training.
 
-<img src="../../../images/iOS_speaker_identification_training_progress_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_progress_screen.jpg" alt="Loading bar while the app is training" width="30%" height="30%">
 
 
 d. Once the training is complete, you will see the following screen:
 
-<img src="../../../images/iOS_speaker_identification_training_complete_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_training_complete_screen.jpg" alt="The app informs you training finished successfully!" width="30%" height="30%">
 
 
 e. Now, click on the `Infer` button to navigate to the `InferView`. The `InferView` will prompt you to record your voice. Once the recording is complete, it will perform inference with the trained model and display the result of the inference.
 
-<img src="../../../images/iOS_speaker_identification_infer_screen.jpg"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_infer_screen.jpg" alt="My Voice application allows you to record and infer whether it's you or not." width="30%" height="30%">
 
 
 That's it! Hopefully, it identified your voice correctly.
