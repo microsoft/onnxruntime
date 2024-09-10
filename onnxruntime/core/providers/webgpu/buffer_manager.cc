@@ -243,10 +243,10 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
 
 BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode)
     : context_{context},
-      storage_cache_{std::move(CreateBufferCacheManager(storage_buffer_cache_mode))},
-      uniform_cache_{std::move(CreateBufferCacheManager(uniform_buffer_cache_mode))},
-      query_resolve_cache_{std::move(CreateBufferCacheManager(query_resolve_buffer_cache_mode))},
-      default_cache_{std::move(CreateBufferCacheManager(BufferCacheMode::Disabled))} {
+      storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
+      uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
+      query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
+      default_cache_{CreateBufferCacheManager(BufferCacheMode::Disabled)} {
 }
 
 void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {

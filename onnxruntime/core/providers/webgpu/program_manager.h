@@ -30,7 +30,7 @@ class ProgramArtifact {
   const std::vector<int> shape_uniform_ranks;
 
   ProgramArtifact(ProgramArtifact&&) = default;
-  ProgramArtifact& operator=(ProgramArtifact&&) = default;
+  ProgramArtifact& operator=(ProgramArtifact&&) = delete;
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProgramArtifact);
