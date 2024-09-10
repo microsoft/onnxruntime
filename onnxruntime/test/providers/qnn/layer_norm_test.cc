@@ -171,8 +171,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_Axis0_Unsupported) {
 }
 
 // Test accuracy of 8-bit QDQ LayerNorm with a static scale input.
-TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_LastAxis_StaticScale_AU8_WU8) {
-  // QNN 2.26 crashes
+TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU8_WU8) {
   RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                                         TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),
                                         TestInputDef<float>(),  // Implicit bias input
@@ -189,8 +188,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_StaticBias_AU8_WU8_B
                                         ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_QNN2_24_ImplicitBias_ValidationBug) {
-  // QNN 2.26 crashes
+TEST_F(QnnHTPBackendTests, LayerNorm1D_QNN2_24_ImplicitBias_ValidationBug) {
   // QNN 2.24 LayerNorm fails validation (intermittent) if the bias input is not provided. QNN EP will provide an
   // explicit bias of all zeros to get around this bug.
   for (size_t i = 0; i < 15; i++) {  // Run it multiple times since this is an intermittent bug.
@@ -204,8 +202,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_QNN2_24_ImplicitBias_ValidationB
 }
 
 // Test accuracy of 16-bit QDQ LayerNorm with a static scale input.
-TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_LastAxis_StaticScale_AU16_WU8) {
-  // QNN 2.26 crashes
+TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU16_WU8) {
   RunLayerNormQDQTest<uint16_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                                          TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),  // Static
                                          TestInputDef<float>(),
