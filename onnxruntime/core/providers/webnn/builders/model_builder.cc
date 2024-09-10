@@ -215,8 +215,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
   }
 
-  emscripten::val::module_property("reserveTensor")(name, desc, is_input);
-
   if (is_input) {
     wnn_operands_.insert(std::make_pair(name, wnn_builder_.call<emscripten::val>("input", name, desc)));
     input_names_.push_back(name);
