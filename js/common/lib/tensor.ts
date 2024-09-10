@@ -66,7 +66,7 @@ interface TypedTensorBase<T extends Tensor.Type> {
 export declare namespace Tensor {
   interface DataTypeMap {
     float32: Float32Array;
-    uint8: Uint8Array | Uint8ClampedArray;
+    uint8: Uint8Array;
     int8: Int8Array;
     uint16: Uint16Array;
     int16: Int16Array;

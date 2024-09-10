@@ -216,6 +216,8 @@ export class Tensor implements TensorInterface {
             }
           } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
+          } else if (arg1 instanceof Uint8ClampedArray) {
+            data = Uint8Array.from(arg1);
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }
@@ -252,7 +254,11 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`Unsupported type for tensor data: ${arg0.constructor}.`);
           }
           type = mappedType;
-          data = arg0 as SupportedTypedArray;
+          if (arg0 instanceof Uint8ClampedArray) {
+            data = Uint8Array.from(arg0);
+          } else {
+            data = arg0 as SupportedTypedArray;
+          }
         }
       }
 
