@@ -222,7 +222,7 @@ export declare namespace JSEP {
      * @param tensor - specify the MLTensor.
      * @param dataType - specify the data type.
      * @param dimensions - specify the dimensions.
-     * @returns the MLTensor ID.
+     * @returns the MLTensor ID for the external MLTensor.
      */
     jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
   }

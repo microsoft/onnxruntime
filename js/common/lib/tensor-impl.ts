@@ -456,7 +456,7 @@ export class Tensor implements TensorInterface {
   get mlTensor(): TensorMLTensorType {
     this.ensureValid();
     if (!this.mlTensorData) {
-      throw new Error('The data is not stored as a WebNN buffer.');
+      throw new Error('The data is not stored as a WebNN MLTensor.');
     }
     return this.mlTensorData;
   }

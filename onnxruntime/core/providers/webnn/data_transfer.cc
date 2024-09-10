@@ -17,7 +17,7 @@ bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_dev
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   if (!emscripten::val::module_property("shouldTransferToMLTensor").as<bool>()) {
-    // We don't need to transfer the buffer to an MLTensor, so we don't need to copy the buffer.
+    // We don't need to transfer the tensor to an MLTensor, so we don't need to copy the buffer.
     return Status::OK();
   }
 

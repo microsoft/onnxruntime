@@ -200,7 +200,7 @@ void Model::SetOutputMap(InlinedHashMap<std::string, size_t>&& output_map) {
 
 // Pre-allocate the input and output buffers for the WebNN graph.
 void Model::AllocateInputOutputBuffers() {
-  // We don't need to allocate JS array buffers if the WebNN API supports MLTensor.
+  // We don't need to allocate JS ArrayBuffers if the WebNN API supports MLTensor.
   if (use_dispatch_) {
     return;
   }

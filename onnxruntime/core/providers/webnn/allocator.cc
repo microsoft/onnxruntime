@@ -13,7 +13,7 @@ void* WebNNTensorAllocator::Alloc(size_t size) {
     return nullptr;
   }
   if (!emscripten::val::module_property("shouldTransferToMLTensor").as<bool>()) {
-    // We don't need to transfer the buffer to an MLTensor, so we don't need to allocate buffer id.
+    // We don't need to transfer the tensor to an MLTensor, so we don't need to allocate an MLTensor id.
     return nullptr;
   }
   void* p = EM_ASM_PTR({ return Module.jsepReserveTensorId(); });

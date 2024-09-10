@@ -793,8 +793,8 @@ export const run = async (
             }
 
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
-            // ensureTensor to get/create the MLTensor. In which case, we don't need to copy the data if a new buffer is
-            // created.
+            // ensureTensor to get/create the MLTensor. In which case, we don't need to copy the data if a new tensor
+            // has been created.
             const mlTensor = await ensureTensor(dataOffset, dataType, dims, false);
 
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
