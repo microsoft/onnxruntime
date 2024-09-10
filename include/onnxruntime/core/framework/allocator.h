@@ -51,7 +51,7 @@ constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
-constexpr const char* WEBNN_BUFFER = "WebNN_Buffer";
+constexpr const char* WEBNN_TENSOR = "WebNN_Tensor";
 
 constexpr size_t kAllocAlignment = 256;
 
