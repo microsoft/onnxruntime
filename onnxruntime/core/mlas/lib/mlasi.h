@@ -610,6 +610,13 @@ void
     size_t N
     );
 
+typedef 
+void(MLASCALL MLAS_CAST_F16_TO_F32_KERNEL)(
+    const unsigned short* Source,
+    float* Destination,
+    size_t Count
+);
+
 typedef
 void
 (MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
@@ -868,6 +875,11 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelSse;
+    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelAvx;
 #endif
 
 }
@@ -1151,6 +1163,8 @@ struct MLAS_PLATFORM {
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 
     const MLAS_SQNBIT_GEMM_DISPATCH* SQNBitGemmDispatch{nullptr};
+
+    MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
 };
 
 inline
