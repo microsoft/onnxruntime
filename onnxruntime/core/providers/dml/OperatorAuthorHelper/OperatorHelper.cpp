@@ -606,8 +606,7 @@ namespace OperatorHelper
 
     std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
         gsl::span<const uint32_t> sizes,
-        int32_t transBatch,
-        int32_t transpose)
+        int32_t transBatch)
     {
         const uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(sizes.size());
         std::vector<uint32_t> newStrides(dimensionCount);
