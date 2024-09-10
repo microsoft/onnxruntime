@@ -2561,9 +2561,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>past_value</tt> (optional) : T</dt>
 <dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
 <dt><tt>seqlens_k</tt> : M</dt>
-<dd>1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.</dd>
+<dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
-<dd>Scalar tensor of total sequence length (past + new).</dd>
+<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used forchecking inputs and determining prompt vs token generation case if we are in First Case of seqlens_k.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
