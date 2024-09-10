@@ -63,7 +63,7 @@ class Adapter:
         return self._adapter.get_format_version()
 
     def get_adapter_version(self):
-        return self._adapter.get_format_version()
+        return self._adapter.get_adapter_version()
 
     def get_model_version(self):
         return self._adapter.get_model_version()

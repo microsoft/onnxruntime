@@ -17,7 +17,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Adapter, Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -1829,11 +1829,24 @@ class TestInferenceSession(unittest.TestCase):
         model_version = 1
         exported_adapter_file = "test_adapter.onnx_adapter"
 
-        param_1 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0], dtype=np.float)  # noqa: N806
+        param_1 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0], dtype=float)
+        param_2 = np.array([11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0], dtype=np.float64)
 
-        pram_2 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0], dtype=np.double)  # noqa: N806
+        params = {"param_1": param_1, "param_2": param_2}
 
+        onnxrt.Adapter.export_adapter(exported_adapter_file, adapter_version, model_version, params)
+
+        adapter = onnxrt.Adapter.read_adapter(exported_adapter_file)
         os.remove(exported_adapter_file)
+        self.assertEqual(adapter_version, adapter.get_adapter_version())
+        self.assertEqual(model_version, adapter.get_model_version())
+
+        actual_params = adapter.get_parameters()
+        self.assertCountEqual(params, actual_params)
+        for key, value in actual_params.items():
+            self.assertTrue(key in params)
+            expected_val = params.get(key)
+            np.testing.assert_allclose(expected_val, value)
 
 
 if __name__ == "__main__":
