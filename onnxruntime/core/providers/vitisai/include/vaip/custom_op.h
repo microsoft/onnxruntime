@@ -45,7 +45,7 @@ class CustomOp {
   VAIP_DLL_SPEC virtual ~CustomOp();
 
  public:
-  virtual void Compute(const OrtApi* api, OrtKernelContext* context) const = 0;
+  virtual void Compute_base(const OrtApi* api, OrtKernelContext* context) const = 0;
 };
 
 }  // namespace vaip_core
