@@ -3814,12 +3814,21 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t next_nodes_list;
         size_t subgraph_node_count = 0;
         const size_t* subgraph_node_index = nullptr;
-        api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &subgraph_node_count, &subgraph_node_index);
+        /*
+         * We don't construct the graph from scratch like in-tree TRT EP, so e shouldn't use the topo sort from the original graph.
+         * otherwise the node index in subgraph_node_index might exceed the range of the constructed graph.
+         */
+        //api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &subgraph_node_count, &subgraph_node_index);
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
-//          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-//            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
-//          }
+          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
+            /*
+             * When doing the node index mapping from onnx-tensorrt parser to ORT/TRT EP,
+             * i don't see a need for subgraph_node_index, since the index of subgraph_node_index after using priority-based topo sort is the node index in most case. 
+             */
+            //next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+            next_nodes_list[i].first[j] = group.first[next_nodes_list[i].first[j]];
+          }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
       }
