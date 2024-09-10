@@ -10,7 +10,7 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "openvino/core/version.hpp"
-#ifdef USE_DEVICE_MEMORY
+#ifdef USE_OVEP_NPU_MEMORY
 #include "core/providers/openvino/ov_allocator.h"
 #endif
 
@@ -183,7 +183,7 @@ common::Status OpenVINOExecutionProvider::Compile(
   return Status::OK();
 }
 
-#ifdef USE_DEVICE_MEMORY
+#ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo npu_allocator_info{
       [this](OrtDevice::DeviceId device_id) {
