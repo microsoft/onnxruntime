@@ -1824,6 +1824,16 @@ class TestInferenceSession(unittest.TestCase):
             device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
             device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
 
+    def test_adater_export_read(self):
+        adapter_version = 1
+        model_version = 1
+        exported_adapter_file = "test_adapter.onnx_adapter"
+
+        values = np.array(  # noqa: N806
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,  10.0], dtype=np.float)
+        
+       
+        os.remove(exported_adapter_file)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

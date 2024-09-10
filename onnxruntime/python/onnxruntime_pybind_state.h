@@ -9,7 +9,7 @@ namespace python {
 void addGlobalMethods(py::module& m, Environment& env);
 void addObjectMethods(py::module& m, Environment& env);
 void addOrtValueMethods(pybind11::module& m);
-void AddAdapterMethods(pybind11::module& m);
+void addAdapterMethods(pybind11::module& m);
 
 }  // namespace python
 }  // namespace onnxruntime

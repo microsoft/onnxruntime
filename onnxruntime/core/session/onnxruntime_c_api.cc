@@ -824,7 +824,7 @@ void CheckAndAdjustForLora(const OrtRunOptions* run_options,
                            gsl::span<const OrtValue* const>& inputs) {
   if (!run_options->active_adapters_.empty()) {
     size_t total_lora_params = 0;
-    for (const lora::LoadedAdapter* ad : run_options->active_adapters_) {
+    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
       total_lora_params += ad->GetParamNum();
     }
 
@@ -833,8 +833,8 @@ void CheckAndAdjustForLora(const OrtRunOptions* run_options,
     std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
     std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
 
-    for (const lora::LoadedAdapter* ad : run_options->active_adapters_) {
-      ad->OutputLoadedAdaptersParameters(std::back_inserter(input_names_with_lora),
+    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
+      ad->OutputAdapterParameters(std::back_inserter(input_names_with_lora),
                                          std::back_inserter(input_with_lora));
     }
 

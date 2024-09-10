@@ -22,17 +22,17 @@ namespace lora {
 /// <summary>
 /// Container to hold and access Lora Parameters
 /// </summary>
-class LoadedAdapter {
+class LoraAdapter {
  public:
-  LoadedAdapter() = default;
-  explicit LoadedAdapter(AllocatorPtr device_allocator)
+  LoraAdapter() = default;
+  explicit LoraAdapter(AllocatorPtr device_allocator)
       : device_allocator_(std::move(device_allocator)) {}
-  ~LoadedAdapter() = default;
-  LoadedAdapter(const LoadedAdapter&) = delete;
-  LoadedAdapter& operator=(const LoadedAdapter&) = delete;
+  ~LoraAdapter() = default;
+  LoraAdapter(const LoraAdapter&) = delete;
+  LoraAdapter& operator=(const LoraAdapter&) = delete;
 
-  LoadedAdapter(LoadedAdapter&&) = default;
-  LoadedAdapter& operator=(LoadedAdapter&&) = default;
+  LoraAdapter(LoraAdapter&&) = default;
+  LoraAdapter& operator=(LoraAdapter&&) = default;
 
   /// <summary>
   /// Represents a named lora parameter (tensor)
@@ -122,7 +122,7 @@ class LoadedAdapter {
   /// <param name="names_out">output iterator that accepts const char*</param>
   /// <param name="tensor_out">output iterator that accepts const OrtValue*</param>
   template <class NamesOutputIter, class TensorOutputIter>
-  void OutputLoadedAdaptersParameters(NamesOutputIter names_out,
+  void OutputAdapterParameters(NamesOutputIter names_out,
                                       TensorOutputIter tensor_out) const {
     for (const auto& [name, param] : params_values_) {
       *names_out = name.c_str();

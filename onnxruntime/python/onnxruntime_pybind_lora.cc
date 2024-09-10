@@ -163,7 +163,7 @@ py::dtype ConstructDType(int32_t onnx_type) {
 
 }  // namespace
 
-void AddAdapterMethods(pybind11::module& m) {
+void addAdapterMethods(pybind11::module& m) {
   m.def(
       "export_adapter", [](const std::string& file_name, int adapter_version, int model_version, const pybind11::dict& adapter_parameters) {
         std::ofstream file(file_name, std::ios::binary);
@@ -202,9 +202,9 @@ void AddAdapterMethods(pybind11::module& m) {
           };
 
           gsl::span<const int64_t> shape_span{reinterpret_cast<const int64_t*>(np_array.shape()),
-                                              static_cast<size_t>(np_array.ndim())};
+                                              narrow<size_t>(np_array.ndim())};
           gsl::span<const uint8_t> data_span{reinterpret_cast<const uint8_t*>(np_array.data()),
-                                             static_cast<size_t>(np_array.nbytes())};
+                                             narrow<size_t>(np_array.nbytes())};
 
           format_builder.AddParameter(param_name, static_cast<adapters::TensorDataType>(onnx_element_type),
                                       shape_span, data_span);
@@ -218,7 +218,7 @@ void AddAdapterMethods(pybind11::module& m) {
           ORT_THROW("Failed to flush :", file_name, " on close");
         }
       },
-      "Save adapter parameters into a lora file format. ");
+      "Save adapter parameters into a lora file format.");
 
   class PyAdapter {
    public:
@@ -248,45 +248,40 @@ void AddAdapterMethods(pybind11::module& m) {
     py::dict parameters_;
   };
 
-  py::class_<PyAdapter> adapter_binding(m, "LoraAdapter");
-  adapter_binding.def(py::init<int, int, int, py::dict>());
-  adapter_binding.def("get_format_version", [](PyAdapter* py_adapter) -> int {
-    return py_adapter->FormatVersion();
-  });
-  adapter_binding.def("get_adapter_version", [](PyAdapter* py_adapter) -> int {
-    return py_adapter->AdapterVersion();
-  });
-  adapter_binding.def("get_model_version", [](PyAdapter* py_adapter) -> int {
-    return py_adapter->ModelVersion();
-  });
-  adapter_binding.def("get_arameters", [](PyAdapter* py_adapter) -> py::dict {
-    return py_adapter->GetParameters();
-  });
+  m.def(
+      "read_adapter", [](const std::string& file_name) -> std::unique_ptr<PyAdapter> {
+        lora::LoraAdapter adapter;
+        adapter.MemoryMap(file_name);
 
-  m.def("read_adapter", [](const std::string& file_name) -> std::unique_ptr<PyAdapter> {
-    lora::LoadedAdapter adapter;
-    adapter.MemoryMap(file_name);
+        auto [begin, end] = adapter.GetParamIterators();
+        py::dict params;
+        for (; begin != end; ++begin) {
+          const auto& [name, param] = *begin;
+          const auto& tensor = param.GetMapped().Get<Tensor>();
 
-    auto [begin, end] = adapter.GetParamIterators();
-    py::dict params;
-    for (; begin != end; ++begin) {
-      const auto& [name, param] = *begin;
-      const auto& tensor = param.GetMapped().Get<Tensor>();
+          const auto onnx_type = tensor.GetElementType();
+          const auto size_bytes = tensor.SizeInBytes();
 
-      const auto onnx_type = tensor.GetElementType();
-      const auto size_bytes = tensor.SizeInBytes();
+          py::dtype dtype = ConstructDType(onnx_type);
+          // No pointer, memory is allocated by array
+          py::array npy_array(dtype, tensor.Shape().GetDims());
+          ORT_ENFORCE(npy_array.size(), tensor.Shape().Size());
+          memcpy_s(npy_array.mutable_data(), size_bytes, tensor.DataRaw(), size_bytes);
+          params[py::str(name)] = std::move(npy_array);
+        }
 
-      py::dtype dtype = ConstructDType(onnx_type);
-      py::array npy_array(dtype, tensor.Shape().GetDims());
-      ORT_ENFORCE(npy_array.size(), tensor.Shape().Size());
-      memcpy_s(npy_array.mutable_data(), size_bytes, tensor.DataRaw(), size_bytes);
-      params[py::str(name)] = std::move(npy_array);
-    }
+        auto py_adapter = std::make_unique<PyAdapter>(adapter.FormatVersion(), adapter.AdapterVersion(),
+                                                      adapter.ModelVersion(), std::move(params));
+        return py_adapter;
+      },
+      "The function returns an instance of the class that contains a dictionary of name -> numpy arrays");
 
-    auto py_adapter = std::make_unique<PyAdapter>(adapter.FormatVersion(), adapter.AdapterVersion(),
-                                                 adapter.ModelVersion(), std::move(params));
-    return py_adapter;
-  });
+  py::class_<PyAdapter> adapter_binding(m, "Adapter");
+  adapter_binding.def(py::init<int, int, int, py::dict>())
+      .def("get_format_version", &PyAdapter::GetParameters)
+      .def("get_adapter_version", &PyAdapter::AdapterVersion)
+      .def("get_model_version", &PyAdapter::ModelVersion)
+      .def("get_parameters", &PyAdapter::GetParameters);
 }
 
 }  // namespace python
