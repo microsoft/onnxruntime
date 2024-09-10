@@ -123,7 +123,7 @@ class LoraAdapter {
   /// <param name="tensor_out">output iterator that accepts const OrtValue*</param>
   template <class NamesOutputIter, class TensorOutputIter>
   void OutputAdapterParameters(NamesOutputIter names_out,
-                                      TensorOutputIter tensor_out) const {
+                               TensorOutputIter tensor_out) const {
     for (const auto& [name, param] : params_values_) {
       *names_out = name.c_str();
       ++names_out;

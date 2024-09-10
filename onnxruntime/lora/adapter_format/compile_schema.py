@@ -8,6 +8,7 @@ import subprocess
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 
+
 def generate_cpp(flatc: pathlib.Path, schema_path: pathlib.Path):
     # run flatc to generate C++ code
     cmd = [str(flatc), "--cpp", "--scoped-enums", "--filename-suffix", ".fbs", str(schema_path)]
@@ -48,6 +49,7 @@ def main():
 
     if "cpp" in languages:
         generate_cpp(flatc, schema_path)
+
 
 if __name__ == "__main__":
     main()

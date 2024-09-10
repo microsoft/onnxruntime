@@ -134,5 +134,5 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
 OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const AllocatorPtr& device_allocator);
 
 }  // namespace utils
-}  // namespace lora
+}  // namespace adapters
 }  // namespace onnxruntime

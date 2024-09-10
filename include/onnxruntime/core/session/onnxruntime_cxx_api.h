@@ -740,7 +740,7 @@ struct CustomOpDomain : detail::Base<OrtCustomOpDomain> {
 /// \brief LoraAdapter holds a set of Lora Parameters loaded from a single file
 struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// \brief Wraps OrtApi::CreateLoraAdapter
-  /// 
+  ///
   /// The function attempts to load the adapter from the specified file
   /// \param absolute_adapter_path The absolute path to the Lora adapter
   /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
@@ -784,7 +784,7 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    *
    * Wraps OrtApi::RunOptionsSetLoraAdapterActive
    * \param adapter The LoraAdapter to be used as the active adapter
-  */
+   */
   RunOptions& SetLoraAdapterActive(const LoraAdapter& adapter);
 };
 

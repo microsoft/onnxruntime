@@ -835,7 +835,7 @@ void CheckAndAdjustForLora(const OrtRunOptions* run_options,
 
     for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
       ad->OutputAdapterParameters(std::back_inserter(input_names_with_lora),
-                                         std::back_inserter(input_with_lora));
+                                  std::back_inserter(input_with_lora));
     }
 
     input_names = gsl::make_span(input_names_with_lora);

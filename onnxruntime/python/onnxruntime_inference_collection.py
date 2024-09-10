@@ -31,21 +31,24 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
     else:
         raise Exception("Unsupported device type: " + device_type)
 
+
 class Adapter:
     """
     Instances of this class are used to represent adapter information
     obtained from read_adapter().
     """
+
     def __init__(self, adapter):
         self._adapter = adapter
 
     @staticmethod
     def read_adapter(file_path: os.PathLike) -> Adapter:
         return Adapter(C.read_adapter(file_path))
-    
+
     @staticmethod
-    def export_adapter(file_path: os.PathLike, adapter_version: int, model_version: int,
-                    params: dict[str, Sequence[Any]]):
+    def export_adapter(
+        file_path: os.PathLike, adapter_version: int, model_version: int, params: dict[str, Sequence[Any]]
+    ):
         """
         This function takes in the parameters and writes a file at the specified location
         in onnxrunitme adapter format containing Lora parameters.
@@ -64,7 +67,7 @@ class Adapter:
 
     def get_model_version(self):
         return self._adapter.get_model_version()
-    
+
     def get_parameters(self) -> dict[str, Sequence[Any]]:
         return self._adapter.get_parameters()
 

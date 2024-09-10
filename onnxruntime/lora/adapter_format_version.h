@@ -29,5 +29,5 @@ inline bool IsAdapterFormatVersionSupported(const int lora_format_version) {
   return it != kSupportedAdapterFormatVersions.cend();
 }
 
-}  // namespace lora
+}  // namespace adapters
 }  // namespace onnxruntime

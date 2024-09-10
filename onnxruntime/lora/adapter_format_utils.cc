@@ -149,10 +149,10 @@ gsl::span<uint8_t> AdapterFormatBuilder::FinishWithSpan(int adapter_version, int
 void AdapterFormatBuilder::FinishImpl(int adapter_version, int model_version) {
   auto fbs_params = builder_.CreateVector(params_);
   auto fbs_adapter = CreateAdapter(builder_, kAdapterFormatVersion, adapter_version,
-                                         model_version, fbs_params);
+                                   model_version, fbs_params);
   builder_.Finish(fbs_adapter, AdapterIdentifier());
 }
 
 }  // namespace utils
-}  // namespace lora
+}  // namespace adapters
 }  // namespace onnxruntime
