@@ -40,6 +40,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sqnbitgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
+  ${MLAS_SRC_DIR}/cast.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -212,6 +213,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/TanhKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
+    if(MSVC_VERSION GREATER_EQUAL 1933)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${MLAS_SRC_DIR}/amd64/cvtfp16Avx.asm
+      )
+    endif()
+
     if (NOT onnxruntime_ORT_MINIMAL_BUILD)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
@@ -522,6 +529,12 @@ else()
           ${MLAS_SRC_DIR}/x86_64/SconvKernelSse2.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelSse2.S
         )
+        if(NOT APPLE)
+          set(mlas_platform_srcs_sse2
+            ${mlas_platform_srcs_sse2}
+            ${MLAS_SRC_DIR}/x86_64/cvtfp16a.S
+          )
+        endif()
         set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
 
         set(mlas_platform_srcs_avx
@@ -555,6 +568,12 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
         )
+        if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
+          set(mlas_platform_srcs_avx2
+            ${mlas_platform_srcs_avx2}
+            ${MLAS_SRC_DIR}/x86_64/cvtfp16Avx.S
+          )
+        endif()
 
 message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
