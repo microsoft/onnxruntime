@@ -23,6 +23,8 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
+      // unordered_map has poor performance on Windows when inserting consecutive keys.
+      // keys are usually inserted with key.node_id being incremented at each iteration.
       return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) | static_cast<uint64_t>(key.node_id) << 32);
     }
   };
