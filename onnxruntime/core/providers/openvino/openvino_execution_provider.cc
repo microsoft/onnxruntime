@@ -185,11 +185,11 @@ common::Status OpenVINOExecutionProvider::Compile(
 
 #ifdef USE_DEVICE_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo npu_allocator_info {
-    [this](OrtDevice::DeviceId device_id) {
+  AllocatorCreationInfo npu_allocator_info{
+      [this](OrtDevice::DeviceId device_id) {
         return std::make_unique<OVRTAllocator>(global_context_->ie_core.Get(), OrtDevice::NPU, device_id, OpenVINO_RT_NPU);
-    },
-    0,
+      },
+      0,
   };
 
   // fill in allocator

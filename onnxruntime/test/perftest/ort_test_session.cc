@@ -40,10 +40,10 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 
   if (!use_device_mem) {
     auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                    output_names_raw_ptr.data(), output_names_raw_ptr.size());
+                                      output_names_raw_ptr.data(), output_names_raw_ptr.size());
   } else {
-  session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                    output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
+    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
   }
 
   auto end = std::chrono::high_resolution_clock::now();
@@ -827,8 +827,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         if (value == "true" || value == "True") {
           use_device_mem = true;
         }
-      }
-      else {
+      } else {
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
@@ -888,8 +887,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       }
 
-        outputs_.push_back(Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)output_shape.data(),
-                                                    output_shape.size(), tensor_info.GetElementType()));
+      outputs_.push_back(Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)output_shape.data(),
+                                                  output_shape.size(), tensor_info.GetElementType()));
     }
   }
 }
@@ -980,7 +979,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      if (!use_device_mem){
+      if (!use_device_mem) {
         Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
       }
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
@@ -991,15 +990,15 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
           dim = 1;
         }
       }
-      if (use_device_mem){
+      if (use_device_mem) {
         Ort::Value input_tensor = Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)input_node_dim.data(),
-                                                          input_node_dim.size(), tensor_info.GetElementType());
+                                                           input_node_dim.size(), tensor_info.GetElementType());
         InitializeTensorWithSeed(seed, input_tensor);
         PreLoadTestData(0, i, std::move(input_tensor));
       } else {
         auto allocator = Ort::AllocatorWithDefaultOptions();
         Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                          input_node_dim.size(), tensor_info.GetElementType());
+                                                           input_node_dim.size(), tensor_info.GetElementType());
         InitializeTensorWithSeed(seed, input_tensor);
         PreLoadTestData(0, i, std::move(input_tensor));
       }

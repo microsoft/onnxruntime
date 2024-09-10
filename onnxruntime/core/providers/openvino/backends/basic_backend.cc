@@ -302,7 +302,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           // Does this make sense for both types of allocators?
           auto input = graph_input_info.at(input_idx);
           ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
-                                                                    (void*)tensor.GetTensorRawData());
+                                                                  (void*)tensor.GetTensorRawData());
           if (allocator_name == OpenVINO_RT_NPU) {
             ov_tensor_key.copy_needed = false;
           } else {
@@ -335,14 +335,12 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;
       std::string output_name;
-      bool output_name_found = false;
       // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
       for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
         onnx_output_name = it->first;
         if (output_names.find(onnx_output_name) != output_names.end()) {
           // Assigning the output_name
           output_name = it->first;
-          output_name_found = true;
           break;
         }
       }
@@ -362,7 +360,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         auto output = graph_output_info.at(output_idx);
         ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
                                                                  (void*)tensor.GetTensorRawData());
-        if(allocator_name == OpenVINO_RT_NPU) {
+        if (allocator_name == OpenVINO_RT_NPU) {
           ov_tensor_data.copy_needed = false;
         } else {
           ov_tensor_data.copy_needed = true;

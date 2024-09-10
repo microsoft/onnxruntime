@@ -28,7 +28,7 @@ void* OVRTAllocator::Alloc(size_t size) {
   try {
     size_t alloc_size = align_up(size + sizeof(ov::Tensor*) + default_alignment, default_alignment);
     ov::Tensor* tensor = new ov::Tensor(remote_ctx_.create_host_tensor(ov::element::Type_t::u8,
-                                                                       { alloc_size }));
+                                                                       {alloc_size}));
     uintptr_t data_ptr = reinterpret_cast<uintptr_t>(tensor->data());
 
     ov::Tensor** ptr = reinterpret_cast<ov::Tensor**>(align_up(data_ptr + sizeof(ov::Tensor*), default_alignment));
