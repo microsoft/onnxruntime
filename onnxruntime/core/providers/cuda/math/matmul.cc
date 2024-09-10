@@ -249,14 +249,14 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
 const int left_X_num_elems = left_X->SizeInBytes() / sizeof(MLFloat16);
 const int right_X_num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
 printf("\nPrinting tensor data for left_X:\n");
-PrintTensorData<MLFloat16>(stream, left_X->DataRaw(), left_X_num_elems, 8);
+PrintTensorData<MLFloat16>(stream, left_X->DataRaw(), left_X_num_elems, 4);
 printf("\nPrinting tensor data for right_X:\n");
-PrintTensorData<MLFloat16>(stream, right_X->DataRaw(), right_X_num_elems, 12);
+PrintTensorData<MLFloat16>(stream, right_X->DataRaw(), right_X_num_elems, 4);
 
 printf("\nPrinting tensor data for left_X_fp8:\n");
-PrintTensorData<Float8E4M3FN>(stream, left_X_fp8.get(), left_X_num_elems, 8);
+PrintTensorData<Float8E4M3FN>(stream, left_X_fp8.get(), left_X_num_elems, 4);
 printf("\nPrinting tensor data for right_X_fp8 tranposed:\n");
-PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
+PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 4);
 
   const void* p_input_a = right_X_fp8.get();
   const void* p_input_b = left_X_fp8.get();
@@ -290,8 +290,10 @@ PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transB, sizeof(transB)));
 
   cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr, Ydesc = nullptr;
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, K, N, lda)); // right_X
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, K, M, ldb)); // left_X
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, K, N, lda)); // right_X
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, K, M, ldb)); // left_X
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, K, N, lda)); // right_X
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, K, M, ldb)); // left_X
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ydesc, y_cuda_type, N, M, ldc)); // cublas is col major
 
   int64_t sm_count_ = device_prop.multiProcessorCount;
@@ -395,9 +397,9 @@ printf("returnedResults = %d, cuda_status == CUBLAS_STATUS_SUCCESS = %d\n", retu
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transA, ", transB=", transB,
       ", fastAccumulationMode=", 1,
-      // ", shape_A=", shape_A[0], "x", shape_A[1],
-      // ", shape_B=", shape_B[0], "x", shape_B[1],
-      // ", shape_Y=", (shape_Y.NumDimensions() > 0 ? shape_Y[0] : 0), "x", (shape_Y.NumDimensions() > 1 ? shape_Y[1] : 0),
+      ", shape_A=", shape_A[0], "x", shape_A[1],
+      ", shape_B=", shape_B[0], "x", shape_B[1],
+      ", shape_Y=", (shape_Y.NumDimensions() > 0 ? shape_Y[0] : 0), "x", (shape_Y.NumDimensions() > 1 ? shape_Y[1] : 0),
       ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldy=", ldy, ", workspaceSize=", workspaceSize,
       ". Check NVIDIA documentation to see what combination is valid: ",
       "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic"
