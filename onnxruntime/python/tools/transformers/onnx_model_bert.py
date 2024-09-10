@@ -115,7 +115,7 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSimplifiedLayerNormalization(self)
         fusion.apply()
 
-    def fuse_skip_layer_norm(self, shape_infer):
+    def fuse_skip_layer_norm(self, shape_infer=True):
         fusion = FusionSkipLayerNormalization(self, shape_infer=shape_infer)
         fusion.apply()
 
