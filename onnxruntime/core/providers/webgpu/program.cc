@@ -134,6 +134,8 @@ int NumberOfComponents(ProgramVariableDataType type) {
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component /* = 1 */) {
   if (component == 1) {
     switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Uint32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -151,6 +153,8 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
     }
   } else if (component == 2) {
     switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Vec2Uint32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Vec2Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -164,6 +168,8 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
     }
   } else if (component == 4) {
     switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Vec4Uint32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Vec4Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:

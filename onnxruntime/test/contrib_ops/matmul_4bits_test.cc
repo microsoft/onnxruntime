@@ -293,7 +293,7 @@ void TestMatMulNBitsTyped() {
               RunTest<AType>(opts);
             }
 
-#if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
+#if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML) && !defined(USE_WEBGPU)
             {
               TestOptions opts = base_opts;
               opts.has_g_idx = true;
@@ -324,7 +324,7 @@ void TestMatMulNBitsTyped() {
               opts.has_zero_point = true, opts.zp_is_4bit = false;
               RunTest<AType>(opts);
             }
-#endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
+#endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML) && !defined(USE_WEBGPU)
 
             {
               TestOptions opts = base_opts;
@@ -358,7 +358,7 @@ TEST(MatMulNBits, Float16) {
 #endif
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 
 namespace {
 // Legacy test function.
@@ -392,6 +392,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 #endif
 #ifdef USE_DML
     execution_providers.push_back(DefaultDmlExecutionProvider());
+#endif
+#ifdef USE_WEBGPU
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
 #endif
 
     RunTest<MLFloat16>(opts, std::move(execution_providers));

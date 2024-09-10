@@ -387,7 +387,7 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
       "disable_robustness",
-      "disable_workgroup_init",
+      // "disable_workgroup_init", // workgroup_init is needed if the shader uses workgroup.
       "d3d_disable_ieee_strictness",
   };
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
