@@ -120,6 +120,10 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
         data_type = MLMultiArrayDataTypeFloat32;
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        data_type = MLMultiArrayDataTypeFloat16;
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
         data_type = MLMultiArrayDataTypeInt32;
         break;
@@ -197,6 +201,18 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
       const auto* src_buffer = static_cast<const float*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<float*>(tensor_buffer);
       const auto block_byte_size = block_size * sizeof(float);
+
+      for (int64_t idx = 0; idx < num_blocks; ++idx) {
+        memcpy(dst_buffer, src_buffer, block_byte_size);
+        src_buffer += stride;
+        dst_buffer += block_size;
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+      const auto* src_buffer = static_cast<const uint16_t*>(mlmultiarray_buffer);
+      auto* dst_buffer = static_cast<uint16_t*>(tensor_buffer);
+      const auto block_byte_size = block_size * sizeof(uint16_t);
 
       for (int64_t idx = 0; idx < num_blocks; ++idx) {
         memcpy(dst_buffer, src_buffer, block_byte_size);

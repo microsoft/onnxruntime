@@ -139,8 +139,8 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   // Add/Sub/Mul/Div spec says inputs must be of the same type.
   // Pow spec says inputs can be different types.
   // We only support float for all of these inputs.
-  if (!IsInputFloat(node, 0, input_params, logger) ||
-      ((node.OpType() == "Pow") && !IsInputFloat(node, 1, input_params, logger))) {
+  if (!IsInputDtypeSupport(node, 0, input_params, logger) ||
+      ((node.OpType() == "Pow") && !IsInputDtypeSupport(node, 1, input_params, logger))) {
     return false;
   }
 

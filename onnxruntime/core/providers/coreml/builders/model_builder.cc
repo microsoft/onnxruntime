@@ -811,6 +811,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         multi_array->set_datatype(ArrayFeatureType::FLOAT32);
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        multi_array->set_datatype(ArrayFeatureType::FLOAT16);
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         multi_array->set_datatype(ArrayFeatureType::INT32);
         break;

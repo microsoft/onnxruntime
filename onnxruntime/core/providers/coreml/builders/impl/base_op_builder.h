@@ -33,7 +33,7 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // currently we only support float
-  static bool IsInputFloat(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
+  static bool IsInputDtypeSupport(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
                            const logging::Logger& logger);
 
  private:

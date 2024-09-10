@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <set>
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
@@ -11,6 +12,10 @@ using namespace CoreML::Specification;
 
 namespace onnxruntime {
 namespace coreml {
+
+static std::set<const std::string> Float16Ops = {
+  "Add",
+};
 
 namespace {
 // TODO, move this to shared_library
@@ -83,7 +88,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputPar
 }
 
 /* static */
-bool BaseOpBuilder::IsInputFloat(const Node& node, size_t idx, const OpBuilderInputParams& /*input_params*/,
+bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx, const OpBuilderInputParams& /*input_params*/,
                                  const logging::Logger& logger) {
   if (idx >= node.InputDefs().size()) {
     LOGS(logger, VERBOSE) << "Input index [" << idx << "] is out of range";
@@ -94,12 +99,21 @@ bool BaseOpBuilder::IsInputFloat(const Node& node, size_t idx, const OpBuilderIn
 
   int32_t input_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
 
-  // currently only float is supported
-  if (!GetType(input, input_type, logger) || input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
+  if (!GetType(input, input_type, logger)) {
+    LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Get Input type failed";
     return false;
   }
 
+  // float is supported
+  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT){
+    return true;
+  }
+
+  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 && Float16Ops.count(node.OpType())) {
+    return true;
+  }
+
+  LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
   return true;
 }
 
@@ -107,7 +121,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInpu
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
-  return IsInputFloat(node, 0, input_params, logger);
+  return IsInputDtypeSupport(node, 0, input_params, logger);
 }
 
 bool BaseOpBuilder::HasSupportedOpSet(const Node& node, const logging::Logger& logger) const {
