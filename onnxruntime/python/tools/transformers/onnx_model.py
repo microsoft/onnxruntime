@@ -908,6 +908,18 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
+    def get_subgraph_inputs_of_node(self, node):
+        """
+        Get inputs to all nodes in all subgraphs of a node
+        """
+        subgraph_nodes_inputs = set()
+        for attr in node.attribute:
+            if attr.type == AttributeProto.GRAPH:
+                child_nodes = attr.g.node
+                for child_node in child_nodes:
+                    subgraph_nodes_inputs.update(child_node.input)
+        return subgraph_nodes_inputs
+
     def get_subgraph_nodes_and_inputs(self, ops_with_graph_attrs):
         """
         Get input names to all nodes in all subgraphs where subgraphs are
@@ -916,12 +928,8 @@ class OnnxModel:
         subgraph_nodes = list(filter(lambda node: node.op_type in ops_with_graph_attrs, self.model.graph.node))
         subgraph_nodes_inputs = set()
         for parent_node in subgraph_nodes:
-            for attr in parent_node.attribute:
-                if attr.type == AttributeProto.GRAPH:
-                    child_nodes = attr.g.node
-                    for child_node in child_nodes:
-                        subgraph_nodes_inputs.update(child_node.input)
-
+            subgraph_inputs_of_parent_node = self.get_subgraph_inputs_of_node(parent_node)
+            subgraph_nodes_inputs.update(subgraph_inputs_of_parent_node)
         return subgraph_nodes, subgraph_nodes_inputs
 
     def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
@@ -1031,22 +1039,15 @@ class OnnxModel:
     def update_graph(self, verbose=False, allow_remove_graph_inputs=False):
         graph = self.model.graph
 
-        remaining_input_names = []
+        remaining_input_names = set()
         for node in graph.node:
             if node.op_type in ["Loop", "Scan", "If"]:
                 # Add input names of nodes in subgraphs
-                for attr in node.attribute:
-                    if attr.type == AttributeProto.GRAPH:
-                        child_nodes = attr.g.node
-                        for child_node in child_nodes:
-                            for input_name in child_node.input:
-                                if input_name not in remaining_input_names:
-                                    remaining_input_names.append(input_name)
+                subgraph_inputs_of_node = self.get_subgraph_inputs_of_node(node)
+                remaining_input_names.update(subgraph_inputs_of_node)
 
             if node.op_type != "Constant":
-                for input_name in node.input:
-                    if input_name not in remaining_input_names:
-                        remaining_input_names.append(input_name)
+                remaining_input_names.update(node.input)
         if verbose:
             logger.debug(f"remaining input names: {remaining_input_names}")
 
