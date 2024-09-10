@@ -122,7 +122,7 @@ namespace Dml
                     {
                         if (initializerIter->second.first->raw_data().length() == inputProto.raw_data().length())
                         {
-                            for (int i = 0; i < inputProto.raw_data().length(); ++i)
+                            for (size_t i = 0; i < inputProto.raw_data().length(); ++i)
                             {
                                 if (initializerIter->second.first->raw_data()[i] != inputProto.raw_data()[i])
                                 {
