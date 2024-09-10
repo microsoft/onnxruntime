@@ -54,10 +54,8 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto input_name{"x"};
   const auto output_name{"y"};
   const auto& input = shader.AddInput(input_name,
-                                      ToProgramVariableDataType(Inputs()[0].tensor->GetElementType()),
                                       ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput(output_name,
-                                        ToProgramVariableDataType(Outputs()[0].tensor->GetElementType()),
                                         ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
   shader.AppendImplementation(AppendPermFunction(input_name, output_name, this->perm_));
   shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
