@@ -143,9 +143,8 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
   (void)(ptr);
 }
 
-// TODO instead of ctx pass alloc and stream  directly
-Status TransposeAndConvertToFp8(cudaStream_t& stream, const Tensor* right_X, IAllocatorUniquePtr<void>& right_X_fp8,
-  const cudaDeviceProp& device_prop, const AllocatorPtr& allocator, OpKernelContext* ctx)
+Status TransposeAndConvertToFp8(cudaStream_t& cuda_stream, const Tensor* right_X, IAllocatorUniquePtr<void>& right_X_fp8,
+  const cudaDeviceProp& device_prop, const AllocatorPtr& allocator, Stream* stream)
 {
   const auto shape_size = right_X->Shape().GetDims().size();
   const int num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
@@ -154,8 +153,7 @@ Status TransposeAndConvertToFp8(cudaStream_t& stream, const Tensor* right_X, IAl
   CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle));
 
   // We don't have access to the context from inside PrePack, which is one of the callers of this method.
-  Stream* stream_ptr = ctx ? ctx->GetComputeStream() : nullptr; // : DefaultCudaStream();
-  right_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, num_elems * sizeof(Float8E4M3FN), false, stream_ptr);
+  right_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, num_elems * sizeof(Float8E4M3FN), false, stream);
 
   Status return_status;
   if (shape_size > 1)
@@ -175,21 +173,16 @@ Status TransposeAndConvertToFp8(cudaStream_t& stream, const Tensor* right_X, IAl
 
     std::unique_ptr<Tensor> right_X_transposed = Tensor::Create(right_X->DataType(), TensorShape(dims), allocator);
 
-    auto status = cuda::Transpose::DoTranspose(device_prop, stream, cublas_handle, permutation, *right_X, *right_X_transposed);
+    auto status = cuda::Transpose::DoTranspose(device_prop, cuda_stream, cublas_handle, permutation, *right_X, *right_X_transposed);
     if (!status.IsOK()) {
       return status;
     }
-    return_status = MLFloat16ToFloat8E4M3FN(stream, right_X_transposed.get(), right_X_fp8.get());
-
-// TODO delete
-printf("\nPrinting tensor data for right_X_transposed:\n");
-PrintTensorData<MLFloat16>(stream, right_X_transposed.get()->DataRaw(), num_elems, 12);
+    return_status = MLFloat16ToFloat8E4M3FN(cuda_stream, right_X_transposed.get(), right_X_fp8.get());
   }
   else
   {
-    return_status = MLFloat16ToFloat8E4M3FN(stream, right_X, right_X_fp8.get());
+    return_status = MLFloat16ToFloat8E4M3FN(cuda_stream, right_X, right_X_fp8.get());
   }
-
 
   CUBLAS_RETURN_IF_ERROR(cublasDestroy(cublas_handle));
   return return_status;
@@ -241,7 +234,7 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
 
   // If right_X is nullptr, it means that its value was constant and this computation was already done inside PrePack.
   if (right_X != nullptr) {
-    auto status = TransposeAndConvertToFp8(stream, right_X, right_X_fp8, device_prop, allocator, ctx);
+    auto status = TransposeAndConvertToFp8(stream, right_X, right_X_fp8, device_prop, allocator, ctx->GetComputeStream());
     if (! status.IsOK()) {
       return status;
     }
@@ -473,23 +466,20 @@ Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr allo
                           bool& is_packed, PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
-  // TODO do we need to use prepacked_weights?
   if (input_idx == 1) { // right_X
-    auto& device_prop = GetDeviceProp();
+    const cudaDeviceProp& device_prop = GetDeviceProp();
 
-    // TODO is okay to create a new stream since we don't have access to the OpKernelContext here?
-    cudaStream_t stream;
-    CUDA_CALL_THROW(cudaStreamCreate(&stream));
+    // Create an ONNX Runtime Stream
+    cudaStream_t default_cuda_stream = DefaultCudaStream();
+    OrtDevice ort_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
+    onnxruntime::Stream stream(default_cuda_stream, ort_device);
 
-    auto status = TransposeAndConvertToFp8(stream, &tensor, right_X_fp8_, device_prop, alloc, nullptr);
-// TODO delete
-printf("Updated right_X_fp8_ from PrePack\n");
-PrintTensorData<Float8E4M3FN>(stream, right_X_fp8_.get(), 12, 12);
+    auto status = TransposeAndConvertToFp8(default_cuda_stream, &tensor, right_X_fp8_, device_prop, alloc, &stream);
+
     if (! status.IsOK()) {
       return status;
     }
     is_packed = true;
-    CUDA_CALL_THROW(cudaStreamDestroy(stream));
   }
 
   return Status::OK();
