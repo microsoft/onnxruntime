@@ -9,46 +9,6 @@
 
 using namespace onnxruntime;
 
-namespace {
-// static section
-std::vector<int64_t> GetStarts(int64_t rank, int64_t axis, int64_t index) {
-  std::vector<int64_t> starts(onnxruntime::narrow<size_t>(rank), 0);
-  starts[onnxruntime::narrow<size_t>(axis)] = index;
-  return starts;
-}
-template <typename T>
-void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t index,
-                         gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
-  T zero{};
-  auto output_starts(GetStarts(rank, axis, index));
-  WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
-  for (int64_t k = 0; k < slice_size; ++k, ++output_iterator) {
-    *output_iterator = zero;
-  }
-}
-template <typename T>
-void CopySlices(const Tensor& input, Tensor& output,
-                const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts,
-                gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
-  SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
-  WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
-  for (int64_t k = 0; k < slice_size; ++k, ++output_iterator, ++input_iterator) {
-    *output_iterator = *input_iterator;
-  }
-}
-template <typename T>
-void SumSlices(const Tensor& input, Tensor& output,
-               const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, const std::vector<int64_t>& previous_output_starts,
-               gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
-  SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
-  WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
-  SliceIterator<T> previous_output_iterator(output, previous_output_starts, slice_dims, steps);
-  for (int64_t k = 0; k < slice_size; ++k, ++output_iterator, ++input_iterator, ++previous_output_iterator) {
-    *output_iterator = *input_iterator + *previous_output_iterator;
-  }
-}
-}  // namespace
-
 namespace onnxruntime {
 
 namespace cumsum_op {
@@ -200,62 +160,81 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   int64_t axis = 0;
   ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
 
-  auto dim(output_tensor.Shape()[onnxruntime::narrow<size_t>(axis)]);  // dimension size for the axis
-  TensorShape slice_shape(input->Shape());                             // the shape of one slice of input/output for the given value of the axis
-  slice_shape[onnxruntime::narrow<size_t>(axis)] = 1;
-  auto slice_size(slice_shape.Size());     // total number of elements in each slice
-  auto slice_dims(slice_shape.GetDims());  // dim array for the slice
+  // we solve the problem by using the identity that(in the case of exclusive)
+  // 1) out[upper_dims...][0][lower_dims...] = 0
+  // 2) out[upper_dims...][i][lower_dims...] = in[upper_dims...][i-1][lower_dims...] + out[upper_dims...][i-1][lower_dims...]
+  // we loop through the [upper_dims...] and start applying the identity in each slice
+  // in each slice since again the [lower_dims...] are adjecent in memory, we can add them like vectors
 
-  std::vector<int64_t> steps(onnxruntime::narrow<size_t>(rank), 1);  // steps for the slice -- always set to 1
+  const auto dim = input->Shape()[axis];  // dimension size for the axis
+  const auto input_shape = input->Shape().GetDims();
+  const auto upper_dim_count =  // number of slices we can walk through iteratively
+      std::accumulate(input_shape.begin(), input_shape.begin() + axis, 1, std::multiplies<int64_t>());
+  const auto lower_dim_size =  // sizes of the slices we can treat as 1D arrays
+      std::accumulate(input_shape.begin() + axis + 1, input_shape.begin() + rank, 1, std::multiplies<int64_t>());
 
   if (!reverse_) {
-    int64_t index(0);  // the index we use as we walkthrough the given axis
-    // If (exclusive == true) the first slice is always 0
+    const auto* input_iter = input->Data<T>();
+    auto* output_iter = output_tensor.MutableData<T>();
+    const auto* prev_output_iter = output_iter;
+
     if (exclusive_) {
-      ::ZeroOutSliceAtIndex<T>(output_tensor, rank, axis, index, slice_dims, steps, slice_size);
-      ++index;
-    }
-
-    if (index < dim) {
-      // The next slice is a copy of the input (if exclusive == false then this is the first slice)
-      auto input_starts(::GetStarts(rank, axis, 0));
-      auto output_starts(::GetStarts(rank, axis, index));
-      ::CopySlices<T>(*input, output_tensor, input_starts, output_starts, slice_dims, steps, slice_size);
-      ++index;
-    }
-
-    for (; index < dim; ++index) {
-      // Each output slice is the sum of corresponding input slice and the previous output slice
-      auto input_starts(::GetStarts(rank, axis, exclusive_ ? index - 1 : index));
-      auto output_starts(::GetStarts(rank, axis, index));
-      auto previous_starts(::GetStarts(rank, axis, index - 1));
-      ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts,
-                     slice_dims, steps, slice_size);
+      for (int outer = 0; outer < upper_dim_count; outer++) {
+        prev_output_iter = output_iter;
+        for (int inner = 0; inner < lower_dim_size; inner++) {
+          *(output_iter++) = 0;
+        }
+        for (int cum_axis = 1; cum_axis < dim; cum_axis++) {
+          for (int inner = 0; inner < lower_dim_size; inner++) {
+            *(output_iter++) = *(prev_output_iter++) + *(input_iter++);
+          }
+        }
+        input_iter += lower_dim_size;
+      }
+    } else {
+      for (int outer = 0; outer < upper_dim_count; outer++) {
+        prev_output_iter = output_iter;
+        for (int inner = 0; inner < lower_dim_size; inner++) {
+          *(output_iter++) = *(input_iter++);
+        }
+        for (int cum_axis = 1; cum_axis < dim; cum_axis++) {
+          for (int inner = 0; inner < lower_dim_size; inner++) {
+            *(output_iter++) = *(prev_output_iter++) + *(input_iter++);
+          }
+        }
+      }
     }
   } else {
-    //_reverse == true
-    int64_t index(dim - 1);  // the index we use as we walkthrough the given axis
-    // If (exclusive == true) the first slice is always 0
+    const auto* input_iter = input->Data<T>() + input->Shape().Size();
+    auto* output_iter = output_tensor.MutableData<T>() + output_shape.Size();
+    const auto* prev_output_iter = output_iter;
+
     if (exclusive_) {
-      ::ZeroOutSliceAtIndex<T>(output_tensor, rank, axis, index, slice_dims, steps, slice_size);
-      --index;
-    }
-
-    if (index >= 0) {
-      // The next slice is a copy of the input (if exclusive == false then this is the first slice)
-      auto input_starts(::GetStarts(rank, axis, dim - 1));
-      auto output_starts(::GetStarts(rank, axis, index));
-      ::CopySlices<T>(*input, output_tensor, input_starts, output_starts, slice_dims, steps, slice_size);
-      --index;
-    }
-
-    for (; index >= 0; --index) {
-      // Each output slice is the sum of corresponding input slice and the previous output slice
-      auto input_starts(::GetStarts(rank, axis, exclusive_ ? index + 1 : index));
-      auto output_starts(::GetStarts(rank, axis, index));
-      auto previous_starts(::GetStarts(rank, axis, index + 1));
-      ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts,
-                     slice_dims, steps, slice_size);
+      for (int outer = 0; outer < upper_dim_count; outer++) {
+        // move input to the end of the range
+        prev_output_iter = output_iter;
+        for (int inner = 0; inner < lower_dim_size; inner++) {
+          *(--output_iter) = 0;
+        }
+        for (int cum_axis = 1; cum_axis < dim; cum_axis++) {
+          for (int inner = 0; inner < lower_dim_size; inner++) {
+            *(--output_iter) = *(--prev_output_iter) + *(--input_iter);
+          }
+        }
+        input_iter -= lower_dim_size;
+      }
+    } else {
+      for (int outer = 0; outer < upper_dim_count; outer++) {
+        prev_output_iter = output_iter;
+        for (int inner = 0; inner < lower_dim_size; inner++) {
+          *(--output_iter) = *(--input_iter);
+        }
+        for (int cum_axis = 1; cum_axis < dim; cum_axis++) {
+          for (int inner = 0; inner < lower_dim_size; inner++) {
+            *(--output_iter) = *(--prev_output_iter) + *(--input_iter);
+          }
+        }
+      }
     }
   }
 
