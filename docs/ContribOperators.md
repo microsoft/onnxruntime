@@ -2521,6 +2521,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   Only supports causal and local attention.
   Supports rotary position embedding for CPU and CUDA.
   Supports packed input for CPU and CUDA.
+  Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+  
 
 #### Version
 
