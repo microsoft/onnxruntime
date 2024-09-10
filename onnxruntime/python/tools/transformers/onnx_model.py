@@ -908,7 +908,7 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def get_subgraph_inputs_of_node(self, node):
+    def _get_subgraph_inputs_of_node(self, node):
         """
         Get inputs to all nodes in all subgraphs of a node
         """
@@ -921,7 +921,7 @@ class OnnxModel:
                     subgraph_nodes_inputs.update(child_node.input)
         return subgraph_nodes_inputs
 
-    def get_subgraph_nodes_and_inputs(self, ops_with_graph_attrs):
+    def _get_subgraph_nodes_and_inputs(self, ops_with_graph_attrs):
         """
         Get input names to all nodes in all subgraphs where subgraphs are
         graph attributes of a node in the main graph
@@ -929,7 +929,7 @@ class OnnxModel:
         subgraph_nodes = list(filter(lambda node: node.op_type in ops_with_graph_attrs, self.model.graph.node))
         subgraph_nodes_inputs = set()
         for parent_node in subgraph_nodes:
-            subgraph_inputs_of_parent_node = self.get_subgraph_inputs_of_node(parent_node)
+            subgraph_inputs_of_parent_node = self._get_subgraph_inputs_of_node(parent_node)
             subgraph_nodes_inputs.update(subgraph_inputs_of_parent_node)
         return subgraph_nodes, subgraph_nodes_inputs
 
@@ -957,7 +957,7 @@ class OnnxModel:
 
         if len(self.graphs()) > 1:
             # Get input names for all nodes in all subgraphs
-            subgraph_nodes, subgraph_nodes_inputs = self.get_subgraph_nodes_and_inputs(
+            subgraph_nodes, subgraph_nodes_inputs = self._get_subgraph_nodes_and_inputs(
                 ops_with_graph_attrs={"Loop", "Scan", "If"}
             )
             if len(subgraph_nodes) == 0:
@@ -968,6 +968,9 @@ class OnnxModel:
             # For graphs with subgraphs, add dangling outputs from parent graph nodes to list of outputs to keep
             for node in self.model.graph.node:
                 if node in subgraph_nodes:
+                    # TODO: This logic currently assumes that Loop/Scan/If nodes will not be pruned
+                    # because their subgraphs are needed for computations. This might not be true in
+                    # all cases.
                     continue
 
                 # Check if node output is an input of a subgraph node and not an input to a node in the main graph
@@ -1044,7 +1047,7 @@ class OnnxModel:
         for node in graph.node:
             if node.op_type in ["Loop", "Scan", "If"]:
                 # Add input names of nodes in subgraphs
-                subgraph_inputs_of_node = self.get_subgraph_inputs_of_node(node)
+                subgraph_inputs_of_node = self._get_subgraph_inputs_of_node(node)
                 remaining_input_names.update(subgraph_inputs_of_node)
 
             if node.op_type != "Constant":
