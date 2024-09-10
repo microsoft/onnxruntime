@@ -74,6 +74,19 @@ index 2d85ac74..4875d668 100644
      # The decorated name was longer than the compiler limit
      "/wd4503",
      # forcing value to bool 'true' or 'false' (performance warning)
+diff --git a/absl/debugging/symbolize.cc b/absl/debugging/symbolize.cc
+index 638d3954..6b817075 100644
+--- a/absl/debugging/symbolize.cc
++++ b/absl/debugging/symbolize.cc
+@@ -14,7 +14,7 @@
+ 
+ #include "absl/debugging/symbolize.h"
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(NDEBUG)
+ #include <winapifamily.h>
+ #if !(WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)) || \
+     WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 diff --git a/absl/debugging/symbolize_win32.inc b/absl/debugging/symbolize_win32.inc
 index 53a099a1..34d210d6 100644
 --- a/absl/debugging/symbolize_win32.inc

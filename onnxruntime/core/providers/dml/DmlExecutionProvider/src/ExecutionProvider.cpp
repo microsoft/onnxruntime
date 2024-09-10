@@ -239,7 +239,9 @@ namespace Dml
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
             m_context->SetAllocator(m_allocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+            OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator);
+            memoryInfo.mem_type = ::OrtMemType::OrtMemTypeCPUInput;
+            m_cpuInputAllocator = std::make_shared<onnxruntime::CPUAllocator>(memoryInfo);
         }
 
         return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};

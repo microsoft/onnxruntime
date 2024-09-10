@@ -198,5 +198,9 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepOnRunStart'] = sessionId => {
       return backend['onRunStart'](sessionId);
     };
+
+    Module.jsepUploadExternalBuffer = (dataId, buffer) => {
+      backend['upload'](dataId, buffer);
+    };
   }
 };

@@ -160,4 +160,73 @@ Node& graph_fuse(Graph& graph, const std::string& name,
   }
   return fused_node;
 }
+Model* model_clone(const Model& original_model, int64_t external_data_threshold) {
+  // create an empty mode
+  auto& original_graph = const_cast<Model&>(original_model).MainGraph();
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto file_path = original_graph.ModelPath();
+  auto local_registries = IOnnxRuntimeOpSchemaRegistryList{original_graph.GetSchemaRegistry()};
+  auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
+  auto graph_proto = model_proto->mutable_graph();  // create a graph
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  for (const auto& op : original_graph.DomainToVersionMap()) {
+    auto* opset_import = model_proto->add_opset_import();
+    *(opset_import->mutable_domain()) = op.first;
+    opset_import->set_version(op.second);
+  }
+  auto graph_input = graph_proto->mutable_input();
+  for (const auto& input : original_graph.GetInputs()) {
+    auto* input_proto = graph_input->Add();
+    *input_proto = input->ToProto();
+  }
+  auto graph_output = graph_proto->mutable_output();
+  for (const auto& output : original_graph.GetOutputs()) {
+    auto* output_proto = graph_output->Add();
+    *output_proto = output->ToProto();
+  }
+  for (auto& node : original_graph.Nodes()) {
+    auto* node_proto = graph_proto->add_node();
+    node->ToProto(*node_proto, false);
+    for (auto output : node->OutputDefs()) {
+      if (output->Exists()) {
+        auto* value_info = graph_proto->mutable_value_info()->Add();
+        *value_info = output->ToProto();
+      }
+    }
+  }
+  auto ptr_to_string = [](const void* g) -> std::string {
+    return std::to_string((uintptr_t)(g));
+  };
+  auto graph_ptr = ptr_to_string(&original_graph);
+  for (auto& it : original_graph.GetAllInitializedTensors()) {
+    auto cloned_tensor = graph_proto->add_initializer();
+    auto original_tensor = it.second;
+    cloned_tensor->set_name(original_tensor->name());
+    cloned_tensor->set_data_type(original_tensor->data_type());
+    auto& dims = original_tensor->dims();
+    int64_t size = 1;
+    for (auto i = 0; i < dims.size(); ++i) {
+      auto dim = dims[i];
+      cloned_tensor->add_dims(dim);
+      size = size * dim;
+    }
+    if (size >= external_data_threshold) {
+      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      auto external_data = cloned_tensor->mutable_external_data();
+      auto p = external_data->Add();
+      *p->mutable_key() = "location";
+      *p->mutable_value() = std::string("<") + graph_ptr;
+    } else {
+      *cloned_tensor = *original_tensor;
+    }
+  }
+  auto ret = Model::Create(std::move(*model_proto), file_path, &local_registries, logger);
+  auto& graph = ret->MainGraph();
+  for (auto node : graph.Nodes()) {
+    graph.SetOpSchemaFromRegistryForNode(*graph.GetNode(node->Index()));
+  }
+  auto status = graph.Resolve();
+  vai_assert(status.IsOK(), status.ErrorMessage());
+  return ret.release();
+}
 }  // namespace vaip

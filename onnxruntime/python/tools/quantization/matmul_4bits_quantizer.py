@@ -1062,7 +1062,6 @@ set of 4b integers with a scaling factor and an optional offset.
     )
     parser.add_argument(
         "--op_types_to_quantize",
-        default="MatMul",
         type=str,
         nargs="+",
         choices=["MatMul", "Gather"],
@@ -1089,7 +1088,7 @@ if __name__ == "__main__":
     input_model_path = args.input_model
     output_model_path = args.output_model
     quant_format = QuantFormat[args.quant_format]
-    op_types_to_quantize = tuple(args.op_types_to_quantize) if args.op_types_to_quantize else None
+    op_types_to_quantize = tuple(args.op_types_to_quantize) if args.op_types_to_quantize else ("MatMul",)
     quant_axes = tuple(args.quant_axes) if args.quant_axes else None
 
     if os.path.exists(output_model_path):

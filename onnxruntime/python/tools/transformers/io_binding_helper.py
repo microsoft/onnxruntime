@@ -304,7 +304,7 @@ class CudaSession:
                     tensor.data_ptr(),
                 )
 
-    def infer(self, feed_dict: Dict[str, torch.Tensor], run_options: RunOptions = None, synchronize: bool = False):
+    def infer(self, feed_dict: Dict[str, torch.Tensor], run_options: RunOptions = None, synchronize: bool = True):
         """Bind input tensors and run inference"""
         for name, tensor in feed_dict.items():
             assert isinstance(tensor, torch.Tensor) and tensor.is_contiguous()
@@ -317,7 +317,6 @@ class CudaSession:
                 else:
                     self.bind_input_and_buffer_sharing(name, tensor)
 
-        # Synchronization are not needed in most cases unless different streams are used or inputs/outputs are in CPU.
         if synchronize:
             self.io_binding.synchronize_inputs()
             self.ort_session.run_with_iobinding(self.io_binding, run_options)
