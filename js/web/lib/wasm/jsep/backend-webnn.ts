@@ -131,7 +131,7 @@ export class WebNNBackend {
     if (!wasm.shouldTransferToMLTensor) {
       throw new Error('Trying to upload to a MLTensor while shouldTransferToMLTensor is false');
     }
-    LOG_DEBUG('verbose', () => `[WebNN] uploadBuffer {tensorId: ${tensorId}, data: ${data.byteLength}}`);
+    LOG_DEBUG('verbose', () => `[WebNN] uploadTensor {tensorId: ${tensorId}, data: ${data.byteLength}}`);
     this.tensorManager.upload(tensorId, data);
   }
 
@@ -158,7 +158,7 @@ export class WebNNBackend {
       () =>
         `[WebNN] registerMLTensor {tensor: ${tensor}, dataType: ${webnnDataType}, dimensions: ${
           dimensions
-        }} -> {bufferId: ${id}}`,
+        }} -> {tensorId: ${id}}`,
     );
     return id;
   }

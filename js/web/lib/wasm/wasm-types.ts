@@ -174,14 +174,14 @@ export declare namespace JSEP {
      */
     jsepReserveTensorId: () => number;
     /**
-     * [exported from pre-jsep.js] Release a MLTensor ID from use and destroy buffer if no longer in use.
+     * [exported from pre-jsep.js] Release an MLTensor ID from use and destroys underlying MLTensor if no longer in use.
      * @param tensorId - specify the MLTensor ID.
      * @returns
      */
     jsepReleaseTensorId: (tensorId: number) => void;
     /**
-     * [exported from pre-jsep.js] Ensure a MLTensor of a given type and shape has exists for a buffer ID.
-     * @param tensorId - specify the tensor ID.
+     * [exported from pre-jsep.js] Ensure that an MLTensor of a given type and shape exists for a MLTensor ID.
+     * @param tensorId - specify the MLTensor ID.
      * @param onnxDataType - specify the data type.
      * @param dimensions - specify the dimensions.
      * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
@@ -194,7 +194,7 @@ export declare namespace JSEP {
       copyOld: boolean,
     ) => Promise<MLTensor>;
     /**
-     * [exported from pre-jsep.js] Upload data to MLTensor.
+     * [exported from pre-jsep.js] Upload data to an MLTensor.
      * @param tensorId - specify the MLTensor ID.
      * @param data - specify the data to upload. It can be a TensorProto::data_type or a WebNN MLOperandDataType.
      * @param dimensions - specify the dimensions.
@@ -202,13 +202,13 @@ export declare namespace JSEP {
      */
     jsepUploadTensor: (tensorId: number, data: Uint8Array) => void;
     /**
-     * [exported from pre-jsep.js] Download data from MLTensor.
+     * [exported from pre-jsep.js] Download data from an MLTensor.
      * @param tensorId - specify the MLTensor ID.
      * @returns the downloaded data.
      */
     jsepDownloadTensor: (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
     /**
-     * [exported from pre-jsep.js] Create a downloader function to download data from MLTensor.
+     * [exported from pre-jsep.js] Creates a downloader function to download data from an MLTensor.
      * @param tensorId - specify the MLTensor ID.
      * @param type - specify the data type.
      * @returns the downloader function.
@@ -218,7 +218,7 @@ export declare namespace JSEP {
       type: Tensor.MLTensorDataTypes,
     ) => () => Promise<Tensor.DataTypeMap[Tensor.MLTensorDataTypes]>;
     /**
-     * [exported from pre-jsep.js] Register MLTensor for a session.
+     * [exported from pre-jsep.js] Registers an external MLTensor to a session.
      * @param tensor - specify the MLTensor.
      * @param dataType - specify the data type.
      * @param dimensions - specify the dimensions.

@@ -95,7 +95,7 @@ export interface MLTensorConstructorParameters<T extends Tensor.MLTensorDataType
   readonly location: 'ml-tensor';
 
   /**
-   * Specify the WebNN buffer that holds the tensor data.
+   * Specify the WebNN MLTensor that holds the tensor data.
    */
   readonly mlTensor: Tensor.MLTensorType;
 }
@@ -362,7 +362,7 @@ export interface TensorFactory {
   /**
    * create a tensor from a WebNN MLTensor
    *
-   * @param buffer - the MLTensor object to create tensor from
+   * @param tensor - the MLTensor object to create tensor from
    * @param options - An optional object representing options for creating tensor from a WebNN MLTensor.
    *
    * The options include following properties:
@@ -378,7 +378,7 @@ export interface TensorFactory {
    * @returns a tensor object
    */
   fromMLTensor<T extends Tensor.MLTensorDataTypes>(
-    buffer: Tensor.MLTensorType,
+    tensor: Tensor.MLTensorType,
     options: TensorFromMLTensorOptions<T>,
   ): TypedTensor<T>;
 

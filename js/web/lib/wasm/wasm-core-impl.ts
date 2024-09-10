@@ -783,19 +783,19 @@ export const run = async (
               'gpu-buffer',
             ]);
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
-            const ensureBuffer = wasm.jsepEnsureTensor;
-            if (!ensureBuffer) {
+            const ensureTensor = wasm.jsepEnsureTensor;
+            if (!ensureTensor) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
-            const bufferSize = calculateTensorSizeInBytes(dataType, size);
-            if (bufferSize === undefined || !isMLTensorSupportedType(type)) {
+            const tensorSize = calculateTensorSizeInBytes(dataType, size);
+            if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
 
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
-            // ensureBuffer to get/create the MLTensor. In which case, we don't need to copy the data if a new buffer is
+            // ensureTensor to get/create the MLTensor. In which case, we don't need to copy the data if a new buffer is
             // created.
-            const mlTensor = await ensureBuffer(dataOffset, dataType, dims, false);
+            const mlTensor = await ensureTensor(dataOffset, dataType, dims, false);
 
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
             keepOutputTensor = true;

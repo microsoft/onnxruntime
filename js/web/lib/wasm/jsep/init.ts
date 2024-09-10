@@ -270,19 +270,19 @@ export const init = async (
     const backend = new WebNNBackend(env);
     jsepInit('webnn', [
       backend,
-      // jsepReserveBufferId
+      // jsepReserveTensorId
       () => backend.reserveTensorId(),
-      // jsepReleaseBufferId,
-      (bufferId: number) => backend.releaseTensorId(bufferId),
-      // jsepEnsureBuffer
-      async (bufferId: number, onnxDataType: number, dimensions: number[], copyOld) =>
-        backend.ensureTensor(bufferId, onnxDataType, dimensions, copyOld),
-      // jsepUploadBuffer
-      (bufferId: number, data: Uint8Array) => {
-        backend.uploadTensor(bufferId, data);
+      // jsepReleaseTensorId,
+      (tensorId: number) => backend.releaseTensorId(tensorId),
+      // jsepEnsureTensor
+      async (tensorId: number, onnxDataType: number, dimensions: number[], copyOld) =>
+        backend.ensureTensor(tensorId, onnxDataType, dimensions, copyOld),
+      // jsepUploadTensor
+      (tensorId: number, data: Uint8Array) => {
+        backend.uploadTensor(tensorId, data);
       },
-      // jsepDownloadBuffer
-      async (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(bufferId, dstBuffer),
+      // jsepDownloadTensor
+      async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(tensorId, dstBuffer),
     ]);
   }
 };

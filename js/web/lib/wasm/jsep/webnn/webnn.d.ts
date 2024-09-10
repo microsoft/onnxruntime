@@ -387,7 +387,7 @@ interface MLTensor {
   destroy(): void;
 }
 
-type MLNamedBuffers = Record<string, MLTensor>;
+type MLNamedTensor = Record<string, MLTensor>;
 
 type MLTensorUsageFlags = number;
 
@@ -408,5 +408,5 @@ interface MLContext {
       srcElementSize?: number): void;
   readTensor(sourceTensor: MLTensor): Promise<ArrayBuffer>;
   readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView|ArrayBuffer): Promise<undefined>;
-  dispatch(graph: MLGraph, inputs: MLNamedBuffers, outputs: MLNamedBuffers): void;
+  dispatch(graph: MLGraph, inputs: MLNamedTensor, outputs: MLNamedTensor): void;
 }

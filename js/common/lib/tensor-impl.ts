@@ -88,7 +88,7 @@ export class Tensor implements TensorInterface {
   constructor(params: GpuBufferConstructorParameters);
 
   /**
-   * Construct a new tensor object from the WebNN buffer with the given type and dims.
+   * Construct a new tensor object from the WebNN MLTensor with the given type and dims.
    *
    * Tensor's location will be set to 'ml-tensor'.
    *
