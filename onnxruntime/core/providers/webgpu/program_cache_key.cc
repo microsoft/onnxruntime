@@ -10,12 +10,14 @@ namespace webgpu {
 
 namespace {
 // append the info of an input or output to the cachekey
-void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency, bool& first) {
+void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
+                      bool& first) {
   if (first) {
     first = false;
   } else {
     ss << '|';
   }
+
   if ((dependency & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
 #ifndef NDEBUG  // if debug build
     ss << var_type;
@@ -24,6 +26,7 @@ void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramVaria
 #endif
     ss << ';';
   }
+
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
     ss D("Dims=") << tensor.Shape().ToString();
   } else if ((dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {

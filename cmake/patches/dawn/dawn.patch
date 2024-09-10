@@ -1,0 +1,12 @@
+diff --git a/src/tint/api/BUILD.cmake b/src/tint/api/BUILD.cmake
+index 0037d83276..6372c4ee77 100644
+--- a/src/tint/api/BUILD.cmake
++++ b/src/tint/api/BUILD.cmake
+@@ -57,6 +57,7 @@ tint_target_add_dependencies(tint_api lib
+   tint_lang_wgsl_ast_transform
+   tint_lang_wgsl_common
+   tint_lang_wgsl_features
++  tint_lang_wgsl_inspector
+   tint_lang_wgsl_program
+   tint_lang_wgsl_sem
+   tint_lang_wgsl_writer_ir_to_program
