@@ -63,9 +63,10 @@ class OnnxModel:
 
         return None
 
-    def input_name_to_nodes(self):
+    def input_name_to_nodes(self, exclude_subgraphs=False):
         input_name_to_nodes = {}
-        for node in self.nodes():
+        nodes_to_search = self.nodes() if not exclude_subgraphs else self.model.graph.node
+        for node in nodes_to_search:
             for input_name in node.input:
                 if input_name:  # could be empty when it is optional
                     if input_name not in input_name_to_nodes:
@@ -74,28 +75,10 @@ class OnnxModel:
                         input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
-    def input_name_to_nodes_for_main_graph(self):
-        input_name_to_nodes = {}
-        for node in self.model.graph.node:
-            for input_name in node.input:
-                if input_name:  # could be empty when it is optional
-                    if input_name not in input_name_to_nodes:
-                        input_name_to_nodes[input_name] = [node]
-                    else:
-                        input_name_to_nodes[input_name].append(node)
-        return input_name_to_nodes
-
-    def output_name_to_node(self):
+    def output_name_to_node(self, exclude_subgraphs=False):
         output_name_to_node = {}
-        for node in self.nodes():
-            for output_name in node.output:
-                if output_name:  # could be empty when it is optional
-                    output_name_to_node[output_name] = node
-        return output_name_to_node
-
-    def output_name_to_node_for_main_graph(self):
-        output_name_to_node = {}
-        for node in self.model.graph.node:
+        nodes_to_search = self.nodes() if not exclude_subgraphs else self.model.graph.node
+        for node in nodes_to_search:
             for output_name in node.output:
                 if output_name:  # could be empty when it is optional
                     output_name_to_node[output_name] = node
@@ -925,6 +908,22 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
+    def get_subgraph_nodes_and_inputs(self, ops_with_graph_attrs={"Loop", "Scan", "If"}):
+        """
+        Get input names to all nodes in all subgraphs where subgraphs are
+        graph attributes of a node in the main graph
+        """
+        subgraph_nodes = list(filter(lambda node: node.op_type in ops_with_graph_attrs, self.model.graph.node))
+        subgraph_nodes_inputs = set()
+        for parent_node in subgraph_nodes:
+            for attr in parent_node.attribute:
+                if attr.type == AttributeProto.GRAPH:
+                    child_nodes = attr.g.node
+                    for child_node in child_nodes:
+                        subgraph_nodes_inputs.update(child_node.input)
+
+        return subgraph_nodes, subgraph_nodes_inputs
+
     def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
         """
         Prune graph to keep only required outputs. It removes unnecessary nodes that are not linked
@@ -939,7 +938,7 @@ class OnnxModel:
 
         keep_outputs = [output.name for output in self.model.graph.output] if outputs is None else outputs
 
-        input_name_to_nodes_for_main_graph = self.input_name_to_nodes_for_main_graph()
+        input_name_to_nodes_for_main_graph = self.input_name_to_nodes(exclude_subgraphs=True)
         output_name_to_node = self.output_name_to_node()
 
         def get_first_output(node):
@@ -949,14 +948,11 @@ class OnnxModel:
 
         if len(self.graphs()) > 1:
             # Get input names for all nodes in all subgraphs
-            subgraph_nodes = list(filter(lambda node: node.op_type in {"Loop", "Scan", "If"}, self.model.graph.node))
-            subgraph_nodes_inputs = set()
-            for parent_node in subgraph_nodes:
-                for attr in parent_node.attribute:
-                    if attr.type == AttributeProto.GRAPH:
-                        child_nodes = attr.g.node
-                        for child_node in child_nodes:
-                            subgraph_nodes_inputs.update(child_node.input)
+            subgraph_nodes, subgraph_nodes_inputs = self.get_subgraph_nodes_and_inputs()
+            if len(subgraph_nodes) == 0:
+                # TODO: support other ops such as `BeamSearch` that have subgraphs as op attributes
+                logger.debug("Skip prune_graph since graph has subgraph")
+                return
 
             # For graphs with subgraphs, add dangling outputs from parent graph nodes to list of outputs to keep
             for node in self.model.graph.node:
