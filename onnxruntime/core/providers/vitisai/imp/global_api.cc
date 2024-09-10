@@ -110,7 +110,7 @@ std::optional<std::vector<Node*>> create_ep_context_nodes(
 }
 
 int vitisai_ep_on_run_start(
-    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, void* state,
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
     vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) {
   if (s_library_vitisaiep.vitisai_ep_on_run_start) {
     return s_library_vitisaiep.vitisai_ep_on_run_start(eps, state, get_config_entry);
