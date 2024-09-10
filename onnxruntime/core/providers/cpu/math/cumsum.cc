@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <functional>
+
 #include "cumsum.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -162,9 +164,10 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
 
   // we solve the problem by using the identity that(in the case of exclusive)
   // 1) out[upper_dims...][0][lower_dims...] = 0
-  // 2) out[upper_dims...][i][lower_dims...] = in[upper_dims...][i-1][lower_dims...] + out[upper_dims...][i-1][lower_dims...]
+  // 2) out[upper_dims...][i][lower_dims...] =
+  //      in[upper_dims...][i-1][lower_dims...] + out[upper_dims...][i-1][lower_dims...]
   // we loop through the [upper_dims...] and start applying the identity in each slice
-  // in each slice since again the [lower_dims...] are adjecent in memory, we can add them like vectors
+  // since the [lower_dims...] are adjecent in memory, so we can add them like vectors
 
   const auto dim = input->Shape()[axis];  // dimension size for the axis
   const auto input_shape = input->Shape().GetDims();

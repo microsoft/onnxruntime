@@ -249,11 +249,11 @@ TEST(CumSumTest, _1DTestdouble_WithInt64Axis) {
 }
 TEST(CumSumTest, _1DTestLong) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
-  const int N = 1000000;
-  test.AddInput<int32_t>("x", {N}, std::vector<int32_t>(N, 1));
-  test.AddInput<int32_t>("axis", {}, {0});
+  const int N = 10000000;
   std::vector<int32_t> output_value(N);
   std::iota(output_value.begin(), output_value.end(), 1);
+  test.AddInput<int32_t>("x", {N}, std::vector<int32_t>(N, 1));
+  test.AddInput<int32_t>("axis", {}, {0});
   test.AddOutput<int32_t>("y", {N}, output_value);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
