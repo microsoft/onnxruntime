@@ -23,7 +23,8 @@ Status CheckInputs(const Tensor* query,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
-                   float scale) {
+                   float scale,
+                   float softcap) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -236,6 +237,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->is_unidirectional = true;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
+    output_parameters->softcap = softcap;
     output_parameters->qkv_format = qkv_format;
     output_parameters->past_kv_format = past_kv_format;
   }
@@ -256,12 +258,13 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
                    float scale,
+                   float softcap,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
 }
 }  // namespace group_query_attention_helper
 }  // namespace contrib

@@ -12,6 +12,7 @@
 
 namespace onnxruntime {
 namespace logging {
+#ifndef _WIN32
 /// <summary>
 /// A std::ostream based ISink
 /// </summary>
@@ -29,7 +30,7 @@ class OStreamSink : public ISink {
   std::ostream* stream_;
   const bool flush_;
 };
-#ifdef _WIN32
+#else
 /// <summary>
 /// A std::wostream based ISink
 /// </summary>

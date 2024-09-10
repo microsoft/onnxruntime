@@ -44,6 +44,22 @@ static bool IsSupportedDataType(const Node& node) {
                 [root]--> Gelu ==>
 */
 Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  const auto& version_map = graph.DomainToVersionMap();
+  const auto& onnx_version = version_map.find(kOnnxDomain);
+  // Gelu is an official ONNX operator as of opset 20, so we can fuse in level 1 if it is available
+  const bool onnx_gelu_available = (onnx_version != version_map.end() && onnx_version->second >= 20);
+  const bool fuse_in_level_1 = onnx_gelu_available || allow_contrib_op_in_level_1_;
+  const auto op_domain = fuse_in_level_1 && onnx_gelu_available ? kOnnxDomain : kMSDomain;
+
+  if ((optimization_level_ == TransformerLevel::Level1 && !fuse_in_level_1) ||
+      // The following check assumes that there is a GeluFusion instance registered in Level1 that may have
+      // already done this fusion, in which case we don't need to do it again.
+      (optimization_level_ == TransformerLevel::Level2 && fuse_in_level_1)) {
+    return Status::OK();
+  }
+
+  const auto compatible_providers = GetCompatibleExecutionProviders();
+
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -162,7 +178,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
                                     "Gelu",
                                     "fused Gelu subgraphs ",
                                     gelu_input_defs,
-                                    {}, {}, kMSDomain);
+                                    {}, {}, op_domain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gelu_node.SetExecutionProviderType(div.GetExecutionProviderType());

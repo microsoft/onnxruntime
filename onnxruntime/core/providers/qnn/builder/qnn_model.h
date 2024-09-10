@@ -102,7 +102,7 @@ class QnnModel {
     return outputs_info_;
   }
 
-  const std::string& Name() { return graph_info_->Name(); }
+  const std::string& Name() const { return graph_info_->Name(); }
 
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
