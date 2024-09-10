@@ -2,7 +2,7 @@
 	import LandingHero from '../components/landing-hero.svelte';
 	import { fade } from 'svelte/transition';
 	import coffee from './coffee.png';
-	import genny from './genny.png';
+	import whisper from './whisper.png';
 	import vision_ui from './vision_UI.png';
 	import mobile from './mobile.png';
 	import desktop from './desktop.png';
@@ -10,7 +10,7 @@
 	import aibrain from './aibrain.webp'
 	const title = 'Generative AI';
 	const description =
-		'Integrate the power of generative AI in your apps and services with ONNX Runtime. Broad platform support and deep optimizations empower usage of state-of-the-art models for text generation, audio synthesis, and more.';
+		'Learn about integrating the power of generative AI in your apps and services. Use state-of-the-art models for text generation, audio synthesis, and more to create innovative experiences.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
@@ -94,7 +94,7 @@ Generative AI models accomplish this through deep learning, using for example, T
 					<p>
 						Image generation models use AI to create visuals from text descriptions or other inputs.
 						These models generate artwork, realistic images, and visual content for design and media
-						applications. Check out Stable Diffusion for a great example!
+						applications. Check out Stable Diffusion for a great example:
 					</p>
 				</div>
 				<div class="grid gap-4 grid-cols-1 mt-auto">
@@ -157,16 +157,12 @@ Generative AI models accomplish this through deep learning, using for example, T
 					{/key}
 				</h2>
 			</div>
-			<!-- <div class="my-auto">
-				<a href="" class="btn btn-primary btn-block m-4">Run on Desktop</a>
-				<a href="" class="btn btn-primary btn-block m-4">Run on Mobile</a>
-				<a href="" class="btn btn-primary btn-block m-4">Run in Browser</a>
-			</div> -->
+
 			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2 my-8">
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
 						<h2 class="card-title">Multiplatform</h2>
-						<p>Whether it be Desktop, Mobile, Browser, or the Cloud, run ONNX Runtime on the platform of your choosing!</p>
+						<p>Whether it be Desktop, Mobile, Browser, or the Cloud, run ONNX Runtime on the platform of your choosing.</p>
 					</div>
 				</div>
 				<div class="card bg-base-300 text-neutral-content">
@@ -183,8 +179,8 @@ Generative AI models accomplish this through deep learning, using for example, T
 				</div>
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
-						<h2 class="card-title">Easy to use!</h2>
-						<p>Getting ramped up is super easy. Get started using any of the various examples we have on this page!</p>
+						<h2 class="card-title">Easy to use</h2>
+						<p>Getting ramped up is super easy. Get started using any of the various examples we have on this page.</p>
 					</div>
 				</div>
 			</div>
@@ -235,14 +231,14 @@ Generative AI models accomplish this through deep learning, using for example, T
 				</div>
 				<div class="card bg-base-100 image-full sm:w-80 mx-auto">
 					<figure>
-						<img class="brightness-50" src={genny} alt="Genny's model testing UI" />
+						<img class="brightness-50" src={whisper} alt="Genny's model testing UI" />
 					</figure>
 					<div class="card-body items-center text-center">
-						<h2 class="card-title text-white">Genny (model tester)</h2>
-						<p class="text-white">A demo app to debug and test models with ORT GenAI.</p>
+						<h2 class="card-title text-white">Whisper in Browser</h2>
+						<p class="text-white">Run whisper to transcribe user audio in your browser!</p>
 						<div class="card-actions justify-end">
 							<a
-								href="https://github.com/microsoft/onnxruntime-genai/tree/main/examples/csharp/Genny"
+								href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper"
 								class="btn btn-primary">Try it out!</a
 							>
 						</div>
