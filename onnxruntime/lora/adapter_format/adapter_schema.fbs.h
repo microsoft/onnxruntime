@@ -297,7 +297,7 @@ inline const onnxruntime::adapters::Adapter* GetSizePrefixedAdapter(const void* 
 }
 
 inline const char* AdapterIdentifier() {
-  return "GAIL";
+  return "TORT";
 }
 
 inline bool AdapterBufferHasIdentifier(const void* buf) {

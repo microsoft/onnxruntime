@@ -48,4 +48,4 @@ table Adapter {
 }
 
 root_type Adapter;
-file_identifier "GAIL";
+file_identifier "TORT";
