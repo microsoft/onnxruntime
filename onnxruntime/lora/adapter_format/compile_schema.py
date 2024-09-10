@@ -44,7 +44,7 @@ def main():
     args = parser.parse_args()
     languages = args.languages if args.languages is not None else all_languages
     flatc = args.flatc.resolve(strict=True)
-    schema_path = SCRIPT_DIR / "lora_schema.fbs"
+    schema_path = SCRIPT_DIR / "adapter_schema.fbs"
 
     if "cpp" in languages:
         generate_cpp(flatc, schema_path)

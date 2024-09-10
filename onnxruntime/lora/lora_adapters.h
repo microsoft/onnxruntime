@@ -9,7 +9,7 @@
 #include "core/framework/ort_value.h"
 #include "core/platform/env.h"
 
-#include "lora/lora_format_utils.h"
+#include "lora/adapter_format_utils.h"
 
 #include <filesystem>
 #include <string>
@@ -152,7 +152,7 @@ class LoadedAdapter {
   std::variant<std::monostate, MemMapHolder, BufferHolder> buffer_;
 
   AllocatorPtr device_allocator_;
-  const Adapter* adapter_{nullptr};
+  const adapters::Adapter* adapter_{nullptr};
   InlinedHashMap<std::string, Param> params_values_;
 };
 

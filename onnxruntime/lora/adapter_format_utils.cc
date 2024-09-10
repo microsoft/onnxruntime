@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "lora_format_utils.h"
-#include "lora_format_version.h"
+#include "adapter_format_utils.h"
+#include "adapter_format_version.h"
 
 #include "core/common/common.h"
 #include "core/common/span_utils.h"
@@ -14,10 +14,10 @@
 #include <fstream>
 
 namespace onnxruntime {
-namespace lora {
+namespace adapters {
 namespace utils {
 
-bool IsLoraFormatModelBytes(const void* bytes, size_t num_bytes) {
+bool IsAdapterFormatModelBytes(const void* bytes, size_t num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
          AdapterBufferHasIdentifier(bytes);
 }
@@ -65,7 +65,7 @@ std::pair<Env::MappedMemoryPtr, size_t> MemoryMapAdapterFile(const std::filesyst
 }
 
 const Adapter* ValidateAndGetAdapterFromBytes(gsl::span<const uint8_t> bytes) {
-  if (!IsLoraFormatModelBytes(bytes.data(), bytes.size())) {
+  if (!IsAdapterFormatModelBytes(bytes.data(), bytes.size())) {
     ORT_THROW("The buffer does not appear to be a valid lora parameter format");
   }
 
@@ -75,7 +75,7 @@ const Adapter* ValidateAndGetAdapterFromBytes(gsl::span<const uint8_t> bytes) {
   }
 
   auto* adapter = GetAdapter(bytes.data());
-  if (!IsLoraFormatVersionSupported(adapter->format_version())) {
+  if (!IsAdapterFormatVersionSupported(adapter->format_version())) {
     ORT_THROW("Unsupported lora format version");
   }
 
@@ -124,7 +124,7 @@ OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const Allocato
   return result;
 }
 
-void AdapterFormatBuilder::AddParameter(const std::string& name, lora::TensorDataType data_type,
+void AdapterFormatBuilder::AddParameter(const std::string& name, TensorDataType data_type,
                                         gsl::span<const int64_t> shape, gsl::span<const uint8_t> data) {
   flatbuffers::Offset<Parameter> fbs_param;
   SaveLoraParameter(builder_, name, data_type, shape, data, fbs_param);
@@ -148,9 +148,9 @@ gsl::span<uint8_t> AdapterFormatBuilder::FinishWithSpan(int adapter_version, int
 
 void AdapterFormatBuilder::FinishImpl(int adapter_version, int model_version) {
   auto fbs_params = builder_.CreateVector(params_);
-  auto fbs_adapter = lora::CreateAdapter(builder_, lora::kLoraFormatVersion, adapter_version,
+  auto fbs_adapter = CreateAdapter(builder_, kAdapterFormatVersion, adapter_version,
                                          model_version, fbs_params);
-  builder_.Finish(fbs_adapter, lora::AdapterIdentifier());
+  builder_.Finish(fbs_adapter, AdapterIdentifier());
 }
 
 }  // namespace utils

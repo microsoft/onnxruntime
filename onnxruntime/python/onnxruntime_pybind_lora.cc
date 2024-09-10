@@ -14,7 +14,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 
-#include "lora/lora_format_utils.h"
+#include "lora/adapter_format_utils.h"
 #include "lora/lora_adapters.h"
 
 #include <string.h>
@@ -171,7 +171,7 @@ void AddAdapterMethods(pybind11::module& m) {
           ORT_THROW("Failed to open file:", file_name, " for writing.");
         }
 
-        lora::utils::AdapterFormatBuilder format_builder;
+        adapters::utils::AdapterFormatBuilder format_builder;
         for (const auto& [n, arr] : adapter_parameters) {
           const std::string param_name = py::str(n);
           py::array np_array = arr.cast<py::array>();
@@ -206,7 +206,7 @@ void AddAdapterMethods(pybind11::module& m) {
           gsl::span<const uint8_t> data_span{reinterpret_cast<const uint8_t*>(np_array.data()),
                                              static_cast<size_t>(np_array.nbytes())};
 
-          format_builder.AddParameter(param_name, static_cast<lora::TensorDataType>(onnx_element_type),
+          format_builder.AddParameter(param_name, static_cast<adapters::TensorDataType>(onnx_element_type),
                                       shape_span, data_span);
         }
         auto format_span = format_builder.FinishWithSpan(adapter_version, model_version);

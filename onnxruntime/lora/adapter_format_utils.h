@@ -10,7 +10,7 @@
 #include <gsl/gsl>
 #include <filesystem>
 
-#include "lora_format/lora_schema.fbs.h"
+#include "adapter_format/adapter_schema.fbs.h"
 
 #include <string>
 #include <string_view>
@@ -20,7 +20,7 @@
 struct OrtValue;
 
 namespace onnxruntime {
-namespace lora {
+namespace adapters {
 namespace utils {
 
 /// <summary>
@@ -37,7 +37,7 @@ class AdapterFormatBuilder {
   /// <param name="data_type"></param>
   /// <param name="shape"></param>
   /// <param name="data"></param>
-  void AddParameter(const std::string& name, lora::TensorDataType data_type,
+  void AddParameter(const std::string& name, adapters::TensorDataType data_type,
                     gsl::span<const int64_t> shape, gsl::span<const uint8_t> data);
 
   /// <summary>
@@ -60,7 +60,7 @@ class AdapterFormatBuilder {
   void FinishImpl(int adapter_version, int model_version);
 
   flatbuffers::FlatBufferBuilder builder_;
-  std::vector<flatbuffers::Offset<lora::Parameter>> params_;
+  std::vector<flatbuffers::Offset<adapters::Parameter>> params_;
 };
 
 /// <summary>
@@ -69,7 +69,7 @@ class AdapterFormatBuilder {
 /// <param name="bytes"></param>
 /// <param name="num_bytes"></param>
 /// <returns></returns>
-bool IsLoraFormatModelBytes(const void* bytes, size_t num_bytes);
+bool IsAdapterFormatModelBytes(const void* bytes, size_t num_bytes);
 
 // Will only create string in flatbuffers when has_string is true
 flatbuffers::Offset<flatbuffers::String> SaveStringToLoraFormat(flatbuffers::FlatBufferBuilder& builder,
@@ -110,7 +110,7 @@ const Adapter* ValidateAndGetAdapterFromBytes(gsl::span<const uint8_t> bytes);
 /// <param name="data"></param>
 /// <param name="fbs_tensor">output offset</param>
 void SaveLoraParameter(flatbuffers::FlatBufferBuilder& flat_builder, std::string_view name,
-                       lora::TensorDataType data_type,
+                       TensorDataType data_type,
                        gsl::span<const int64_t> shape, gsl::span<const uint8_t> data,
                        flatbuffers::Offset<Parameter>& fbs_tensor);
 
