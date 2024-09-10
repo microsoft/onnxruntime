@@ -192,13 +192,23 @@ ProgramBase::ProgramBase(const std::string& name)
       workgroup_size_z_{0} {
 }
 
+ProgramBase& ProgramBase::Input(ProgramInput&& input) {
+  inputs_.emplace_back(input);
+  return *this;
+}
+
 ProgramBase& ProgramBase::Inputs(std::initializer_list<ProgramInput> inputs) {
-  inputs_.assign(inputs.begin(), inputs.end());
+  inputs_.insert(inputs_.end(), inputs.begin(), inputs.end());
+  return *this;
+}
+
+ProgramBase& ProgramBase::Output(ProgramOutput&& output) {
+  outputs_.emplace_back(output);
   return *this;
 }
 
 ProgramBase& ProgramBase::Outputs(std::initializer_list<ProgramOutput> outputs) {
-  outputs_.assign(outputs.begin(), outputs.end());
+  outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
   return *this;
 }
 
@@ -229,6 +239,11 @@ ProgramBase& ProgramBase::WorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
   workgroup_size_x_ = x;
   workgroup_size_y_ = y;
   workgroup_size_z_ = z;
+  return *this;
+}
+
+ProgramBase& ProgramBase::UniformVariable(ProgramUniformVariableValue&& variable) {
+  variables_.emplace_back(variable);
   return *this;
 }
 

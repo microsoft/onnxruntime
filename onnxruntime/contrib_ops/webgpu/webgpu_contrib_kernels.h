@@ -3,12 +3,15 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
+
+// forward declaration for this EP's namespace.
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
 
 Status RegisterWebGpuContribKernels(KernelRegistry& kernel_registry);
 
