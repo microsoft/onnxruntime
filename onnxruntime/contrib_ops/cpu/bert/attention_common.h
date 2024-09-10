@@ -114,8 +114,8 @@ struct GroupQueryAttentionParameters {
   int local_window_size;
   bool kv_share_buffer;
   bool is_packed_qkv;
-  bool is_interactive;  // indicates whether we have past context and seqlen > 1
-  bool is_prompt;       // indicates whether this is first decoding step
+  bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
+  bool is_first_prompt;       // indicates whether this is first decoding step
   bool do_rotary;
   bool rotary_interleaved;
   bool use_smooth_softmax;

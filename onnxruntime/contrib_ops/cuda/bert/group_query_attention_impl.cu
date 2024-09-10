@@ -172,7 +172,7 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
   const int present_sequence_length = parameters.seqlen_present_kv_cache;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-  const int* seqlens_k = (parameters.is_prompt && !parameters.is_interactive) ? nullptr : reinterpret_cast<const int*>(data.seqlens_k);
+  const int* seqlens_k = (parameters.is_first_prompt && !parameters.is_subsequent_prompt) ? nullptr : reinterpret_cast<const int*>(data.seqlens_k);
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
@@ -365,7 +365,7 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
   const int max_sequence_length = parameters.seqlen_present_kv_cache;
-  const int* seqlens_k = (parameters.is_prompt && !parameters.is_interactive) ? nullptr
+  const int* seqlens_k = (parameters.is_first_prompt && !parameters.is_subsequent_prompt) ? nullptr
                                                                               : reinterpret_cast<const int*>(data.seqlens_k);
 
   assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH ||
@@ -517,6 +517,7 @@ Status LaunchGetSeqlensTotal(int32_t* seqlens_k, int32_t* seqlens_k_buff, const 
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Currently, interactive decoding only works for batch_size 1
 __global__ void GetSeqlensInteractive(const int32_t* seqlens_k, int32_t* seqlens_k_buff,
                                       const int batch_size, const int sequence_length) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -529,8 +530,8 @@ __global__ void GetSeqlensInteractive(const int32_t* seqlens_k, int32_t* seqlens
 Status LaunchGetSeqlensInteractive(const int32_t* seqlens_k, int32_t* seqlens_k_buff,
                                    const int batch_size, const int sequence_length, cudaStream_t stream,
                                    const int max_threads_per_block) {
-  const int threads = max_threads_per_block;
-  const int blocks = (batch_size + threads - 1) / threads;
+  const int threads = std::min(batch_size, max_threads_per_block);
+  const int blocks = (threads / max_threads_per_block) + 1;
   GetSeqlensInteractive<<<blocks, threads, 0, stream>>>(seqlens_k, seqlens_k_buff, batch_size,
                                                         sequence_length);
   return CUDA_CALL(cudaGetLastError());
@@ -642,9 +643,9 @@ Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters,
   const int batch_size = parameters.batch_size;
   const int threads = max_threads_per_block;
   const int blocks = (batch_size * seqlen + threads - 1) / threads;
-  if (parameters.is_interactive) {
+  if (parameters.is_subsequent_prompt) {
     SeqlensToPosIdsInteractive<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, seqlen, batch_size);
-  } else if (parameters.is_prompt) {
+  } else if (parameters.is_first_prompt) {
     SeqlensToPosIdsPrompt<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, seqlen, batch_size);
   } else {
     SeqlensToPosIdsToken<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, batch_size);
@@ -688,12 +689,12 @@ Status FlashAttention(
   }
 
   void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
-  if (parameters.is_interactive) {
+  if (parameters.is_subsequent_prompt) {
     ORT_RETURN_IF_ERROR(LaunchGetSeqlensInteractive(reinterpret_cast<const int32_t*>(data.seqlens_k),
                                                     reinterpret_cast<int32_t*>(data.seqlens_k_buff), batch_size,
                                                     sequence_length, stream, max_threads_per_block));
     seqlens_k = reinterpret_cast<void*>(data.seqlens_k_buff);
-  } else if (!parameters.is_interactive && parameters.is_prompt) {
+  } else if (parameters.is_first_prompt) {
     // set seqlens_k to zeros... flash api uses seqlens_k to indicate where to append key and value
     // user should use seqlens_k to index into output to get new tokens
     if (batch_size <= parameters.zeros_count) {
@@ -707,7 +708,7 @@ Status FlashAttention(
     }
   }
 
-  if (!parameters.kv_share_buffer) {  // copy past kv to present kv
+  if (!parameters.kv_share_buffer || parameters.is_first_prompt) {  // copy past kv to present kv
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, nullptr, nullptr, stream, max_threads_per_block,
                                                 true));
   }
@@ -727,7 +728,7 @@ Status FlashAttention(
       reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
       parameters.local_window_size, parameters.rotary_interleaved, parameters.is_packed_qkv));
 
-  // if (parameters.left_padding && parameters.is_prompt) {
+  // if (parameters.left_padding && parameters.is_first_prompt) {
   //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));
   // }
 
@@ -811,7 +812,7 @@ Status EfficientAttention(
     key = reinterpret_cast<const void*>(k_buffer);
   }
 
-  if (parameters.is_interactive || !parameters.is_prompt) {
+  if (parameters.is_subsequent_prompt || !parameters.is_first_prompt) {
     ORT_RETURN_IF_ERROR(LaunchGetSeqlensTotal(data.seqlens_k, data.seqlens_k_buff, batch_size, stream, 256));
   } else {
     // Launch kernel to copy seqlen

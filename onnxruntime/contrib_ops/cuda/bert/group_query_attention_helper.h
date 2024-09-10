@@ -239,22 +239,22 @@ Status CheckInputs(const Tensor* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
-  bool is_interactive = false;
+  bool is_subsequent_prompt = false;
   if (sequence_length > 1 && sequence_length != total_sequence_length) {
     if (batch_size != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "batch_size must be 1 when sequence_length > 1 and past context is given.");
     }
-    is_interactive = true;
+    is_subsequent_prompt = true;
   }
 
-  bool is_prompt;
-  if (is_interactive) {
-    is_prompt = false;  // irrelevant for interactive decoding
+  bool is_first_prompt;
+  if (is_subsequent_prompt) {
+    is_first_prompt = false;  // irrelevant for interactive decoding
   } else {
     // If not interactive, sequence_length is 1 for token gen and arbitrarily large for prompt
-    is_prompt = (sequence_length == total_sequence_length);
-    if (!is_prompt && sequence_length != 1) {
+    is_first_prompt = (sequence_length == total_sequence_length);
+    if (!is_first_prompt && sequence_length != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "sequence_length shall be 1 when it is not prompt.");
     }
@@ -274,8 +274,8 @@ Status CheckInputs(const Tensor* query,
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->rotary_dim = rotary_dim;
     output_parameters->is_packed_qkv = is_packed_qkv;
-    output_parameters->is_interactive = is_interactive;
-    output_parameters->is_prompt = is_prompt;
+    output_parameters->is_subsequent_prompt = is_subsequent_prompt;
+    output_parameters->is_first_prompt = is_first_prompt;
     output_parameters->scale = scale;
     output_parameters->softcap = softcap;
     output_parameters->qkv_format = qkv_format;

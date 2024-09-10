@@ -59,7 +59,7 @@ class GQAAttentionBase {
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context) const {
-    const bool is_prompt = parameters.is_prompt;
+    const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
     const int head_size = parameters.head_size;

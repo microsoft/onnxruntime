@@ -115,20 +115,20 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.seq_stride = head_size;
     rotary_params.head_stride = sequence_length * rotary_params.seq_stride;
     rotary_params.batch_stride = (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) * rotary_params.head_stride;
-    rotary_params.position_ids_format = parameters.is_interactive || !parameters.is_prompt ? 1 : 0;
+    rotary_params.position_ids_format = !parameters.is_first_prompt ? 1 : 0;
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
     // Generate position ids
-    const int pos_ids_size = (parameters.is_prompt && !parameters.is_interactive) ? 1 : batch_size * sequence_length;
+    const int pos_ids_size = parameters.is_first_prompt ? 1 : batch_size * sequence_length;
     std::vector<int64_t> pos_ids(pos_ids_size);
-    if (parameters.is_prompt) {
+    if (parameters.is_first_prompt) {
       pos_ids[0] = static_cast<int64_t>(0);
     } else {
       // Note: As of now, interactive decoding supports only batch size 1 and token generation supports only sequence length 1.
       for (int b = 0; b < batch_size; b++) {
+        const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
+        const int past_seqlen = total_seqlen - sequence_length;
         for (int s = 0; s < sequence_length; s++) {
-          const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
-          const int past_seqlen = total_seqlen - sequence_length;
           if (past_seqlen + s < total_seqlen) {
             pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
           } else {

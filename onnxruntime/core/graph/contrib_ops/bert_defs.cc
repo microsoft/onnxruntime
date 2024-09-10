@@ -1049,6 +1049,8 @@ Supports different number of heads for q and kv for CPU and CUDA.
 Only supports causal and local attention.
 Supports rotary position embedding for CPU and CUDA.
 Supports packed input for CPU and CUDA.
+Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
