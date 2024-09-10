@@ -73,8 +73,7 @@ Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
       .AddUniformVariable({vec_size});
 
   if (bias != nullptr) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, {bias_size}, bias_components})
-        .CacheHint(std::to_string(bias_components));
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, {bias_size}, bias_components});
   }
   return context.RunProgram(program);
 }
