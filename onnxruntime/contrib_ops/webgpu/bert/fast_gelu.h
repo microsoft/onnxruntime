@@ -11,10 +11,11 @@ namespace contrib {
 namespace webgpu {
 
 using namespace onnxruntime::webgpu;
+using onnxruntime::webgpu::ComputeContext;
 
 class FastGeluProgram final : public Program<FastGeluProgram> {
  public:
-  FastGeluProgram(const std::string& kernel_name, int bias_components) : Program{kernel_name}, bias_components_{bias_components} {
+  FastGeluProgram(int bias_components) : Program{"FastGelu"}, bias_components_{bias_components} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -29,7 +30,7 @@ class FastGelu final : public WebGpuKernel {
  public:
   FastGelu(const OpKernelInfo& info) : WebGpuKernel(info) {}
 
-  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
+  Status ComputeInternal(ComputeContext& context) const override;
 };
 
 }  // namespace webgpu

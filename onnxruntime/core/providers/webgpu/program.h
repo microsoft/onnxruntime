@@ -272,8 +272,12 @@ class ProgramBase {
     return *this;
   }
 
-  // set one or more program inputs
+  // append a program input
+  ProgramBase& Input(ProgramInput&& input);
+  // append multiple program inputs
   ProgramBase& Inputs(std::initializer_list<ProgramInput> inputs);
+  // append a program output
+  ProgramBase& Output(ProgramOutput&& output);
   // set one or more program outputs
   ProgramBase& Outputs(std::initializer_list<ProgramOutput> outputs);
 
@@ -291,7 +295,12 @@ class ProgramBase {
   // set the size of a workgroup grid.
   ProgramBase& WorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
 
-  // set the uniform variables.
+  // append a uniform variable.
+  //
+  // the specified uniform variable should match the uniform definition in the class,
+  // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
+  ProgramBase& UniformVariable(ProgramUniformVariableValue&& variable);
+  // append multiple uniform variables.
   //
   // the specified uniform variables should match the uniform definition in the class,
   // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.

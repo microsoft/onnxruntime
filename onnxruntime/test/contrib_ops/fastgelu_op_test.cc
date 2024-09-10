@@ -247,7 +247,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat32) {
   RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
 }
 
-// CUDA and ROCm only for Float16 and BFloat16 type.
+// CUDA, ROCm and WebGPU only for Float16 type.
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
 TEST(FastGeluTest, FastGeluWithBiasFloat16_2) {
   int batch_size = 1;
@@ -383,7 +383,10 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_8) {
 
   RunFastGeluGpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, false, true);
 }
+#endif
 
+// CUDA and ROCm only for BFloat16 type.
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
