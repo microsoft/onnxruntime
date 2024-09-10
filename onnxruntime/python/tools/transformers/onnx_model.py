@@ -912,6 +912,7 @@ class OnnxModel:
         """
         Get inputs to all nodes in all subgraphs of a node
         """
+        # Note: This function only handles one-level subgraphs of child nodes.
         subgraph_nodes_inputs = set()
         for attr in node.attribute:
             if attr.type == AttributeProto.GRAPH:
