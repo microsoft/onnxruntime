@@ -5,6 +5,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
+#include "core/util/force_inline.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_helper.h"
 
@@ -150,28 +151,28 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
 // Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
 template<typename T, typename Ret>
-inline Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
+ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
 
 template<>
-inline float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
+ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
 {
   return val.ToFloat();
 }
 
 template<>
-inline double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
+ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
 {
   return double(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
 }
 
 template<>
-inline float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val)
+ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val)
 {
   return val;
 }
 
 template<>
-inline double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val)
+ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val)
 {
   return val;
 }
@@ -180,19 +181,19 @@ inline double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val
 
 // Function template that only converts the input value to MLFloat16 if T is MLFloat16.
 template<typename T>
-inline typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(T val) {
   return val;
 }
 
 template<typename T>
-inline typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(float val) {
   return MLFloat16(val);
 }
 
 template<typename T>
-inline typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(double val) {
   return MLFloat16(float(val));
 }
