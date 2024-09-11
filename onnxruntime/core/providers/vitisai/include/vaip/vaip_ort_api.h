@@ -230,6 +230,8 @@ struct OrtApiForVaip {
   void (*graph_set_inputs)(Graph& graph,
                            gsl::span<const NodeArg* const> inputs);                                                                                   // [92]
   int (*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
+  ModelProto* (*model_to_proto)(Model& model); //[94]
+  DllSafe<std::string>(*model_proto_serialize_as_string)(ModelProto& model_proto);//[95]
 };
 
 #ifndef USE_VITISAI
