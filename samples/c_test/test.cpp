@@ -22,11 +22,17 @@ void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
     THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
     std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+}
 
-//    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-//    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
-//    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
-//    g_ort->ReleaseCUDAProviderOptions(cuda_options);
+void TestTensorRTAndCudaEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
+    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+
+    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
+    g_ort->ReleaseCUDAProviderOptions(cuda_options);
 }
 
 void TestOriginalTensorRTEp(const OrtApi* g_ort, OrtSessionOptions* so) {
@@ -160,27 +166,27 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/faster_rcnn/faster_rcnn_R_50_FPN_1x.onnx", so, &session));
 
-    OrtMemoryInfo* memory_info = nullptr;
-    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+//    OrtMemoryInfo* memory_info = nullptr;
+//    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+//
+//    const int input_cnt = 3 * 800 * 1088;
+//    int64_t input_data[input_cnt];
+//    for (int i = 0; i < input_cnt; i++) input_data[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // [0, 1)
+//    const size_t input_len = input_cnt * sizeof(float);
+//    const int64_t input_shape[] = {3, 800, 1088};
+//    OrtValue* input_tensor = nullptr;
+//    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+//
+//    const char* input_names[] = {"image"};
+//    const char* output_names[] = {"6379", "6381", "6383"};
 
-    const int input_cnt = 3 * 800 * 1088;
-    int64_t input_data[input_cnt];
-    for (int i = 0; i < input_cnt; i++) input_data[i] = static_cast<float>(rand());
-    const size_t input_len = input_cnt * sizeof(float);
-    const int64_t input_shape[] = {3, 800, 1088};
-    OrtValue* input_tensor = nullptr;
-    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-
-    const char* input_names[] = {"image"};
-    const char* output_names[] = {"6379", "6381", "6383"};
-
-    OrtValue* output_tensor = nullptr;
-    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, sizeof(input_names)/sizeof(input_names[0]), output_names, sizeof(output_names)/sizeof(output_names[0]), &output_tensor));
-
-    float* output_tensor_data = nullptr;
-    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_tensor_data));
-    std::cout<<"Result:\n";
-    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+//    OrtValue* output_tensor = nullptr;
+//    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, sizeof(input_names)/sizeof(input_names[0]), output_names, sizeof(output_names)/sizeof(output_names[0]), &output_tensor));
+//
+//    float* output_tensor_data = nullptr;
+//    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_tensor_data));
+//    std::cout<<"Result:\n";
+//    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
 int main() {
@@ -193,11 +199,13 @@ int main() {
 
     //TestCompileBasedEp(g_ort, p_env, so);
     //TestKernelBasedEp(g_ort, p_env, so);
-    TestTensorRTEp(g_ort, p_env, so);
+    //TestTensorRTEp(g_ort, p_env, so);
+    TestTensorRTAndCudaEp(g_ort, p_env, so);
     //TestOriginalTensorRTEp(g_ort, so);
 
     //RunRelu(g_ort, p_env, so);
-    RunResnet18v1_7(g_ort, p_env, so);
+    //RunResnet18v1_7(g_ort, p_env, so);
+    RunFastRcnn(g_ort, p_env, so);
 
     g_ort->ReleaseEnv(p_env);
     return 0;

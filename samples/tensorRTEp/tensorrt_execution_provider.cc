@@ -2012,7 +2012,7 @@ TensorrtExecutionProviderFactory::TensorrtExecutionProviderFactory() {
     OrtExecutionProviderFactory::CreateExecutionProvider = [](OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size) -> OrtExecutionProvider* {
         ProviderOptions options;
         for (size_t i = 0; i < option_size; i++) options[ep_option_keys[i]] = ep_option_values[i];
-        std::unique_ptr<TensorrtExecutionProvider> ret = std::make_unique<TensorrtExecutionProvider>("TensorrtExecutionProvider", std::move(options));
+        std::unique_ptr<TensorrtExecutionProvider> ret = std::make_unique<TensorrtExecutionProvider>("tensorrtEp", std::move(options));
         return ret.release();
     };
 }
