@@ -50,7 +50,7 @@ struct OrtVitisAIEpAPI {
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       vaip_core::DllSafe<std::vector<Node*>>* ret_value) = nullptr;
   int (*vitisai_ep_on_run_start)(
-       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
       vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) = nullptr;
   void Ensure() {
     if (handle_)
