@@ -1,6 +1,6 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
-#ifdef USE_DEVICE_MEMORY
+#ifdef USE_OVEP_NPU_MEMORY
 #pragma once
 
 #include "core/common/inlined_containers.h"
