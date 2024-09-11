@@ -32,7 +32,7 @@ url: 'https://onnxruntime.ai/blogs/nimbleedge-x-onnxruntime'
 
 [NimbleEdge](https://www.nimbleedge.com/) is an on-device Machine Learning (ML) platform that enables real-time personalization in mobile apps, executing data capture, processing and ML inference on end users' mobile devices vs. on cloud. Using mobile compute efficiently to deliver optimal performance with minimal device resource usage is a key priority for NimbleEdge. For this, NimbleEdge leverages various ML inference runtimes, including, prominently, **ONNX Runtime**.
 
-In this blog post, we'll explore how on-device compute can be leveraged for cost-efficient, privacy-preserving real-time ML in mobile apps, and how NimbleEdge leverages ONNX Runtime to enable this. We also share results from NimbleEdge's on-device deployment with Dream11, India's largest fantasy gaming platform with 200Mn+ users.
+In this blog post, we'll explore how on-device compute can be leveraged for cost-efficient, privacy-preserving real-time ML in mobile apps, and how NimbleEdge leverages ONNX Runtime to enable this. We also share results from NimbleEdge’s on-device deployment with one of India’s largest fantasy gaming platforms with hundreds of millions of users.  
 
 ### **Introduction**
 
@@ -102,17 +102,17 @@ For inference execution, NimbleEdge utilizes a number of runtimes, prominently i
 
 Through the capabilities listed here, NimbleEdge's comprehensive on-device ML platform enables high performance real-time ML deployments in days vs. months.
 
-### **Case Study: Real time ranking of fantasy sports contests for Dream11**
+### **Case Study: Real time ranking of fantasy sports contests for leading Indian fantasy gaming co**
 
-Dream11 is an Indian fantasy sports platform (like Fanduel/ Draftkings in USA) with 200M+ users, and a peak concurrency of ~15 million users. Dream11 offers thousands of fantasy contests across dozens of matches from 10+ sports, with each contest varying in contest entry amount, win %, and participant count.
+Fantasy Gaming co (name obscured for confidentiality) is an Indian fantasy sports platform (like Fanduel/ Draftkings in USA) with hundreds of millions of users, and a peak concurrency of several million users. Fantasy Gaming co offers thousands of fantasy contests across dozens of matches from 10+ sports, with each contest varying in contest entry amount, win %, and no. of participants. 
 
-To streamline the user journey, Dream11 was running a recommendation system that delivered personalized contest recommendations to users, based on historical interactions. Dream11 analyzed customer clickstream data, and identified that incorporating in-session user interactions in the recommender systems would significantly improve quality of recommendations vs. leveraging batch predictions generated hourly.
+To streamline the user journey, Fantasy Gaming co was running a recommendation system that delivered personalized contest recommendations to users, based on historical interactions. They analyzed customer clickstream data, and identified that incorporating in-session user interactions in the recommender systems would significantly improve quality of recommendations vs. leveraging batch predictions generated hourly. 
 
-Due to this, Dream11 was keen to deploy real-time, session-aware recommendations, but implementation was challenging due to the aforementioned challenges in real-time ML on cloud. Hence, Dream11 turned to on-device ML with NimbleEdge for implementing real-time personalized contest recommendations.
+Due to this, Fantasy Gaming co was keen to deploy real-time, session-aware recommendations, but implementation was challenging due to the aforementioned challenges in real-time ML on cloud. Hence, Fantasy Gaming co turned to on-device ML with NimbleEdge for implementing real-time personalized contest recommendations.  
 
 **Results**
 
-With NimbleEdge, Dream11 is now able to generate features and predictions based on real-time user interactions, resulting in improved relevance of recommendations for millions of users. Additionally, inference was delivered at millisecond latency, with minimal battery and CPU usage impact!
+With NimbleEdge, Fantasy Gaming co is now able to generate features and predictions based on real-time user interactions, resulting in improved relevance of recommendations for millions of users. Additionally, inference was delivered at millisecond latency, with minimal battery and CPU usage impact!
 
 **No. of inferences:** `7B+`
 

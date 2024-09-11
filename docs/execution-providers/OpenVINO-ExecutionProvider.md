@@ -20,7 +20,7 @@ Accelerate ONNX models on Intel CPUs, GPUs, NPU with Intel OpenVINO™ Execution
 ## Install
 
 Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.2 Release](https://github.com/intel/onnxruntime/releases)
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.4 Release](https://github.com/intel/onnxruntime/releases)
 * Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
 * Docker image: [openvino/onnxruntime_ep_ubuntu20](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu20)
 
@@ -30,10 +30,9 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest rel
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
+|1.19.0|2024.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.4)|
+|1.18.0|2024.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.3)|
 |1.17.1|2023.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.2)|
-|1.16.0|2023.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.1)|
-|1.15.0|2023.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.0.0)|
-|1.14.0|2022.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.3)|
 
 ## Build
 
@@ -200,8 +199,30 @@ For more information on Multi-Device plugin of OpenVINO™, please refer to the
 [Intel OpenVINO™ Multi Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Running_on_multiple_devices.html).
 
 ### Export OpenVINO Compiled Blob 
-Export the OpenVINO compiled blob as an ONNX model. Using this ONNX model for subsequent inferences avoids model recompilation and could have a positive impact on Session creation time. The exported model is saved to the same directory as the source model with the suffix -ov_{device}_blob.onnx where device can be one of the supported like CPU or NPU. This feature is currently enabled for fully supported models only. 
-Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
+Export the OpenVINO compiled blob as an ONNX model. Using this ONNX model for subsequent inferences avoids model recompilation and could have a positive impact on Session creation time. This feature is currently enabled for fully supported models only. It complies with the ORT session config keys
+```
+  Ort::SessionOptions session_options;
+
+      // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
+      // "0": disable. (default)
+      // "1": enable.
+
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+
+      // Flag to specify whether to dump the EP context into single Onnx model or pass bin path.
+      // "0": dump the EP context into separate file, keep the file name in the Onnx model.
+      // "1": dump the EP context into the Onnx model. (default).
+
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+
+      // Specify the file path for the Onnx model which has EP context.
+      // Defaults to <actual_model_path>/original_file_name_ctx.onnx if not specified
+
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ".\ov_compiled_epctx.onnx");
+
+  sess = onnxruntime.InferenceSession(<path_to_model_file>, session_options)
+```
+Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h) for more information about session options.
 
 ### Enable QDQ Optimizations Passes
 Optimizes ORT quantized models for the NPU device to only keep QDQs for supported ops and optimize for performance and accuracy.Generally this feature will give better performance/accuracy with ORT Optimizations disabled. 
@@ -239,8 +260,7 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 
 ```
 OrtOpenVINOProviderOptions options;
-options.device_type = "GPU";
-options.precision = "FP32"; 
+options.device_type = "GPU_FP32";
 options.num_of_threads = 8;
 options.cache_dir = "";
 options.context = 0x123456ff;
@@ -277,7 +297,6 @@ The following table lists all the available configuration options for API 2.0 an
 | context | string | OpenCL Context | void* | This option is only available when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
 | enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
 | enable_qdq_optimizer | string | True/False | boolean | This option enables QDQ Optimization to improve model performance and accuracy on NPU. |
-| export_ep_ctx_blob | string | True/False | boolean | This options enables exporting the OpenVINO Compiled Blob as an ONNX Operator EPContext. | 
 
 
 Valid Hetero or Multi or Auto Device combinations:

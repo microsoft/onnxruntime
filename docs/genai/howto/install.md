@@ -21,14 +21,12 @@ Note: only one of these sets of packages (CPU, DirectML, CUDA) should be install
 ### CPU
 
 ```bash
-pip install numpy
 pip install onnxruntime-genai
 ```
 
 ### DirectML
 
 ```bash
-pip install numpy
 pip install onnxruntime-genai-directml
 ```
 
@@ -43,15 +41,13 @@ Ensure that the `CUDA_PATH` environment variable is set to the location of your 
 #### CUDA 11
 
 ```bash
-pip install numpy
-pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+pip install onnxruntime-genai-cuda --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
 ```
 
 #### CUDA 12
 
 ```bash
-pip install numpy
-pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+pip install onnxruntime-genai-cuda
 ```
 
 
@@ -65,16 +61,10 @@ Note: install only one of these packages (CPU, DirectML, CUDA) in your project.
 
 ONNX Runtime generate() versions 0.3.0 and earlier came bundled with the core ONNX Runtime binaries. From version 0.4.0 onwards, the packages are separated to allow a more flexible developer experience.
 
-Version 0.4.0-rc1 depends on the ONNX Runtime version 1.19.0 RC. To install 0.4.0-rc1, add the following nuget source *before* installing the ONNX Runtime generate() nuget package.
-
-```
-dotnet nuget add source https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json --name ORT-Nightly
-```
-
 ### CPU
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntimeGenAI --prerelease
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI
 ```
 
 ### CUDA 
@@ -82,13 +72,13 @@ dotnet add package Microsoft.ML.OnnxRuntimeGenAI --prerelease
 Note: only CUDA 11 is supported for versions 0.3.0 and earlier, and only CUDA 12 is supported for versions 0.4.0 and later.
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --prerelease
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda
 ```
 
 ### DirectML
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntimeGenAI.DirectML --prerelease
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI.DirectML
 ```
 
 

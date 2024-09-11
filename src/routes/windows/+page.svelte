@@ -92,18 +92,18 @@
 				<h2 class="card-title">Windows ML Samples Gallery</h2>
 				<p>
 					This gallery demonstrates different machine learning scenarios and features using <a
-						class="text-blue-700"
+						class="dark:text-blue-300 text-blue-800 underline"
 						href="https://docs.microsoft.com/en-us/windows/ai/windows-ml/">Windows ML</a
 					>
 					in an interactive format. The app is an interactive companion that shows the integration of
 					<a
-						class="text-blue-700"
+						class="dark:text-blue-300 text-blue-800 underline"
 						href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning"
 						>Windows Machine Learning Library APIs</a
 					>
 					into a desktop
 					<a
-						class="text-blue-700"
+						class="dark:text-blue-300 text-blue-800 underline"
 						href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning">WinUI 3</a
 					> application.
 				</p>

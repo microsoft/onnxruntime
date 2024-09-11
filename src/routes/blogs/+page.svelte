@@ -367,6 +367,12 @@
 	];
 	let blogsCommunity = [
 		{
+			title:'Running Phi-3 Mistral 7B LLMs on Raspberry Pi 5: A Step-by-Step Guide',
+			date: 'September 5, 2024',
+			link: 'https://medium.com/@vadikus/running-phi-3-mistral-7b-llms-on-raspberry-pi-5-a-step-by-step-guide-185e8102e35b',
+			blurb: 'Learn how to run Phi-3 Mistral 7B on Raspberry Pi 5 using the ONNX Runtime Gen AI library.'
+		},
+		{
 			title:
 				'Deploying a Production-Ready RAG Server: A Comprehensive Guide with LlamaIndex',
 			date: 'March 27, 2024',

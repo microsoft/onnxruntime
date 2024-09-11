@@ -13,14 +13,14 @@ image: /images/coffee.png
 
 The Phi-3 vision model is a small, but powerful multi modal model that allows you to use both image and text to output text. It is used in scenarios such as describing the content of images in detail.
 
-The Phi-3 vision model is supported by versions of onnxruntime-genai 0.3.0-rc2 and later.
+The Phi-3 vision model is supported by versions of onnxruntime-genai 0.3.0 and later.
 
 You can download the models here:
 
 * [https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu)
+* [https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-directml](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-directml)
 * [https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cuda)
 
-Support for DirectML is coming soon!
 
 * TOC placeholder
 {:toc}
@@ -46,12 +46,9 @@ Support for DirectML is coming soon!
 ## Choose your platform
 
 If you have an NVIDIA GPU, that will give the best performance right now.
-
-The models will also run on CPU, but they will be slower.
-
-Support for Windows machines with GPUs other than NVIDIA is coming soon!
  
 **Note: Only one package and model is required based on your hardware. That is, only execute the steps for one of the following sections**
+
 
 ## Run with NVIDIA CUDA
 
@@ -60,6 +57,7 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
    ```bash
    huggingface-cli download microsoft/Phi-3-vision-128k-instruct-onnx-cuda --include cuda-int4-rtn-block-32/* --local-dir .
    ```
+   
    This command downloads the model into a folder called `cuda-int4-rtn-block-32`.
 
 2. Setup your CUDA environment
@@ -74,15 +72,13 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
    * CUDA 11
 
    ```bash
-   pip install numpy
-   pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+   pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
    ```
 
    * CUDA 12
 
    ```bash
-   pip install numpy
-   pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+   pip install onnxruntime-genai-cuda
    ```
 
 4. Run the model
@@ -91,6 +87,7 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
 
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   pip install pyreadline3
    python phi3v.py -m cuda-int4-rtn-block-32 
    ```
 
@@ -117,9 +114,8 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
 
 2. Install the generate() API for CPU
    
-   ```
-   pip install numpy
-   pip install --pre onnxruntime-genai
+   ```bash
+   pip install onnxruntime-genai
    ```
 
 3. Run the model
@@ -128,6 +124,7 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
 
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   pip install pyreadline3
    python phi3v.py -m cpu-int4-rtn-block-32-acc-level-4
    ```
 
@@ -152,3 +149,42 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
    The products include Chocolade, Gummibarchen, Scottish Longbreads, Sir Rodney's Scones, Tarte au sucre,
    and Chocolate Biscuits. The Grand Total column sums up the sales for each product across the two quarters.</s>
    ```
+
+## Run with DirectML
+
+1. Download the model
+
+   ```bash
+   huggingface-cli download microsoft/Phi-3-vision-128k-instruct-onnx-directml --include directml-int4-rtn-block-32/* --local-dir .
+   ```
+
+   This command downloads the model into a folder called `directml-int4-rtn-block-32`.
+
+2. Install the generate() API
+
+   ```bash
+   pip install onnxruntime-genai-directml
+   ```
+
+3. Run the model
+
+   Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
+
+   ```bash
+   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   pip install pyreadline3
+   python phi3v.py -m directml-int4-rtn-block-32 
+   ```
+
+   Enter the path to an image file and a prompt. The model uses the image and prompt to give you an answer.
+
+   For example: `What does the sign say?`
+
+   ![coffee](../../../images/nashville.jpg)
+
+   ```
+   The sign says 'DO NOT ENTER'.
+   ```
+
+      
+

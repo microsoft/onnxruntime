@@ -20,8 +20,7 @@
 				}
 			],
 			image: converttoort,
-			imagealt:
-				'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
+			imagealt: 'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
 		}
 	];
 
@@ -74,6 +73,7 @@
 					date={event.date}
 					linkarr={event.linkarr}
 					image={event.image}
+					imagealt={event.imagealt}
 				/>
 			{/each}
 		</div>

@@ -4,6 +4,7 @@ import flattenColorPalette from 'tailwindcss/lib/util/flattenColorPalette';
 
 /** @type {import('tailwindcss').Config} */
 export default {
+	darkMode: ['selector', '[data-theme=" darkmode"]'],
 	content: ['./src/**/*.{html,svelte,js,ts}'],
 	theme: {
 		extend: {

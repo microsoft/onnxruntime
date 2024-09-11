@@ -1,4 +1,4 @@
-<script lang="ts">
+scenario<script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImagesHf1 from '../../images/undraw/image_HF1.svelte';
 	import ImageHf2 from '../../images/undraw/image_HF2.svelte';
@@ -81,28 +81,28 @@
 			<p class="pb-4">
 				The top 30 most popular model architectures on Hugging Face are all supported by ONNX
 				Runtime, and over 80 Hugging Face model architectures in total boast ORT support. This list
-				includes <a href="https://huggingface.co/models?other=bert" class="text-blue-700">BERT</a>,
-				<a href="https://huggingface.co/models?other=gpt2" class="text-blue-700">GPT2</a>,
-				<a href="https://huggingface.co/models?other=t5" class="text-blue-700">T5</a>,
-				<a href="https://huggingface.co/models?other=stable-diffusion" class="text-blue-700"
+				includes <a href="https://huggingface.co/models?other=bert" class="dark:text-blue-300 text-blue-800 underline">BERT</a>,
+				<a href="https://huggingface.co/models?other=gpt2" class="dark:text-blue-300 text-blue-800 underline">GPT2</a>,
+				<a href="https://huggingface.co/models?other=t5" class="dark:text-blue-300 text-blue-800 underline">T5</a>,
+				<a href="https://huggingface.co/models?other=stable-diffusion" class="dark:text-blue-300 text-blue-800 underline"
 					>Stable Diffusion</a
 				>,
-				<a href="https://huggingface.co/models?other=whisper" class="text-blue-700">Whisper</a>, and
+				<a href="https://huggingface.co/models?other=whisper" class="dark:text-blue-300 text-blue-800 underline">Whisper</a>, and
 				many more.
 			</p>
 			<p class="pb-4">
 				ONNX models can be found directly from the Hugging Face Model Hub in its <a
 					href="https://huggingface.co/models?library=onnx"
-					class="text-blue-700">ONNX model library</a
+					class="dark:text-blue-300 text-blue-800 underline">ONNX model library</a
 				>.
 			</p>
 			<p class="pb-4">
 				Hugging Face also provides ONNX support for a variety of other models not listed in the ONNX
 				model library. With <a
 					href="https://huggingface.co/docs/optimum/exporters/onnx/overview"
-					class="text-blue-700">Hugging Face Optimum</a
+					class="dark:text-blue-300 text-blue-800 underline">Hugging Face Optimum</a
 				>, you can easily convert pretrained models to ONNX, and
-				<a href="https://huggingface.co/docs/transformers.js/index" class="text-blue-700"
+				<a href="https://huggingface.co/docs/transformers.js/index" class="dark:text-blue-300 text-blue-800 underline"
 					>Transformers.js</a
 				> lets you run Hugging Face Transformers directly from your browser!
 			</p>
@@ -119,16 +119,16 @@
 				ONNX Runtime also supports many increasingly popular large language model (LLM)
 				architectures, including <a
 					href="https://huggingface.co/models?other=llama"
-					class="text-blue-700">LLaMA</a
+					class="dark:text-blue-300 text-blue-800 underline">LLaMA</a
 				>,
-				<a href="https://huggingface.co/models?other=gpt_neo" class="text-blue-700">GPT Neo</a>,
-				<a href="https://huggingface.co/models?other=bloom" class="text-blue-700">BLOOM</a>, and
+				<a href="https://huggingface.co/models?other=gpt_neo" class="dark:text-blue-300 text-blue-800 underline">GPT Neo</a>,
+				<a href="https://huggingface.co/models?other=bloom" class="dark:text-blue-300 text-blue-800 underline">BLOOM</a>, and
 				many more.
 			</p>
 			<p>
 				Hugging Face also provides an <a
 					href="https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard"
-					class="text-blue-700">Open LLM Leaderboard</a
+					class="dark:text-blue-300 text-blue-800 underline">Open LLM Leaderboard</a
 				> with more detailed tracking and evaluation of recently releases LLMs from the community.
 			</p>
 		</div>
@@ -149,7 +149,7 @@
 				and designs responsible AI solutions.
 			</p>
 			<p>
-				<a href="https://ml.azure.com/" class="text-blue-700">Azure Machine Learning</a> publishes a
+				<a href="https://ml.azure.com/" class="dark:text-blue-300 text-blue-800 underline">Azure Machine Learning</a> publishes a
 				curated model list that is updated regularly and includes the most popular models. You can run
 				the vast majority of the models on the curated list with ONNX Runtime, using HuggingFace Optimum.
 			</p>
@@ -166,12 +166,12 @@
 		<div>
 			<h1 class="text-3xl pb-4">Transformers.js + ONNX Runtime Web</h1>
 			<p class="pb-4">
-				<a href="https://huggingface.co/docs/transformers.js/index" class="text-blue-700"
+				<a href="https://huggingface.co/docs/transformers.js/index" class="dark:text-blue-300 text-blue-800 underline"
 					>Transformers.js</a
 				>
 				is an amazing tool to run transformers on the web, designed to be functionally equivalent to
 				Hugging Face’s
-				<a href="https://github.com/huggingface/transformers" class="text-blue-700">transformers</a>
+				<a href="https://github.com/huggingface/transformers" class="dark:text-blue-300 text-blue-800 underline">transformers</a>
 				python library.
 			</p>
 			<p class="pb-4">
