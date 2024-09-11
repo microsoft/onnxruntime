@@ -14,8 +14,7 @@ namespace onnxruntime {
 namespace coreml {
 
 static std::set<const std::string> Float16Ops = {
-  "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal"
-};
+    "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal"};
 
 namespace {
 // TODO, move this to shared_library
@@ -89,7 +88,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputPar
 
 /* static */
 bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
-                                 const logging::Logger& logger) {
+                                        const logging::Logger& logger) {
   if (idx >= node.InputDefs().size()) {
     LOGS(logger, VERBOSE) << "Input index [" << idx << "] is out of range";
     return false;
@@ -105,7 +104,7 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx, const OpBu
   }
 
   // float is supported
-  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT){
+  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return true;
   }
 

@@ -23,7 +23,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
@@ -42,7 +41,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
     if (op_type == "Reciprocal") {
-      float epsilon = 1e-4; //epsilon: const T (Optional, default=1e-4)
+      float epsilon = 1e-4;  // epsilon: const T (Optional, default=1e-4)
       AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon));
     }
 
@@ -52,21 +51,21 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   } else
 #endif  // defined (COREML_ENABLE_MLPROGRAM)
   {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
-  if (op_type == "Sqrt") {
-    layer->mutable_unary()->set_type(COREML_SPEC::UnaryFunctionLayerParams::SQRT);
-  } else if (op_type == "Reciprocal") {
-    layer->mutable_unary()->set_type(COREML_SPEC::UnaryFunctionLayerParams::INVERSE);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "UnaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
-  }
+    if (op_type == "Sqrt") {
+      layer->mutable_unary()->set_type(COREML_SPEC::UnaryFunctionLayerParams::SQRT);
+    } else if (op_type == "Reciprocal") {
+      layer->mutable_unary()->set_type(COREML_SPEC::UnaryFunctionLayerParams::INVERSE);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "UnaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    }
 
-  *layer->mutable_input()->Add() = input_defs[0]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+    *layer->mutable_input()->Add() = input_defs[0]->Name();
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(std::move(layer));
+    model_builder.AddLayer(std::move(layer));
   }
   return Status::OK();
 }

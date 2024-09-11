@@ -259,35 +259,35 @@ TEST(CoreMLExecutionProviderTest, TestNameSanitization) {
 }
 
 TEST(CoreMLExecutionProviderTest, TestBinaryFp16) {
-  auto test_binary_op = [](std::string op){
+  auto test_binary_op = [](std::string op) {
     OpTester test(op, 11);
 
     std::vector<int64_t> dims{3, 3};
     std::vector<float> input1 = {-1.0f, 0.0f, 1.0f,
-                          -6.0f, 0.0f, 6.0f,
-                          -5.4f, 2.0f, 6.0f};
+                                 -6.0f, 0.0f, 6.0f,
+                                 -5.4f, 2.0f, 6.0f};
     std::vector<MLFloat16> input1_fp16(9);
     ConvertFloatToMLFloat16(input1.data(), input1_fp16.data(), 9);
     std::vector<float> input2 = {-1.0f, 0.0f, 1.0f,
-                          -5.0f, 0.0f, 5.0f,
-                          -5.0f, 2.0f, 5.0f};
+                                 -5.0f, 0.0f, 5.0f,
+                                 -5.0f, 2.0f, 5.0f};
     std::vector<MLFloat16> input2_fp16(9);
     ConvertFloatToMLFloat16(input2.data(), input2_fp16.data(), 9);
     std::vector<float> output(9);
-    if (op == "Add"){
-      for(int i = 0; i < 9; i++){
+    if (op == "Add") {
+      for (int i = 0; i < 9; i++) {
         output[i] = input1_fp16[i] + input2_fp16[i];
       }
     } else if (op == "Sub") {
-      for(int i = 0; i < 9; i++){
+      for (int i = 0; i < 9; i++) {
         output[i] = input1_fp16[i] - input2_fp16[i];
       }
     } else if (op == "Mul") {
-      for(int i = 0; i < 9; i++){
+      for (int i = 0; i < 9; i++) {
         output[i] = input1_fp16[i] * input2_fp16[i];
       }
     } else if (op == "Div") {
-      for(int i = 0; i < 9; i++){
+      for (int i = 0; i < 9; i++) {
         output[i] = input1_fp16[i] / input2_fp16[i];
       }
     }
@@ -310,24 +310,24 @@ TEST(CoreMLExecutionProviderTest, TestBinaryFp16) {
 }
 
 TEST(CoreMLExecutionProviderTest, TestUnaryFp16) {
-  auto test_binary_op = [](std::string op){
+  auto test_binary_op = [](std::string op) {
     OpTester test(op, 11);
 
     std::vector<int64_t> dims{3, 3};
     std::vector<float> input1 = {-1.0f, 0.0f, 1.0f,
-                          -6.0f, 0.2f, 6.0f,
-                          -5.4f, 2.0f, 6.0f};
+                                 -6.0f, 0.2f, 6.0f,
+                                 -5.4f, 2.0f, 6.0f};
     std::vector<MLFloat16> input1_fp16(9);
     ConvertFloatToMLFloat16(input1.data(), input1_fp16.data(), 9);
 
     std::vector<float> output(9);
-    if (op == "Sqrt"){
-      for(int i = 0; i < 9; i++){
+    if (op == "Sqrt") {
+      for (int i = 0; i < 9; i++) {
         output[i] = sqrt(input1_fp16[i]);
       }
     } else if (op == "Reciprocal") {
-      for(int i = 0; i < 9; i++){
-        output[i] = 1.0f/(1e-4+input1_fp16[i]);
+      for (int i = 0; i < 9; i++) {
+        output[i] = 1.0f / (1e-4 + input1_fp16[i]);
       }
     }
     std::vector<MLFloat16> output_fp16(9);
