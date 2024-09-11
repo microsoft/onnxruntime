@@ -13,6 +13,7 @@
 #include <webgpu/webgpu_cpp.h>
 
 #include "core/common/common.h"
+#include "core/platform/ort_mutex.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
@@ -34,7 +35,7 @@ class WebGpuContextFactory {
   WebGpuContextFactory() {}
 
   static std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> contexts_;
-  static std::mutex mutex_;
+  static OrtMutex mutex_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
