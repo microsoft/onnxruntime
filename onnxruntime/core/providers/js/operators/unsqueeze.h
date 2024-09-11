@@ -28,7 +28,7 @@ class Unsqueeze final : public JsKernel, public UnsqueezeBase {
       ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
                       axes_tensor->Shape().NumDimensions() == 1,
-                  "An axes tensor must be a scalar or a 1-D tensor.");
+                  "An axes tensor must be a scalar or a vector tensor.");
       auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
       const auto* data = axes_tensor->Data<int64_t>();
       axes.assign(data, data + nDims);
