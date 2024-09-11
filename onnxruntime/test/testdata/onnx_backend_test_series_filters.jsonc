@@ -342,7 +342,7 @@
         "^test_gru*",
         "^test_hardsigmoid*",
         "^test_hardswish*",
-        "^*test_instancenorm",
+        "^test_instancenorm*",
         "^test_lppool*",
         "^test_lstm*",
         "^test_maxpool*",
