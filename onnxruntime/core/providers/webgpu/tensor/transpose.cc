@@ -91,12 +91,6 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-#define WEBGPU_TRANSPOSE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE) \
-  ONNX_OPERATOR_KERNEL_EX(                                            \
-      OP_TYPE, kOnnxDomain, VERSION, kWebGpuExecutionProvider,        \
-      KernelDefBuilder().TypeConstraint("T", TYPE),                   \
-      KERNEL_CLASS);
-
 #define WEBGPU_TRANSPOSE_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                             \
       OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kWebGpuExecutionProvider,                  \
@@ -104,8 +98,7 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
       KERNEL_CLASS);
 
 WEBGPU_TRANSPOSE_VERSIONED_KERNEL(Transpose, 1, 12, Transpose, WebGpuSupportedFloatTypes())
-WEBGPU_TRANSPOSE_KERNEL(Transpose, 13, Transpose, WebGpuSupportedFloatTypes())
-WEBGPU_TRANSPOSE_KERNEL(Transpose, 17, Transpose, WebGpuSupportedFloatTypes())
+WEBGPU_TRANSPOSE_VERSIONED_KERNEL(Transpose, 13, 20, Transpose, WebGpuSupportedFloatTypes())
 
 }  // namespace webgpu
 }  // namespace onnxruntime
