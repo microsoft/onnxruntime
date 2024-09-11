@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-using SupportedTypes =
+using SupportedNumberTypes =
     TypeList<
         float,
         MLFloat16,
@@ -20,8 +20,8 @@ using SupportedFloats =
         float,
         MLFloat16>;
 
-inline const std::vector<MLDataType>& WebGpuSupportedDataTypes() {
-  static const std::vector<MLDataType> supportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedTypes>();
+inline const std::vector<MLDataType>& WebGpuSupportedNumberTypes() {
+  static const std::vector<MLDataType> supportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedNumberTypes>();
   return supportedDataTypes;
 }
 

@@ -6,6 +6,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -14,59 +15,66 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Transpose,
     kOnnxDomain,
     1, 12,
-    kCudaExecutionProvider,
+    kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Transpose);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    13, 20,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Transpose);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    21, 22,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
 ONNX_OPERATOR_KERNEL_EX(
     Transpose,
     kOnnxDomain,
-    13,
-    kCudaExecutionProvider,
+    23,
+    kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
-ONNX_OPERATOR_KERNEL_EX(
-    Transpose,
-    kOnnxDomain,
-    17,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Transpose);
-
-const std::string AppendPermFunction(std::string_view input_name, std::string_view output_name, gsl::span<const size_t> perm) {
+const std::string AppendPermFunction(gsl::span<const size_t> perm) {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
-  ss << "fn perm(i: " << output_name << "_indices_t"
-     << ")->" << input_name << "_indices_t "
-     << "{\n  var a: " << input_name << "_indices_t;\n";
+  ss << "fn perm(i: y_indices_t)->x_indices_t {\n"
+        "  var a: x_indices_t;\n";
   for (auto i = 0; i < perm.size(); ++i) {
     ss << "  a[" << perm[i] << "] = i[" << i << "];\n";
   }
-  ss << "  return a;\n}\n";
+  ss << "  return a;\n"
+        "}\n";
   return ss.str();
 }
 
 Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto input_name{"x"};
-  const auto output_name{"y"};
-  const auto& input = shader.AddInput(input_name,
-                                      ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
-  const auto& output = shader.AddOutput(output_name,
-                                        ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
-  shader.AppendImplementation(AppendPermFunction(input_name, output_name, this->perm_));
+  const auto& input = shader.AddInput("x", ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
+  const auto& output = shader.AddOutput("y", ShaderVariable::UseUniform | ShaderVariable::UseIndicesTypeAlias);
+  shader.AppendImplementation(AppendPermFunction(this->perm_));
   shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
                              "  let indices = ", output.OffsetToIndices("global_idx"),
                              ";\n"
-                             "  let x_indices = perm(indices); \n",
+                             "  let x_indices = perm(indices); \n"
+                             "  ",
                              output.SetByOffset("global_idx", input.GetByIndices("x_indices")));
   return Status::OK();
 }
 
 Status Transpose::ComputeInternal(ComputeContext& context) const {
+  // TODO: there is an optimized version of transpose to port.
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
   int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
@@ -82,7 +90,7 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   TransposeProgram program{*p_perm};
   program
       .CacheHint(absl::StrJoin(*p_perm, "-"))
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Rank}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
@@ -90,15 +98,6 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
       });
   return context.RunProgram(program);
 }
-
-#define WEBGPU_TRANSPOSE_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                             \
-      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kWebGpuExecutionProvider,                  \
-      KernelDefBuilder().TypeConstraint("T", TYPE),                                              \
-      KERNEL_CLASS);
-
-WEBGPU_TRANSPOSE_VERSIONED_KERNEL(Transpose, 1, 12, Transpose, WebGpuSupportedFloatTypes())
-WEBGPU_TRANSPOSE_VERSIONED_KERNEL(Transpose, 13, 20, Transpose, WebGpuSupportedFloatTypes())
 
 }  // namespace webgpu
 }  // namespace onnxruntime
