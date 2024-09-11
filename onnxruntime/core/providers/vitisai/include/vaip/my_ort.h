@@ -71,8 +71,8 @@ enum AttributeProto_AttributeType : int {
 namespace vaip_core {
 class GraphHolder;
 using ONNX_NAMESPACE::AttributeProto;
-using ONNX_NAMESPACE::TensorProto;
 using ONNX_NAMESPACE::ModelProto;
+using ONNX_NAMESPACE::TensorProto;
 using onnxruntime::Graph;
 using onnxruntime::GraphViewer;
 using onnxruntime::Model;
