@@ -161,40 +161,40 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
 
 // Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
 template<typename T, typename Ret>
-Ret OnlyConvertMLFloat16ToFloatIfNeeded(T val);
+inline Ret OnlyConvertMLFloat16ToFloatIfNeeded(T val);
 
 template<>
-float OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
+inline float OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
 {
   return val.ToFloat();
 }
 
 template<>
-double OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
+inline double OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
 {
   return double(OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(val));
 }
 
 template<>
-float OnlyConvertMLFloat16ToFloatIfNeeded<float, float>(float val)
+inline float OnlyConvertMLFloat16ToFloatIfNeeded<float, float>(float val)
 {
   return val;
 }
 
 template<>
-double OnlyConvertMLFloat16ToFloatIfNeeded<double, double>(double val)
+inline double OnlyConvertMLFloat16ToFloatIfNeeded<double, double>(double val)
 {
   return val;
 }
 
 
 
-float ConvertToFloatIfNeeded(float val)
+inline float ConvertToFloatIfNeeded(float val)
 {
   return val;
 }
 
-float ConvertToFloatIfNeeded(double val)
+inline float ConvertToFloatIfNeeded(double val)
 {
   // ONNX spec doesn't support 'double' for 'Ret' so when 'T' == double, 'Ret' == float and we need to narrow
   return gsl::narrow_cast<float>(val);
@@ -204,20 +204,20 @@ float ConvertToFloatIfNeeded(double val)
 
 // Function template that handles float and double types
 template<typename T>
-typename std::enable_if<std::is_same<T, float>::value || std::is_same<T, double>::value, float>::type
+inline typename std::enable_if<std::is_same<T, float>::value || std::is_same<T, double>::value, float>::type
 OnlyConvertToMLFloat16IfNeeded(float val) {
     return val;
 }
 
 // Function template specialization for MLFloat16 type
 template<typename T>
-typename std::enable_if<std::is_same<T, MLFloat16>::value, T>::type
+inline typename std::enable_if<std::is_same<T, MLFloat16>::value, T>::type
 OnlyConvertToMLFloat16IfNeeded(float val) {
     return MLFloat16(val);
 }
 
 template <typename T>
-double OnlyConvertToMLFloat16IfNeeded(double val)
+inline double OnlyConvertToMLFloat16IfNeeded(double val)
 {
   return val;
 }
