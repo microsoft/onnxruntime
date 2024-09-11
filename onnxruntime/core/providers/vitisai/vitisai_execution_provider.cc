@@ -7,7 +7,6 @@
 #include <fstream>
 #include <istream>
 #include <filesystem>
-#include <iostream>
 
 // 1st-party headers/libs.
 #include "core/platform/env_var_utils.h"
@@ -89,9 +88,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
       ep->set_model(model.release());
     }
     compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
-      auto& ep = (**this->execution_providers_)[index];
-      auto* p = ep->compile().release();
-      p->set_model(ep->get_model());
+      auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
       return 0;
     };

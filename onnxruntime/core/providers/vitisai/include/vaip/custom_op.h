@@ -45,13 +45,6 @@ class CustomOp {
 
  public:
   virtual void Compute_base(const OrtApi* api, OrtKernelContext* context) const = 0;
-
- public:
-  inline void set_model(onnxruntime::Model* model) { model_ = model; }
-  inline onnxruntime::Model* get_model() const { return model_; }
-
- private:
-  onnxruntime::Model* model_ = nullptr;
 };
 
 }  // namespace vaip_core
