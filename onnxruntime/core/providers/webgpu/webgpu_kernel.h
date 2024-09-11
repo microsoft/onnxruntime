@@ -22,16 +22,14 @@ class WebGpuKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     ComputeContext context{*p_op_kernel_context};
-    auto s = ComputeInternal(context);
-    // use this to precisely locate the node where CUDA failure comes from
-    //  if (cudaSuccess != cudaDeviceSynchronize())
-    //    __debugbreak();
-    // if (s.IsOK()) {
-    //   auto err = cudaGetLastError();
-    //   if (err != cudaSuccess) {
-    //     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
-    //   }
-    // }
+#ifndef NDEBUG
+    context.PushErrorScope();
+#endif
+    Status s = ComputeInternal(context);
+#ifndef NDEBUG
+    ORT_RETURN_IF_ERROR(context.PopErrorScope());
+#endif
+
     return s;
   }
 

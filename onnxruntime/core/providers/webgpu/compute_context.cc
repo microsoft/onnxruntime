@@ -13,5 +13,25 @@ ComputeContext::ComputeContext(OpKernelContext& kernel_context)
       kernel_context_{kernel_context} {
 }
 
+void ComputeContext::PushErrorScope() {
+  webgpu_context_.Device().PushErrorScope(wgpu::ErrorFilter::Validation);
+}
+
+Status ComputeContext::PopErrorScope() {
+  Status status{};
+
+  ORT_RETURN_IF_ERROR(webgpu_context_.Wait(
+      webgpu_context_.Device().PopErrorScope(
+          wgpu::CallbackMode::WaitAnyOnly, [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
+            ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
+            if (error_type == wgpu::ErrorType::NoError) {
+              return;
+            }
+            *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+          },
+          &status)));
+  return status;
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime

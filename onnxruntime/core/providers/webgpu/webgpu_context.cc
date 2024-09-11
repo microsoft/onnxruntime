@@ -34,7 +34,12 @@ std::vector<const char*> GetEnabledDeviceToggles() {
   // Enable / disable other toggles that may affect the performance.
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
+#ifdef NDEBUG
+      // todo: when skip validation, the process may crash.
+      //       need careful decision to enable this toggle.
+      //       revisit this flag before release.
       "skip_validation",
+#endif
       "disable_robustness",
       "disable_workgroup_init",
       "d3d_disable_ieee_strictness",
