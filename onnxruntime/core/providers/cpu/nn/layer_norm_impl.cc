@@ -80,17 +80,17 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
         const T* p_input = X_data + task_idx * norm_size;
         T* p_output = Y_data + task_idx * norm_size;
 
-        using MeanType = typename std::conditional<
+        using DoubleOrFloat = typename std::conditional<
           std::is_same<T, double>::value,  // If T is double
           double,                          // Use double
           float                            // Otherwise, use float (covers float and MLFloat16)
         >::type;
 
-        MeanType mean(0.0f);
-        MeanType mean_square(0.0f);
+        DoubleOrFloat mean(0.0f);
+        DoubleOrFloat mean_square(0.0f);
 
         for (int64_t h = 0; h < norm_size; h++) {
-          MeanType input_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(p_input[h]);
+          DoubleOrFloat input_value = ConvertMLFloat16ToFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
           mean += input_value;
           mean_square += input_value * input_value;
         }
@@ -103,25 +103,25 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
         }
 
         for (int64_t h = 0; h < norm_size; h++) {
-          MeanType input_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(p_input[h]);
-          MeanType scale_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(scale_data[h]);
+          DoubleOrFloat input_value = ConvertMLFloat16ToFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
+          DoubleOrFloat scale_value = ConvertMLFloat16ToFloatIfNeeded<T, DoubleOrFloat>(scale_data[h]);
           if (simplified) {
-            p_output[h] = OnlyConvertToMLFloat16IfNeeded<T>(input_value / mean_square * scale_value);
+            p_output[h] = ConvertToMLFloat16IfNeeded<T>(input_value / mean_square * scale_value);
           } else if (nullptr == bias) {
-            p_output[h] = OnlyConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value);
+            p_output[h] = ConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value);
           } else {
-            MeanType bias_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(bias_data[h]);
-            p_output[h] = OnlyConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value + bias_value);
+            DoubleOrFloat bias_value = ConvertMLFloat16ToFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
+            p_output[h] = ConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value + bias_value);
           }
         }
 
         if (mean_data != nullptr) {
           // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-          mean_data[task_idx] = OnlyConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(mean));
+          mean_data[task_idx] = ConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(mean));
         }
 
         if (inv_std_dev_data != nullptr) {
-          inv_std_dev_data[task_idx] = OnlyConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(1 / mean_square));
+          inv_std_dev_data[task_idx] = ConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(1 / mean_square));
         }
       },
       0);
@@ -161,28 +161,28 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
 
 // Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
 template<typename T, typename Ret>
-inline Ret OnlyConvertMLFloat16ToFloatIfNeeded(T val);
+inline Ret ConvertMLFloat16ToFloatIfNeeded(T val);
 
 template<>
-inline float OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
+inline float ConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
 {
   return val.ToFloat();
 }
 
 template<>
-inline double OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
+inline double ConvertMLFloat16ToFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
 {
-  return double(OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(val));
+  return double(ConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(val));
 }
 
 template<>
-inline float OnlyConvertMLFloat16ToFloatIfNeeded<float, float>(float val)
+inline float ConvertMLFloat16ToFloatIfNeeded<float, float>(float val)
 {
   return val;
 }
 
 template<>
-inline double OnlyConvertMLFloat16ToFloatIfNeeded<double, double>(double val)
+inline double ConvertMLFloat16ToFloatIfNeeded<double, double>(double val)
 {
   return val;
 }
@@ -202,22 +202,21 @@ inline float ConvertToFloatIfNeeded(double val)
 
 
 
-// Function template that handles float and double types
+// Function template that only converts the input value to MLFloat16 if T is MLFloat16.
 template<typename T>
 inline typename std::enable_if<std::is_same<T, float>::value || std::is_same<T, double>::value, float>::type
-OnlyConvertToMLFloat16IfNeeded(float val) {
+ConvertToMLFloat16IfNeeded(float val) {
     return val;
 }
 
-// Function template specialization for MLFloat16 type
 template<typename T>
 inline typename std::enable_if<std::is_same<T, MLFloat16>::value, T>::type
-OnlyConvertToMLFloat16IfNeeded(float val) {
+ConvertToMLFloat16IfNeeded(float val) {
     return MLFloat16(val);
 }
 
 template <typename T>
-inline double OnlyConvertToMLFloat16IfNeeded(double val)
+inline double ConvertToMLFloat16IfNeeded(double val)
 {
   return val;
 }
