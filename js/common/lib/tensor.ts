@@ -199,7 +199,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new (type: 'uint8', data: Uint8ClampedArray, dims?: readonly number[]): TypedTensor<'uint8'>;
+    new(type: 'uint8', data: Uint8ClampedArray, dims?: readonly number[]): TypedTensor<'uint8'>;
 
   /**
    * Construct a new 64-bit integer typed tensor object from the given type, data and dims.

@@ -12,3 +12,8 @@ new ort.Tensor(new Uint8Array(1));
 //
 // {type-tests}|pass
 new ort.Tensor(new Uint8ClampedArray(1));
+
+// construct from type (bool), data (Uint8ClampedArray) and shape (number array)
+//
+// {type-tests}|fail|1|2769
+new ort.Tensor('bool', new Uint8ClampedArray([255, 256]), [2]);
