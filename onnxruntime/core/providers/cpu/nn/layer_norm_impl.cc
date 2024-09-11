@@ -24,14 +24,14 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = p_ctx->Input<Tensor>(1);
   const Tensor* bias = p_ctx->Input<Tensor>(2);
-  auto X_data = X->Data<T>();
-  auto scale_data = scale->Data<T>();
-  auto bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
+  const T* X_data = X->Data<T>();
+  const T* scale_data = scale->Data<T>();
+  const T* bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(orig_axis, x_shape.NumDimensions());
-  auto norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
-  auto norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
+  int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
+  int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
@@ -80,12 +80,19 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
         const T* p_input = X_data + task_idx * norm_size;
         T* p_output = Y_data + task_idx * norm_size;
 
-        T mean = 0;
-        T mean_square = 0;
+        using MeanType = typename std::conditional<
+          std::is_same<T, double>::value,  // If T is double
+          double,                          // Use double
+          float                            // Otherwise, use float (covers float and MLFloat16)
+        >::type;
+
+        MeanType mean(0.0f);
+        MeanType mean_square(0.0f);
 
         for (int64_t h = 0; h < norm_size; h++) {
-          mean += p_input[h];
-          mean_square += p_input[h] * p_input[h];
+          MeanType input_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(p_input[h]);
+          mean += input_value;
+          mean_square += input_value * input_value;
         }
 
         mean = mean / norm_size;
@@ -96,22 +103,25 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
         }
 
         for (int64_t h = 0; h < norm_size; h++) {
+          MeanType input_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(p_input[h]);
+          MeanType scale_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(scale_data[h]);
           if (simplified) {
-            p_output[h] = p_input[h] / mean_square * scale_data[h];
+            p_output[h] = OnlyConvertToMLFloat16IfNeeded<T>(input_value / mean_square * scale_value);
           } else if (nullptr == bias) {
-            p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h];
+            p_output[h] = OnlyConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value);
           } else {
-            p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+            MeanType bias_value = OnlyConvertMLFloat16ToFloatIfNeeded<T, MeanType>(bias_data[h]);
+            p_output[h] = OnlyConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value + bias_value);
           }
         }
 
         if (mean_data != nullptr) {
           // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-          mean_data[task_idx] = gsl::narrow_cast<U>(mean);
+          mean_data[task_idx] = OnlyConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(mean));
         }
 
         if (inv_std_dev_data != nullptr) {
-          inv_std_dev_data[task_idx] = gsl::narrow_cast<U>(1 / mean_square);
+          inv_std_dev_data[task_idx] = OnlyConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(1 / mean_square));
         }
       },
       0);
@@ -141,10 +151,76 @@ struct SrcDispatcher {
 Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
   const auto elem_type = p_ctx->Input<Tensor>(0)->GetElementType();
 
-  using SupportedTypeList = boost::mp11::mp_list<float, double>;
+  using SupportedTypeList = boost::mp11::mp_list<float, double, MLFloat16>;
 
   utils::MLTypeCallDispatcherFromTypeList<SupportedTypeList> t_disp(elem_type);
   return t_disp.InvokeRet<Status, SrcDispatcher>(p_ctx, axis_, epsilon_, simplified_, contrib_op_);
 }
+
+
+
+// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
+template<typename T, typename Ret>
+Ret OnlyConvertMLFloat16ToFloatIfNeeded(T val);
+
+template<>
+float OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
+{
+  return val.ToFloat();
+}
+
+template<>
+double OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
+{
+  return double(OnlyConvertMLFloat16ToFloatIfNeeded<MLFloat16, float>(val));
+}
+
+template<>
+float OnlyConvertMLFloat16ToFloatIfNeeded<float, float>(float val)
+{
+  return val;
+}
+
+template<>
+double OnlyConvertMLFloat16ToFloatIfNeeded<double, double>(double val)
+{
+  return val;
+}
+
+
+
+float ConvertToFloatIfNeeded(float val)
+{
+  return val;
+}
+
+float ConvertToFloatIfNeeded(double val)
+{
+  // ONNX spec doesn't support 'double' for 'Ret' so when 'T' == double, 'Ret' == float and we need to narrow
+  return gsl::narrow_cast<float>(val);
+}
+
+
+
+// Function template that handles float and double types
+template<typename T>
+typename std::enable_if<std::is_same<T, float>::value || std::is_same<T, double>::value, float>::type
+OnlyConvertToMLFloat16IfNeeded(float val) {
+    return val;
+}
+
+// Function template specialization for MLFloat16 type
+template<typename T>
+typename std::enable_if<std::is_same<T, MLFloat16>::value, T>::type
+OnlyConvertToMLFloat16IfNeeded(float val) {
+    return MLFloat16(val);
+}
+
+template <typename T>
+double OnlyConvertToMLFloat16IfNeeded(double val)
+{
+  return val;
+}
+
 
 }  // namespace onnxruntime
