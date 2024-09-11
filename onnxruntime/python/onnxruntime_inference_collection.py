@@ -32,44 +32,44 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         raise Exception("Unsupported device type: " + device_type)
 
 
-class Adapter:
-    """
-    Instances of this class are used to represent adapter information
-    obtained from read_adapter().
-    """
+# class Adapter:
+#     """
+#     Instances of this class are used to represent adapter information
+#     obtained from read_adapter().
+#     """
 
-    def __init__(self, adapter):
-        self._adapter = adapter
+#     def __init__(self, adapter):
+#         self._adapter = adapter
 
-    @staticmethod
-    def read_adapter(file_path: os.PathLike) -> Adapter:
-        return Adapter(C.read_adapter(file_path))
+#     @staticmethod
+#     def read_adapter(file_path: os.PathLike) -> Adapter:
+#         return Adapter(C.read_adapter(file_path))
 
-    @staticmethod
-    def export_adapter(
-        file_path: os.PathLike, adapter_version: int, model_version: int, params: dict[str, Sequence[Any]]
-    ):
-        """
-        This function takes in the parameters and writes a file at the specified location
-        in onnxrunitme adapter format containing Lora parameters.
-        :param file_path: absolute path for the adapter
-        :param adapter_version: the version of the adapter
-        :param model_version: the version of the model this adapter is being created
-        :param params: a dictionary of string -> numpy array containing adapter parameters
-        """
-        C.export_adapter(file_path, adapter_version, model_version, params)
+#     @staticmethod
+#     def export_adapter(
+#         file_path: os.PathLike, adapter_version: int, model_version: int, params: dict[str, Sequence[Any]]
+#     ):
+#         """
+#         This function takes in the parameters and writes a file at the specified location
+#         in onnxrunitme adapter format containing Lora parameters.
+#         :param file_path: absolute path for the adapter
+#         :param adapter_version: the version of the adapter
+#         :param model_version: the version of the model this adapter is being created
+#         :param params: a dictionary of string -> numpy array containing adapter parameters
+#         """
+#         C.export_adapter(file_path, adapter_version, model_version, params)
 
-    def get_format_version(self):
-        return self._adapter.get_format_version()
+#     def get_format_version(self):
+#         return self._adapter.get_format_version()
 
-    def get_adapter_version(self):
-        return self._adapter.get_adapter_version()
+#     def get_adapter_version(self):
+#         return self._adapter.get_adapter_version()
 
-    def get_model_version(self):
-        return self._adapter.get_model_version()
+#     def get_model_version(self):
+#         return self._adapter.get_model_version()
 
-    def get_parameters(self) -> dict[str, Sequence[Any]]:
-        return self._adapter.get_parameters()
+#     def get_parameters(self) -> dict[str, Sequence[Any]]:
+#         return self._adapter.get_parameters()
 
 
 def check_and_normalize_provider_args(
@@ -750,6 +750,20 @@ class OrtValue:
             ),
             numpy_obj if device_type.lower() == "cpu" else None,
         )
+
+    @staticmethod
+    def ortvalue_from_bytes(data: bytes, shape: Sequence[int], onnx_element_type: int):
+        """
+        This method creates an instance of OrtValue on top of the bytes object
+        No data copy is made and the lifespan of the resulting OrtValue should never
+        exceed the lifespan of bytes object
+
+        :param data: bytes containing data. This is expected to be a flat array of bytes.
+        :param shape: shape of the tensor. shape*data_type_size must match the length of bytes
+                    shape is expected to be a numpy array of int64.
+        :param onnx_elemenet_type: a valid onnx TensorProto::DataType enum value
+        """
+        return C.OrtValue.ortvalue_from_bytes(data, shape, onnx_element_type)
 
     @staticmethod
     def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):

@@ -43,7 +43,12 @@ class LoraAdapter {
     explicit Param(OrtValue ort_value_mapped) noexcept;
     Param(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept;
 
-    const OrtValue& GetMapped() const {
+    const OrtValue& GetMapped() const noexcept {
+      return ort_value_mapped_;
+    }
+
+    // For python interface
+    OrtValue& GetMapped() noexcept {
       return ort_value_mapped_;
     }
 
@@ -52,14 +57,19 @@ class LoraAdapter {
     OrtValue ort_value_device_;
   };
 
-  using param_iterator = InlinedHashMap<std::string, Param>::const_iterator;
+  using param_const_iterator = InlinedHashMap<std::string, Param>::const_iterator;
+  using param_iterator = InlinedHashMap<std::string, Param>::iterator;
 
   /// <summary>
   /// Obtain a range of the iterators
   /// </summary>
   /// <returns></returns>
-  std::pair<param_iterator, param_iterator> GetParamIterators() const {
+  std::pair<param_const_iterator, param_const_iterator> GetParamIterators() const {
     return std::make_pair(params_values_.cbegin(), params_values_.cend());
+  }
+
+  std::pair<param_iterator, param_iterator> GetParamIterators() {
+    return std::make_pair(params_values_.begin(), params_values_.end());
   }
 
   /// <summary>

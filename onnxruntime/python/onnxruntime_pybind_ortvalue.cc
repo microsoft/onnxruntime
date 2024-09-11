@@ -142,6 +142,35 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
         }
       })
+      // Create an ortvalue bytes. The ort_value is created on top of the bytes
+      // and its life span must not exceed that of the bytes object
+      .def_static("ortvalue_from_bytes", [](py::bytes& bytes, py::array_t<int64_t>& shape, int32_t onnx_element_type) -> std::unique_ptr<OrtValue> {
+        if (!ONNX_NAMESPACE::TensorProto_DataType_IsValid(onnx_element_type)) {
+          ORT_THROW("Not a valid ONNX Tensor data type: ", onnx_element_type);
+        }
+
+        const auto shape_span = gsl::make_span(shape.data(), shape.size());
+        const auto num_elements = std::accumulate(shape_span.begin(), shape_span.end(), 1LL,
+                                                  std::multiplies<int64_t>());
+
+        const auto element_type = DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)
+                                      ->GetElementType();
+
+        const auto element_size = element_type->Size();
+
+        const auto expected_bytes_size = element_size * num_elements;
+        const std::string_view view = bytes;
+        if (narrow<uint64_t>(view.size()) != expected_bytes_size) {
+          ORT_THROW("Shape specifies: ", num_elements, " with total bytes size: ", expected_bytes_size,
+                    " received: ", view.size());
+        }
+
+        auto cpu_allocator = GetAllocator();
+        auto ort_value = std::make_unique<OrtValue>();
+        Tensor::InitOrtValue(element_type, TensorShape{shape_span},
+                             const_cast<char*>(view.data()), cpu_allocator->Info(), *ort_value);
+        return ort_value;
+      })
       // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
       // The memory is left uninitialized
       .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& element_type, const OrtDevice& device) {

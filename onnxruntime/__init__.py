@@ -56,7 +56,6 @@ from onnxruntime.capi import onnxruntime_validation
 if import_capi_exception:
     raise import_capi_exception
 
-from onnxruntime.capi.onnxruntime_inference_collection import Adapter  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import OrtDevice  # noqa: F401

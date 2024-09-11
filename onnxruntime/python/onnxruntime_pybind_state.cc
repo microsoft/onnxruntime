@@ -2243,7 +2243,7 @@ bool CreateInferencePybindStateModule(py::module& m) {
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
-  addAdapterMethods(m);
+  addAdapterFormatMethods(m);
 
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {

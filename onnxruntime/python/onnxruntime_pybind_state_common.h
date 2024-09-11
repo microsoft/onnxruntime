@@ -394,7 +394,7 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
-void addAdapterMethods(pybind11::module& m);
+void addAdapterFormatMethods(pybind11::module& m);
 
 void addGlobalSchemaFunctions(pybind11::module& m);
 

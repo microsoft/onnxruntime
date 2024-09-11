@@ -14,19 +14,18 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 
+#include "lora/adapter_format_version.h"
 #include "lora/adapter_format_utils.h"
 #include "lora/lora_adapters.h"
 
 #include <string.h>
 
 #include <fstream>
-#include <unordered_map>
 
 namespace onnxruntime {
 namespace python {
 
 namespace py = pybind11;
-
 namespace {
 
 // Check if the numpy dtype descr property has any of the known types
@@ -161,127 +160,118 @@ py::dtype ConstructDType(int32_t onnx_type) {
   ORT_THROW("Unsupported type detected:", onnx_type);
 }
 
+/// <summary>
+/// Class that supports writing and reading adapters
+/// in innxruntime format
+/// </summary>
+struct PyAdapterFormatReaderWriter {
+  PyAdapterFormatReaderWriter() = default;
+  PyAdapterFormatReaderWriter(int format_version, int adapter_version,
+                              int model_version,
+                              lora::LoraAdapter&& loaded_adapter,
+                              py::dict&& params)
+      : format_version_(format_version),
+        adapter_version_(adapter_version),
+        model_version_(model_version),
+        loaded_adater_(std::move(loaded_adapter)),
+        parameters_(std::move(params)) {}
+
+  int format_version_{adapters::kAdapterFormatVersion};
+  int adapter_version_{0};
+  int model_version_{0};
+  // This container is used when reading the the file so
+  // OrtValue objects can be backed by it. Not exposed to Python
+  std::optional<lora::LoraAdapter> loaded_adater_;
+  // This is a dictionary of string -> OrtValue
+  // this is populated directly on write and
+  // built on top of the loaded_adapter on read
+  py::dict parameters_;
+};
+
 }  // namespace
 
-void addAdapterMethods(pybind11::module& m) {
-  m.def(
-      "export_adapter", [](const std::string& file_name, int adapter_version, int model_version, const pybind11::dict& adapter_parameters) {
-        std::ofstream file(file_name, std::ios::binary);
-        if (file.fail()) {
-          ORT_THROW("Failed to open file:", file_name, " for writing.");
-        }
-
-        adapters::utils::AdapterFormatBuilder format_builder;
-        for (const auto& [n, arr] : adapter_parameters) {
-          const std::string param_name = py::str(n);
-          py::array np_array = arr.cast<py::array>();
-
-          py::dtype arr_dtype = np_array.dtype();
-
-          // This is the element type as supported by numpy,
-          // however, we can have bfloat16 and float8 custom types defined.
-          auto ml_element_type = NumpyTypeToOnnxRuntimeTensorType(arr_dtype.num());
-          auto onnx_element_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
-              ml_element_type->AsPrimitiveDataType()->GetDataType());
-
-          if (!ONNX_NAMESPACE::TensorProto_DataType_IsValid(onnx_element_type)) {
-            ORT_THROW("Unsupported tensor ONNX element type: ", onnx_element_type);
-          }
-
-          switch (onnx_element_type) {
-            case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-            case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-            case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-              onnx_element_type =
-                  static_cast<ONNX_NAMESPACE::TensorProto_DataType>(AdjustOnnxTypeIfNeeded(arr_dtype,
-                                                                                           onnx_element_type));
-              break;
+/* */
+void addAdapterFormatMethods(pybind11::module& m) {
+  py::class_<PyAdapterFormatReaderWriter> adapter_binding(m, "Adapter");
+  adapter_binding.def(py::init())
+      .def_property_readonly(
+          "format_version",
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> int { return reader_writer->format_version_; },
+          R"pbdoc("Enables user to read format version stored in the file")pbdoc")
+      .def_property(
+          "adapter_version",
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> int { return reader_writer->adapter_version_; },
+          [](PyAdapterFormatReaderWriter* reader_writer, int adapter_version) -> void { reader_writer->adapter_version_ = adapter_version; },
+          R"pbdoc("Enables user to read format version stored in the file")pbdoc")
+      .def_property(
+          "adapter_version",
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> int { return reader_writer->adapter_version_; },
+          [](PyAdapterFormatReaderWriter* reader_writer, int adapter_version) -> void { reader_writer->adapter_version_ = adapter_version; },
+          R"pbdoc("Enables user to read/write adapter version stored in the file")pbdoc")
+      .def_property(
+          "model_version",
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> int { return reader_writer->model_version_; },
+          [](PyAdapterFormatReaderWriter* reader_writer, int model_version) -> void { reader_writer->model_version_ = model_version; },
+          R"pbdoc("Enables user to read/write model version this adapter was created for")pbdoc")
+      .def_property(
+          "parameters",
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict { return reader_writer->parameters_; },
+          [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
+            reader_writer->parameters_ = parameters;
+          },
+          R"pbdoc("Enables user to read/write adapter version stored in the file")pbdoc")
+      .def(
+          "export_adapter",
+          [](const PyAdapterFormatReaderWriter* reader_writer, const std::string& file_name) {
+            std::ofstream file(file_name, std::ios::binary);
+            if (file.fail()) {
+              ORT_THROW("Failed to open file:", file_name, " for writing.");
             }
-            default:
-              break;
-          };
 
-          gsl::span<const int64_t> shape_span{reinterpret_cast<const int64_t*>(np_array.shape()),
-                                              narrow<size_t>(np_array.ndim())};
-          gsl::span<const uint8_t> data_span{reinterpret_cast<const uint8_t*>(np_array.data()),
-                                             narrow<size_t>(np_array.nbytes())};
+            adapters::utils::AdapterFormatBuilder format_builder;
+            for (auto& [n, value] : reader_writer->parameters_) {
+              const std::string param_name = py::str(n);
+              const OrtValue* ort_value = value.cast<OrtValue*>();
+              const Tensor& tensor = ort_value->Get<Tensor>();
+              const auto data_span =
+                  gsl::make_span<const uint8_t>(reinterpret_cast<const uint8_t*>(tensor.DataRaw()),
+                                                tensor.SizeInBytes());
+              format_builder.AddParameter(
+                  param_name, static_cast<adapters::TensorDataType>(tensor.GetElementType()),
+                  tensor.Shape().GetDims(), data_span);
+            }
 
-          format_builder.AddParameter(param_name, static_cast<adapters::TensorDataType>(onnx_element_type),
-                                      shape_span, data_span);
-        }
-        auto format_span = format_builder.FinishWithSpan(adapter_version, model_version);
-        if (file.write(reinterpret_cast<const char*>(format_span.data()), format_span.size()).fail()) {
-          ORT_THROW("Failed to write :", std::to_string(format_span.size()), " bytes to ", file_name);
-        }
+            auto format_span = format_builder.FinishWithSpan(reader_writer->adapter_version_,
+                                                             reader_writer->model_version_);
+            if (file.write(reinterpret_cast<const char*>(format_span.data()), format_span.size()).fail()) {
+              ORT_THROW("Failed to write :", std::to_string(format_span.size()), " bytes to ", file_name);
+            }
 
-        if (file.flush().fail()) {
-          ORT_THROW("Failed to flush :", file_name, " on close");
-        }
-      },
-      "Save adapter parameters into a lora file format.");
+            if (file.flush().fail()) {
+              ORT_THROW("Failed to flush :", file_name, " on close");
+            }
+          },
+          "Save adapter parameters into a onnxruntime adapter file format.")
+      .def_static(
+          "read_adapter", [](const std::string& file_name) -> std::unique_ptr<PyAdapterFormatReaderWriter> {
+            lora::LoraAdapter lora_adapter;
+            lora_adapter.Load(file_name);
 
-  class PyAdapter {
-   public:
-    PyAdapter(int format_version, int adapter_version,
-              int model_version, py::dict params) : format_version_(format_version), adapter_version_(adapter_version), model_version_(model_version), parameters_(std::move(params)) {}
+            auto [begin, end] = lora_adapter.GetParamIterators();
+            py::dict params;
+            for (; begin != end; ++begin) {
+              auto& [name, param] = *begin;
+              OrtValue& ort_value = param.GetMapped();
+              params[py::str(name)] = py::cast(&ort_value);
+            }
 
-    int FormatVersion() const noexcept {
-      return format_version_;
-    }
+            auto py_adapter = std::make_unique<PyAdapterFormatReaderWriter>(
+                lora_adapter.FormatVersion(), lora_adapter.AdapterVersion(),
+                lora_adapter.ModelVersion(), std::move(lora_adapter), std::move(params));
 
-    int AdapterVersion() const noexcept {
-      return adapter_version_;
-    }
-
-    int ModelVersion() const noexcept {
-      return model_version_;
-    }
-
-    py::dict GetParameters() const noexcept {
-      return parameters_;
-    }
-
-   private:
-    int format_version_;
-    int adapter_version_;
-    int model_version_;
-    py::dict parameters_;
-  };
-
-  m.def(
-      "read_adapter", [](const std::string& file_name) -> std::unique_ptr<PyAdapter> {
-        lora::LoraAdapter adapter;
-        adapter.MemoryMap(file_name);
-
-        auto [begin, end] = adapter.GetParamIterators();
-        py::dict params;
-        for (; begin != end; ++begin) {
-          const auto& [name, param] = *begin;
-          const auto& tensor = param.GetMapped().Get<Tensor>();
-
-          const auto onnx_type = tensor.GetElementType();
-          const auto size_bytes = tensor.SizeInBytes();
-
-          py::dtype dtype = ConstructDType(onnx_type);
-          // No pointer, memory is allocated by array
-          py::array npy_array(dtype, tensor.Shape().GetDims());
-          ORT_ENFORCE(npy_array.size(), tensor.Shape().Size());
-          memcpy_s(npy_array.mutable_data(), size_bytes, tensor.DataRaw(), size_bytes);
-          params[py::str(name)] = std::move(npy_array);
-        }
-
-        auto py_adapter = std::make_unique<PyAdapter>(adapter.FormatVersion(), adapter.AdapterVersion(),
-                                                      adapter.ModelVersion(), std::move(params));
-        return py_adapter;
-      },
-      "The function returns an instance of the class that contains a dictionary of name -> numpy arrays");
-
-  py::class_<PyAdapter> adapter_binding(m, "Adapter");
-  adapter_binding.def(py::init<int, int, int, py::dict>())
-      .def("get_format_version", &PyAdapter::GetParameters)
-      .def("get_adapter_version", &PyAdapter::AdapterVersion)
-      .def("get_model_version", &PyAdapter::ModelVersion)
-      .def("get_parameters", &PyAdapter::GetParameters);
+            return py_adapter;
+          },
+          "The function returns an instance of the class that contains a dictionary of name -> numpy arrays");
 }
 
 }  // namespace python
