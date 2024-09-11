@@ -444,7 +444,7 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunO
     }
   }
 
-  if (sync_stream) {
+  if (use_ep_level_unified_stream_ && sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream_)));
   }
 
