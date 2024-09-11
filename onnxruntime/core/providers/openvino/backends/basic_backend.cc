@@ -292,88 +292,102 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           ORT_THROW(msg);
         }
       } else {
-        auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
-        auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
-        ov_tensor_data_t ov_tensor_key;
-        ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
-        if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
-          ov_tensor_key = it->second;
-        } else {
-          // Does this make sense for both types of allocators?
-          auto input = graph_input_info.at(input_idx);
-          ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
-                                                                  (void*)tensor.GetTensorRawData());
-          if (allocator_name == OpenVINO_RT_NPU) {
-            ov_tensor_key.copy_needed = false;
-          } else {
-            ov_tensor_key.copy_needed = true;
-          }
-          ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_key);
-
+        if ((global_context_.device_type.find("CPU") != std::string::npos ||
+             global_context_.device_type.find("GPU") != std::string::npos)) {
+          OVTensorPtr graph_input_blob;
           try {
-            infer_request->SetTensor(input_name, ov_tensor_key.tensor_ptr);
+            graph_input_blob = infer_request->GetTensor(input_name);
           } catch (const char* msg) {
             ORT_THROW(msg);
           }
-        }
+          FillInputBlob(std::move(graph_input_blob), batch_slice_idx, std::move(input_name), context, subgraph_context_);
+        } else {
+          auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
+          auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
+          ov_tensor_data_t ov_tensor_key;
+          ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
+          if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
+            ov_tensor_key = it->second;
+          } else {
+            // Does this make sense for both types of allocators?
+            auto input = graph_input_info.at(input_idx);
+            if (allocator_name == OpenVINO_RT_NPU) {
+              ov_tensor_key.copy_needed = false;
+              ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
+                                                                      (void*)tensor.GetTensorRawData());
+            } else {
+              ov_tensor_key.copy_needed = true;
+              ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape());
+            }
+            ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_key);
 
-        if (ov_tensor_key.copy_needed) {
-          const char* ort_tensor_data = tensor.GetTensorData<char>();
-          size_t tensor_data_size = ov_tensor_key.tensor_ptr->get_byte_size();
-          auto ort_batch_memory_offset = ort_tensor_data + tensor_data_size * batch_slice_idx;
-          std::memcpy(ov_tensor_key.tensor_ptr->data(), ort_batch_memory_offset, tensor_data_size);
+            if (ov_tensor_key.copy_needed) {
+              const char* ort_tensor_data = tensor.GetTensorData<char>();
+              size_t tensor_data_size = ov_tensor_key.tensor_ptr->get_byte_size();
+              auto ort_batch_memory_offset = ort_tensor_data + tensor_data_size * batch_slice_idx;
+              std::memcpy(ov_tensor_key.tensor_ptr->data(), ort_batch_memory_offset, tensor_data_size);
+            }
+
+            try {
+              infer_request->SetTensor(input_name, ov_tensor_key.tensor_ptr);
+            } catch (const char* msg) {
+              ORT_THROW(msg);
+            }
+          }
         }
       }
       input_idx++;
     }
-
-    // Set the output blob as remote blob
-    auto graph_output_info = exe_network_.Get().outputs();
-    auto output_idx = 0;
-    for (auto output_info_iter = graph_output_info.begin();
-         output_info_iter != graph_output_info.end(); ++output_info_iter) {
-      auto output_names = output_info_iter->get_names();
-      std::string onnx_output_name;
-      std::string output_name;
-      // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
-      for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-        onnx_output_name = it->first;
-        if (output_names.find(onnx_output_name) != output_names.end()) {
-          // Assigning the output_name
-          output_name = it->first;
-          break;
+    if (global_context_.device_type.find("NPU") != std::string::npos) {
+      // Set the output blob as remote blob
+      auto graph_output_info = exe_network_.Get().outputs();
+      auto output_idx = 0;
+      for (auto output_info_iter = graph_output_info.begin();
+           output_info_iter != graph_output_info.end(); ++output_info_iter) {
+        auto output_names = output_info_iter->get_names();
+        std::string onnx_output_name;
+        std::string output_name;
+        // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
+        for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
+          onnx_output_name = it->first;
+          if (output_names.find(onnx_output_name) != output_names.end()) {
+            // Assigning the output_name
+            output_name = it->first;
+            break;
+          }
         }
-      }
-      size_t batch_size = 1;
-      Ort::UnownedValue tensor = GetOutputTensor(context,
-                                                 batch_size,
-                                                 infer_request,
-                                                 output_name,
-                                                 subgraph_context_.output_names);
-      auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
+        size_t batch_size = 1;
+        Ort::UnownedValue tensor = GetOutputTensor(context,
+                                                   batch_size,
+                                                   infer_request,
+                                                   output_name,
+                                                   subgraph_context_.output_names);
+        auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
 
-      ov_tensor_data_t ov_tensor_data;
-      ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
-      if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
-        ov_tensor_data = it->second;
-      } else {
-        auto output = graph_output_info.at(output_idx);
-        ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
-                                                                 (void*)tensor.GetTensorRawData());
-        if (allocator_name == OpenVINO_RT_NPU) {
-          ov_tensor_data.copy_needed = false;
+        ov_tensor_data_t ov_tensor_data;
+        ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
+        if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
+          ov_tensor_data = it->second;
         } else {
-          ov_tensor_data.copy_needed = true;
-        }
-        ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_data);
+          auto output = graph_output_info.at(output_idx);
+          if (allocator_name == OpenVINO_RT_NPU) {
+            ov_tensor_data.copy_needed = false;
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
+                                                                     (void*)tensor.GetTensorRawData());
+          } else {
+            ov_tensor_data.copy_needed = true;
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape());
+          }
+          ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_data);
 
-        try {
-          infer_request->SetTensor(output_name, ov_tensor_data.tensor_ptr);
-        } catch (const char* msg) {
-          ORT_THROW(msg);
+          try {
+            infer_request->SetTensor(output_name, ov_tensor_data.tensor_ptr);
+          } catch (const char* msg) {
+            ORT_THROW(msg);
+          }
         }
+        output_idx++;
       }
-      output_idx++;
     }
 
     // Start Async inference
@@ -501,6 +515,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
     auto graph_output_info = exe_network_.Get().outputs();
     for (auto output_info_iter = graph_output_info.begin();
          output_info_iter != graph_output_info.end(); ++output_info_iter) {
+      OVTensorPtr graph_output_blob;
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;
       std::string output_name;
@@ -524,24 +539,42 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
             " doesn't exist in the "
             "list of OpenVINO output tensor names");
       }
-
-      size_t batch_size = 1;
-      Ort::UnownedValue output_tensor =
-          GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
-      auto allocator_name = output_tensor.GetTensorMemoryInfo().GetAllocatorName();
-      ov_tensor_data_t ov_tensor_data;
-      ort_tensor_key_t ort_tensor_key{output_tensor.GetTensorRawData(), allocator_name};
-      if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
-        ov_tensor_data = it->second;
+      if ((global_context_.device_type.find("CPU") != std::string::npos ||
+           global_context_.device_type.find("GPU") != std::string::npos)) {
+        try {
+          graph_output_blob = infer_request->GetTensor(output_name);
+        } catch (const char* msg) {
+          ORT_THROW(msg);
+        }
+        size_t batch_size = 1;
+        Ort::UnownedValue output_tensor =
+            GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
+        auto mem_info = output_tensor.GetTensorMemoryInfo();
+        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+          return;
+        } else {
+          size_t batch_slice = 0;
+          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
+        }
       } else {
-        ORT_THROW(log_tag + "Expected all outputs to have associated OV::Tensor's");
-      }
+        size_t batch_size = 1;
+        Ort::UnownedValue output_tensor =
+            GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
+        auto allocator_name = output_tensor.GetTensorMemoryInfo().GetAllocatorName();
+        ov_tensor_data_t ov_tensor_data;
+        ort_tensor_key_t ort_tensor_key{output_tensor.GetTensorRawData(), allocator_name};
+        if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
+          ov_tensor_data = it->second;
+        } else {
+          ORT_THROW(log_tag + "Expected all outputs to have associated OV::Tensor's");
+        }
 
-      if (ov_tensor_data.copy_needed) {
-        auto ort_tensor_data = output_tensor.GetTensorMutableData<char>();
-        size_t tensor_data_size = ov_tensor_data.tensor_ptr->get_byte_size();
-        auto ort_batch_memory_offset = ort_tensor_data /*+ tensor_data_size * batch_size*/;
-        std::memcpy(ort_batch_memory_offset, ov_tensor_data.tensor_ptr->data(), tensor_data_size);
+        if (ov_tensor_data.copy_needed) {
+          auto ort_tensor_data = output_tensor.GetTensorMutableData<char>();
+          size_t tensor_data_size = ov_tensor_data.tensor_ptr->get_byte_size();
+          auto ort_batch_memory_offset = ort_tensor_data /*+ tensor_data_size * batch_size*/;
+          std::memcpy(ort_batch_memory_offset, ov_tensor_data.tensor_ptr->data(), tensor_data_size);
+        }
       }
     }
 
