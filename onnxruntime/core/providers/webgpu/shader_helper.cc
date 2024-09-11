@@ -196,6 +196,29 @@ Status ValidateVariableDependency(ProgramTensorMetadataDependency dependency, Sh
 }
 }  // namespace
 
+Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const {
+  ORT_RETURN_IF_ERROR(ValidateVariableDataType(input.tensor->GetElementType(), var.type_));
+  ORT_RETURN_IF_ERROR(ValidateVariableShape(input.tensor->Shape(),
+                                            input.use_override_shape,
+                                            input.use_override_shape ? input.override_shape : input.tensor->Shape(),
+                                            var.num_components_));
+  ORT_RETURN_IF_ERROR(ValidateVariableDependency(input.dependency, var.usage_, true));
+
+  return Status::OK();
+}
+Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const {
+  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_));
+  ORT_RETURN_IF_ERROR(ValidateVariableShape(output.tensor->Shape(),
+                                            output.use_override_shape,
+                                            output.use_override_shape ? output.override_shape : output.tensor->Shape(),
+                                            var.num_components_));
+  ORT_RETURN_IF_ERROR(ValidateVariableDependency(output.dependency, var.usage_, false));
+
+  return Status::OK();
+}
+
+#endif  // NDEBUG
+
 const ShaderVariable& ShaderHelper::AddVariableImpl(ProgramVariableScope scope,
                                                     const std::string& name,
                                                     ShaderVariable::Usage usage,
@@ -222,27 +245,6 @@ const ShaderVariable& ShaderHelper::AddVariableImpl(ProgramVariableScope scope,
 
   const auto& var = vars.emplace_back(std::make_unique<ShaderVariable>(name, type, usage, dims));
   return *var;
-}
-
-Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const {
-  ORT_RETURN_IF_ERROR(ValidateVariableDataType(input.tensor->GetElementType(), var.type_));
-  ORT_RETURN_IF_ERROR(ValidateVariableShape(input.tensor->Shape(),
-                                            input.use_override_shape,
-                                            input.use_override_shape ? input.override_shape : input.tensor->Shape(),
-                                            var.num_components_));
-  ORT_RETURN_IF_ERROR(ValidateVariableDependency(input.dependency, var.usage_, true));
-
-  return Status::OK();
-}
-Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const {
-  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_));
-  ORT_RETURN_IF_ERROR(ValidateVariableShape(output.tensor->Shape(),
-                                            output.use_override_shape,
-                                            output.use_override_shape ? output.override_shape : output.tensor->Shape(),
-                                            var.num_components_));
-  ORT_RETURN_IF_ERROR(ValidateVariableDependency(output.dependency, var.usage_, false));
-
-  return Status::OK();
 }
 
 Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
@@ -303,8 +305,6 @@ Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
   }
   return Status::OK();
 }
-
-#endif
 
 Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const {
   std::ostringstream ss;

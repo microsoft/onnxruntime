@@ -385,7 +385,7 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
       if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
-        w_dims_cudnn.insert(w_dims.begin() + 2, 1);
+        w_dims_cudnn.insert(w_dims_cudnn.begin() + 2, 1);
         pads.insert(pads.begin() + kernel_rank, 0);
         pads.insert(pads.begin(), 0);
         kernel_shape.insert(kernel_shape.begin(), 1);

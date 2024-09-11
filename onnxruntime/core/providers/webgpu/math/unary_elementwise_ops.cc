@@ -98,21 +98,6 @@ WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
 
-constexpr char ErfImpl[] = R"(
-const r0 = 0.3275911;
-const r1 = 0.254829592;
-const r2 = -0.284496736;
-const r3 = 1.421413741;
-const r4 = -1.453152027;
-const r5 = 1.061405429;
-
-fn erf_v(v: x_value_t) -> x_value_t {
-  let absv = abs(v);
-  let x = 1.0 / (1.0 + r0 * absv);
-  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
-}
-)";
-
 WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl, ShaderVariable::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Erf, 9, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Erf, 13, WebGpuSupportedFloatTypes())
@@ -125,14 +110,6 @@ WEBGPU_ELEMENTWISE_IMPL(Sigmoid, "1.0 / (1.0 + exp(-a))")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sigmoid, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sigmoid, 13, WebGpuSupportedFloatTypes())
 
-constexpr char HardSigmoidImpl[] = R"(
-fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
-  let alpha = x_element_t(uniforms.attr[0]);
-  let beta_v = vec4<x_element_t>(uniforms.attr[1]);
-  return max(vec4<x_element_t>(0.0),
-             min(vec4<x_element_t>(1.0), alpha * v + beta_v));
-}
-)";
 class HardSigmoid final : public UnaryElementwise {
  public:
   HardSigmoid(const OpKernelInfo& info)
@@ -177,14 +154,6 @@ WEBGPU_ELEMENTWISE_KERNEL(Sinh, 9, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Cosh, "cosh(a)")
 WEBGPU_ELEMENTWISE_KERNEL(Cosh, 9, WebGpuSupportedFloatTypes())
 
-// built-in function tanh() does not work with large input (f32 88.7 or f16 11.09)
-// https://github.com/gpuweb/gpuweb/issues/4458
-constexpr char TanhImpl[] = R"(
-fn tanh_v(a: x_value_t) -> x_value_t {
-  let expr = exp(-2 * abs(a));
-  return sign(a) * (1 - expr) / (1 + expr);
-}
-)";
 WEBGPU_ELEMENTWISE_IMPL(Tanh, "tanh_v(a)", TanhImpl, ShaderVariable::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Tanh, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Tanh, 13, WebGpuSupportedFloatTypes())
@@ -290,17 +259,6 @@ class LinearUnit : public UnaryElementwise {
     OP_TYPE(const OpKernelInfo& info) : LinearUnit{info, #OP_TYPE, __VA_ARGS__} {} \
   };
 
-constexpr char EluImpl[] = R"(
-fn elu(a: x_element_t) -> x_element_t {
-  let alpha = x_element_t(uniforms.attr);
-  return select((exp(a) - 1.0) * alpha, a, a >= 0.0);
-}
-
-fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
-  return vec4(elu(v.x), elu(v.y), elu(v.z), elu(v.w));
-}
-)";
-
 WEBGPU_LU_IMPL(Elu, "elu_v(a)", EluImpl, 1.0)
 WEBGPU_ELEMENTWISE_KERNEL(Elu, 6, WebGpuSupportedFloatTypes())
 
@@ -309,14 +267,11 @@ class Gelu : public UnaryElementwise {
   Gelu(const OpKernelInfo& info)
       : UnaryElementwise{info,
                          "Gelu",
-                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhBasedImpl : DefaultImpl,
+                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
                          info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
                          ShaderVariable::UseValueTypeAlias} {
     cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
   }
-
-  constexpr static const char DefaultImpl[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475))";
-  constexpr static const char TanhBasedImpl[] = "0.5 * a * (1 + tanh_v(0.7978845608028654 * (a + 0.044715 * a * a * a)))";
 };
 
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())

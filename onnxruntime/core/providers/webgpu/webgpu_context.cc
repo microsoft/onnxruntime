@@ -419,7 +419,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
 }
 
 std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> WebGpuContextFactory::contexts_;
-std::mutex WebGpuContextFactory::mutex_;
+OrtMutex WebGpuContextFactory::mutex_;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(int context_id, WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device) {
   if (context_id == 0) {
@@ -432,7 +432,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(int context_id, WGPUInstance 
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance, adapter and device.");
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
 
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
@@ -446,7 +446,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(int context_id, WGPUInstance 
 }
 
 WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
 
   auto it = contexts_.find(context_id);
   ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
