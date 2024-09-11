@@ -48,8 +48,8 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // defined (COREML_ENABLE_MLPROGRAM)
+  } else  // NOLINT
+#endif    // defined (COREML_ENABLE_MLPROGRAM)
   {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 

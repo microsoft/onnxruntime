@@ -329,6 +329,10 @@ TEST(CoreMLExecutionProviderTest, TestUnaryFp16) {
       for (int i = 0; i < 9; i++) {
         output[i] = 1.0f / (1e-4 + input1_fp16[i]);
       }
+    } else if (op == "Relu") {
+      for (int i = 0; i < 9; i++) {
+        output[i] = fmax(0.0f, input1_fp16[i]);
+      }
     }
     std::vector<MLFloat16> output_fp16(9);
     ConvertFloatToMLFloat16(output.data(), output_fp16.data(), 9);
@@ -343,6 +347,7 @@ TEST(CoreMLExecutionProviderTest, TestUnaryFp16) {
   };
   test_binary_op("Sqrt");
   test_binary_op("Reciprocal");
+  test_binary_op("Relu");
 }
 #endif
 

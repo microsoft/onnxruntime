@@ -14,7 +14,9 @@ namespace onnxruntime {
 namespace coreml {
 
 static std::set<const std::string> Float16Ops = {
-    "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal"};
+    "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
+    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
+    "GlobalMaxPool", "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
 
 namespace {
 // TODO, move this to shared_library
