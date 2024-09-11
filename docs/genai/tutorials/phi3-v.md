@@ -72,14 +72,13 @@ If you have an NVIDIA GPU, that will give the best performance right now.
    * CUDA 11
 
    ```bash
-   pip install numpy
-   pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+   pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
    ```
 
    * CUDA 12
 
    ```bash
-   pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+   pip install onnxruntime-genai-cuda
    ```
 
 4. Run the model
@@ -116,7 +115,7 @@ If you have an NVIDIA GPU, that will give the best performance right now.
 2. Install the generate() API for CPU
    
    ```bash
-   pip install --pre onnxruntime-genai
+   pip install onnxruntime-genai
    ```
 
 3. Run the model
