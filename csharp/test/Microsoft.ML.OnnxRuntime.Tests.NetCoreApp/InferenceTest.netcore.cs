@@ -42,7 +42,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 Assert.NotNull(session);
                 Assert.NotNull(session.InputMetadata);
-                Assert.Equal(1, session.InputMetadata.Count); // 1 input nodeMeta
+                Assert.Single(session.InputMetadata); // 1 input nodeMeta
                 Assert.True(session.InputMetadata.ContainsKey("data_0")); // input nodeMeta name
                 Assert.Equal(typeof(float), session.InputMetadata["data_0"].ElementType);
                 Assert.True(session.InputMetadata["data_0"].IsTensor);
@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.NotNull(session.OutputMetadata);
-                Assert.Equal(1, session.OutputMetadata.Count); // 1 output nodeMeta
+                Assert.Single(session.OutputMetadata); // 1 output nodeMeta
                 Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output nodeMeta name
                 Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].ElementType);
                 Assert.True(session.OutputMetadata["softmaxout_1"].IsTensor);
@@ -665,7 +665,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                             break;
                         default:
-                            Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputValue.ValueType}");
+                            Assert.Fail($"TestPreTrainedModels cannot handle Onnxtype: {outputValue.ValueType}");
                             break;
                     }
                 }
@@ -720,7 +720,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                     else
                     {
-                        Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputMeta.OnnxValueType}");
+                        Assert.Fail($"TestPreTrainedModels cannot handle Onnxtype: {outputMeta.OnnxValueType}");
                     }
                 }
             }
@@ -843,7 +843,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                         break;
                     default:
-                        Assert.True(false, "VerifySequenceResults cannot handle Onnxtype: " + resultItem.ValueType.ToString());
+                        Assert.Fail("VerifySequenceResults cannot handle Onnxtype: " + resultItem.ValueType.ToString());
                         break;
                 }
                 Assert.Equal(resultItem.AsTensor<float>(), expectedItem.AsTensor<float>(), new FloatComparer());
@@ -897,7 +897,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(expectedValue.AsTensor<string>(), result.AsTensor<string>(), new ExactComparer<string>());
                     break;
                 default:
-                    Assert.True(false, "TestPreTrainedModels does not yet support output of type: " + elementType.ToString());
+                    Assert.Fail("TestPreTrainedModels does not yet support output of type: " + elementType.ToString());
                     break;
             }
         }
@@ -937,7 +937,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                             break;
                         default:
-                            Assert.True(false, $"VerifySequenceResults cannot handle Onnxtype: {elementMeta.OnnxValueType}");
+                            Assert.Fail($"VerifySequenceResults cannot handle Onnxtype: {elementMeta.OnnxValueType}");
                             break;
                     }
                 }
@@ -1009,7 +1009,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                                new BFloat16Comparer { tolerance = 2 });
                     break;
                 default:
-                    Assert.True(false, "VerifyTensorResults cannot handle ElementType: " + expectedElementType.ToString());
+                    Assert.Fail("VerifyTensorResults cannot handle ElementType: " + expectedElementType.ToString());
                     break;
             }
         }
@@ -1077,7 +1077,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(result.GetStringTensorAsArray(), expectedValue.AsTensor<string>().ToArray(), new ExactComparer<string>());
                         break;
                     default:
-                        Assert.True(false, $"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
+                        Assert.Fail($"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
                         break;
                 }
             }

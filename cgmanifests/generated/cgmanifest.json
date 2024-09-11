@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c58890537f466b9b294f6dd038dd826f9907e03d",
+          "commitHash": "6d77b808217f442170d105131836aa4820c0f43f",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -360,6 +360,16 @@
           "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
         },
         "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]

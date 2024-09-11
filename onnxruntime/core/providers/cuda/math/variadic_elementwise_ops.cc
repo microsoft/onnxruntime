@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/common.h"
 #include "core/providers/cuda/math/variadic_elementwise_ops.h"
 
 #include <cassert>
@@ -209,7 +210,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   TensorShape output_shape;
   TensorShape previous_output_shape = first_input_tensor.Shape();
   for (int index = 1; index < input_count; index++) {
-    ORT_RETURN_IF_ERROR(ComputeOutputShape(
+    ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(
         node_name, previous_output_shape, input_tensors[index].get().Shape(), output_shape));
     previous_output_shape = output_shape;
   }

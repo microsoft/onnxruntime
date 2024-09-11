@@ -244,6 +244,7 @@ Return Value:
     this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
     this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
+    this->CastF16ToF32Kernel = nullptr;
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
@@ -283,6 +284,9 @@ Return Value:
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
     this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+#ifndef __APPLE__
+    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
+#endif  // __APPLE__
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -469,6 +473,16 @@ Return Value:
                 }
 
 #ifndef __APPLE__
+#if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+                //
+                // Check if the processor supports AVX NE CONVERT.
+                //
+                if ((Cpuid7_1[3] & (0b1 << 5)) != 0) {
+                    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx;
+                }
+#endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+
+
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.

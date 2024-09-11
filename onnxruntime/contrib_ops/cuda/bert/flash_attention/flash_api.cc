@@ -35,6 +35,7 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* p_d,
                       void* softmax_lse_d,
                       float softmax_scale,
+                      float softcap,
                       bool is_causal,
                       bool is_bf16,
                       bool use_smooth_softmax,
@@ -111,8 +112,16 @@ void set_params_fprop(Flash_fwd_params& params,
   params.d_rounded = head_size_rounded;
 
   // Set the different scale values.
-  params.scale_softmax = softmax_scale;
-  params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+  if (softcap > 0.0) {
+    params.softcap = softmax_scale / softcap;
+    params.scale_softmax = softcap;
+    params.scale_softmax_log2 = softcap * M_LOG2E;
+  } else {
+    // Remove potential NaN
+    params.softcap = 0.0;
+    params.scale_softmax = softmax_scale;
+    params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+  }
 
   // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API separates
   // local and causal, meaning when we have local window size
@@ -267,6 +276,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int seqlen_q,
                int seqlen_k,
                float softmax_scale,
+               const float softcap,
                bool is_causal,
                bool is_bf16,
                bool use_smooth_softmax,
@@ -294,6 +304,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
+                   softcap,
                    is_causal,
                    is_bf16,
                    use_smooth_softmax,
@@ -343,6 +354,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int max_seqlen_q,
                       int max_seqlen_k,
                       float softmax_scale,
+                      const float softcap,
                       bool is_causal,
                       bool is_bf16,
                       int max_num_blocks_per_seq,
@@ -367,6 +379,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
+                   softcap,
                    is_causal,
                    is_bf16,
                    false,
@@ -427,6 +440,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_k_new,
                        int rotary_dim,
                        const float softmax_scale,
+                       const float softcap,
                        bool is_causal,
                        bool is_bf16,
                        bool use_smooth_softmax,
@@ -440,7 +454,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int max_num_blocks_per_seq,
                        int page_block_size) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-  const int head_size_rounded = round_multiple(head_size, 32);
+  const int head_size_rounded = head_size <= 192 ? round_multiple(head_size, 32) : 256;
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
   const bool paged_KV = block_table != nullptr;
@@ -460,6 +474,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
+                   softcap,
                    is_causal,
                    is_bf16,
                    use_smooth_softmax,

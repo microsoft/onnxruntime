@@ -325,7 +325,7 @@ elif platform.system() == "Windows":
 dl_libs = []
 libs = []
 
-if platform.system() == "Linux":
+if platform.system() == "Linux" or platform.system() == "AIX":
     libs = [
         "onnxruntime_pybind11_state.so",
         "libdnnl.so.2",
@@ -355,7 +355,7 @@ elif platform.system() == "Darwin":
         "onnxruntime_pybind11_state.so",
         "libdnnl.2.dylib",
         "mimalloc.so",
-        "libonnxruntime.dylib*",
+        "libonnxruntime*.dylib",
     ]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.dylib"])
