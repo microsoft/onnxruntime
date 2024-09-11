@@ -77,10 +77,21 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     auto& attrs = fused_node_graph.fused_node.get().GetAttributes();
     assert(attrs.count("index"));
     size_t index = attrs.at("index").i();
-    (**this->execution_providers_)[index]->set_fused_node(&fused_node_graph.fused_node.get());
-    compute_info.create_state_func = [this, index,fused_node_graph](ComputeContext* context, FunctionState* state) {
-      auto* p = (**this->execution_providers_)[index]->compile().release();
-      p->set_subgraph(&fused_node_graph.filtered_graph.get().GetGraph());
+    auto& ep = (**this->execution_providers_)[index];
+    ep->set_fused_node(&fused_node_graph.fused_node.get());
+    {
+      auto& subgraph = fused_node_graph.filtered_graph.get();
+      auto& logger = logging::LoggingManager::DefaultLogger();
+      auto model_proto = subgraph.CreateModel(logger)->ToProto();
+      subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+      auto local_registries = IOnnxRuntimeOpSchemaRegistryList{subgraph.GetSchemaRegistry()};
+      auto model = Model::Create(std::move(*model_proto), subgraph.ModelPath(), &local_registries, logger);
+      ep->set_model(model.release());
+    }
+    compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
+      auto& ep = (**this->execution_providers_)[index];
+      auto* p = ep->compile().release();
+      p->set_model(ep->get_model());
       *state = p;
       return 0;
     };
