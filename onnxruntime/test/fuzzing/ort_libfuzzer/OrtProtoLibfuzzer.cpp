@@ -9,6 +9,8 @@
 
 #include <type_traits>
 
+Ort::Env env;
+
 std::string wstring_to_string(const std::wstring& wstr) {
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
   return converter.to_bytes(wstr);
@@ -78,7 +80,6 @@ static PostProcessor<onnx::ModelProto> reg1 = {
     }};
 
 DEFINE_PROTO_FUZZER(const onnx::ModelProto& msg) {
-  Ort::Env env;
   try {
     auto seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
     onnx::ModelProto msg_proto = msg;
