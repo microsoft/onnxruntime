@@ -125,7 +125,7 @@ pip install ninja
 Run the build script.
 
 ```bash
-python build.py --build_java --android --android_home <path to your Android SDK> --android_ndk_path <path to your NDK installation>` --android_abi  [armeabi-v7a|arm64-v8a|x86|x86_64] --config Release
+python build.py --build_java --android --android_home <path to your Android SDK> --android_ndk_path <path to your NDK installation> --android_abi  [armeabi-v7a|arm64-v8a|x86|x86_64] --config Release
 ```
 
 ## Install the library into your application
