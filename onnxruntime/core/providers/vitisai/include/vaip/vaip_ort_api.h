@@ -171,7 +171,7 @@ struct OrtApiForVaip {
       const AttributeProto& attr);  // [68]
   std::vector<std::string> (*attr_proto_get_strings)(
       const AttributeProto& attr);  // [69]
-  void (*attr_proto_release_strings)(
+  void (*attr_proto_release_string)(
       AttributeProto* attr);  // [70]
   // tensor_proto
   void (*tensor_proto_delete)(TensorProto* tp);  // [70]
