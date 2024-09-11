@@ -1,0 +1,192 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "vcpkg-manifest",
+            "hidden": true,
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+            "cacheVariables": {
+                "VCPKG_INSTALLED_DIR": "${sourceParentDir}/.build"
+            },
+            "environment": {
+                "VCPKG_FEATURE_FLGAS": "manifests,versions"
+            }
+        },
+        {
+            "name": "msvc-static-runtime",
+            "hidden": true,
+            "cacheVariables": {
+                "ONNX_USE_MSVC_STATIC_RUNTIME": true,
+                "protobuf_MSVC_STATIC_RUNTIME": true,
+                "gtest_force_shared_crt": false,
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+            }
+        },
+        {
+            "name": "unit-test",
+            "hidden": true,
+            "cacheVariables": {
+                "onnxruntime_RUN_ONNX_TESTS": true,
+                "onnxruntime_BUILD_BENCHMARKS": true,
+                "onnxruntime_BUILD_UNIT_TESTS": true,
+                "onnxruntime_GENERATE_TEST_REPORTS": true
+            }
+        },
+        {
+            "name": "x64-windows",
+            "inherits": [
+                "msvc-static-runtime",
+                "unit-test"
+            ],
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceParentDir}/cmake_build/x64-windows",
+            "installDir": "${sourceParentDir}/cmake_build/out",
+            "cacheVariables": {
+                "onnxruntime_USE_XNNPACK": true,
+                "onnxruntime_USE_DML": true,
+                "onnxruntime_BUILD_SHARED_LIB": true,
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "intelliSenseMode": "windows-msvc-x64"
+                }
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "x64-windows-vcpkg",
+            "inherits": [
+                "unit-test",
+                "vcpkg-manifest"
+            ],
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceParentDir}/cmake_build/x64-windows",
+            "installDir": "${sourceParentDir}/cmake_build/out",
+            "cacheVariables": {
+                "onnxruntime_USE_VCPKG": true,
+                "onnxruntime_USE_XNNPACK": false,
+                "onnxruntime_USE_DML": false,
+                "onnxruntime_BUILD_SHARED_LIB": true,
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
+                "VCPKG_INSTALL_OPTIONS": "--x-feature=tests",
+                "VCPKG_TARGET_TRIPLET": "x64-windows"
+            }
+        },
+        {
+            "name": "x64-osx",
+            "inherits": [
+                "unit-test"
+            ],
+            "generator": "Xcode",
+            "binaryDir": "${sourceParentDir}/cmake_build/x64-osx",
+            "installDir": "${sourceParentDir}/cmake_build/out",
+            "cacheVariables": {
+                "CMAKE_OSX_ARCHITECTURES": "x86_64",
+                "onnxruntime_BUILD_SHARED_LIB": true,
+                "onnxruntime_USE_XNNPACK": false,
+                "onnxruntime_USE_COREML": true,
+                "onnxruntime_BUILD_OBJC": true,
+                "onnxruntime_BUILD_APPLE_FRAMEWORK": true,
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "x64-osx-vcpkg",
+            "inherits": [
+                "x64-osx",
+                "vcpkg-manifest"
+            ],
+            "cacheVariables": {
+                "onnxruntime_USE_VCPKG": true,
+                "onnxruntime_USE_XNNPACK": false,
+                "onnxruntime_USE_COREML": false,
+                "onnxruntime_BUILD_OBJC": false,
+                "onnxruntime_BUILD_APPLE_FRAMEWORK": false,
+                "VCPKG_INSTALL_OPTIONS": "--x-feature=tests",
+                "VCPKG_TARGET_TRIPLET": "x64-osx"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "x64-windows-debug",
+            "configurePreset": "x64-windows",
+            "configuration": "Debug"
+        },
+        {
+            "name": "x64-windows-vcpkg-debug",
+            "configurePreset": "x64-windows-vcpkg",
+            "configuration": "Debug"
+        },
+        {
+            "name": "x64-osx-debug",
+            "configurePreset": "x64-osx",
+            "configuration": "Debug"
+        },
+        {
+            "name": "x64-osx-vcpkg-debug",
+            "configurePreset": "x64-osx-vcpkg",
+            "configuration": "Debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "x64-windows-debug",
+            "configurePreset": "x64-windows",
+            "configuration": "Debug",
+            "output": {
+                "verbosity": "default",
+                "outputJUnitFile": "TEST-x64-windows-debug.xml",
+                "outputLogFile": "TEST-x64-windows-debug.log",
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure": false
+            }
+        },
+        {
+            "name": "x64-windows-vcpkg-debug",
+            "inherits": "x64-windows-debug",
+            "configurePreset": "x64-windows-vcpkg"
+        },
+        {
+            "name": "x64-osx-debug",
+            "configurePreset": "x64-osx",
+            "configuration": "Debug",
+            "output": {
+                "verbosity": "default",
+                "outputJUnitFile": "TEST-x64-osx-debug.xml",
+                "outputLogFile": "TEST-x64-osx-debug.log",
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure": false
+            }
+        },
+        {
+            "name": "x64-osx-vcpkg-debug",
+            "inherits": "x64-osx-debug",
+            "configurePreset": "x64-osx-vcpkg"
+        }
+    ]
+}
