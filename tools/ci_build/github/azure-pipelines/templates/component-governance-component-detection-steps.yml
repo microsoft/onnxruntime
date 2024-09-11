@@ -35,5 +35,13 @@ steps:
         $(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,
         $(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,
         $(Build.Repository.LocalPath)/js/node_modules,
+        $(Build.Repository.LocalPath)/onnxruntime-inference-examples,
+        $(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,
+        $(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,
+        $(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,
+        $(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,
+        $(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,
+        $(Build.SourcesDirectory)/js/react_native/e2e/node_modules,
+        $(Build.SourcesDirectory)/js/node_modules,
         $(Build.SourcesDirectory)/onnxruntime-inference-examples,
         $(Build.BinariesDirectory)'

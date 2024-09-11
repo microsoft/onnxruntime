@@ -140,7 +140,9 @@ export class Tensor implements TensorInterface {
             type !== 'int64' &&
             type !== 'uint32' &&
             type !== 'uint8' &&
-            type !== 'bool'
+            type !== 'bool' &&
+            type !== 'uint4' &&
+            type !== 'int4'
           ) {
             throw new TypeError(`unsupported type "${type}" to create tensor from gpu buffer`);
           }

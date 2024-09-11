@@ -47,4 +47,4 @@ jobs:
         with:
           name: onnxruntime-java-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30

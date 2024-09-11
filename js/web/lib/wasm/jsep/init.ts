@@ -3,8 +3,9 @@
 
 import { Env } from 'onnxruntime-common';
 
+import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
+
 import type { OrtWasmModule } from '../wasm-types';
-import { DataType, calculateTensorSizeInBytes } from '../wasm-common';
 
 import { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
@@ -48,6 +49,14 @@ class TensorViewImpl implements TensorView {
     }
     const elementCount = ShapeUtil.size(this.dims);
     return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getUint16Array(): Uint16Array {
+    if (this.dataType !== DataType.float16 && this.dataType !== DataType.uint16) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Uint16Array() : new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {

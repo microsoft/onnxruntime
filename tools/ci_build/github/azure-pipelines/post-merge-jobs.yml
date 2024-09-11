@@ -439,7 +439,7 @@ stages:
         xcodeVersion: 14.2
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - script: |
@@ -477,7 +477,7 @@ stages:
         xcodeVersion: 14.2
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - script: |
