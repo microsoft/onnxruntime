@@ -5,7 +5,7 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/rocm/bert/group_query_attention.h"
-#include "contrib_ops/rocm/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/rocm/bert/rotary_embedding_impl.h"
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
 
