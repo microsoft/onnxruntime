@@ -104,4 +104,10 @@ std::vector<std::string> attr_proto_get_strings(const ONNX_NAMESPACE::AttributeP
   }
   return ret;
 }
+
+void attr_proto_release_strings(ONNX_NAMESPACE::AttributeProto* attr) {
+  vai_assert(attr->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_STRINGS, attr->name());
+  attr->release_s();
+  return;
+}
 }  // namespace vaip

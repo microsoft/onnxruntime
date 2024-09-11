@@ -328,6 +328,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.attr_proto_get_floats = vaip::attr_proto_get_floats;
   the_global_api.attr_proto_get_strings = vaip::attr_proto_get_strings;
   the_global_api.attr_proto_get_type = [](const ONNX_NAMESPACE::AttributeProto& attr) -> int { return attr.type(); };
+  the_global_api.attr_proto_release_strings = vaip::attr_proto_release_strings;
 
   /// node attributes
   the_global_api.node_attributes_new = []() { return NodeAttributes::Create().release(); };
