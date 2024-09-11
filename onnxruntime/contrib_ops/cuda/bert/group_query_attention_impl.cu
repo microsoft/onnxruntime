@@ -172,7 +172,7 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
   const int present_sequence_length = parameters.seqlen_present_kv_cache;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-  const int* seqlens_k = (parameters.is_first_prompt && !parameters.is_subsequent_prompt) ? nullptr : reinterpret_cast<const int*>(data.seqlens_k);
+  const int* seqlens_k = parameters.is_first_prompt ? nullptr : reinterpret_cast<const int*>(data.seqlens_k);
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);

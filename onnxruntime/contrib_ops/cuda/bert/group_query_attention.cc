@@ -5,7 +5,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
-#include "contrib_ops/cuda/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
@@ -95,7 +95,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 kv_num_heads_,
                                                                 seqlens_k,
                                                                 total_seqlen,
-                                                                is_past_bsnh_,
                                                                 scale_,
                                                                 softcap_,
                                                                 device_prop.maxThreadsPerBlock));

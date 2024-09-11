@@ -1116,7 +1116,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(6,
                "total_sequence_length",
-               "Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for"
+               "Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for "
                "checking inputs and determining prompt vs token generation case if we are in First Case of seqlens_k.",
                "M")
         .Input(7,
