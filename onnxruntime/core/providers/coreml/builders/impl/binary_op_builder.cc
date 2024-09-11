@@ -73,7 +73,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
-      // we only support fp32 currently. when we add support for integers we need to check the type and use
+      // we support fp32/fp16 currently. when we add support for integers we need to check the type and use
       // "floor_div" or "real_div" accordingly
       coreml_op_type = "real_div";
     } else if (op_type == "Pow") {
@@ -138,7 +138,7 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
                                              const logging::Logger& logger) const {
   // Add/Sub/Mul/Div spec says inputs must be of the same type.
   // Pow spec says inputs can be different types.
-  // We only support float for all of these inputs.
+  // We support float/float16 for all of these inputs.
   if (!IsInputDtypeSupport(node, 0, input_params, logger) ||
       ((node.OpType() == "Pow") && !IsInputDtypeSupport(node, 1, input_params, logger))) {
     return false;
