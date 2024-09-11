@@ -12,6 +12,70 @@
 
 namespace onnxruntime {
 
+// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
+template<typename T, typename Ret>
+ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
+
+template<>
+ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
+{
+  return val.ToFloat();
+}
+
+template<>
+ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
+{
+  return double(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
+}
+
+template<>
+ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val)
+{
+  return val;
+}
+
+template<>
+ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val)
+{
+  return val;
+}
+
+
+
+ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(float val)
+{
+  return val;
+}
+
+ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(double val)
+{
+  // ONNX spec doesn't support 'double' for 'Ret' so when 'T' == double, 'Ret' == float and we need to narrow
+  return gsl::narrow_cast<float>(val);
+}
+
+
+
+// Function template that only converts the input value to MLFloat16 if T is MLFloat16.
+template<typename T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, float>
+ConvertToMLFloat16IfNeeded(float val) {
+  return val;
+}
+
+template<typename T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, MLFloat16>
+ConvertToMLFloat16IfNeeded(float val) {
+  return MLFloat16(val);
+}
+
+template <typename T>
+ORT_FORCEINLINE constexpr double ConvertToMLFloat16IfNeeded(double val)
+{
+  return val;
+}
+
+
+
 LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified, bool contrib_op)
     : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op} {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
@@ -156,70 +220,6 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
 
   utils::MLTypeCallDispatcherFromTypeList<SupportedTypeList> t_disp(elem_type);
   return t_disp.InvokeRet<Status, SrcDispatcher>(p_ctx, axis_, epsilon_, simplified_, contrib_op_);
-}
-
-
-
-// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
-template<typename T, typename Ret>
-ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
-
-template<>
-ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
-{
-  return val.ToFloat();
-}
-
-template<>
-ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
-{
-  return double(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
-}
-
-template<>
-ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val)
-{
-  return val;
-}
-
-template<>
-ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val)
-{
-  return val;
-}
-
-
-
-ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(float val)
-{
-  return val;
-}
-
-ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(double val)
-{
-  // ONNX spec doesn't support 'double' for 'Ret' so when 'T' == double, 'Ret' == float and we need to narrow
-  return gsl::narrow_cast<float>(val);
-}
-
-
-
-// Function template that only converts the input value to MLFloat16 if T is MLFloat16.
-template<typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, float>
-ConvertToMLFloat16IfNeeded(float val) {
-  return val;
-}
-
-template<typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, MLFloat16>
-ConvertToMLFloat16IfNeeded(float val) {
-  return MLFloat16(val);
-}
-
-template <typename T>
-ORT_FORCEINLINE constexpr double ConvertToMLFloat16IfNeeded(double val)
-{
-  return val;
 }
 
 
