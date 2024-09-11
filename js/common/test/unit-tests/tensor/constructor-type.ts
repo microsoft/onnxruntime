@@ -91,7 +91,7 @@ describe('Tensor Constructor Tests - check types', () => {
   });
 
   it("[badtype] new Tensor('bool', Uint8ClampedArray, dims): expect to throw because 'bool' is incorrect type", () => {
-    assert.throws(() => new Tensor('bool', new Uint8ClampedArray([255, 256]), [2]));
+    assert.throws(() => new Tensor('bool', new Uint8ClampedArray([255, 256]), [2]), TypeError);
   });
 
   it("[bool] new Tensor('bool', uint8Array, dims): tensor can be constructed from Uint8Array", () => {
