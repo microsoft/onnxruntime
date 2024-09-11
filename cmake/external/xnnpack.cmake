@@ -32,7 +32,9 @@ onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
 # https://github.com/google/XNNPACK/blob/3b3f7b8a6668f6ab3b6ce33b9f1d1fce971549d1/CMakeLists.txt#L206C82-L206C117
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL "MSVC")
-  FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
+  FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai}
+                      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/kleidiai/NoTestProjects.patch
+                      )
   onnxruntime_fetchcontent_makeavailable(kleidiai)
   set(KLEIDIAI_SOURCE_DIR ${kleidiai_SOURCE_DIR})
 endif()
