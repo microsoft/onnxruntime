@@ -204,15 +204,15 @@ inline float ConvertToFloatIfNeeded(double val)
 
 // Function template that only converts the input value to MLFloat16 if T is MLFloat16.
 template<typename T>
-inline typename std::enable_if<std::is_same<T, float>::value || std::is_same<T, double>::value, float>::type
+inline typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, float>
 ConvertToMLFloat16IfNeeded(float val) {
-    return val;
+  return val;
 }
 
 template<typename T>
-inline typename std::enable_if<std::is_same<T, MLFloat16>::value, T>::type
+inline typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
 ConvertToMLFloat16IfNeeded(float val) {
-    return MLFloat16(val);
+  return MLFloat16(val);
 }
 
 template <typename T>
