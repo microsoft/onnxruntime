@@ -896,11 +896,6 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   auto output_name_span = gsl::make_span(output_names, output_names_len);
   auto output_span = gsl::make_span(output, output_names_len);
 
-  InlinedVector<const char*> input_names_with_lora;
-  InlinedVector<const OrtValue*> input_with_lora;
-
-  CheckAndAdjustForLora(run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
-
   return ToOrtStatus(session->RunAsync(run_options,
                                        input_names_span,
                                        input_span,

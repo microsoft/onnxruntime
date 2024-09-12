@@ -1390,7 +1390,6 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
         # test ort_value creation on top of the bytes
-        input_shape = numpy_arr_input.shape
         float_tensor_data_type = 1  # TensorProto_DataType_FLOAT
         ort_value_with_type = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(numpy_arr_input, float_tensor_data_type)
         self.assertTrue(ort_value_with_type.is_tensor())
