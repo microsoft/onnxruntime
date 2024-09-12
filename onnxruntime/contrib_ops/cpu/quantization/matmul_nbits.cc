@@ -236,7 +236,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       if (IsATypeFloat16(tensor)) {
         auto sptr = tensor.Data<MLFloat16>();
-        std::vector<float> scales_v((const unsigned int)(tensor.Shape().Size()));
+        std::vector<float> scales_v(static_cast<unsigned int>(tensor.Shape().Size()));
         ConvertFp16ToFp32(sptr, &scales_v[0], scales_v.size());
         MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), &scales_v[0], has_zp_input_, nullptr, nullptr);
       } else {
