@@ -17,6 +17,8 @@ constexpr const char* kWebGpuInstance = "webgpuInstance";
 constexpr const char* kWebGpuAdapter = "webgpuAdapter";
 constexpr const char* kWebGpuDevice = "webgpuDevice";
 
+constexpr const char* kDawnProcTable = "dawnProcTable";
+
 constexpr const char* kStorageBufferCacheMode = "storageBufferCacheMode";
 constexpr const char* kUniformBufferCacheMode = "uniformBufferCacheMode";
 constexpr const char* kQueryResolveBufferCacheMode = "queryResolveBufferCacheMode";
