@@ -2839,8 +2839,6 @@ ORT_API(void, OrtApis::ReleaseEnv, OrtEnv* value) {
 }
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
-void _stdcall OrtApis::ReleaseRunOptions(OrtRunOptions* value) noexcept {
-  delete reinterpret_cast<OrtRunOptions*>(value);
-}
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)

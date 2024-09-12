@@ -89,10 +89,11 @@ void addAdapterFormatMethods(pybind11::module& m) {
           R"pbdoc("Enables user to read/write adapter version stored in the file")pbdoc")
       .def(
           "export_adapter",
-          [](const PyAdapterFormatReaderWriter* reader_writer, const std::string& file_name) {
-            std::ofstream file(file_name, std::ios::binary);
+          [](const PyAdapterFormatReaderWriter* reader_writer, const std::wstring& path) {
+            std::filesystem::path file_path(path);
+            std::ofstream file(file_path, std::ios::binary);
             if (file.fail()) {
-              ORT_THROW("Failed to open file:", file_name, " for writing.");
+              ORT_THROW("Failed to open file:", file_path, " for writing.");
             }
 
             adapters::utils::AdapterFormatBuilder format_builder;
@@ -111,19 +112,19 @@ void addAdapterFormatMethods(pybind11::module& m) {
             auto format_span = format_builder.FinishWithSpan(reader_writer->adapter_version_,
                                                              reader_writer->model_version_);
             if (file.write(reinterpret_cast<const char*>(format_span.data()), format_span.size()).fail()) {
-              ORT_THROW("Failed to write :", std::to_string(format_span.size()), " bytes to ", file_name);
+              ORT_THROW("Failed to write :", std::to_string(format_span.size()), " bytes to ", file_path);
             }
 
             if (file.flush().fail()) {
-              ORT_THROW("Failed to flush :", file_name, " on close");
+              ORT_THROW("Failed to flush :", file_path, " on close");
             }
           },
           R"pbdoc("Save adapter parameters into a onnxruntime adapter file format.)pbdoc")
 
       .def_static(
-          "read_adapter", [](const std::string& file_name) -> std::unique_ptr<PyAdapterFormatReaderWriter> {
+          "read_adapter", [](const std::wstring& file_path) -> std::unique_ptr<PyAdapterFormatReaderWriter> {
             lora::LoraAdapter lora_adapter;
-            lora_adapter.Load(file_name);
+            lora_adapter.Load(file_path);
 
             auto [begin, end] = lora_adapter.GetParamIterators();
             py::dict params;
@@ -143,7 +144,8 @@ void addAdapterFormatMethods(pybind11::module& m) {
 
   py::class_<lora::LoraAdapter> lora_adapter_binding(m, "LoraAdapter");
   lora_adapter_binding.def(py::init())
-      .def("Load", [](lora::LoraAdapter* adapter, const std::wstring& file_path) { adapter->MemoryMap(file_path); }, R"pbdoc(Memory map the specified file as LoraAdapter)pbdoc");
+      .def("Load", [](lora::LoraAdapter* adapter, const std::wstring& file_path) { adapter->Load(file_path); },
+        R"pbdoc(Memory map the specified file as LoraAdapter)pbdoc");
 }
 
 }  // namespace python

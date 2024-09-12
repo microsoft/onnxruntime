@@ -1863,7 +1863,7 @@ class TestInferenceSession(unittest.TestCase):
         actual_params = adapter_format_read.get_parameters()
         self.assertCountEqual(params, actual_params)
         for key, value in actual_params.items():
-            self.assertTrue(key in params)
+            self.assertIn(key, params)
             expected_val = params.get(key)
             self.assertTrue(value.is_tensor())
             self.assertEqual(expected_val.element_type(), value.element_type())

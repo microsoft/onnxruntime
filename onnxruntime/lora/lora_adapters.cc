@@ -69,7 +69,7 @@ size_t LoraAdapter::GetBufferSize() const {
 }  // namespace lora
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* /* allocator */,
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* /* allocator */,
                     _Outptr_ OrtLoraAdapter** adapter) {
   API_IMPL_BEGIN
   auto lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
