@@ -1030,14 +1030,13 @@ MlasComputeTanh(
 // Half-precision floating-point routines.
 //
 
-extern "C"
 void
 MLASCALL
 MlasConvertHalfToFloatBuffer(
     const unsigned short* Source,
     float* Destination,
     size_t Count
-    );
+);
 
 //
 // Transpose routines.

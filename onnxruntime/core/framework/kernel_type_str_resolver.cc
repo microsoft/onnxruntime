@@ -46,12 +46,8 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
 
-#ifdef DISABLE_ABSEIL
   // TODO(edgchen1) maybe we can use transparent hash/eq to enable lookup with string_view
   const auto type_str_it = type_str_map.find(std::string(kernel_type_str));
-#else
-  const auto type_str_it = type_str_map.find(kernel_type_str);
-#endif
 
   ORT_RETURN_IF(type_str_it == type_str_map.end(),
                 "Failed to find args for kernel type string '", kernel_type_str,
