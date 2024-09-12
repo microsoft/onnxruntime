@@ -90,6 +90,7 @@ jobs:
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
           ./emsdk install 3.1.59
           ./emsdk activate 3.1.59
+          which -a nodejs
           which -a npm
         displayName: 'emsdk install and activate ccache for emscripten'
 
