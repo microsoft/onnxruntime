@@ -2267,8 +2267,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         parser_nodes_list.reserve(num_subgraphs);
 
         for (int64_t i = 0; i < num_subgraphs; ++i) {
-          int64_t subgraph_len = 0; 
-          int64_t* nodes = trt_parser->getSubgraphNodes(i, subgraph_len);  
+          int64_t subgraph_len = 0;
+          int64_t* nodes = trt_parser->getSubgraphNodes(i, subgraph_len);
           parser_nodes_list.emplace_back();
           parser_nodes_list.back().first.reserve(subgraph_len);
           for (int64_t j = 0; j < subgraph_len; ++j) {
@@ -2285,8 +2285,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-
-            /* 
+            /*
              * Convert the supported node list returning from onnx-tensorrt parser to the node list recognized by ORT TRT.
              *
              * TRT EP reconstructs the graph based on the nodes in group.first and feeds this graph (converts to model proto and to string buffer) to onnx-tensorrt parser.
@@ -2296,7 +2295,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
              * however, once the graph is converted to model proto, the node proto order in model proto (ex: onnx-tensorrt calls model.graph().node() to iterate NodeProto in ModelProto) is decided by topo sort.
              *
              * The topo sort list, i.e. subgraph_node_index, acts as the node index mapping table:
-             * subgraph_node_index[node index from onnx-tensorrt parser] = index in group.first  
+             * subgraph_node_index[node index from onnx-tensorrt parser] = index in group.first
              *
              * In the past, TRT EP uses ORT's default reversed DFS topo sort which might end up with the sorting result not incremental, ex: the subgraph_node_index = [0,2,1,3,4].
              * With the change of using ORT's priority-based topo sort (node with lower node index outputs first) the sorting result is incremental meaning subgraph_node_index is [0,1,2,3....],
