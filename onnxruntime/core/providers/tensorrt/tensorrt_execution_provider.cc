@@ -2285,18 +2285,23 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-            /* Converting the supported node list returning from onnx-tensorrt parser to the node list recognized by ORT TRT.
+
+            /* 
+             * Convert the supported node list returning from onnx-tensorrt parser to the node list recognized by ORT TRT.
              *
-             * TRT EP reconstructs the graph based on the nodes in group.first as above and feeds this graph (converting to ModelProto and to string buffer) to onnx-tensorrt.
-             * The supported node index in the list returning from onnx-tensorrt parser might not be the same as the node index in group.first.
-             * Therefore, TRT EP needs a node index mapping table here, this is what "subgraph_node_index[next_nodes_list[i].first[j]]" is doining.
+             * TRT EP reconstructs the graph based on the nodes in group.first and feeds this graph (converts to model proto and to string buffer) to onnx-tensorrt parser.
+             * The node index in the list returning from onnx-tensorrt parser might not be the same as the node index in group.first. Therefore, TRT EP needs a node index mapping table here.
              *
-             * The order of iterating the nodes in group.first and calling graph_build.AddNode() determines the node index of that node in the newly constructed graph (see Graph::AllocateNode() in graph.cc),
-             * since the iterating order is based on topo sort, the node order of the graph (ex: onnx-tensorrt calls model.graph().node() to iterate NodeProto in ModelProto) is the same as its topo sort order.
+             * The order of iterating the nodes in group.first and calling graph_build.AddNode() determines the node order in the newly constructed graph (see Graph::AllocateNode() in graph.cc),
+             * however, once the graph is converted to model proto, the node proto order in model proto (ex: onnx-tensorrt calls model.graph().node() to iterate NodeProto in ModelProto) is decided by topo sort.
+             *
+             * The topo sort list, i.e. subgraph_node_index, acts as the node index mapping table:
+             * subgraph_node_index[node index from onnx-tensorrt parser] = index in group.first  
              *
              * In the past, TRT EP uses ORT's default reversed DFS topo sort which might end up with the sorting result not incremental, ex: the subgraph_node_index = [0,2,1,3,4].
              * With the change of using ORT's priority-based topo sort (node with lower node index outputs first) the sorting result is incremental meaning subgraph_node_index is [0,1,2,3....],
              * therefore subgraph_node_index as a mapping table is not needed anymore.
+             *
              * TODO: Remove the subgraph_node_index
              */
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
