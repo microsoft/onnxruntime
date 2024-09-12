@@ -1355,8 +1355,8 @@ public class OrtSession implements AutoCloseable {
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
         throws OrtException;
 
-    private native void addACL(long apiHandle, long nativeHandle,
-        boolean enableFastMath) throws OrtException;
+    private native void addACL(long apiHandle, long nativeHandle, boolean enableFastMath)
+        throws OrtException;
 
     private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;
