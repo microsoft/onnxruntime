@@ -87,11 +87,10 @@ jobs:
   - ${{if eq(parameters.WithCache, false)}}:
       - script: |
           set -ex
-          find $(Agent.ToolsDirectory) -name node
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
           ./emsdk install 3.1.59
           ./emsdk activate 3.1.59
-          apt-cache search npm
+          sudo apt-get install -y npm
           source $(Build.SourcesDirectory)/cmake/external/emsdk/emsdk_env.sh
           which -a node
           which -a npm
