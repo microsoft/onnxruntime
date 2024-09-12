@@ -42,7 +42,7 @@ parameters:
 jobs:
 - job: build_WASM
   pool:
-    name: ${{ parameters.PoolName }}
+    name: onnxruntime-Ubuntu2204-AMD-CPU-test3
   variables:
     buildArch: x64
     CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads --use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
