@@ -79,7 +79,6 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-template <typename AType>
 class MatMulNBits final : public OpKernel {
  public:
   MatMulNBits(const OpKernelInfo& info)
@@ -147,10 +146,17 @@ class MatMulNBits final : public OpKernel {
   bool all_constant_{false};
 
 #endif  // defined(ORT_NEURAL_SPEED)
+
+  template<typename AType>
+  Status ComputeTyped(OpKernelContext* ctx) const;
 };
 
-template <typename AType>
-Status MatMulNBits<AType>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+bool IsATypeFloat16(const Tensor& tensor)
+{
+  return tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+}
+
+Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                    /*out*/ bool& is_packed,
                                    /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
@@ -228,12 +234,13 @@ Status MatMulNBits<AType>::PrePack(const Tensor& tensor, int input_idx, /*out*/ 
   } else if (compute_type == CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
-      auto sptr = tensor.Data<AType>();
-      if constexpr (std::is_same<AType, MLFloat16>::value) {
+      if (IsATypeFloat16(tensor)) {
+        auto sptr = tensor.Data<MLFloat16>();
         std::vector<float> scales_v((const unsigned int)(tensor.Shape().Size()));
         ConvertFp16ToFp32(sptr, &scales_v[0], scales_v.size());
         MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), &scales_v[0], has_zp_input_, nullptr, nullptr);
       } else {
+        auto sptr = tensor.Data<float>();
         MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), sptr, has_zp_input_, nullptr, nullptr);
       }
       is_packed = false;
@@ -249,8 +256,7 @@ Status MatMulNBits<AType>::PrePack(const Tensor& tensor, int input_idx, /*out*/ 
   return Status::OK();
 }
 
-template <typename AType>
-Status MatMulNBits<AType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                                      /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
@@ -282,8 +288,18 @@ Status MatMulNBits<AType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr
   return Status::OK();
 }
 
-template <typename AType>
-Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
+Status MatMulNBits::Compute(OpKernelContext* ctx) const {
+  const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
+
+  if (IsATypeFloat16(*a)) {
+    return ComputeTyped<MLFloat16>(ctx);
+  } else {
+    return ComputeTyped<float>(ctx);
+  }
+}
+
+template<typename AType>
+Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
   const auto* a_data = a->Data<AType>();
@@ -573,31 +589,17 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   }
 }
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits,
     kMSDomain,
     1,
-    float,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>()})
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulNBits<float>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MatMulNBits,
-    kMSDomain,
-    1,
-    MLFloat16,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulNBits<MLFloat16>);
+    MatMulNBits);
 
 }  // namespace contrib
 }  // namespace onnxruntime
