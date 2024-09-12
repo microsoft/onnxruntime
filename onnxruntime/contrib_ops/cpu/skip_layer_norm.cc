@@ -155,11 +155,12 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
             value += ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
           }
 
+          T converted_value = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(value);
           if (nullptr != p_skip_input_bias_add_output_data) {
-            p_skip_input_bias_add_output_data[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(value);
+            p_skip_input_bias_add_output_data[h] = converted_value;
           }
 
-          p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(value);
+          p_output[h] = converted_value;
           mean += value;
           mean_square += value * value;
         }
