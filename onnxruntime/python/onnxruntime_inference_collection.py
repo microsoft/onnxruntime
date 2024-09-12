@@ -32,44 +32,50 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         raise Exception("Unsupported device type: " + device_type)
 
 
-# class Adapter:
-#     """
-#     Instances of this class are used to represent adapter information
-#     obtained from read_adapter().
-#     """
+class AdapterFormat:
+    """
+    This class is used to create adapter files
+    """
 
-#     def __init__(self, adapter):
-#         self._adapter = adapter
+    def __init__(self, adapter=None):
+        if adapter is None:
+            self._adapter = C.AdapterFormat()
+        else:
+            self._adapter = adapter
 
-#     @staticmethod
-#     def read_adapter(file_path: os.PathLike) -> Adapter:
-#         return Adapter(C.read_adapter(file_path))
+    @staticmethod
+    def read_adapter(file_path: os.PathLike) -> AdapterFormat:
+        return AdapterFormat(C.AdapterFormat.read_adapter(file_path))
 
-#     @staticmethod
-#     def export_adapter(
-#         file_path: os.PathLike, adapter_version: int, model_version: int, params: dict[str, Sequence[Any]]
-#     ):
-#         """
-#         This function takes in the parameters and writes a file at the specified location
-#         in onnxrunitme adapter format containing Lora parameters.
-#         :param file_path: absolute path for the adapter
-#         :param adapter_version: the version of the adapter
-#         :param model_version: the version of the model this adapter is being created
-#         :param params: a dictionary of string -> numpy array containing adapter parameters
-#         """
-#         C.export_adapter(file_path, adapter_version, model_version, params)
+    def export_adapter(self, file_path: os.PathLike):
+        """
+        This function writes a file at the specified location
+        in onnxrunitme adapter format containing Lora parameters.
 
-#     def get_format_version(self):
-#         return self._adapter.get_format_version()
+        :param file_path: absolute path for the adapter
+        """
+        self._adapter.export_adapter(file_path)
 
-#     def get_adapter_version(self):
-#         return self._adapter.get_adapter_version()
+    def get_format_version(self):
+        return self._adapter.format_version
 
-#     def get_model_version(self):
-#         return self._adapter.get_model_version()
+    def set_adapter_version(self, adapter_version: int):
+        self._adapter.adapter_version = adapter_version
 
-#     def get_parameters(self) -> dict[str, Sequence[Any]]:
-#         return self._adapter.get_parameters()
+    def get_adapter_version(self):
+        return self._adapter.adapter_version
+
+    def set_model_version(self, model_version: int):
+        self._adapter.model_version = model_version
+
+    def get_model_version(self):
+        return self._adapter.model_version
+
+    def set_parameters(self, params: dict[str, OrtValue]):
+        self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
+
+    def get_parameters(self) -> dict[str, OrtValue]:
+        return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
 def check_and_normalize_provider_args(
@@ -752,18 +758,18 @@ class OrtValue:
         )
 
     @staticmethod
-    def ortvalue_from_bytes(data: bytes, shape: Sequence[int], onnx_element_type: int):
+    def ortvalue_from_numpy_with_onnxtype(data: Sequence[int], onnx_element_type: int):
         """
-        This method creates an instance of OrtValue on top of the bytes object
+        This method creates an instance of OrtValue on top of the numpy array
         No data copy is made and the lifespan of the resulting OrtValue should never
-        exceed the lifespan of bytes object
+        exceed the lifespan of bytes object. The API attempts to reinterpret
+        the data type which is expected to be the same size. This is useful
+        when we want to use an ONNX data type that is not supported by numpy.
 
-        :param data: bytes containing data. This is expected to be a flat array of bytes.
-        :param shape: shape of the tensor. shape*data_type_size must match the length of bytes
-                    shape is expected to be a numpy array of int64.
+        :param data: numpy array.
         :param onnx_elemenet_type: a valid onnx TensorProto::DataType enum value
         """
-        return C.OrtValue.ortvalue_from_bytes(data, shape, onnx_element_type)
+        return OrtValue(C.OrtValue.ortvalue_from_numpy_with_onnxtype(data, onnx_element_type), data)
 
     @staticmethod
     def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):

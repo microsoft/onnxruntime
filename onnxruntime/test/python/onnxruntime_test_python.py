@@ -1391,14 +1391,11 @@ class TestInferenceSession(unittest.TestCase):
 
         # test ort_value creation on top of the bytes
         input_shape = numpy_arr_input.shape
-        numpy_arr_input_bytes = numpy_arr_input.tobytes()
         float_tensor_data_type = 1  # TensorProto_DataType_FLOAT
-        ort_value_over_bytes = onnxrt.OrtValue.ortvalue_from_bytes(
-            numpy_arr_input_bytes, input_shape, float_tensor_data_type
-        )
-        self.assertTrue(ort_value_over_bytes.is_tensor())
-        self.assertEqual(float_tensor_data_type, ort_value_over_bytes.element_type())
-        self.assertEqual([3, 2], ort_value_over_bytes.shape())
+        ort_value_with_type = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(numpy_arr_input, float_tensor_data_type)
+        self.assertTrue(ort_value_with_type.is_tensor())
+        self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
+        self.assertEqual([3, 2], ort_value_with_type.shape())
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, "cuda", 0)
@@ -1835,44 +1832,44 @@ class TestInferenceSession(unittest.TestCase):
             device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
             device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
 
-    # def test_adater_export_read(self):
-    #     adapter_version = 1
-    #     model_version = 1
-    #     exported_adapter_file = "test_adapter.onnx_adapter"
+    def test_adater_export_read(self):
+        adapter_version = 1
+        model_version = 1
+        exported_adapter_file = "test_adapter.onnx_adapter"
 
-    #     val1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    #     # val2 = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    #     # param_1 = np.array(val1, dtype=float)
-    #     # param_2 = np.array(val2, dtype=np.float64)
+        float_data_type = 1
+        int64_data_type = 7
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+        param_2 = np.array(val).astype(np.int64).reshape(2, 5)
 
-    #     types = [
-    #         # np.dtype((np.uint16, {"bfloat16" :(np.uint16, 0)})),
-    #         #      np.dtype((np.uint8, {"e4m3fn" :(np.uint8, 0)})),
-    #         #      np.dtype((np.uint8, {"e4m3fnuz" :(np.uint8, 0)})),
-    #         #      np.dtype((np.uint8, {"e5m2" :(np.uint8, 0)})),
-    #         #      np.dtype((np.uint8, {"e5m2fnuz" :(np.uint8, 0)})),
-    #              float,
-    #              np.float64]
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(param_1, float_data_type)
+        ort_val_2 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(param_2, int64_data_type)
 
-    #     params = {}
-    #     for t in types:
-    #         name = "param_" + str(len(params))
-    #         v = np.array(val1, dtype=t)
-    #         params[name] = v
+        params = {"param_1": ort_val_1, "param_2": ort_val_2}
 
-    #     onnxrt.Adapter.export_adapter(exported_adapter_file, adapter_version, model_version, params)
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters(params)
 
-    #     adapter = onnxrt.Adapter.read_adapter(exported_adapter_file)
-    #     os.remove(exported_adapter_file)
-    #     self.assertEqual(adapter_version, adapter.get_adapter_version())
-    #     self.assertEqual(model_version, adapter.get_model_version())
+        adapter_format.export_adapter(exported_adapter_file)
 
-    #     actual_params = adapter.get_parameters()
-    #     self.assertCountEqual(params, actual_params)
-    #     for key, value in actual_params.items():
-    #         self.assertTrue(key in params)
-    #         expected_val = params.get(key)
-    #         np.testing.assert_allclose(expected_val, value)
+        adapter_format_read = onnxrt.AdapterFormat.read_adapter(exported_adapter_file)
+        os.remove(exported_adapter_file)
+
+        self.assertEqual(adapter_version, adapter_format_read.get_adapter_version())
+        self.assertEqual(model_version, adapter_format_read.get_model_version())
+
+        actual_params = adapter_format_read.get_parameters()
+        self.assertCountEqual(params, actual_params)
+        for key, value in actual_params.items():
+            self.assertTrue(key in params)
+            expected_val = params.get(key)
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(expected_val.element_type(), value.element_type())
+            self.assertEqual(expected_val.shape(), value.shape())
+            np.testing.assert_allclose(expected_val.numpy(), value.numpy())
 
 
 if __name__ == "__main__":

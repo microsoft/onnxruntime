@@ -192,7 +192,7 @@ struct PyAdapterFormatReaderWriter {
 
 /* */
 void addAdapterFormatMethods(pybind11::module& m) {
-  py::class_<PyAdapterFormatReaderWriter> adapter_binding(m, "Adapter");
+  py::class_<PyAdapterFormatReaderWriter> adapter_binding(m, "AdapterFormat");
   adapter_binding.def(py::init())
       .def_property_readonly(
           "format_version",
