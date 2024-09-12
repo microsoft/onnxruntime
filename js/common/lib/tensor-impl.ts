@@ -221,7 +221,11 @@ export class Tensor implements TensorInterface {
           } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
           } else if (arg1 instanceof Uint8ClampedArray) {
-            data = Uint8Array.from(arg1);
+            if (arg0 === 'uint8') {
+              data = Uint8Array.from(arg1);
+            } else {
+              throw new TypeError(`A Uint8ClampedArray tensor's data must be type of uint8`);
+            }
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }
