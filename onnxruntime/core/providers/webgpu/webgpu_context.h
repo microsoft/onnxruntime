@@ -28,7 +28,11 @@ class ProgramBase;
 
 class WebGpuContextFactory {
  public:
-  static WebGpuContext& CreateContext(int context_id, WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device);
+  static WebGpuContext& CreateContext(int context_id,
+                                      WGPUInstance instance,
+                                      WGPUAdapter adapter,
+                                      WGPUDevice device,
+                                      ValidationMode validation_mode);
   static WebGpuContext& GetContext(int context_id);
 
  private:
@@ -95,17 +99,30 @@ class WebGpuContext final {
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
+  inline webgpu::ValidationMode ValidationMode() const {
+    return validation_mode_;
+  }
+
   Status Run(const ComputeContext& context, const ProgramBase& program);
 
  private:
-  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device) : instance_{instance}, adapter_{adapter}, device_{device} {}
+  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
+      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
+
+  std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const;
+  std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const;
+  std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const;
+  std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
+  wgpu::RequiredLimits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const;
 
   std::once_flag init_flag_;
 
   wgpu::Instance instance_;
   wgpu::Adapter adapter_;
   wgpu::Device device_;
+
+  webgpu::ValidationMode validation_mode_;
 
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;

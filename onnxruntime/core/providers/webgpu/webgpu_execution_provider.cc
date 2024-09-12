@@ -23,7 +23,8 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "data_transfer.h"
+
+#include "core/providers/webgpu/data_transfer.h"
 
 namespace onnxruntime {
 

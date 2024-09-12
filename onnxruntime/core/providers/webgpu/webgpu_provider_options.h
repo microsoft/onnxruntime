@@ -22,6 +22,8 @@ constexpr const char* kUniformBufferCacheMode = "uniformBufferCacheMode";
 constexpr const char* kQueryResolveBufferCacheMode = "queryResolveBufferCacheMode";
 constexpr const char* kDefaultBufferCacheMode = "defaultBufferCacheMode";
 
+constexpr const char* kValidationMode = "validationMode";
+
 // The following are the possible values for the provider options.
 
 constexpr const char* kPreferredLayout_NCHW = "NCHW";
@@ -34,6 +36,11 @@ constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";
 constexpr const char* kBufferCacheMode_Simple = "simple";
 constexpr const char* kBufferCacheMode_Bucket = "bucket";
+
+constexpr const char* kValidationMode_Disabled = "disabled";
+constexpr const char* kValidationMode_wgpuOnly = "wgpuOnly";
+constexpr const char* kValidationMode_basic = "basic";
+constexpr const char* kValidationMode_full = "full";
 
 }  // namespace options
 }  // namespace webgpu

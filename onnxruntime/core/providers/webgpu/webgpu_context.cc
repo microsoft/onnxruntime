@@ -17,79 +17,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-namespace {
-
-std::vector<const char*> GetEnabledAdapterToggles() {
-  // See the description of all the toggles in toggles.cpp
-  // "use_dxc" for Shader Model 6+ features (e.g. float16)
-  // "allow_unsafe_apis" for chromium experimental features
-  constexpr const char* toggles[] = {
-      "use_dxc",
-      "allow_unsafe_apis",
-  };
-  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
-}
-
-std::vector<const char*> GetEnabledDeviceToggles() {
-  // Enable / disable other toggles that may affect the performance.
-  // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
-  constexpr const char* toggles[] = {
-#ifdef NDEBUG
-      // todo: when skip validation, the process may crash.
-      //       need careful decision to enable this toggle.
-      //       revisit this flag before release.
-      "skip_validation",
-#endif
-      "disable_robustness",
-      "disable_workgroup_init",
-      "d3d_disable_ieee_strictness",
-  };
-  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
-}
-
-std::vector<const char*> GetDisabledDeviceToggles() {
-  constexpr const char* toggles[] = {
-      "lazy_clear_resource_on_first_use",
-  };
-  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
-}
-
-std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) {
-  std::vector<wgpu::FeatureName> required_features;
-  constexpr wgpu::FeatureName features[]{
-      wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
-      wgpu::FeatureName::TimestampQuery,
-      wgpu::FeatureName::ShaderF16,
-      wgpu::FeatureName::Subgroups,
-      wgpu::FeatureName::SubgroupsF16};
-  for (auto feature : features) {
-    if (adapter.HasFeature(feature)) {
-      required_features.push_back(feature);
-    }
-  }
-  return required_features;
-}
-
-wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) {
-  wgpu::RequiredLimits required_limits{};
-  wgpu::SupportedLimits adapter_limits;
-  ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
-
-  required_limits.limits.maxBindGroups = adapter_limits.limits.maxBindGroups;
-  required_limits.limits.maxComputeWorkgroupStorageSize = adapter_limits.limits.maxComputeWorkgroupStorageSize;
-  required_limits.limits.maxComputeWorkgroupsPerDimension = adapter_limits.limits.maxComputeWorkgroupsPerDimension;
-  required_limits.limits.maxStorageBufferBindingSize = adapter_limits.limits.maxStorageBufferBindingSize;
-  required_limits.limits.maxBufferSize = adapter_limits.limits.maxBufferSize;
-  required_limits.limits.maxComputeInvocationsPerWorkgroup = adapter_limits.limits.maxComputeInvocationsPerWorkgroup;
-  required_limits.limits.maxComputeWorkgroupSizeX = adapter_limits.limits.maxComputeWorkgroupSizeX;
-  required_limits.limits.maxComputeWorkgroupSizeY = adapter_limits.limits.maxComputeWorkgroupSizeY;
-  required_limits.limits.maxComputeWorkgroupSizeZ = adapter_limits.limits.maxComputeWorkgroupSizeZ;
-
-  return required_limits;
-}
-
-}  // namespace
-
 void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info) {
   std::call_once(init_flag_, [this, &webgpu_ep_info]() {
     // Initialization.Step.1 - Create wgpu::Instance
@@ -194,34 +121,34 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
-#ifndef NDEBUG  // if debug build
-  ORT_ENFORCE(std::all_of(inputs.begin(), inputs.end(), [](const ProgramInput& input) {
-                const auto* tensor = input.tensor;
-                return tensor != nullptr &&
-                       tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
-                       tensor->Location().device.Type() == OrtDevice::GPU &&
-                       !strcmp(tensor->Location().name, WEBGPU_BUFFER);
-              }),
-              "All inputs must be tensors on WebGPU buffers.");
-
-  ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
-                const auto* tensor = output.tensor;
-                return tensor != nullptr &&
-                       tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
-                       tensor->Location().device.Type() == OrtDevice::GPU &&
-                       !strcmp(tensor->Location().name, WEBGPU_BUFFER);
-              }),
-              "All outputs must be tensors on WebGPU buffers.");
-#endif
-
   if (outputs.size() == 0) {
     return Status::OK();
+  }
+
+  if (ValidationMode() >= ValidationMode::Basic) {
+    ORT_ENFORCE(std::all_of(inputs.begin(), inputs.end(), [](const ProgramInput& input) {
+                  const auto* tensor = input.tensor;
+                  return tensor != nullptr &&
+                         tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
+                         tensor->Location().device.Type() == OrtDevice::GPU &&
+                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                }),
+                "All inputs must be tensors on WebGPU buffers.");
+
+    ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
+                  const auto* tensor = output.tensor;
+                  return tensor != nullptr &&
+                         tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
+                         tensor->Location().device.Type() == OrtDevice::GPU &&
+                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                }),
+                "All outputs must be tensors on WebGPU buffers.");
   }
 
   const ProgramMetadata metadata = program.GetMetadata();
 
   // validate program metadata
-  {
+  if (ValidationMode() >= ValidationMode::Basic) {
     const auto& [constants, overridable_constants, uniform_variables] = metadata;
 
     // check overridable constants
@@ -229,17 +156,20 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                   "Size of overridable constants mismatch in program \"", program.Name(),
                   "\", Expected: ", overridable_constants.size(),
                   ", Actual: ", program.OverridableConstants().size());
-    size_t num_overridable_constants = program.OverridableConstants().size();
-    for (size_t i = 0; i < num_overridable_constants; ++i) {
-      const auto& override_value = program.OverridableConstants()[i];
-      const auto& definition = overridable_constants[i];
-      ORT_RETURN_IF(override_value.has_value && override_value.type != definition.type,
-                    "Overridable override_value[", i, "] (", definition.name, ") data type mismatch in program \"", program.Name(),
-                    "\", Expected: ", definition.type,
-                    ", Actual: ", override_value.type);
-      ORT_RETURN_IF(!override_value.has_value && !definition.has_default_value,
-                    "Overridable override_value[", i, "] (", definition.name, ") no override_value specified in program \"", program.Name(),
-                    "\"");
+
+    if (ValidationMode() >= ValidationMode::Full) {
+      size_t num_overridable_constants = program.OverridableConstants().size();
+      for (size_t i = 0; i < num_overridable_constants; ++i) {
+        const auto& override_value = program.OverridableConstants()[i];
+        const auto& definition = overridable_constants[i];
+        ORT_RETURN_IF(override_value.has_value && override_value.type != definition.type,
+                      "Overridable override_value[", i, "] (", definition.name, ") data type mismatch in program \"", program.Name(),
+                      "\", Expected: ", definition.type,
+                      ", Actual: ", override_value.type);
+        ORT_RETURN_IF(!override_value.has_value && !definition.has_default_value,
+                      "Overridable override_value[", i, "] (", definition.name, ") no override_value specified in program \"", program.Name(),
+                      "\"");
+      }
     }
 
     // check uniform variables
@@ -247,14 +177,17 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                   "Size of uniform_value variables mismatch in program \"", program.Name(),
                   "\", Expected: ", uniform_variables.size(),
                   ", Actual: ", program.UniformVariables().size());
-    size_t num_uniform_variables = program.UniformVariables().size();
-    for (size_t i = 0; i < num_uniform_variables; ++i) {
-      const auto& uniform_value = program.UniformVariables()[i];
-      const auto& definition = uniform_variables[i];
-      ORT_RETURN_IF(uniform_value.length > 0 && uniform_value.data_type != definition.data_type,
-                    "Uniform variable[", i, "] (", definition.name, ") data type mismatch in program \"", program.Name(),
-                    "\", Expected: ", definition.data_type,
-                    ", Actual: ", uniform_value.data_type);
+
+    if (ValidationMode() >= ValidationMode::Full) {
+      size_t num_uniform_variables = program.UniformVariables().size();
+      for (size_t i = 0; i < num_uniform_variables; ++i) {
+        const auto& uniform_value = program.UniformVariables()[i];
+        const auto& definition = uniform_variables[i];
+        ORT_RETURN_IF(uniform_value.length > 0 && uniform_value.data_type != definition.data_type,
+                      "Uniform variable[", i, "] (", definition.name, ") data type mismatch in program \"", program.Name(),
+                      "\", Expected: ", definition.data_type,
+                      ", Actual: ", uniform_value.data_type);
+      }
     }
   }
 
@@ -295,9 +228,11 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   // prepare shape uniforms for shader variables (if any) and user defined uniforms
   std::vector<ProgramUniformVariableValue> shape_uniforms;
   shape_uniforms.reserve(program_artifact->shape_uniform_ranks.size() * 2);
-  ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size(),
-                    "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
-                    ") does not match current program (input: ", inputs.size(), ", output: ", outputs.size(), ")");
+  if (ValidationMode() >= ValidationMode::Basic) {
+    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size(),
+                      "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
+                      ") does not match current program (input: ", inputs.size(), ", output: ", outputs.size(), ")");
+  }
   for (size_t i = 0; i < program_artifact->shape_uniform_ranks.size(); ++i) {
     SafeInt<int> expected_rank = program_artifact->shape_uniform_ranks[i];
     if (expected_rank > 0) {
@@ -423,10 +358,81 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   return Status::OK();
 }
 
+std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const {
+  // See the description of all the toggles in toggles.cpp
+  // "use_dxc" for Shader Model 6+ features (e.g. float16)
+  // "allow_unsafe_apis" for chromium experimental features
+  constexpr const char* toggles[] = {
+      "use_dxc",
+      "allow_unsafe_apis",
+  };
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+}
+
+std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
+  // Enable / disable other toggles that may affect the performance.
+  // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
+  constexpr const char* toggles[] = {
+      "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
+      "disable_robustness",
+      "disable_workgroup_init",
+      "d3d_disable_ieee_strictness",
+  };
+  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                      ? std::begin(toggles) + 1
+                                      : std::begin(toggles),
+                                  std::end(toggles));
+}
+
+std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
+  constexpr const char* toggles[] = {
+      "lazy_clear_resource_on_first_use",
+  };
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+}
+
+std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const {
+  std::vector<wgpu::FeatureName> required_features;
+  constexpr wgpu::FeatureName features[]{
+      wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
+      wgpu::FeatureName::TimestampQuery,
+      wgpu::FeatureName::ShaderF16,
+      wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupsF16};
+  for (auto feature : features) {
+    if (adapter.HasFeature(feature)) {
+      required_features.push_back(feature);
+    }
+  }
+  return required_features;
+}
+
+wgpu::RequiredLimits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
+  wgpu::RequiredLimits required_limits{};
+  wgpu::SupportedLimits adapter_limits;
+  ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
+
+  required_limits.limits.maxBindGroups = adapter_limits.limits.maxBindGroups;
+  required_limits.limits.maxComputeWorkgroupStorageSize = adapter_limits.limits.maxComputeWorkgroupStorageSize;
+  required_limits.limits.maxComputeWorkgroupsPerDimension = adapter_limits.limits.maxComputeWorkgroupsPerDimension;
+  required_limits.limits.maxStorageBufferBindingSize = adapter_limits.limits.maxStorageBufferBindingSize;
+  required_limits.limits.maxBufferSize = adapter_limits.limits.maxBufferSize;
+  required_limits.limits.maxComputeInvocationsPerWorkgroup = adapter_limits.limits.maxComputeInvocationsPerWorkgroup;
+  required_limits.limits.maxComputeWorkgroupSizeX = adapter_limits.limits.maxComputeWorkgroupSizeX;
+  required_limits.limits.maxComputeWorkgroupSizeY = adapter_limits.limits.maxComputeWorkgroupSizeY;
+  required_limits.limits.maxComputeWorkgroupSizeZ = adapter_limits.limits.maxComputeWorkgroupSizeZ;
+
+  return required_limits;
+}
+
 std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> WebGpuContextFactory::contexts_;
 OrtMutex WebGpuContextFactory::mutex_;
 
-WebGpuContext& WebGpuContextFactory::CreateContext(int context_id, WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device) {
+WebGpuContext& WebGpuContextFactory::CreateContext(int context_id,
+                                                   WGPUInstance instance,
+                                                   WGPUAdapter adapter,
+                                                   WGPUDevice device,
+                                                   ValidationMode validation_mode) {
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
     ORT_ENFORCE(instance == nullptr && adapter == nullptr && device == nullptr,
@@ -441,7 +447,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(int context_id, WGPUInstance 
 
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, validation_mode));
     it = contexts_.emplace(context_id, std::move(context)).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second->instance_.Get() == instance && it->second->adapter_.Get() == adapter && it->second->device_.Get() == device,
