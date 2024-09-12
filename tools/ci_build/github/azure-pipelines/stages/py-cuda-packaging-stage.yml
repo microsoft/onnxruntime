@@ -82,4 +82,4 @@ stages:
             trt_version: 10.4.0.26-1.cuda11.8
           ${{ if eq(parameters.cuda_version, '12.2') }}:
             docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
-            trt_version: 10.4.0.26-1.cuda12.5
+            trt_version: 10.4.0.26-1.cuda12.6
