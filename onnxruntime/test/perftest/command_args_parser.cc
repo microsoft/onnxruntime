@@ -112,6 +112,9 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_engine_cache_prefix]: Customize engine cache prefix when trt_engine_cache_enable is true.\n"
+      "\t    [TensorRT only] [trt_engine_hw_compatible]: Enable hardware compatibility. Engines ending with '_sm80+' can be re-used across all Ampere+ GPU (a hardware-compatible engine may have lower throughput and/or higher latency than its non-hardware-compatible counterpart).\n"
+      "\t    [TensorRT only] [trt_weight_stripped_engine_enable]: Enable weight-stripped engine build.\n"
+      "\t    [TensorRT only] [trt_onnx_model_folder_path]: Folder path for the ONNX model with weights.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
       "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
       "\t    [TensorRT only] [trt_layer_norm_fp32_fallback]: Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow.\n"
@@ -140,6 +143,8 @@ namespace perftest {
       "\t-D [Disable thread spinning]: disable spinning entirely for thread owned by onnxruntime intra-op thread pool.\n"
       "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
+      "\t-l Provide file as binary in memory by using fopen before session creation.\n"
+      "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -202,7 +207,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -249,7 +254,6 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
-          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
@@ -258,6 +262,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
@@ -384,6 +390,12 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         break;
       case 'n':
         test_config.run_config.exit_after_session_creation = true;
+        break;
+      case 'l':
+        test_config.model_info.load_via_path = true;
+        break;
+      case 'R':
+        test_config.run_config.register_custom_op_path = optarg;
         break;
       case '?':
       case 'h':

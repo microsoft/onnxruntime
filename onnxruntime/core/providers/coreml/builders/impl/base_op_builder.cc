@@ -74,7 +74,7 @@ bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& logger) const {
   for (const auto* input : node.InputDefs()) {
-    if (!IsInputSupported(node, *input, input_params, logger)) {
+    if (!IsInputSupported(node, *input, input_params, logger, allow_empty_tensor_as_input_)) {
       return false;
     }
   }

@@ -705,7 +705,7 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
   for (int index = 1; index < inputCount; index++) {
     auto& data_n = *ctx->Input<Tensor>(index);
     ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
-    min = min.array().min(EigenMap<float>(data_n).array());
+    min = min.array().template min<Eigen::PropagateNaN>(EigenMap<float>(data_n).array());
   }
 
   return Status::OK();
@@ -721,15 +721,16 @@ struct Min_8::ComputeImpl {
     ProcessBroadcastSpanFuncs funcs{
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput1<T>().array().min(per_iter_bh.ScalarInput0<T>());
+              per_iter_bh.EigenInput1<T>().array().template min<Eigen::PropagateNaN>(per_iter_bh.ScalarInput0<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().min(per_iter_bh.ScalarInput1<T>());
+              per_iter_bh.EigenInput0<T>().array().template min<Eigen::PropagateNaN>(per_iter_bh.ScalarInput1<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().min(per_iter_bh.EigenInput1<T>().array());
+              per_iter_bh.EigenInput0<T>().array().template min<Eigen::PropagateNaN>(
+                  per_iter_bh.EigenInput1<T>().array());
         }};
 
     int input_count = inst.Node().InputArgCount().front();
@@ -827,7 +828,7 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
   for (int index = 1; index < inputCount; index++) {
     auto& data_n = *ctx->Input<Tensor>(index);
     ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
-    max = max.array().max(EigenMap<float>(data_n).array());
+    max = max.array().template max<Eigen::PropagateNaN>(EigenMap<float>(data_n).array());
   }
 
   return Status::OK();
@@ -843,15 +844,16 @@ struct Max_8::ComputeImpl {
     ProcessBroadcastSpanFuncs funcs{
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput1<T>().array().max(per_iter_bh.ScalarInput0<T>());
+              per_iter_bh.EigenInput1<T>().array().template max<Eigen::PropagateNaN>(per_iter_bh.ScalarInput0<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().max(per_iter_bh.ScalarInput1<T>());
+              per_iter_bh.EigenInput0<T>().array().template max<Eigen::PropagateNaN>(per_iter_bh.ScalarInput1<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().max(per_iter_bh.EigenInput1<T>().array());
+              per_iter_bh.EigenInput0<T>().array().template max<Eigen::PropagateNaN>(
+                  per_iter_bh.EigenInput1<T>().array());
         }};
 
     int input_count = inst.Node().InputArgCount().front();

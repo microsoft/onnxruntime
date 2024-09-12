@@ -140,7 +140,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         )
 
     def override_function(self):
-        warnings.warn("DeepSpeed fp16_optimizer functions are overrided with faster implementation.", UserWarning)
+        warnings.warn("DeepSpeed fp16_optimizer functions are overridden with faster implementation.", UserWarning)
 
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
             from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops

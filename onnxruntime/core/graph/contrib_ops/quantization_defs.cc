@@ -164,7 +164,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T2", OpSchema::Optional)
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "T2")
         .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain 'x', 'y_scale' to float tensors.")
-        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int4)",
+                               "tensor(uint4)"},
                         "Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.")
         .SetDoc(QuantizeLinear_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -206,7 +207,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
                                 .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
-                                                       "tensor(uint16)", "tensor(int32)"},
+                                                       "tensor(uint16)", "tensor(int32)", "tensor(int4)",
+                                                       "tensor(uint4)"},
                                                 "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
                                                 "16-bit integer tensors, or 32-bit signed integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
@@ -1144,7 +1146,7 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
-Current version does not support past/present, relative_position_bias and qkv_hidden_sizes.
+Current version does not support past/present, attention_bias and qkv_hidden_sizes.
 TODO: Support them if needed in the future.
 )DOC";
 
@@ -1206,8 +1208,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(18, "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
                "Q", OpSchema::Optional)
-        .Input(19, "relative_position_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S",
+        .Input(19, "attention_bias",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length).", "S",
                OpSchema::Optional)
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
         .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")

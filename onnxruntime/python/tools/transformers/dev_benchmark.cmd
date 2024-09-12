@@ -41,7 +41,7 @@ set input_counts=1
 REM Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 set models_to_test=bert-base-cased
 
-REM If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
+REM If you have multiple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 REM set CUDA_VISIBLE_DEVICES=1
 
 REM This script will generate a logs file with a list of commands used in tests.

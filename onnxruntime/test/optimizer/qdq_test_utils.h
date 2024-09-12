@@ -5,9 +5,12 @@
 
 #include <vector>
 #include <string>
+#include <type_traits>
 
 #include "graph_transform_test_builder.h"
 
+#include "core/framework/int4.h"
+#include "core/common/span_utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/session/inference_session.h"
 
@@ -460,6 +463,27 @@ GetQDQTestCaseFn BuildDoubleQDQTestCases(Type1 zp_1, Type2 zp_2, Type3 zp_3, Typ
   };
 }
 
+/// <summary>
+/// Returns a function that builds a model with a double QDQ sequence (Q1 -> DQ1 -> Q2 -> DQ2*),
+/// where DQ2 can be repeated. Must provide at least 4 zero-point and scale values.
+/// </summary>
+/// <param name="input_shape">Shape of input float data.</param>
+/// <param name="input_data">Input float data.</param>
+/// <param name="zero_points">Ordered list of zero-point values for each node in the sequence.</param>
+/// <param name="zero_point_types">Ordered list of zero-point types for each node in the sequence.</param>
+/// <param name="zero_points">Ordered list of scale values for each node in the sequence.</param>
+/// <param name="graph_output_index">Index of the node that provides a graph output.</param>
+/// <param name="use_contrib_qdq">Set to true to use the 'com.microsoft' domain for Q and DQ ops.</param>
+/// <returns>A function for building the model</returns>
+GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
+    gsl::span<const int64_t> input_shape,
+    gsl::span<const float> input_data,
+    gsl::span<const int64_t> zero_points,
+    gsl::span<const ONNX_NAMESPACE::TensorProto_DataType> zero_point_types,
+    gsl::span<const float> scales,
+    size_t graph_output_index,
+    bool use_contrib_qdq = false);
+
 template <typename T>
 GetQDQTestCaseFn BuildDoubleQDQWithoutLastOutput(int output_index, bool use_contrib_qdq = false) {
   return [=](ModelTestBuilder& builder) {
@@ -488,12 +512,21 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(const std::vector<int64_t>& input_shape,
                                        bool use_diff_output_scale,
                                        bool use_contrib_qdq = false) {
   return [input_shape, axis, use_diff_output_scale, use_contrib_qdq](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<InputType>(input_shape,
-                                                   std::numeric_limits<InputType>::min(),
-                                                   std::numeric_limits<InputType>::max());
+    InputType dq_zp{};
+    OutputType q_zp{};
+    NodeArg* input_arg = nullptr;
 
-    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
-    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+    if constexpr (std::is_same_v<InputType, Int4x2> || std::is_same_v<InputType, UInt4x2>) {
+      input_arg = builder.MakeInput(input_shape, InputType(InputType::min_val, 0), InputType(InputType::max_val, 0));
+      dq_zp = InputType(static_cast<std::byte>(InputType::max_val / 2));
+      q_zp = OutputType(static_cast<std::byte>(OutputType::max_val / 2));
+    } else {
+      input_arg = builder.MakeInput<InputType>(input_shape, std::numeric_limits<InputType>::min(),
+                                               std::numeric_limits<InputType>::max());
+      dq_zp = std::numeric_limits<InputType>::max() / 2;
+      q_zp = std::numeric_limits<OutputType>::max() / 2;
+    }
+
     auto* dq_output = builder.MakeIntermediate();
     constexpr float input_scale = 0.003f;
     builder.AddDequantizeLinearNode<InputType>(input_arg, input_scale, dq_zp, dq_output, use_contrib_qdq);

@@ -57,6 +57,9 @@ class QnnModelWrapper {
                       const std::string& graph_name,
                       const QnnGraph_Config_t** graph_configs = nullptr);
 
+  // Make a QnnTensorWrapper from an onnx input or output.
+  Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
+
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
 
@@ -64,6 +67,14 @@ class QnnModelWrapper {
   bool AddParamWrapper(QnnParamWrapper&& param_wrapper);
 
   const QnnTensorWrapper& GetQnnTensorWrapper(const std::string& tensor_name);
+
+  // Utility function to validate a QNN node. Does not modify this object's state.
+  Status ValidateQnnNode(const std::string& node_name,
+                         const std::string& package_name,
+                         const std::string& qnn_op_type,
+                         std::vector<Qnn_Tensor_t>&& input_tensors,
+                         std::vector<Qnn_Tensor_t>&& output_tensors,
+                         std::vector<Qnn_Param_t>&& params) const;
 
   bool CreateQnnNode(const std::string& name,
                      const std::string& package_name,
@@ -113,6 +124,18 @@ class QnnModelWrapper {
     return debug_json_graph_.Finalize();
   }
 
+  Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
+    if (IsInitializerInput(tensor_name)) {
+      return QNN_TENSOR_TYPE_STATIC;
+    } else if (IsGraphInput(tensor_name)) {
+      return QNN_TENSOR_TYPE_APP_WRITE;
+    } else if (IsGraphOutput(tensor_name)) {
+      return QNN_TENSOR_TYPE_APP_READ;
+    } else {
+      return QNN_TENSOR_TYPE_NATIVE;
+    }
+  }
+
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
@@ -147,10 +170,18 @@ class QnnModelWrapper {
                                 const QnnQuantParamsWrapper& quantize_param,
                                 bool do_op_validation,
                                 bool is_for_input = true,
-                                bool is_for_output = false) {
+                                bool is_for_output = false,
+                                bool is_3d = false) {
     LOGS(logger_, VERBOSE) << "Add NCHW->HWCN Transpose node after Conv weight input: " << input_name
                            << " -> " << output_name;
-    return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape,
+    auto perm = is_3d ? nchw2hwcn_perm_3d : nchw2hwcn_perm;
+    std::vector<uint32_t> transpose_perm;
+    transpose_perm.resize(perm.size());
+    std::transform(perm.begin(), perm.end(),
+                   transpose_perm.begin(), [](size_t item) -> uint32_t {
+                     return narrow<uint32_t>(item);
+                   });
+    return AddTransposeNode(node_index, input_name, output_name, input_shape, transpose_perm, output_shape,
                             tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
@@ -164,10 +195,18 @@ class QnnModelWrapper {
                                 const QnnQuantParamsWrapper& quantize_param,
                                 bool do_op_validation,
                                 bool is_for_input = true,
-                                bool is_for_output = false) {
+                                bool is_for_output = false,
+                                bool is_3d = false) {
     LOGS(logger_, VERBOSE) << "Add CNHW->HWCN Transpose node after ConvTranspose weight input: " << input_name
                            << " -> " << output_name;
-    return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape,
+    auto perm = is_3d ? cnhw2hwcn_perm_3d : cnhw2hwcn_perm;
+    std::vector<uint32_t> transpose_perm;
+    transpose_perm.resize(perm.size());
+    std::transform(perm.begin(), perm.end(),
+                   transpose_perm.begin(), [](size_t item) -> uint32_t {
+                     return narrow<uint32_t>(item);
+                   });
+    return AddTransposeNode(node_index, input_name, output_name, input_shape, transpose_perm, output_shape,
                             tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
@@ -182,10 +221,14 @@ class QnnModelWrapper {
   Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
 
   // Unpack zero-points from initializer and convert to int32_t (1 zero-point for per-tensor, > 1 for per-channel).
-  Status UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
+  Status UnpackZeroPoints(const std::string& initializer_name,
+                          /*out*/ std::vector<int32_t>& zero_points,
+                          /*out*/ int32_t& onnx_data_type) const;
 
-  // Checks if a tensor in the ONNX graph is per-axis quantized.
-  Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const;
+  // Checks if a tensor in the ONNX graph is per-channel quantized.
+  Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
+                               /*out*/ bool& is_per_channel,
+                               /*out*/ int64_t& axis) const;
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
@@ -241,8 +284,6 @@ class QnnModelWrapper {
   const std::unordered_map<std::string, size_t>& input_index_map_;
   const std::unordered_map<std::string, size_t>& output_index_map_;
   const std::unordered_set<std::string>& initializer_lookup_;
-  const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
-  const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
 };  // QnnModelWrapper
 

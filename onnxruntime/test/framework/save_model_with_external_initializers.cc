@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/common/path_string.h"
 #include "core/framework/data_types.h"
 #include "core/graph/model.h"
@@ -17,75 +19,100 @@ using namespace onnxruntime;
 namespace onnxruntime {
 namespace test {
 
-void LoadSaveAndCompareModel(const std::string& input_onnx,
-                             const std::string& input_external_init_file,
-                             const std::string& output_onnx,
-                             const std::string& output_external_init_file,
-                             size_t initializer_size_threshold) {
+Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
+                               const std::filesystem::path& input_external_init_file,
+                               const std::filesystem::path& output_onnx,
+                               const std::filesystem::path& output_external_init_file,
+                               size_t initializer_size_threshold,
+                               const Graph::OffsetAlignmentInfo& align_info) {
+  auto logger = DefaultLoggingManager().CreateLogger("LoadSaveAndCompareModel");
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ToPathString(input_onnx), model, nullptr, DefaultLoggingManager().DefaultLogger()));
-  std::remove(output_onnx.c_str());
-  std::remove(output_external_init_file.c_str());
-  ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(*model, ToPathString(output_onnx), output_external_init_file, initializer_size_threshold));
+  ORT_RETURN_IF_ERROR(Model::Load(input_onnx, model, nullptr, *logger));
+  std::filesystem::remove(output_onnx);
+  std::filesystem::remove(output_external_init_file);
+  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, output_external_init_file, initializer_size_threshold,
+                                                          align_info));
 
   std::shared_ptr<Model> model_from_external;
-  ASSERT_STATUS_OK(Model::Load(ToPathString(output_onnx), model_from_external, nullptr, DefaultLoggingManager().DefaultLogger()));
+  ORT_RETURN_IF_ERROR(Model::Load(output_onnx.native(), model_from_external, nullptr, *logger));
 
   Graph& graph = model->MainGraph();
   // Perform shape inference on the graph, if this succeeds then it means that we could correctly read the
   // integer initializers used by reshape and transpose.
-  ASSERT_STATUS_OK(graph.Resolve());
+  ORT_RETURN_IF_ERROR(graph.Resolve());
   Graph& graph_from_external = model_from_external->MainGraph();
 
   InitializedTensorSet initializers = graph.GetAllInitializedTensors();
   InitializedTensorSet initializers_from_external = graph_from_external.GetAllInitializedTensors();
 
-  ASSERT_EQ(initializers.size(), initializers_from_external.size());
+  ORT_RETURN_IF_NOT(initializers.size() == initializers_from_external.size(), "size mismatch");
 
   // Compare the initializers of the two versions.
-  Path model_path{};
-  Path external_data_path{};
-  for (auto i : initializers) {
+  std::filesystem::path model_path{};
+  std::filesystem::path external_data_path{};
+  for (const auto& i : initializers) {
     const std::string kInitName = i.first;
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
     const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
 
     std::vector<uint8_t> tensor_proto_data;
-    model_path = Path::Parse(ToPathString(input_onnx));
-    external_data_path = (input_external_init_file.size()) ? model_path.ParentPath().Append(Path::Parse(ToPathString(input_external_init_file))) : Path();
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
+    model_path = input_onnx;
+    external_data_path = (!input_external_init_file.empty()) ? (model_path.parent_path() / input_external_init_file) : std::filesystem::path();
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
     size_t tensor_proto_size = tensor_proto_data.size();
 
     std::vector<uint8_t> from_external_tensor_proto_data;
-    model_path = Path::Parse(ToPathString(output_onnx));
-    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(output_external_init_file)));
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
+    model_path = output_onnx;
+    external_data_path = model_path.parent_path() / output_external_init_file;
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
       // 'Small' tensors should be embedded in the onnx file.
-      EXPECT_EQ(from_external_tensor_proto->data_location(), ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_DEFAULT);
+      ORT_RETURN_IF_NOT(from_external_tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_DEFAULT, "location mismatch");
     } else {
       // 'Large' tensors should be added to the external binary file.
-      EXPECT_EQ(from_external_tensor_proto->data_location(), ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+      ORT_RETURN_IF_NOT(from_external_tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL, "location mismatch");
     }
 
-    ASSERT_EQ(tensor_proto_size, from_external_tensor_proto_size);
-    EXPECT_EQ(memcmp(tensor_proto_data.data(), from_external_tensor_proto_data.data(), tensor_proto_size), 0);
+    ORT_RETURN_IF_NOT(tensor_proto_size == from_external_tensor_proto_size, "size mismatch");
+    ORT_RETURN_IF_NOT(memcmp(tensor_proto_data.data(), from_external_tensor_proto_data.data(), tensor_proto_size) == 0, "data mismatch");
+
+    if (align_info.align_offset) {
+      for (const StringStringEntryProto& entry : from_external_tensor_proto->external_data()) {
+        if (entry.has_key() && entry.has_value() && entry.key() == "offset") {
+          size_t tensor_offset;
+          std::stringstream stream(entry.value());
+          stream >> tensor_offset;
+          ORT_RETURN_IF_NOT(tensor_offset % align_info.allocation_granularity == 0, "tensor offset not align");
+        }
+      }
+    }
   }
   // Cleanup.
-  ASSERT_EQ(std::remove(output_onnx.c_str()), 0);
-  ASSERT_EQ(std::remove(PathToUTF8String(external_data_path.ToPathString()).c_str()), 0);
+  ORT_RETURN_IF_NOT(std::filesystem::remove(output_onnx), "delete file failed");
+  ORT_RETURN_IF_NOT(std::filesystem::remove(external_data_path), "delete file failed");
+  return Status::OK();
 }
 
 // Original model does not have external initializers
 TEST(SaveWithExternalInitializers, Mnist) {
-  LoadSaveAndCompareModel("testdata/mnist.onnx", "", "testdata/mnist_with_external_initializers.onnx", "mnist_external_initializers.bin", 100);
+  Graph::OffsetAlignmentInfo align_info;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/mnist.onnx"), ORT_TSTR(""), ORT_TSTR("testdata/mnist_with_external_initializers.onnx"), ORT_TSTR("mnist_external_initializers.bin"), 100, align_info));
 }
 
 // Original model has external initializers
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
-  LoadSaveAndCompareModel("testdata/model_with_orig_ext_data.onnx", "model_with_orig_ext_data.onnx.data", "testdata/model_with_new_external_initializers.onnx", "model_with_new_external_initializers.bin", 0);
+  Graph::OffsetAlignmentInfo align_info;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info));
+}
+
+// Original model has external initializers, align offset
+TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
+  Graph::OffsetAlignmentInfo align_info;
+  align_info.align_offset = true;
+  align_info.align_threshold = 0;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info));
 }
 
 }  // namespace test

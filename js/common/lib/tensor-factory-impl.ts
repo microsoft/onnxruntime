@@ -1,12 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OptionsDimensions, OptionsFormat, OptionsNormalizationParameters, OptionsTensorFormat, OptionsTensorLayout, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
-import {Tensor} from './tensor-impl.js';
-import {Tensor as TensorInterface} from './tensor.js';
+import {
+  OptionsDimensions,
+  OptionsFormat,
+  OptionsNormalizationParameters,
+  OptionsTensorFormat,
+  OptionsTensorLayout,
+  TensorFromGpuBufferOptions,
+  TensorFromImageBitmapOptions,
+  TensorFromImageDataOptions,
+  TensorFromImageElementOptions,
+  TensorFromTextureOptions,
+  TensorFromUrlOptions,
+} from './tensor-factory.js';
+import { Tensor } from './tensor-impl.js';
+import { Tensor as TensorInterface } from './tensor.js';
 
-interface BufferToTensorOptions extends OptionsDimensions, OptionsTensorLayout, OptionsNormalizationParameters,
-                                        OptionsFormat, OptionsTensorFormat {}
+interface BufferToTensorOptions
+  extends OptionsDimensions,
+    OptionsTensorLayout,
+    OptionsNormalizationParameters,
+    OptionsFormat,
+    OptionsTensorFormat {}
 
 /**
  * Create a new tensor object from image object
@@ -15,7 +31,7 @@ interface BufferToTensorOptions extends OptionsDimensions, OptionsTensorLayout, 
  * @param imageFormat - input image configuration - required configurations height, width, format
  * @param tensorFormat - output tensor configuration - Default is RGB format
  */
-export const bufferToTensor = (buffer: Uint8ClampedArray|undefined, options: BufferToTensorOptions): Tensor => {
+export const bufferToTensor = (buffer: Uint8ClampedArray | undefined, options: BufferToTensorOptions): Tensor => {
   if (buffer === undefined) {
     throw new Error('Image buffer must be defined');
   }
@@ -26,19 +42,19 @@ export const bufferToTensor = (buffer: Uint8ClampedArray|undefined, options: Buf
     throw new Error('NHWC Tensor layout is not supported yet');
   }
 
-  const {height, width} = options;
+  const { height, width } = options;
 
-  const norm = options.norm ?? {mean: 255, bias: 0};
+  const norm = options.norm ?? { mean: 255, bias: 0 };
   let normMean: [number, number, number, number];
   let normBias: [number, number, number, number];
 
-  if (typeof (norm.mean) === 'number') {
+  if (typeof norm.mean === 'number') {
     normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
   } else {
     normMean = [norm.mean![0], norm.mean![1], norm.mean![2], norm.mean![3] ?? 255];
   }
 
-  if (typeof (norm.bias) === 'number') {
+  if (typeof norm.bias === 'number') {
     normBias = [norm.bias, norm.bias, norm.bias, norm.bias];
   } else {
     normBias = [norm.bias![0], norm.bias![1], norm.bias![2], norm.bias![3] ?? 0];
@@ -48,13 +64,20 @@ export const bufferToTensor = (buffer: Uint8ClampedArray|undefined, options: Buf
   // default value is RGBA since imagedata and HTMLImageElement uses it
 
   const outputformat =
-      options.tensorFormat !== undefined ? (options.tensorFormat !== undefined ? options.tensorFormat : 'RGB') : 'RGB';
+    options.tensorFormat !== undefined ? (options.tensorFormat !== undefined ? options.tensorFormat : 'RGB') : 'RGB';
   const stride = height * width;
   const float32Data = outputformat === 'RGBA' ? new Float32Array(stride * 4) : new Float32Array(stride * 3);
 
   // Default pointer assignments
-  let step = 4, rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
-  let rTensorPointer = 0, gTensorPointer = stride, bTensorPointer = stride * 2, aTensorPointer = -1;
+  let step = 4,
+    rImagePointer = 0,
+    gImagePointer = 1,
+    bImagePointer = 2,
+    aImagePointer = 3;
+  let rTensorPointer = 0,
+    gTensorPointer = stride,
+    bTensorPointer = stride * 2,
+    aTensorPointer = -1;
 
   // Updating the pointer assignments based on the input image format
   if (inputformat === 'RGB') {
@@ -78,8 +101,11 @@ export const bufferToTensor = (buffer: Uint8ClampedArray|undefined, options: Buf
     rTensorPointer = stride * 2;
   }
 
-  for (let i = 0; i < stride;
-       i++, rImagePointer += step, bImagePointer += step, gImagePointer += step, aImagePointer += step) {
+  for (
+    let i = 0;
+    i < stride;
+    i++, rImagePointer += step, bImagePointer += step, gImagePointer += step, aImagePointer += step
+  ) {
     float32Data[rTensorPointer++] = (buffer[rImagePointer] + normBias[0]) / normMean[0];
     float32Data[gTensorPointer++] = (buffer[gImagePointer] + normBias[1]) / normMean[1];
     float32Data[bTensorPointer++] = (buffer[bImagePointer] + normBias[2]) / normMean[2];
@@ -89,25 +115,31 @@ export const bufferToTensor = (buffer: Uint8ClampedArray|undefined, options: Buf
   }
 
   // Float32Array -> ort.Tensor
-  const outputTensor = outputformat === 'RGBA' ? new Tensor('float32', float32Data, [1, 4, height, width]) :
-                                                 new Tensor('float32', float32Data, [1, 3, height, width]);
+  const outputTensor =
+    outputformat === 'RGBA'
+      ? new Tensor('float32', float32Data, [1, 4, height, width])
+      : new Tensor('float32', float32Data, [1, 3, height, width]);
   return outputTensor;
 };
 
 /**
  * implementation of Tensor.fromImage().
  */
-export const tensorFromImage = async(
-    image: ImageData|HTMLImageElement|ImageBitmap|string,
-    options?: TensorFromImageDataOptions|TensorFromImageElementOptions|TensorFromImageBitmapOptions|
-    TensorFromUrlOptions): Promise<Tensor> => {
+export const tensorFromImage = async (
+  image: ImageData | HTMLImageElement | ImageBitmap | string,
+  options?:
+    | TensorFromImageDataOptions
+    | TensorFromImageElementOptions
+    | TensorFromImageBitmapOptions
+    | TensorFromUrlOptions,
+): Promise<Tensor> => {
   // checking the type of image object
-  const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
-  const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
-  const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
+  const isHTMLImageEle = typeof HTMLImageElement !== 'undefined' && image instanceof HTMLImageElement;
+  const isImageDataEle = typeof ImageData !== 'undefined' && image instanceof ImageData;
+  const isImageBitmap = typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap;
   const isString = typeof image === 'string';
 
-  let data: Uint8ClampedArray|undefined;
+  let data: Uint8ClampedArray | undefined;
   let bufferToTensorOptions: BufferToTensorOptions = options ?? {};
 
   const createCanvas = () => {
@@ -119,7 +151,7 @@ export const tensorFromImage = async(
       throw new Error('Canvas is not supported');
     }
   };
-  const createCanvasContext = (canvas: HTMLCanvasElement|OffscreenCanvas) => {
+  const createCanvasContext = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
     if (canvas instanceof HTMLCanvasElement) {
       return canvas.getContext('2d');
     } else if (canvas instanceof OffscreenCanvas) {
@@ -258,25 +290,31 @@ export const tensorFromImage = async(
  * implementation of Tensor.fromTexture().
  */
 export const tensorFromTexture = <T extends TensorInterface.TextureDataTypes>(
-    texture: TensorInterface.TextureType, options: TensorFromTextureOptions<T>): Tensor => {
-  const {width, height, download, dispose} = options;
+  texture: TensorInterface.TextureType,
+  options: TensorFromTextureOptions<T>,
+): Tensor => {
+  const { width, height, download, dispose } = options;
   // Always assume RGBAF32. TODO: support different texture format
   const dims = [1, height, width, 4];
-  return new Tensor({location: 'texture', type: 'float32', texture, dims, download, dispose});
+  return new Tensor({ location: 'texture', type: 'float32', texture, dims, download, dispose });
 };
 
 /**
  * implementation of Tensor.fromGpuBuffer().
  */
 export const tensorFromGpuBuffer = <T extends TensorInterface.GpuBufferDataTypes>(
-    gpuBuffer: TensorInterface.GpuBufferType, options: TensorFromGpuBufferOptions<T>): Tensor => {
-  const {dataType, dims, download, dispose} = options;
-  return new Tensor({location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims, download, dispose});
+  gpuBuffer: TensorInterface.GpuBufferType,
+  options: TensorFromGpuBufferOptions<T>,
+): Tensor => {
+  const { dataType, dims, download, dispose } = options;
+  return new Tensor({ location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims, download, dispose });
 };
 
 /**
  * implementation of Tensor.fromPinnedBuffer().
  */
 export const tensorFromPinnedBuffer = <T extends TensorInterface.CpuPinnedDataTypes>(
-    type: T, buffer: TensorInterface.DataTypeMap[T], dims?: readonly number[]): Tensor =>
-    new Tensor({location: 'cpu-pinned', type, data: buffer, dims: dims ?? [buffer.length]});
+  type: T,
+  buffer: TensorInterface.DataTypeMap[T],
+  dims?: readonly number[],
+): Tensor => new Tensor({ location: 'cpu-pinned', type, data: buffer, dims: dims ?? [buffer.length] });

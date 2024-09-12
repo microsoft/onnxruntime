@@ -33,6 +33,7 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 // output Q have the same scale and zero_point.
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
+          {"GatherElements", {}},
           {"Reshape", {}},
           {"Expand", {}},
           {"Flatten", {}},
@@ -63,6 +64,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Relu", {}},
           {"Gelu", {}},
           {"Elu", {}},
+          {"HardSigmoid", {}},
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},

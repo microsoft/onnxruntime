@@ -84,7 +84,8 @@ class QnnModel {
     return GetInputOutputIndex(name, outputs_info_);
   }
 
-  Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info);
+  Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info,
+                                            const Qnn_ContextHandle_t& context);
 
   const std::vector<std::string>& GetInputNames() const {
     return input_names_;
@@ -102,7 +103,7 @@ class QnnModel {
     return outputs_info_;
   }
 
-  const std::string& Name() { return graph_info_->Name(); }
+  const std::string& Name() const { return graph_info_->Name(); }
 
  private:
   const NodeUnit& GetNodeUnit(const Node* node,

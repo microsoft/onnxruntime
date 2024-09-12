@@ -9,7 +9,7 @@
 #include <sstream>
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <typename T, bool Packed, bool Threaded>
 class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Threaded>> {

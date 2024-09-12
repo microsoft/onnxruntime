@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -52,13 +53,13 @@ jobs:
               python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
                 --skip_submodule_sync \
                 --build_dir $(Build.BinariesDirectory)/iOS \
-                --build_shared \
+                --build_shared_lib \
                 --use_coreml \
                 --use_xnnpack \
                 --ios \
                 --apple_sysroot iphonesimulator  \
                 --osx_arch x86_64 \
-                --apple_deploy_target 12.0 \
+                --apple_deploy_target=13.0 \
                 --use_xcode \
                 --config RelWithDebInfo \
                 --build_apple_framework \

@@ -58,14 +58,16 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
   // warming up run
-  MlasComputeSoftmax(input, output, N, D, false, tp.get());
+  MlasComputeSoftmax(input, output, N, D, false, false, tp.get());
 
   for (auto _ : state) {
-    MlasComputeSoftmax(input, output, N, D, false, tp.get());
+    MlasComputeSoftmax(input, output, N, D, false, false, tp.get());
   }
 
   free(ptr.underlying_buffer);
 }
+
+#if defined(MLAS_TARGET_AMD64)
 
 void REDUCEMAXIMUMF32KERNELAVX(benchmark::State& state) {
   const auto byte_aligned = narrow<int>(state.range(0));
@@ -174,6 +176,8 @@ void COMPUTESOFTMAXOUTPUTF32KERNELAVX(benchmark::State& state) {
   free(ptr.underlying_buffer);
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
 static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"ByteAligned", "N", "D", "Threads"});
   for (int threads : {1, 8}) {
@@ -199,6 +203,8 @@ static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK(COMPUTESOFTMAXINPLACE)->Apply(ComputeSoftmaxInplaceArgs)->UseRealTime();
+
+#if defined(MLAS_TARGET_AMD64)
 
 BENCHMARK(REDUCEMAXIMUMF32KERNELAVX)
     ->ArgNames({"ByteAligned", "D"})
@@ -231,3 +237,5 @@ BENCHMARK(COMPUTESOFTMAXOUTPUTF32KERNELAVX)
         {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000},  // D
     })
     ->UseRealTime();
+
+#endif  // defined(MLAS_TARGET_AMD64)

@@ -140,7 +140,7 @@ Status RocmStream::CleanUpOnRunEnd() {
 }
 
 void* RocmStream::GetResource(int version, int id) const {
-  ORT_ENFORCE(version <= ORT_ROCM_RESOUCE_VERSION, "resource version unsupported!");
+  ORT_ENFORCE(version <= ORT_ROCM_RESOURCE_VERSION, "resource version unsupported!");
   void* resource{};
   switch (id) {
     case RocmResource::hip_stream_t:

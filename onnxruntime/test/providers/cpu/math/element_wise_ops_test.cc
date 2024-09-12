@@ -484,6 +484,22 @@ TEST(MathOpTest, Add_Invalid_Broadcast) {
            {}, nullptr, &execution_providers);
 }
 
+// TEST(MathOpTest, Add_large_dimension) {
+//   OpTester test("Add");
+
+//   int64_t num_elem = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1000;
+//   // int64_t num_elem = static_cast<int64_t>(200) + 1000;
+//   float input_scalar{4.0f};
+//   std::vector<float> input_sequence(num_elem, 0), output_sequence(num_elem, input_scalar);
+//   test.AddInput<float>("A", {num_elem}, input_sequence);
+//   test.AddInput<float>("B", {1}, {input_scalar});
+//   test.AddOutput<float>("C", {num_elem}, output_sequence);
+
+//   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+//   execution_providers.push_back(DefaultCudaExecutionProvider());
+//   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+// }
+
 TEST(MathOpTest, Sub_int32) {
   OpTester test("Sub");
   test.AddInput<int32_t>("A", {3}, {1, 4, 3});
@@ -1198,7 +1214,7 @@ TEST(MathOpTest, Sum_6) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1225,7 +1241,7 @@ TEST(MathOpTest, Sum_6_double) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1452,7 +1468,7 @@ TEST(MathOpTest, Min_6) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Min_8) {
@@ -1537,6 +1553,47 @@ TEST(MathOpTest, Min_12_Float_Nan) {
   }
 }
 
+TEST(MathOpTest, Min_12_Float_Nan_with_scalar) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_1", {3, 1},
+                       {std::numeric_limits<float>::quiet_NaN(), -0.5f, 0.5f});
+  test.AddInput<float>("data_2", {1}, {0.25f});
+  test.AddOutput<float>("min", {3, 1},
+                        {std::numeric_limits<float>::quiet_NaN(), -0.5f, 0.25f});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Min_12_Float_with_scalar_Nan) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_1", {2, 2},
+                       {0.25f, -0.25f, -0.5f, 0.5f});
+  test.AddInput<float>("data_2", {1}, {std::numeric_limits<float>::quiet_NaN()});
+  test.AddOutput<float>("min", {2, 2},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN()});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(MathOpTest, Min_12_Double) {
   OpTester test("Min", 12);
   test.AddInput<double>("data_0", {1, 3},
@@ -1570,12 +1627,53 @@ TEST(MathOpTest, Min_12_Double_Nan) {
                           std::numeric_limits<double>::quiet_NaN(),
                           -1.0, -1.0, -2.0,
                           0.5, 0.0, 1.0});
-  if (nullptr != DefaultCpuExecutionProvider().get()) {
+  if (nullptr != DefaultCpuExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-  if (nullptr != DefaultCudaExecutionProvider().get()) {
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Min_12_Double_Nan_with_scalar) {
+  OpTester test("Min", 12);
+  test.AddInput<double>("data_1", {3, 1},
+                        {std::numeric_limits<double>::quiet_NaN(), -0.5, 0.5});
+  test.AddInput<double>("data_2", {1}, {0.25});
+  test.AddOutput<double>("min", {3, 1},
+                         {std::numeric_limits<double>::quiet_NaN(), -0.5, 0.25});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Min_12_Double_with_scalar_Nan) {
+  OpTester test("Min", 12);
+  test.AddInput<double>("data_1", {2, 2},
+                        {0.25, -0.25, -0.5, 0.5});
+  test.AddInput<double>("data_2", {1}, {std::numeric_limits<double>::quiet_NaN()});
+  test.AddOutput<double>("min", {2, 2},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN()});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -1650,7 +1748,7 @@ TEST(MathOpTest, Min_12_UInt64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-TEST(MathOpTest, Min_12_MLFLoat16) {
+TEST(MathOpTest, Min_12_MLFloat16) {
   OpTester test("Min", 12);
   test.AddInput<MLFloat16>("data_0", {1, 3},
                            MakeMLFloat16({1.f, 1.f, 1.f}));
@@ -1663,7 +1761,7 @@ TEST(MathOpTest, Min_12_MLFLoat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-TEST(MathOpTest, Min_12_MLFLoat16_Scalar0) {
+TEST(MathOpTest, Min_12_MLFloat16_Scalar0) {
   OpTester test("Min", 12);
   test.AddInput<MLFloat16>("data_0", {},
                            MakeMLFloat16({-10.f}));
@@ -1676,7 +1774,7 @@ TEST(MathOpTest, Min_12_MLFLoat16_Scalar0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-TEST(MathOpTest, Min_12_MLFLoat16_Scalar1) {
+TEST(MathOpTest, Min_12_MLFloat16_Scalar1) {
   OpTester test("Min", 12);
   test.AddInput<MLFloat16>("data_0", {1, 3},
                            MakeMLFloat16({2.f, 3.f, 4.f}));
@@ -1708,7 +1806,7 @@ TEST(MathOpTest, Max_6) {
                         {1.0f, 0.0f, 3.0f,
                          -1.0f, 3.3f, 64.0f,
                          5.4f, 0.03f, 10000.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Max_8_Float) {
@@ -1793,12 +1891,53 @@ TEST(MathOpTest, Max_12_Float_Nan) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -0.5f, 0.0f, -1.0f,
                          1.0f, 1.0f, 2.0f});
-  if (nullptr != DefaultCpuExecutionProvider().get()) {
+  if (nullptr != DefaultCpuExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-  if (nullptr != DefaultCudaExecutionProvider().get()) {
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Max_12_Float_Nan_with_scalar) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_1", {3, 1},
+                       {std::numeric_limits<float>::quiet_NaN(), -0.5f, 0.5f});
+  test.AddInput<float>("data_2", {1}, {0.25f});
+  test.AddOutput<float>("max", {3, 1},
+                        {std::numeric_limits<float>::quiet_NaN(), 0.25f, 0.5f});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Max_12_Float_with_scalar_Nan) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_1", {2, 2},
+                       {0.25f, -0.25f, -0.5f, 0.5f});
+  test.AddInput<float>("data_2", {1}, {std::numeric_limits<float>::quiet_NaN()});
+  test.AddOutput<float>("max", {2, 2},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN()});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -1838,12 +1977,53 @@ TEST(MathOpTest, Max_12_Double_Nan) {
                           std::numeric_limits<double>::quiet_NaN(),
                           -0.5, 0.0, -1.0,
                           1.0, 1.0, 2.0});
-  if (nullptr != DefaultCpuExecutionProvider().get()) {
+  if (nullptr != DefaultCpuExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-  if (nullptr != DefaultCudaExecutionProvider().get()) {
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Max_12_Double_Nan_with_scalar) {
+  OpTester test("Max", 12);
+  test.AddInput<double>("data_1", {3, 1},
+                        {std::numeric_limits<double>::quiet_NaN(), -0.5, 0.5});
+  test.AddInput<double>("data_2", {1}, {0.25});
+  test.AddOutput<double>("max", {3, 1},
+                         {std::numeric_limits<double>::quiet_NaN(), 0.25, 0.5});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Max_12_Double_with_scalar_Nan) {
+  OpTester test("Max", 12);
+  test.AddInput<double>("data_1", {2, 2},
+                        {0.25, -0.25, -0.5, 0.5});
+  test.AddInput<double>("data_2", {1}, {std::numeric_limits<double>::quiet_NaN()});
+  test.AddOutput<double>("max", {2, 2},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN()});
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -1918,7 +2098,7 @@ TEST(MathOpTest, Max_12_UInt64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-TEST(MathOpTest, Max_12_MLFLoat16) {
+TEST(MathOpTest, Max_12_MLFloat16) {
   OpTester test("Max", 12);
   test.AddInput<MLFloat16>("data_0", {1, 3},
                            MakeMLFloat16({-1.f, -1.f, -1.f}));
@@ -1931,7 +2111,7 @@ TEST(MathOpTest, Max_12_MLFLoat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-TEST(MathOpTest, Max_12_MLFLoat16_Scalar0) {
+TEST(MathOpTest, Max_12_MLFloat16_Scalar0) {
   OpTester test("Max", 12);
   test.AddInput<MLFloat16>("data_0", {},
                            MakeMLFloat16({-1.f}));
@@ -1944,7 +2124,7 @@ TEST(MathOpTest, Max_12_MLFLoat16_Scalar0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-TEST(MathOpTest, Max_12_MLFLoat16_Scalar1) {
+TEST(MathOpTest, Max_12_MLFloat16_Scalar1) {
   OpTester test("Max", 12);
   test.AddInput<MLFloat16>("data_0", {1, 3},
                            MakeMLFloat16({-1.f, -2.f, -3.f}));
@@ -2718,8 +2898,7 @@ TEST(MathOpTest, Mean_6) {
                         {1.0f, 0.0f, 2.0f,
                          -2.0f, 2.2f, 10.0f,
                          -3.0f, 0.02f, -4.0f});
-  // OpenVINO: Disabled due to accuracy mismatch
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Mean_8) {

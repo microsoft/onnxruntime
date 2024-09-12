@@ -87,6 +87,8 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
   new_gemm_node.AddAttribute("alpha", gemm_node.GetAttributes().at("alpha").f());
   new_gemm_node.AddAttribute("beta", gemm_node.GetAttributes().at("beta").f());
 
+  new_gemm_node.SetExecutionProviderType(gemm_node.GetExecutionProviderType());
+
   graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_gemm_node);
 
   modified = RewriteRuleEffect::kRemovedCurrentNode;

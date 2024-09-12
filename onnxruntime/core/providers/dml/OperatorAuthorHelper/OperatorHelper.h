@@ -762,9 +762,9 @@ public:
 
 class EinSumHelper
 {
-public:
     void Initialize();
 
+public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later.
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template <typename Info_t, typename Shape_t>
@@ -772,6 +772,7 @@ public:
     {
         m_equation = info.GetAttribute(AttrName::Equation);
         Initialize();
+        ExtractLabelSizesFromTensors(KernelInformationAdapter(info), ShapeInformationAdapter(shape));
     }
 
     EinSumHelper(const MLOperatorAttributes& info)
@@ -785,17 +786,11 @@ public:
     enum class RecognizedOperatorType
     {
         None,
-        Identity,
-        Multiply,
-        OuterProduct,
-        MatMul,
-        MatMulTransposeA,
-        MatMulTransposeB,
-        MatMulNhcw,
-        MatMulNhcwTransposeA,
-        MatMulNhcwTransposeB,
-        ReduceSum,
-        Transpose,
+        Transpose,          // 1 input, rearrangement or diagonal slice, no reduction
+        ReduceSum,          // 1 input, no multiplication, just sum reduction
+        Multiply,           // 2 inputs, elementwise multiplication, no sum reduction
+        MatMul,             // 2 inputs, elementwise multiplication, sum reduction on 1 axis.
+        MultiplyReduceSum,  // 2 inputs, elementwise multiplication, sum reduction on multiple axes
         Total,
     };
 
@@ -805,7 +800,11 @@ public:
 
 protected:
     void ParseEquationComponents();
-    RecognizedOperatorType DetermineRecognizedOperatorType();
+    void ExtractLabelSizesFromTensors(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+    RecognizedOperatorType DetermineRecognizedOperatorType() const;
 
 protected:
     struct Component
@@ -824,9 +823,10 @@ protected:
     };
 
     std::string m_equation;
-    std::vector<uint32_t> m_labelIndices; // Concatenation of all labels as rebased indices ("ij,ai" -> 0,1,2,0).
-    std::vector<Component> m_components; // All components in order, including inputs and output.
-    std::vector<uint32_t> m_outputDimensions;
+    size_t m_uniqueLabelCount = 0;  // e.g. ij,jk->ij has 3 unique labels.
+    std::vector<uint32_t> m_labelIndices;  // Concatenation of all labels as rebased indices ("ij,ai" -> 0,1,2,0).
+    std::vector<Component> m_components;  // All components in order, including inputs and output.
+    std::vector<uint32_t> m_productDimensions;  // Dimensions of each unique label (size() == m_uniqueLabelCount).
     RecognizedOperatorType m_recognizedOperatorType = RecognizedOperatorType::None;
 };
 
@@ -1696,9 +1696,11 @@ using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
 using ShapeInferenceHelper_Squeeze7 = VersionedOpsetHelper<SqueezeHelper, 7>;
 using ShapeInferenceHelper_Squeeze11 = VersionedOpsetHelper<SqueezeHelper, 11>;
 using ShapeInferenceHelper_Squeeze13 = VersionedOpsetHelper<SqueezeHelper, 13>;
+using ShapeInferenceHelper_Squeeze21 = VersionedOpsetHelper<SqueezeHelper, 21>;
 using ShapeInferenceHelper_Unsqueeze7 = VersionedOpsetHelper<UnsqueezeHelper, 7>;
 using ShapeInferenceHelper_Unsqueeze11 = VersionedOpsetHelper<UnsqueezeHelper, 11>;
 using ShapeInferenceHelper_Unsqueeze13 = VersionedOpsetHelper<UnsqueezeHelper, 13>;
+using ShapeInferenceHelper_Unsqueeze21 = VersionedOpsetHelper<UnsqueezeHelper, 21>;
 using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Trilu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Col2Im = Col2ImHelper;
@@ -1708,6 +1710,7 @@ using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape19 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape21 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
@@ -1754,7 +1757,9 @@ using ShapeInferenceHelper_Asin = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Atan = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_QuantizeLinear21 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_DequantizeLinear21 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QAttention = QAttentionHelper;
 using ShapeInferenceHelper_Attention = AttentionHelper;

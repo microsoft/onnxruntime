@@ -2175,8 +2175,8 @@ struct Op : detail::Base<OrtOp> {
 /// </summary>
 struct ShapeInferContext {
   struct SymbolicInteger {
-    SymbolicInteger(int64_t i) : i_(i), is_int_(true){};
-    SymbolicInteger(const char* s) : s_(s), is_int_(false){};
+    SymbolicInteger(int64_t i) : i_(i), is_int_(true) {};
+    SymbolicInteger(const char* s) : s_(s), is_int_(false) {};
     SymbolicInteger(const SymbolicInteger&) = default;
     SymbolicInteger(SymbolicInteger&&) = default;
 
@@ -2216,7 +2216,7 @@ struct ShapeInferContext {
 
   size_t GetInputCount() const { return input_shapes_.size(); }
 
-  Status SetOutputShape(size_t indice, const Shape& shape);
+  Status SetOutputShape(size_t indice, const Shape& shape, ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
   int64_t GetAttrInt(const char* attr_name);
 

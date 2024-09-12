@@ -33,7 +33,7 @@ namespace test {
 
 // Tests that the QNN EP is registered when added via the public C++ API.
 // Loads a simple ONNX model that adds floats.
-TEST(QnnEP, TestAddEpUsingPublicApi) {
+TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
   {
     Ort::SessionOptions so;
 
@@ -47,9 +47,9 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
     onnxruntime::ProviderOptions options;
 
 #if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
+    options["backend_path"] = "QnnHtp.dll";
 #else
-    options["backend_path"] = "libQnnCpu.so";
+    options["backend_path"] = "libQnnHtp.so";
 #endif
 
     so.AppendExecutionProvider("QNN", options);
@@ -135,6 +135,54 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
   }
 }
 
+// The model is supported on QNN CPU backend, but CPU fallback is disabled
+// QNN EP report error for this scenario also
+TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
+  SessionOptions so;
+  // Disable fallback to the CPU EP.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnCpu.dll";
+#else
+  options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  auto model_func = BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain);
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  // logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  model_func(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  InferenceSession session_object{so, GetEnvironment()};
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &so);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  auto status = session_object.Initialize();
+  ASSERT_EQ(status.Code(), ORT_FAIL);
+  ASSERT_THAT(status.ErrorMessage().c_str(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
+                                                                "CPU EP, but fallback to CPU EP has been explicitly disabled by "
+                                                                "the user."));
+}
+
 // Tests invalid use of the `session.disable_cpu_ep_fallback` configuration option.
 // It is invalid to set the option and explicitly add the CPU EP to the session.
 TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
@@ -188,25 +236,50 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   Ort::Session session(*ort_env, ort_model_path, so);
 }
 
-TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
   Ort::SessionOptions so;
+
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
   onnxruntime::ProviderOptions options;
+
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  options["enable_qnn_graph_dump"] = "1";
-
   so.AppendExecutionProvider("QNN", options);
 
-  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
-
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
-
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv.int4_weights.qdq.onnx";
   Ort::Session session(*ort_env, ort_model_path, so);
+
+  TensorShape input_shape = {1, 3, 8, 8};
+  std::vector<float> input0_data(input_shape.Size(), 0.2f);
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), &input_shape[0], input_shape.NumDimensions()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
 }
+#endif  // #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
@@ -762,14 +835,14 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
 
 // Test that models run with various SoC model values
 TEST_F(QnnHTPBackendTests, HTPSocModels) {
-  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
-                                                      "0",  // "Unknown"
+  constexpr std::array<const char*, 3> soc_models = {"",   // No explicit SoC model specified
+                                                     "0",  // "Unknown"
 #if defined(_M_ARM64)
-                                                      "37" };  // SC8280X
+                                                     "37"};  // SC8280X
 #elif defined(__linux__)
-                                                      "30" };  // SM8350
+                                                     "30"};  // SM8350
 #else
-                                                      "" };
+                                                     ""};
 #endif
 
   for (auto soc_model : soc_models) {
@@ -873,6 +946,27 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
                   13,
                   ExpectedEPNodeAssignment::All,
                   0.008f);
+}
+
+TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  options["enable_qnn_graph_dump"] = "1";
+
+  so.AppendExecutionProvider("QNN", options);
+
+  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+
+  Ort::Session session(*ort_env, ort_model_path, so);
+  // TODO(adrianlizarraga): Check that output json files were generated.
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

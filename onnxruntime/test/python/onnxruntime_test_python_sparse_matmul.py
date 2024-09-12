@@ -54,7 +54,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
 
     def test_run_contrib_sparse_mat_mul(self):
         """
-        Mutliple sparse COO tensor to dense
+        Multiple sparse COO tensor to dense
         """
         common_shape = [9, 9]  # inputs and oputputs same shape
         A_values = np.array(  # noqa: N806

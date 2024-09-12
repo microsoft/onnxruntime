@@ -101,6 +101,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kVSINPUExecutionProvider,
+#ifdef USE_VSINPU
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kJsExecutionProvider,
 #ifdef USE_JSEP
             true,

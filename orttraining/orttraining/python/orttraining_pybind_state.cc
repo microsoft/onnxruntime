@@ -232,10 +232,9 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
     py_tensor_state[layer1_item.first] = {};
     for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
-      py::object obj;
-      const Tensor& rtensor = layer2_item.second.Get<Tensor>();
-      GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-      py_tensor_state[layer1_item.first].insert({layer2_item.first, obj});
+      py::array arr = PrimitiveTensorToNumpyFromDevice(layer2_item.second,
+                                                       &data_transfer_manager);
+      py_tensor_state[layer1_item.first].insert({layer2_item.first, py::cast<py::object>(arr)});
     }
   }
   return py_tensor_state;
@@ -320,7 +319,7 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterForwardRunner(function_address);
 #else
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_backward_runner", [](py::object obj) -> void {
@@ -329,7 +328,7 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterBackwardRunner(function_address);
 #else
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_torch_autograd_function", [](std::string function_full_qual_name, py::object obj) -> void {
@@ -337,8 +336,8 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterTorchAutogradFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(function_full_qual_name);
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(function_full_qual_name);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_shape_inference_function", [](std::string function_full_qual_name, py::object obj) -> void {
@@ -346,8 +345,8 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterShapeInferenceFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(function_full_qual_name);
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(function_full_qual_name);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("get_shape_inference_function", [](std::string function_full_qual_name) -> py::object {
@@ -369,8 +368,8 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterInputAliasFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(function_full_qual_name);
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(function_full_qual_name);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_miscellaneous_const_input", [](py::object obj) -> void {
@@ -378,7 +377,7 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterMiscellaneousConstInput(obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("unregister_python_functions", []() -> void {
@@ -392,14 +391,14 @@ void addObjectMethodsForTraining(py::module& m) {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
   m.def("is_triton_enabled", []() -> bool {
 #ifdef ENABLE_TRITON
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
 #ifdef ENABLE_TRITON
@@ -424,27 +423,33 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state, cache);
+      .def("run_forward", [](TrainingAgent* agent, std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
+        // Feed is passed in mutable way, to allow the internal logic to release the feeds as long as it is not needed.
+        // Otherwise, the feeds will be released after the forward pass, which hold some unnecessary memory.
+        Status status = agent->RunForward(mutable_feeds, fetches, *state, cache);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        Status status = agent->RunBackward(feeds, fetches, *state);
+      .def("run_backward", [](TrainingAgent* agent, std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+        // Feed is passed in mutable way, to allow the internal logic to release the feeds as long as it is not needed.
+        // Otherwise, the feeds will be released after the forward pass, which hold some unnecessary memory.
+        Status status = agent->RunBackward(mutable_feeds, fetches, *state);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("get_serialized_ortmodule_memory_stat",            // for memory optimization
-           [](TrainingAgent* agent,                           // agent
-              const std::string& memory_optimization_config,  // user config string
-              const std::string& recompute_probe_level        // user config string for probe level
+      .def("get_serialized_ortmodule_memory_stat",                      // for memory optimization
+           [](TrainingAgent* agent,                                     // agent
+              const std::string& memory_optimization_config_file_path,  // user config file path
+              const std::string& recompute_probe_level,                 // user config string for probe level
+              const bool return_opportunity_table                       //  return detailed opportunity_table or not.
               ) -> std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>> {
              std::map<std::string, std::pair<std::string, int>> cluster_id_combinations_to_saved_symbolic_byte_map;
              std::string opportunity_table =
-                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config,
+                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config_file_path,
                                                          recompute_probe_level,
+                                                         return_opportunity_table,
                                                          cluster_id_combinations_to_saved_symbolic_byte_map);
              return std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>>(
                  opportunity_table, cluster_id_combinations_to_saved_symbolic_byte_map);
@@ -488,7 +493,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
       .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
-      .def_readwrite("sparse_label_input_names", &TrainingGraphTransformerConfiguration::sparse_label_input_names)
+      .def_readwrite("print_input_density", &TrainingGraphTransformerConfiguration::print_input_density)
       .def_readwrite("optimized_pre_grad_filepath", &TrainingGraphTransformerConfiguration::optimized_pre_grad_filepath)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
@@ -616,7 +621,7 @@ void addObjectMethodsForTraining(py::module& m) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder_->Build());
       })
       .def("save", [](PyGradientGraphBuilderContext* gradient_graph_builder, const std::string& path) {
-        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model_), path));
+        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model_), ToPathString(path)));
       })
       .def("get_model", [](PyGradientGraphBuilderContext* gradient_graph_builder) {
         std::string model_str;
@@ -1031,7 +1036,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #ifdef __linux__
           return true;
 #else
-        return false;
+    return false;
 #endif
         });
 #endif

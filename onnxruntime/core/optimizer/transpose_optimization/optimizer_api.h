@@ -86,7 +86,7 @@ class TensorRef {
   /// <returns>Flattened tensor data in bytes</returns>
   virtual std::vector<uint8_t> Data() const = 0;
 
-  virtual ~TensorRef(){};
+  virtual ~TensorRef() {};
 };
 
 /// <summary>
@@ -104,6 +104,12 @@ class ValueInfoRef {
   /// representing the dimensions of the value. Use -1 for unknown dimensions.
   /// </returns>
   virtual std::optional<std::vector<int64_t>> Shape() const = 0;
+
+  /// <returns>
+  /// The inferred/declared rank of the value's tensor shape, or nullopt if the rank is unknown. A scalar
+  /// has a rank of 0.
+  /// </returns>
+  virtual std::optional<size_t> ShapeRank() const = 0;
 
   /// <returns>The inferred/declared dtype of the value. UNDEFINED (0) if dtype is unknown.</returns>
   virtual DataType DType() const = 0;
@@ -131,7 +137,7 @@ class ValueInfoRef {
   /// <param name="axes">Indices of dimensions to add. Indices are relative to final shape.</param>
   virtual void UnsqueezeDims(const std::vector<int64_t>& axes) = 0;
 
-  virtual ~ValueInfoRef(){};
+  virtual ~ValueInfoRef() {};
 };
 
 /// <summary>
@@ -248,7 +254,7 @@ class NodeRef {
   /// <returns>Id</returns>
   virtual int64_t Id() const = 0;
 
-  virtual ~NodeRef(){};
+  virtual ~NodeRef() {};
 };
 
 /// <summary>
@@ -449,7 +455,7 @@ class GraphRef {
   /// <returns>True if output of the Graph.</returns>
   virtual bool IsGraphOutput(std::string_view name) const = 0;
 
-  virtual ~GraphRef(){};
+  virtual ~GraphRef() {};
 };
 
 }  // namespace api

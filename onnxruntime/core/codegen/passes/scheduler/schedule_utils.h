@@ -34,7 +34,7 @@ bool ShouldTryVectorization(
 // Check the schedule of tensor
 // If it is not scheduled, try to vectorize it.
 // Note TryVectorization has to use with compute_root.
-// Therefore, there is a safty check of tensor's schedule
+// Therefore, there is a safety check of tensor's schedule
 bool TryVectorization(
     const tvm::Tensor& tensor,
     int64_t natural_vector_size,
@@ -43,7 +43,7 @@ bool TryVectorization(
 // Check the schedule of tensor
 // If it is not scheduled, try to add compute_inline on it.
 // Note TryInlineSchedule cannot be used with compute_root.
-// Therefore, there is a safty check of tensor's schedule.
+// Therefore, there is a safety check of tensor's schedule.
 bool TryInlineSchedule(
     const tvm::Tensor& tensor,
     ScheduleContext& ctx);

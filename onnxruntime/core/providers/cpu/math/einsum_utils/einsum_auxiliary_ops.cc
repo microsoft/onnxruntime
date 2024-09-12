@@ -290,9 +290,9 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
   std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
-  TensorShape overriden_shape(input_shape_override);
+  TensorShape overridden_shape(input_shape_override);
 
-  auto status = device_transpose_func(permutation, input, *output, &overriden_shape, einsum_cuda_assets);
+  auto status = device_transpose_func(permutation, input, *output, &overridden_shape, einsum_cuda_assets);
 
   if (!status.IsOK()) {
     ORT_THROW(ONNXRUNTIME, FAIL, "Einsum op: Transpose failed: ", status.ErrorMessage());

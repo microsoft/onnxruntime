@@ -20,18 +20,23 @@ namespace onnxruntime {
 namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           const emscripten::val& context, const emscripten::val& builder,
-                           const DataLayout preferred_layout, const WebnnDeviceType wnn_device_type)
+                           const emscripten::val& context, const DataLayout preferred_layout,
+                           const WebnnDeviceType wnn_device_type)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
-      wnn_builder_(builder),
       preferred_layout_(preferred_layout),
-      wnn_device_type_(wnn_device_type) {}
+      wnn_device_type_(wnn_device_type) {
+  // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
+  // is only allowed to be called once.
+  wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(context);
+  if (!wnn_builder_.as<bool>()) {
+    ORT_THROW("Failed to create WebNN builder.");
+  }
+}
 
 Status ModelBuilder::Initialize() {
   PreprocessInitializers();
-  PreprocessActivations();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
@@ -78,56 +83,6 @@ void ModelBuilder::PreprocessInitializers() {
   }
 }
 
-void ModelBuilder::PreprocessActivations() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    const auto& op_type(node->OpType());
-
-    if (op_type == "Clip") {
-      // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
-      if (wnn_device_type_ == WebnnDeviceType::CPU) {
-        float minValue, maxValue;
-        GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
-        emscripten::val options = emscripten::val::object();
-        options.set("minValue", minValue);
-        options.set("maxValue", maxValue);
-        activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
-      }
-    } else if (op_type == "Elu") {
-      NodeAttrHelper helper(*node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", 1.0f));
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("elu", options));
-    } else if (op_type == "Gelu") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("gelu"));
-    } else if (op_type == "HardSigmoid") {
-      NodeAttrHelper helper(*node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", 0.2f));
-      options.set("beta", helper.Get("beta", 0.5f));
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSigmoid", options));
-    } else if (op_type == "HardSwish") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSwish"));
-    } else if (op_type == "Relu") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("relu"));
-    } else if (op_type == "LeakyRelu") {
-      NodeAttrHelper helper(*node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", 0.0f));
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("leakyRelu", options));
-    } else if (op_type == "Sigmoid") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("sigmoid"));
-    } else if (op_type == "Softplus") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("softplus"));
-    } else if (op_type == "Softsign") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("softsign"));
-    } else if (op_type == "Tanh") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("tanh"));
-    }
-  }
-}
-
 Status ModelBuilder::RegisterInitializers() {
   for (const auto& pair : GetInitializerTensors()) {
     const auto& tensor = *pair.second;
@@ -147,14 +102,15 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("dimensions", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (IsSupportedDataType(data_type, wnn_device_type_)) {
+    if (IsSupportedDataType(data_type, webnn_supported_data_types)) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
-      auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
+      auto num_elements = SafeInt<size_t>(Product(shape));
       emscripten::val view = emscripten::val::undefined();
       std::byte* tensor_ptr = nullptr;
       if (tensor.has_raw_data()) {
         tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
       } else {
+        // Store temporary unpacked_tensor.
         unpacked_tensors_.push_back({});
         std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
         ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
@@ -163,12 +119,10 @@ Status ModelBuilder::RegisterInitializers() {
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
         case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-          desc.set("type", emscripten::val("uint8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<uint8_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-          desc.set("type", emscripten::val("int8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<int8_t*>(tensor_ptr))};
           break;
@@ -235,16 +189,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     ORT_RETURN_IF(shape_proto == nullptr,
                   "shape_proto cannot be null for ", input_output_type, ": ", name);
     const auto& shape = shape_proto->dim();
-    if (shape.empty()) {
-      // If we have an empty shape, this is a scalar input.
-      dims.push_back(1);
-
-      // We need to change the shapes of these scalar outputs back to {}
-      // when WebNN EP returns these values to ORT.
-      if (!is_input) {
-        AddScalarOutput(name);
-      }
-    } else {
+    if (!shape.empty()) {
       dims.reserve(shape.size());
       for (const auto& dim : shape) {
         // dim_param free dimensions should have already been excluded by IsInputSupported().
@@ -386,60 +331,17 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
+  // Explicitly release the WebNN builder to free memory.
+  wnn_builder_ = emscripten::val::undefined();
   model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_));
   model->SetInputs(std::move(input_names_));
   model->SetOutputs(std::move(output_names_));
-  model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
   // Wasm heap is not transferrable, we have to pre-allocate the MLNamedArrayBufferViews
   // for inputs and outputs because they will be transferred after compute() done.
   // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
   model->AllocateInputOutputBuffers();
   return Status::OK();
-}
-
-// supported_nodes is provided by the op to indicate whether it can be fused with the activation node.
-emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& output,
-                                             const InlinedHashSet<std::string> supported_nodes) {
-  emscripten::val fused_op = emscripten::val::null();
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    const auto& dst_node = it->GetNode();
-    const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (!Contains(supported_nodes, dst_node.OpType())) {
-      return emscripten::val::null();
-    }
-    if (Contains(activation_nodes_, dst_node.Index())) {
-      if (&output == dst_input) {
-        fused_op = activation_nodes_.at(dst_node.Index());
-      }
-    } else {
-      // If there is any other non-relu node using the output
-      // will add relu separately.
-      if (&output == dst_input) {
-        return emscripten::val::null();
-      }
-    }
-  }
-
-  // If output is a graph output, will add relu separately.
-  if (fused_op != emscripten::val::null()) {
-    for (const auto* graph_output : graph_viewer_.GetOutputs()) {
-      if (&output == graph_output) {
-        return emscripten::val::null();
-      }
-    }
-
-    LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
-                          << "], fused the output [" << output.Name() << "]";
-
-    fused_activations_.insert(output.Name());
-  }
-
-  return fused_op;
-}
-
-void ModelBuilder::AddScalarOutput(const std::string& output_name) {
-  scalar_outputs_.insert(output_name);
 }
 
 void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& operand) {

@@ -392,15 +392,23 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                      const double rmin,
                      QnnQuantParamsWrapper& quant_param,
                      std::vector<uint8_t>& raw_tensor) const {
+    bool symmetric = false;
     if (info.quant_param.IsQuantized()) {
-      raw_tensor.resize(double_tensor.size());
+      size_t data_size = double_tensor.size();
+      // QNN BatchNorm int32 bias requires symmetric quantizated
+      if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+        data_size *= sizeof(int32_t);
+        symmetric = true;
+      }
+      raw_tensor.resize(data_size);
       float scale = 0.0f;
-      int zero_point = 0;
+      int32_t zero_point = 0;
       ORT_RETURN_IF_ERROR(utils::GetQuantParams(static_cast<float>(rmin),
                                                 static_cast<float>(rmax),
                                                 info.qnn_data_type,
                                                 scale,
-                                                zero_point));
+                                                zero_point,
+                                                symmetric));
       quant_param = QnnQuantParamsWrapper(scale, zero_point);
       for (size_t i = 0; i < double_tensor.size(); ++i) {
         // onnx only supports 8 bits quantization
@@ -411,6 +419,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
         } else if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
           int8_t quant_value = static_cast<int8_t>(quant_value_int);
           raw_tensor[i] = *reinterpret_cast<uint8_t*>(&quant_value);
+        } else if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+          int32_t quant_value = static_cast<int32_t>(quant_value_int);
+          size_t pos = i * sizeof(int32_t);
+          std::memcpy(&raw_tensor[pos], reinterpret_cast<uint8_t*>(&quant_value), sizeof(int32_t));
         } else {
           // TODO(adrianlizarraga): Should support 16-bit quantization as well.
           ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", info.qnn_data_type);
@@ -435,7 +447,7 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   } else {
     const auto& inputs = node_unit.Inputs();
-    ORT_ENFORCE(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
+    ORT_RETURN_IF_NOT(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
 
     // Check input type is float for CPU. Can't use Qnn Op validation API since it's before layout transformation
     ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
@@ -444,8 +456,7 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
     const size_t input_rank = input_shape.size();
 
-    ORT_RETURN_IF(input_rank <= 2 || input_rank > 4,
-                  "QNN BatchNorm only supports input ranks of size 3 or 4.");
+    ORT_RETURN_IF(input_rank > 4, "QNN BatchNorm only supports input ranks of size <= 4.");
 
     const uint32_t num_channels = input_shape[1];
 
@@ -578,7 +589,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       scale_rmin,
                                       scale_quant_param,
                                       scale_raw_tensor));
-      Qnn_TensorType_t scale_tensor_type = GetInputTensorType(qnn_model_wrapper, scale_name);
+      Qnn_TensorType_t scale_tensor_type = qnn_model_wrapper.GetTensorType(scale_name);
       QnnTensorWrapper input_tensorwrapper(scale_name, scale_tensor_type, scale_info.qnn_data_type,
                                            std::move(scale_quant_param), std::move(scale_info.shape),
                                            std::move(scale_raw_tensor));
@@ -595,7 +606,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       bias_rmin,
                                       bias_quant_param,
                                       bias_raw_tensor));
-      Qnn_TensorType_t bias_tensor_type = GetInputTensorType(qnn_model_wrapper, bias_name);
+      Qnn_TensorType_t bias_tensor_type = qnn_model_wrapper.GetTensorType(bias_name);
       QnnTensorWrapper input_tensorwrapper(bias_name, bias_tensor_type, bias_info.qnn_data_type,
                                            std::move(bias_quant_param), std::move(bias_info.shape),
                                            std::move(bias_raw_tensor));

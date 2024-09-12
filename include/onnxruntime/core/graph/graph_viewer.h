@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <unordered_set>
+#include <filesystem>
 
 #include "core/graph/graph.h"
 #include "core/framework/session_options.h"
-#include <unordered_set>
 
 namespace onnxruntime {
 class Function;
@@ -43,7 +44,7 @@ class GraphViewer {
   const std::string& Description() const noexcept;
 
   /** Gets the path of the owning model if any **/
-  const Path& ModelPath() const noexcept { return graph_->ModelPath(); }
+  const std::filesystem::path& ModelPath() const noexcept { return graph_->ModelPath(); }
 
   /**
   Gets a tensor created from an initializer.

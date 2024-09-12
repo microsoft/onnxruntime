@@ -31,7 +31,7 @@
 #include "test_fixture.h"
 #include "utils.h"
 #include "custom_op_utils.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -1620,7 +1620,7 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
-// To accomodate a reduced op build pipeline
+// To accommodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
@@ -1674,7 +1674,7 @@ TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "outp
 // Has memory leak
 #if defined(__ANDROID__) || defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
-// To accomodate a reduced op build pipeline
+// To accommodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
 #else
@@ -1705,7 +1705,7 @@ TEST(CApiTest, test_custom_op_shape_infer_attr) {
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, test_custom_op_library_copy_variadic) {
-// To accomodate a reduced op build pipeline
+// To accommodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, test_custom_op_library_copy_variadic) {
 #else
@@ -1959,7 +1959,9 @@ TEST(CApiTest, get_allocator_cpu) {
 #ifdef USE_CUDA
 TEST(CApiTest, get_allocator_cuda) {
   Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -2076,7 +2078,9 @@ TEST(CApiTest, io_binding_cuda) {
 #ifdef USE_TENSORRT
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
 #else
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
 #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
@@ -2234,10 +2238,10 @@ TEST(CApiTest, basic_cuda_graph) {
 #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
 #define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
   Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#elif defined(USE_CUDA) || defined(USE_TENSORRT)
+  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_DML)
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
-#else
-  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
 
   Ort::Allocator allocator(session, info_mem);
@@ -2250,12 +2254,12 @@ TEST(CApiTest, basic_cuda_graph) {
 
   ASSERT_NE(input_data.get(), nullptr);
 
-#ifdef USE_DML
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+#elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
-#else
-  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 #endif
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -2283,13 +2287,13 @@ TEST(CApiTest, basic_cuda_graph) {
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
 
-#ifdef USE_DML
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
   auto output_cpu_bytes = reinterpret_cast<std::byte*>(y_values.data());
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
-#else
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #endif
 
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
@@ -2297,10 +2301,10 @@ TEST(CApiTest, basic_cuda_graph) {
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
 
-#ifdef USE_DML
-  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
-#else
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#elif defined(USE_DML)
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
 
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
@@ -2308,20 +2312,20 @@ TEST(CApiTest, basic_cuda_graph) {
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
 
-#ifdef USE_DML
-  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
-#else
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+#elif defined(USE_DML)
+  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
 #endif
 
   binding.SynchronizeInputs();
 
   session.Run(Ort::RunOptions(), binding);
 
-#ifdef USE_DML
-  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
-#else
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#elif defined(USE_DML)
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
 
   expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
@@ -2826,6 +2830,50 @@ TEST(CApiTest, create_tensor_with_data_float8) {
 }
 
 #endif
+
+// Test creating an Ort::Value with INT4 data.
+TEST(CApiTest, create_tensor_with_data_int4) {
+  std::array<uint8_t, 4> values = {0x10, 0x32, 0x78, 0x06};  // {0, 1, 2, 3, -8, 7, 6, pad_0}
+  std::vector<int64_t> dims = {7};                           // 7 4-bit elements take up 4 bytes.
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
+  const auto* new_pointer = tensor.GetTensorData<uint8_t>();
+  ASSERT_EQ(new_pointer, values.data());
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  auto query_dims = tensor_info.GetShape();
+  ASSERT_EQ(query_dims, dims);
+  ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
+
+  uint8_t pair_2 = tensor.At<uint8_t>({2});
+  ASSERT_EQ(values[2], pair_2);
+}
+
+// Test creating an Ort::Value with UINT4 data.
+TEST(CApiTest, create_tensor_with_data_uint4) {
+  std::array<uint8_t, 4> values = {0x10, 0x32, 0x54, 0x0F};  // {0, 1, 2, 3, 4, 5, 15, pad_0}
+  std::vector<int64_t> dims = {7};                           // 7 4-bit elements take up 4 bytes.
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+  const auto* new_pointer = tensor.GetTensorData<uint8_t>();
+  ASSERT_EQ(new_pointer, values.data());
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  auto query_dims = tensor_info.GetShape();
+  ASSERT_EQ(query_dims, dims);
+  ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+
+  uint8_t pair_2 = tensor.At<uint8_t>({2});
+  ASSERT_EQ(values[2], pair_2);
+}
 
 TEST(CApiTest, access_tensor_data_elements) {
   /**
@@ -3394,7 +3442,9 @@ TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
   Ort::SessionOptions session_options;
 
 #ifdef USE_CUDA
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
 #else
   // arena is enabled but the sole initializer will still be allocated from non-arena memory
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -3846,7 +3896,9 @@ TEST(CApiTest, GitHubIssue10179) {
     try {
       const auto* model_path = MODEL_URI;
       Ort::SessionOptions session_options{};
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+      OrtCUDAProviderOptionsV2* options;
+      Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+      session_options.AppendExecutionProvider_CUDA_V2(*options);
       Ort::Session session{*ort_env, model_path, session_options};
     } catch (const std::exception& e) {
       std::cerr << "exception: " << e.what() << "\n";
@@ -3876,7 +3928,9 @@ TEST(CApiTest, GitHubIssue10179) {
 TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
   const auto* model_path = SEQUENCE_MODEL_URI_2;
   Ort::SessionOptions session_options{};
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
   Ort::Session session{*ort_env, model_path, session_options};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);

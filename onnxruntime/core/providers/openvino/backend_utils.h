@@ -29,9 +29,7 @@ namespace openvino_ep {
 namespace backend_utils {
 const std::string log_tag = "[OpenVINO-EP] ";
 
-#ifndef NDEBUG
 bool IsDebugEnabled();
-#endif
 
 // Internal diagnostic function.
 bool IsCILogEnabled();

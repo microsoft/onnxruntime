@@ -7,7 +7,11 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     [StructLayout(LayoutKind.Sequential)]
+#if NETSTANDARD2_0
+    public class OrtApiBase
+#else
     public struct OrtApiBase
+#endif
     {
         public IntPtr GetApi;
         public IntPtr GetVersionString;
@@ -17,7 +21,11 @@ namespace Microsoft.ML.OnnxRuntime
     // OrtApi ort_api_1_to_<latest_version> (onnxruntime/core/session/onnxruntime_c_api.cc)
     // If syncing your new C API, any other C APIs before yours also need to be synced here if haven't
     [StructLayout(LayoutKind.Sequential)]
+#if NETSTANDARD2_0
+    public class OrtApi
+#else
     public struct OrtApi
+#endif
     {
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
@@ -300,8 +308,13 @@ namespace Microsoft.ML.OnnxRuntime
     {
         static OrtApi api_;
 
+#if NETSTANDARD2_0
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtGetApi(UInt32 version);
+#else
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ref OrtApi DOrtGetApi(UInt32 version);
+#endif
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr DOrtGetVersionString();
@@ -310,11 +323,24 @@ namespace Microsoft.ML.OnnxRuntime
 
         static NativeMethods()
         {
+#if NETSTANDARD2_0
+            IntPtr ortApiBasePtr = OrtGetApiBase();
+            OrtApiBase ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
+            DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(ortApiBase.GetApi, typeof(DOrtGetApi));
+#else
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
+#endif
 
+            const uint ORT_API_VERSION = 14;
+#if NETSTANDARD2_0
+            IntPtr ortApiPtr = OrtGetApi(ORT_API_VERSION);
+            api_ = (OrtApi)Marshal.PtrToStructure(ortApiPtr, typeof(OrtApi));
+            OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(ortApiBase.GetVersionString, typeof(DOrtGetVersionString));
+#else
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(14 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(ORT_API_VERSION);
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
+#endif
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtCreateEnvWithCustomLogger = (DOrtCreateEnvWithCustomLogger)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLogger, typeof(DOrtCreateEnvWithCustomLogger));
@@ -530,7 +556,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
+#if NETSTANDARD2_0
+        public static extern IntPtr OrtGetApiBase();
+#else
         public static extern ref OrtApiBase OrtGetApiBase();
+#endif
 
 #region Runtime / Environment API
 
@@ -1327,7 +1357,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtAllocatorType allocatorType,
             int identifier,
             OrtMemType memType,
-            out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo // memory ownership transfered to caller
+            out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo // memory ownership transferred to caller
         );
 
         public static DOrtCreateMemoryInfo OrtCreateMemoryInfo;
@@ -1476,7 +1506,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Destroy OrtIoBinding instance created by OrtCreateIoBinding
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseIoBinding(IntPtr /*(OrtIoBinding)*/ io_binding);
 
@@ -1486,7 +1516,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Bind OrtValue to the model input with the specified name
         /// If binding with the specified name already exists, it will be replaced
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         /// <param name="name">model input name (utf-8)</param>
         /// <param name="ort_value">OrtValue that is used for input (may wrap arbitrary memory).
         ///      The param instance is copied internally so this argument may be released.
@@ -1514,7 +1544,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Bind OrtValue to the model output with the specified name
         /// If binding with the specified name already exists, it will be replaced
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         /// <param name="name">model output name (utf-8)</param>
         /// <param name="ort_value">OrtValue that is used for output (may wrap arbitrary memory).
         ///      The param instance is copied internally so this argument may be released.
@@ -1575,7 +1605,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// The function returns output values after the model has been run with RunWithBinding()
         /// It returns a natively allocated buffer of OrtValue pointers. All of the OrtValues must be individually
         /// released after no longer needed. You may use OrtValue disposable class to wrap the native handle and properly dispose it
-        /// in connection with DisposableList<T>. All values are returned in the same order as they were bound.
+        /// in connection with DisposableList{T}. All values are returned in the same order as they were bound.
         /// The buffer that contains OrtValues must deallocated using the same allocator that was specified as an argument.
         /// You may use an instance OrtMemoryAllocation to properly dispose of the native memory.
         /// </summary>
@@ -1613,9 +1643,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Provides element-level access into a tensor.
         /// </summary>
-        /// <param name="location_values">a pointer to an array of index values that specify an element's location in the tensor data blob</param>
-        /// <param name="location_values_count">length of location_values</param>
-        /// <param name="out">a pointer to the element specified by location_values</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtTensorAt(IntPtr /*(OrtIoBinding)*/ io_binding);
 
@@ -1626,10 +1654,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// sharing between multiple sessions that use the same env instance.
         /// Lifetime of the created allocator will be valid for the duration of the environment.
         /// Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+        /// </summary>
         /// <param name="env">Native OrtEnv instance</param>
         /// <param name="memInfo">Native OrtMemoryInfo instance</param>
         /// <param name="arenaCfg">Native OrtArenaCfg instance</param>
-        /// <retruns>A pointer to native ortStatus indicating success/failure</retruns>
+        /// <returns>A pointer to native ortStatus indicating success/failure</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateAndRegisterAllocator(IntPtr /*(OrtEnv*)*/ env,
                                                                                IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
@@ -1860,7 +1889,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtFillStringTensor OrtFillStringTensor;
 
         /// \param value A tensor created from OrtCreateTensor... function.
-        /// \param index The index of the entry in the tensor to resize. <summary>
+        /// \param index The index of the entry in the tensor to resize.
         /// \param length_in_bytes Length to resize the string to.
         /// \param buffer The resized buffer.
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]

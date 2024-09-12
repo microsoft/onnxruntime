@@ -36,13 +36,14 @@ class BackendManager {
       const onnxruntime::Node& fused_node,
       const onnxruntime::GraphViewer& subgraph,
       const logging::Logger& logger) const;
+
   bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);
 
-  std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                         const std::vector<std::vector<int64_t>>& input_shapes);
 

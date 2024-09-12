@@ -84,7 +84,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 }
 
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder_,
+                                                      const emscripten::val& wnn_builder,
                                                       const WebnnDeviceType device_type,
                                                       const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
@@ -103,7 +103,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
     const auto* node(graph_viewer.GetNode(node_idx));
     bool supported = false;
     // Firstly check if platform supports the WebNN op.
-    if (CheckSingleOp(node->OpType(), wnn_builder_, device_type)) {
+    if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
       LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType() << "] is supported by browser";
       supported = IsNodeSupported(*node, graph_viewer, device_type, logger);
     }
@@ -130,72 +130,67 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
-bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_type) {
-  // Current data type implementation status of WebNN is inconsistent along with different backends,
-  // The XNNPack backend supports only FP32, while the DML backend POC supports more.
-  if (device_type == WebnnDeviceType::CPU) {
-    return std::find(supported_cpu_data_types.begin(), supported_cpu_data_types.end(), data_type) !=
-           supported_cpu_data_types.end();
-  } else {
-    return std::find(supported_gpu_data_types.begin(), supported_gpu_data_types.end(), data_type) !=
-           supported_gpu_data_types.end();
-  }
+bool IsSupportedDataType(const int32_t data_type,
+                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types) {
+  return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) !=
+         supported_data_types.end();
 }
 
-bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
-                                      std::vector<int64_t>& shape_b,
-                                      const logging::Logger& logger) {
+bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
+                                    std::vector<int64_t>& shape_b,
+                                    std::vector<int64_t>& output_shape) {
   size_t size_a = shape_a.size();
   size_t size_b = shape_b.size();
   size_t smaller_size = std::min(size_a, size_b);
-  for (size_t i = 0; i < smaller_size; i++) {
+  size_t larger_size = std::max(size_a, size_b);
+
+  output_shape.resize(larger_size);
+
+  for (size_t i = 0; i < larger_size; i++) {
     // right alignment
     size_t axis_a = size_a - i - 1;
     size_t axis_b = size_b - i - 1;
-    // Broadcastable tensors must either have each dimension the same size or equal to one.
-    if (shape_a[axis_a] != shape_b[axis_b] && shape_a[axis_a] != 1 && shape_b[axis_b] != 1) {
-      return false;
+
+    if (i < smaller_size) {
+      // Broadcastable tensors must either have each dimension the same size or equal to one.
+      if (shape_a[axis_a] != shape_b[axis_b] && shape_a[axis_a] != 1 && shape_b[axis_b] != 1) {
+        return false;
+      }
+      output_shape[larger_size - i - 1] = std::max(shape_a[axis_a], shape_b[axis_b]);
+    } else {
+      // For the remaining dimensions in the larger tensor, copy the dimension size directly to the output shape.
+      output_shape[larger_size - i - 1] = (size_a > size_b) ? shape_a[axis_a] : shape_b[axis_b];
     }
   }
+
   return true;
 }
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
-  // WebNN changed the name of the MLOperandDescriptor's data type from "type" to "dataType",
-  // use a duplicate entry temporarily to workaround this API breaking issue.
-  // TODO: Remove legacy "type" once all browsers implement the new "dataType".
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      desc.set("type", emscripten::val("uint8"));
       desc.set("dataType", emscripten::val("uint8"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      desc.set("type", emscripten::val("int8"));
       desc.set("dataType", emscripten::val("int8"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      desc.set("type", emscripten::val("float16"));
       desc.set("dataType", emscripten::val("float16"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      desc.set("type", emscripten::val("float32"));
       desc.set("dataType", emscripten::val("float32"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      desc.set("type", emscripten::val("int32"));
       desc.set("dataType", emscripten::val("int32"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      desc.set("type", emscripten::val("int64"));
       desc.set("dataType", emscripten::val("int64"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      desc.set("type", emscripten::val("uint32"));
       desc.set("dataType", emscripten::val("uint32"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      desc.set("type", emscripten::val("uint64"));
       desc.set("dataType", emscripten::val("uint64"));
       return true;
     default:

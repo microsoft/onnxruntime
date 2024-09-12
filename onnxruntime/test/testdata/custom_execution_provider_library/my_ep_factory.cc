@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "my_ep_factory.h"
 #include "my_execution_provider.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/shared/common.h"
 #include <iostream>
 #include "core/framework/provider_options_utils.h"

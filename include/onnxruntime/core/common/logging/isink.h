@@ -6,12 +6,15 @@
 #include <string>
 
 #include "core/common/logging/logging.h"
+#include "core/common/logging/sink_types.h"
 
 namespace onnxruntime {
 namespace logging {
 class ISink {
  public:
-  ISink() = default;
+  explicit ISink(SinkType type = SinkType::BaseSink) : type_(type) {}
+
+  SinkType GetType() const { return type_; }
 
   /**
      Sends the message to the sink.
@@ -32,6 +35,8 @@ class ISink {
   virtual ~ISink() = default;
 
  private:
+  SinkType type_;
+
   // Make Code Analysis happy by disabling all for now. Enable as needed.
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ISink);
 

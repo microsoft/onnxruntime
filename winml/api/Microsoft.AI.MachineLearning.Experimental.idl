@@ -128,7 +128,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
       Boolean CloseModelOnJoin { get; set; };
 
       //! The JoinedNodePrefix property specifies whether the nodes of the second model should have a specific prefixed in the joined model.
-      //! Node names must be unique or empty. By enabling this, the engine can specifiy the prefix, or eliminate it entirely in cases
+      //! Node names must be unique or empty. By enabling this, the engine can specify the prefix, or eliminate it entirely in cases
       //! where the model is known to contain no duplicate node names.
       //! The default value for CloseModelOnJoin is a new random GUID.
       String JoinedNodePrefix { get; set; };

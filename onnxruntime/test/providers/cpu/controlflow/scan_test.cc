@@ -155,7 +155,7 @@ static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const st
     graph.AddNode("add", "Add", "Add 1 to the loop state", inputs, outputs);
   }
 
-  // subgraph with multiple inputs and outputs to test variadic behaviour.
+  // subgraph with multiple inputs and outputs to test variadic behavior.
   // 2 inputs of 2 that are concatenated and then split into 4 outputs of 1
 
   // Concat node

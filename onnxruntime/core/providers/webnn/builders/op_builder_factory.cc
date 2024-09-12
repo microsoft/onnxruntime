@@ -81,6 +81,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
+  {  // Dropout
+    CreateDropoutOpBuilder("Dropout", op_registrations);
+  }
+
   {  // Quantize/Dequantize
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
     CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);
@@ -102,6 +106,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGemmOpBuilder("Gemm", op_registrations);
     CreateGemmOpBuilder("MatMul", op_registrations);
     CreateGemmOpBuilder("MatMulInteger", op_registrations);
+  }
+
+  {  // GRU
+    CreateGruOpBuilder("GRU", op_registrations);
   }
 
   {  // Logical
@@ -182,6 +190,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
+  {  // Trilu
+    CreateTriangularOpBuilder("Trilu", op_registrations);
+  }
   return op_registrations;
 }
 

@@ -50,11 +50,22 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
     std::vector<int32_t> target_shape{static_cast<int>(input_shape[axis])};
     target_shape.insert(target_shape.begin(), axis, 1);
     target_shape.insert(target_shape.end(), input_shape.size() - axis - 1, 1);
-    scale = model_builder.GetBuilder().call<emscripten::val>("reshape", scale, emscripten::val::array(target_shape));
+    emscripten::val reshape_scale_options = emscripten::val::object();
+    reshape_scale_options.set("label", node.Name() + "_reshape_scale");
+    scale = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                             scale,
+                                                             emscripten::val::array(target_shape),
+                                                             reshape_scale_options);
+    emscripten::val reshape_zero_point_options = emscripten::val::object();
+    reshape_zero_point_options.set("label", node.Name() + "_reshape_zero_point");
     zero_point = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                  zero_point, emscripten::val::array(target_shape));
+                                                                  zero_point,
+                                                                  emscripten::val::array(target_shape),
+                                                                  reshape_zero_point_options);
   }
-  output = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", input, scale, zero_point);
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+  output = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", input, scale, zero_point, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
 

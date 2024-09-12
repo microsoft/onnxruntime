@@ -1,7 +1,10 @@
 # ignore generated docs
 web/docs/
 
-# this JSON file is too large, so it takes too long to format it.
+# these JSON file is too large, so it takes too long to format it.
+web/test/data/ops/pad-big.jsonc
+web/test/testdata-config.json
+web/test/ort.test.js
 node/test/testdata/squeezenet.input0.json
 
 # ignore dist folder
@@ -11,13 +14,6 @@ dist/
 **/*.cc
 **/*.cpp
 **/*.h
-**/*.js
-**/*.mjs
-**/*.cjs
-**/*.jsx
-**/*.ts
-**/*.mts
-**/*.cts
-**/*.tsx
+**/*.hpp
 **/*.java
 **/*.mm

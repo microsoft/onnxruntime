@@ -668,7 +668,7 @@ TEST(TuningContext, TunableOpRespectTuningContext) {
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(last_run, "FastFull");
 
-    // After TunableOp(...), the result entry is corretly written.
+    // After TunableOp(...), the result entry is correctly written.
     ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 1u);
     ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
   }

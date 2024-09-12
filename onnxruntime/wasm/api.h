@@ -3,7 +3,7 @@
 
 // NOTE: This file contains declarations of exported functions as WebAssembly API.
 // Unlike a normal C-API, the purpose of this API is to make emcc to generate correct exports for the WebAssembly. The
-// macro "EMSCRIPTEN_KEEPALIVE" helps the compiler to mark the function as an exported funtion of the WebAssembly
+// macro "EMSCRIPTEN_KEEPALIVE" helps the compiler to mark the function as an exported function of the WebAssembly
 // module. Users are expected to consume those functions from JavaScript side.
 
 #pragma once

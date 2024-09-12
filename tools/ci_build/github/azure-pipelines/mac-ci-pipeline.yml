@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -32,5 +33,5 @@ stages:
   parameters:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false
-    AdditionalBuildFlags: --build_objc --enable_language_interop_ops --build_wheel --use_xnnpack
+    AdditionalBuildFlags: --build_objc --build_wheel --use_xnnpack
     WithCache: true

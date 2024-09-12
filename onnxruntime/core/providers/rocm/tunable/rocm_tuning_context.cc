@@ -66,6 +66,9 @@ std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   std::ostringstream oss;
 #ifdef USE_COMPOSABLE_KERNEL
   oss << "USE_CK=" << 1 << "|";
+#ifdef USE_COMPOSABLE_KERNEL_CK_TILE
+  oss << "USE_CKTILE=" << 1 << "|";
+#endif
 #else
   oss << "USE_CK=" << 0 << "|";
 #endif

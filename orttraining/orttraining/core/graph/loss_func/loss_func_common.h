@@ -21,7 +21,7 @@ struct LossFunctionInfo {
 
 struct ILossFunction {
   virtual GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) = 0;
-  virtual ~ILossFunction(){};
+  virtual ~ILossFunction() {};
 };
 
 TypeProto* GetSparseTypeProto(const NodeArg* input_arg,

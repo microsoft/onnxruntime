@@ -141,7 +141,9 @@ struct ProviderHostCPU {
   virtual Status Scan__Compute(const Scan<9>* p, OpKernelContext* ctx) = 0;
   virtual Status Scan__SetupSubgraphExecutionInfo(Scan<8>* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
   virtual Status Scan__SetupSubgraphExecutionInfo(Scan<9>* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
-
+  virtual void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
+                                                      gsl::span<const int64_t> input_dims,
+                                                      InlinedVector<float>& scales) const = 0;
 #ifndef DISABLE_CONTRIB_OPS
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
@@ -161,7 +163,7 @@ struct ProviderHostCPU {
                                             const TensorShape& bias_shape,
                                             const Tensor*& mask_index,
                                             const Tensor* past,
-                                            const Tensor* relative_position_bias,
+                                            const Tensor* attention_bias,
                                             void* parameters,
                                             const int max_threads_per_block,
                                             const Tensor* past_seq_len) = 0;
@@ -202,10 +204,6 @@ struct ProviderHostCPU {
   virtual void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) = 0;
   virtual Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) = 0;
   virtual Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
-
-  virtual void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
-                                                      gsl::span<const int64_t> input_dims,
-                                                      InlinedVector<float>& scales) const = 0;
 
 #ifdef ENABLE_ATEN
   virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;

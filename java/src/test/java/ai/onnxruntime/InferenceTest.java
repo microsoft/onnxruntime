@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -678,6 +678,9 @@ public class InferenceTest {
         if (provider == OrtProvider.CORE_ML) {
           // CoreML gives slightly different answers on a 2020 13" M1 MBP
           assertArrayEquals(expectedOutput, resultArray, 1e-2f);
+        } else if (provider == OrtProvider.CUDA) {
+          // CUDA gives slightly different answers on a H100 with CUDA 12.2
+          assertArrayEquals(expectedOutput, resultArray, 1e-3f);
         } else {
           assertArrayEquals(expectedOutput, resultArray, 1e-5f);
         }

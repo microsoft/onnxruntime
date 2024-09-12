@@ -68,7 +68,7 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
   auto dst_md = dnnl::memory::desc(x_md.get_dims(), node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
   dnnl::memory dst_mem;
 
-  // If zero point exists and we are NOT dequantizing int32, then substract zp from x and scale
+  // If zero point exists and we are NOT dequantizing int32, then subtract zp from x and scale
   if (isZeroPointUseful && (x_mem.get_desc().get_data_type() != dnnl::memory::data_type::s32)) {
     // Get Zero point
     auto x_zp_mem = sp.GetMemory(node.Input(IN_X_ZERO_POINT));

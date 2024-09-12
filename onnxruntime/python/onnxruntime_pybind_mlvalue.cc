@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
 #include "pybind11/numpy.h"
@@ -8,7 +7,6 @@
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
 #include "python/numpy_helper.h"
 
 #include "core/graph/graph.h"
@@ -39,7 +37,6 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/DmlExecutionProvider/src/ReadbackHeap.h"
 #include "core/providers/dml/DmlExecutionProvider/src/AllocationInfo.h"
 #endif
-
 namespace onnxruntime {
 namespace python {
 
@@ -586,9 +583,10 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
     }
   } else {
     void* buffer = tensor.MutableDataRaw();
-    size_t len;
-    if (!IAllocator::CalcMemSizeForArray(tensor.DataType()->Size(), tensor.Shape().Size(), &len)) {
-      throw std::runtime_error("length overflow");
+    size_t len = 0;
+    Status status = Tensor::CalculateTensorStorageSize(tensor.DataType(), tensor.Shape(), /*alignment*/ 0, len);
+    if (!status.IsOK()) {
+      throw std::runtime_error(status.ErrorMessage());
     }
     mem_cpy_to_device(buffer, PyArray_DATA(darray), len);
   }

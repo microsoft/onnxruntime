@@ -637,7 +637,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
-                                   const std::string& ep_context_path,
+                                   const std::filesystem::path& ep_context_path,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -658,22 +658,20 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
-  onnxruntime::PathString context_cache_path;
-  PathString model_pathstring = graph.ModelPath().ToPathString();
+  std::filesystem::path context_cache_path;
+  const std::filesystem::path& model_path = graph.ModelPath();
 
   if (!ep_context_path.empty()) {
-    context_cache_path = ToPathString(ep_context_path);
-  } else if (!model_pathstring.empty()) {
-    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
+    context_cache_path = ep_context_path;
+  } else if (!model_path.empty()) {
+    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
   }
 
-  {
-#ifdef _WIN32
-    std::wifstream fs(context_cache_path);
-#else
-    std::ifstream fs(context_cache_path);
-#endif
-    ORT_RETURN_IF(fs.good(), "Failed to generate EP context model since the file exist already.");
+  if (std::filesystem::exists(context_cache_path)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
+                           context_cache_path, "' exist already.");
   }
 
   Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),

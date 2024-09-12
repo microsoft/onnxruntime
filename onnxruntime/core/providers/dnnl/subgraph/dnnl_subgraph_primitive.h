@@ -65,7 +65,7 @@ class DnnlSubgraphPrimitive {
   dnnl::memory::desc GetOutputInfo(std::string name);
   bool IsScalarOutput(const std::string& name);
   bool IsDynamic();
-  // All Scalar inputs are automatically converterted to a one dimentional tensor when used in OneDNN
+  // All Scalar inputs are automatically converterted to a one dimensional tensor when used in OneDNN
   // If the input being a scalar affects the operator this function can be used to determine if the
   // original input from ORT was a scalar.
   bool IsScalar(const DnnlTensor& tensor);

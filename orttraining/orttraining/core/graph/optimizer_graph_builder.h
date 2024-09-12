@@ -125,7 +125,7 @@ class OptimizerGraphBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping);
 
-  // This function can be overriden by child classes to have different logic
+  // This function can be overridden by child classes to have different logic
   // for building optimizers.
   virtual Status BuildOptimizerNode(
       const std::unique_ptr<OptimizerBuilder>& opt_builder,

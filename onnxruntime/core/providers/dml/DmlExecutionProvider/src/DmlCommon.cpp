@@ -32,7 +32,7 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     };
 }
 
-bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
+bool IsSigned(DML_TENSOR_DATA_TYPE dataType) noexcept
 {
     switch (dataType)
     {
@@ -121,7 +121,7 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     uint32_t deviceTypeMask = 0u;
 
     // Form the bitmask of all supported data types.
-    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT64; ++i)
+    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT4; ++i)
     {
         DML_FEATURE_QUERY_TENSOR_DATA_TYPE_SUPPORT dataTypeQuery = { static_cast<DML_TENSOR_DATA_TYPE>(i) };
         DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT dataTypeSupport = {};
@@ -140,7 +140,33 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     return deviceTypeMask;
 }
 
-void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides)
+uint32_t GetBitMaskFromIndices(gsl::span<const uint32_t> indices) noexcept
+{
+    uint32_t bitMask = 0;
+    for (auto i : indices)
+    {
+        assert(i < 32);
+        bitMask |= (1 << i);
+    }
+    return bitMask;
+}
+
+uint32_t CountLeastSignificantZeros(uint32_t value) noexcept
+{
+    // *Use std::countr_zero instead when codebase updated to C++20.
+    // Use bit twiddling hack rather than for loop.
+    uint32_t count = 32;
+    value &= -int32_t(value);
+    if (value) count--;
+    if (value & 0x0000FFFF) count -= 16;
+    if (value & 0x00FF00FF) count -= 8;
+    if (value & 0x0F0F0F0F) count -= 4;
+    if (value & 0x33333333) count -= 2;
+    if (value & 0x55555555) count -= 1;
+    return count;
+}
+
+void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides) noexcept
 {
     assert(sizes.size() == strides.size());
 

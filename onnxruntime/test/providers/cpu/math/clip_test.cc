@@ -119,6 +119,24 @@ TEST(MathOpTest, Clip_Default_uint64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(MathOpTest, Clip_MLFloat16) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f),
+                            MLFloat16(-4.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                            MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(8.0f)});
+  test.AddInput<MLFloat16>("min", {}, {MLFloat16(0.0f)});
+  test.AddInput<MLFloat16>("max", {}, {MLFloat16(6.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+                             MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                             MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(6.0f)});
+
+  test.Run();
+}
+
 TEST(MathOpTest, Clip_int32) {
   OpTester test("Clip", 12);
 

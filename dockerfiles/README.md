@@ -32,7 +32,7 @@
   docker run -it onnxruntime-source
   ```
 
-The docker file supports both x86_64 and ARM64(aarch64). You may use docker's "--platform" parameter to explictly specify which CPU architecture you want to build. For example:
+The docker file supports both x86_64 and ARM64(aarch64). You may use docker's "--platform" parameter to explicitly specify which CPU architecture you want to build. For example:
 
 ```bash
   docker build --platform linux/arm64/v8 -f Dockerfile.source
@@ -274,7 +274,7 @@ Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use 
 Note: Resulting Docker image will have ONNX Runtime installed in /usr, and ONNX Runtime wheel copied to /onnxruntime directory.
 Nothing else from ONNX Runtime source tree will be copied/installed to the image.
 
-Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
+Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropriate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
 ## MIGraphX
 **Ubuntu 20.04, ROCm6.0, MIGraphX**

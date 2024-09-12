@@ -16,14 +16,6 @@ import unittest
 import numpy
 import torch
 from bert_padding import pad_input, unpad_input
-
-try:
-    from colorama import Fore, init
-
-    init(autoreset=True)
-except ImportError:
-    print("colorama is not installed, please install it to get prettier output")
-    Fore = None
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
@@ -32,6 +24,10 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions
 torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
+
+RED = "\033[31m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
 
 
 class Formats:
@@ -149,6 +145,8 @@ def create_group_query_attention_graph_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
 ):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
@@ -173,6 +171,8 @@ def create_group_query_attention_graph_prompt(
             local_window_size=local_window_size,
             do_rotary=rotary,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
+            smooth_softmax=1 if use_smooth_softmax else 0,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             # kv_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
@@ -335,6 +335,8 @@ def create_group_query_attention_graph_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
@@ -361,6 +363,8 @@ def create_group_query_attention_graph_past(
             local_window_size=local_window_size,
             do_rotary=rotary,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
+            smooth_softmax=1 if use_smooth_softmax else 0,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             # kv_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
@@ -671,6 +675,8 @@ def gqa_prompt_func(
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     rotary_interleaved=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
         config,
@@ -680,6 +686,8 @@ def gqa_prompt_func(
         rotary=cos is not None,
         rotary_interleaved=rotary_interleaved,
         packed=new_k is None,
+        softcap=softcap,
+        use_smooth_softmax=use_smooth_softmax,
     )
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
@@ -777,6 +785,8 @@ def gqa_past_func(
     share_buffer=True,
     window_size=-1,
     rotary_interleaved=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
 ):
     onnx_model_str = create_group_query_attention_graph_past(
         config,
@@ -786,6 +796,8 @@ def gqa_past_func(
         rotary=cos is not None,
         rotary_interleaved=rotary_interleaved,
         packed=new_k is None,
+        softcap=softcap,
+        use_smooth_softmax=use_smooth_softmax,
     )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
@@ -910,6 +922,13 @@ def construct_local_mask(
         )
 
 
+def smooth_softmax_ref(x):
+    x_max = x.amax(axis=-1, keepdim=True)
+    x_max = torch.maximum(x_max, torch.zeros_like(x_max))
+    w = torch.exp(x - x_max)
+    return w * torch.reciprocal(w.sum(axis=-1, keepdim=True) + torch.exp(-x_max))
+
+
 def attention_ref(
     q,
     k,
@@ -920,8 +939,10 @@ def attention_ref(
     dropout_mask=None,
     causal=False,
     window_size=(-1, -1),  # -1 means infinite window size
+    softcap=0.0,
     upcast=True,
     reorder_ops=False,
+    use_smooth_softmax=False,
 ):
     """
     Arguments:
@@ -939,6 +960,7 @@ def attention_ref(
         reorder_ops: whether to change the order of operations (scaling k instead of scaling k, etc.)
             without changing the math. This is to estimate the numerical error from operation
             reordering.
+        use_smooth_softmax: whether use smooth softmax or not
     Output:
         output: (batch_size, seqlen_q, nheads, head_dim)
         attention: (batch_size, nheads, seqlen_q, seqlen_k), softmax after dropout
@@ -956,6 +978,10 @@ def attention_ref(
         scores = torch.einsum("bthd,bshd->bhts", q / math.sqrt(d), k)
     else:
         scores = torch.einsum("bthd,bshd->bhts", q, k / math.sqrt(d))
+    if softcap > 0:
+        scores = scores / softcap
+        scores = scores.tanh()
+        scores = scores * softcap
     if key_padding_mask is not None:
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
     if window_size[0] >= 0 or window_size[1] >= 0:
@@ -968,10 +994,16 @@ def attention_ref(
             q.device,
         )
         scores.masked_fill_(local_mask, float("-inf"))
-    attention = torch.softmax(scores, dim=-1)
+
+    if use_smooth_softmax:
+        attention = smooth_softmax_ref(scores)
+    else:
+        attention = torch.softmax(scores, dim=-1)
+
     # Some rows might be completely masked out so we fill them with zero instead of NaN
     if window_size[0] >= 0 or window_size[1] >= 0:
         attention = attention.masked_fill(torch.all(local_mask, dim=-1, keepdim=True), 0.0)
+
     # We want to mask here so that the attention matrix doesn't have any NaNs
     # Otherwise we'll get NaN in dV
     if query_padding_mask is not None:
@@ -988,7 +1020,14 @@ def attention_ref(
 
 
 def attention_qkvpacked_ref(
-    qkv, key_padding_mask=None, dropout_p=0.0, dropout_mask=None, causal=False, upcast=True, reorder_ops=False
+    qkv,
+    key_padding_mask=None,
+    dropout_p=0.0,
+    dropout_mask=None,
+    causal=False,
+    upcast=True,
+    reorder_ops=False,
+    use_smooth_softmax=False,
 ):
     return attention_ref(
         qkv[:, :, 0],
@@ -1001,6 +1040,7 @@ def attention_qkvpacked_ref(
         upcast=upcast,
         causal=causal,
         reorder_ops=reorder_ops,
+        use_smooth_softmax=use_smooth_softmax,
     )
 
 
@@ -1012,6 +1052,8 @@ def parity_check_gqa_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1112,7 +1154,17 @@ def parity_check_gqa_prompt(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1136,6 +1188,8 @@ def parity_check_gqa_prompt(
             past_format,
             True,
             rotary_interleaved,
+            softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_prompt_func(
@@ -1152,6 +1206,8 @@ def parity_check_gqa_prompt(
             past_format,
             True,
             rotary_interleaved,
+            softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
@@ -1163,10 +1219,7 @@ def parity_check_gqa_prompt(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         " packed:",
@@ -1179,6 +1232,10 @@ def parity_check_gqa_prompt(
         rotary,
         " rotary_interleaved:",
         rotary_interleaved,
+        " softcap:",
+        softcap,
+        " smooth_softmax:",
+        use_smooth_softmax,
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -1197,6 +1254,7 @@ def parity_check_gqa_prompt(
         numpy.mean(numpy.abs(out - out_ref)),
         correct,
     )
+    return all_close
 
 
 def parity_check_gqa_prompt_no_buff(
@@ -1207,6 +1265,8 @@ def parity_check_gqa_prompt_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1281,7 +1341,17 @@ def parity_check_gqa_prompt_no_buff(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, new_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        new_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1300,11 +1370,13 @@ def parity_check_gqa_prompt_no_buff(
             None,
             cos,
             sin,
-            cache_seqlens,
+            cache_seqlens - 1,
             left_window_size,
             past_format,
             False,
             rotary_interleaved,
+            softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_prompt_func(
@@ -1316,11 +1388,13 @@ def parity_check_gqa_prompt_no_buff(
             new_v,
             cos,
             sin,
-            cache_seqlens,
+            cache_seqlens - 1,
             left_window_size,
             past_format,
             False,
             rotary_interleaved,
+            softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
@@ -1332,10 +1406,7 @@ def parity_check_gqa_prompt_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "No buff",
         " packed:",
@@ -1348,6 +1419,10 @@ def parity_check_gqa_prompt_no_buff(
         rotary,
         " rotary_interleaved:",
         rotary_interleaved,
+        " softcap:",
+        softcap,
+        " smooth_softmax:",
+        use_smooth_softmax,
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -1366,6 +1441,7 @@ def parity_check_gqa_prompt_no_buff(
         numpy.mean(numpy.abs(out - out_ref)),
         correct,
     )
+    return all_close
 
 
 def parity_check_gqa_past(
@@ -1376,6 +1452,8 @@ def parity_check_gqa_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1481,7 +1559,17 @@ def parity_check_gqa_past(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1505,6 +1593,8 @@ def parity_check_gqa_past(
             True,
             left_window_size,
             rotary_interleaved,
+            softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_past_func(
@@ -1521,6 +1611,8 @@ def parity_check_gqa_past(
             True,
             left_window_size,
             rotary_interleaved,
+            softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
@@ -1532,10 +1624,7 @@ def parity_check_gqa_past(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         "past kv format:",
@@ -1550,6 +1639,10 @@ def parity_check_gqa_past(
         rotary,
         " rotary_interleaved:",
         rotary_interleaved,
+        " softcap:",
+        softcap,
+        " smooth_softmax:",
+        use_smooth_softmax,
         " B:",
         config.batch_size,
         " S:",
@@ -1566,6 +1659,7 @@ def parity_check_gqa_past(
         numpy.mean(numpy.abs(out - out_ref)),
         correct,
     )
+    return all_close
 
 
 def parity_check_gqa_past_no_buff(
@@ -1576,6 +1670,8 @@ def parity_check_gqa_past_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    softcap=0.0,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1687,7 +1783,17 @@ def parity_check_gqa_past_no_buff(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1711,6 +1817,8 @@ def parity_check_gqa_past_no_buff(
             False,
             window_size=left_window_size,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_past_func(
@@ -1727,6 +1835,8 @@ def parity_check_gqa_past_no_buff(
             False,
             window_size=left_window_size,
             rotary_interleaved=rotary_interleaved,
+            softcap=softcap,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
@@ -1734,15 +1844,7 @@ def parity_check_gqa_past_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    # if not all_close:
-    #     print("seqlens", cache_seqlens)
-    #     print("out", out)
-    #     print("out_ref", out_ref)
-    #     print(out - out_ref)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "NO buff",
         " packed:",
@@ -1755,6 +1857,10 @@ def parity_check_gqa_past_no_buff(
         rotary,
         " rotary_interleaved:",
         rotary_interleaved,
+        "softcap",
+        softcap,
+        " smooth_softmax:",
+        use_smooth_softmax,
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -1773,6 +1879,7 @@ def parity_check_gqa_past_no_buff(
         numpy.mean(numpy.abs(out - out_ref)),
         correct,
     )
+    return all_close
 
 
 class TestGQA(unittest.TestCase):
@@ -1783,9 +1890,6 @@ class TestGQA(unittest.TestCase):
         seqs = (
             [
                 (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
                 (240, 240),
             ]
             if pipeline_mode
@@ -1795,9 +1899,10 @@ class TestGQA(unittest.TestCase):
                 (2000, 2000),
                 (200, 200),
                 (240, 240),
+                (8000, 8000),
             ]
         )
-        num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         for b in batches:
             for sq, skv in seqs:
@@ -1806,24 +1911,32 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
-                                    config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                    past_kv_format = Formats.BNSH
-                                    parity_check_gqa_prompt(
-                                        config,
-                                        local=local,
-                                        past_format=past_kv_format,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    parity_check_gqa_prompt_no_buff(
-                                        config,
-                                        local=local,
-                                        past_format=past_kv_format,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
+                                    for softcap in [0.0, 50.0]:
+                                        for use_smooth_softmax in [False, True]:
+                                            config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                            past_kv_format = Formats.BNSH
+                                            all_close = parity_check_gqa_prompt(
+                                                config,
+                                                local=local,
+                                                past_format=past_kv_format,
+                                                rotary=rotary,
+                                                rotary_interleaved=rotary_interleaved,
+                                                packed=packed,
+                                                softcap=softcap,
+                                                use_smooth_softmax=use_smooth_softmax,
+                                            )
+                                            self.assertTrue(all_close)
+                                            all_close = parity_check_gqa_prompt_no_buff(
+                                                config,
+                                                local=local,
+                                                past_format=past_kv_format,
+                                                rotary=rotary,
+                                                rotary_interleaved=rotary_interleaved,
+                                                packed=packed,
+                                                softcap=softcap,
+                                                use_smooth_softmax=use_smooth_softmax,
+                                            )
+                                            self.assertTrue(all_close)
 
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
@@ -1845,7 +1958,7 @@ class TestGQA(unittest.TestCase):
                 # (128, 128),
             ]
         )
-        num_h = [(16, 16), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
         for b in batches:
@@ -1855,29 +1968,37 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
-                                    sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                    config = Config(b, s, s2, sp, n, n2, h)
-                                    past_kv_format = Formats.BNSH
-                                    parity_check_gqa_past(
-                                        config,
-                                        local=local,
-                                        past_format=past_kv_format,
-                                        rtol=1e-3,
-                                        atol=1e-3,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    parity_check_gqa_past_no_buff(
-                                        config,
-                                        local=local,
-                                        past_format=past_kv_format,
-                                        rtol=1e-3,
-                                        atol=1e-3,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
+                                    for softcap in [0.0, 50.0]:
+                                        for use_smooth_softmax in [False, True]:
+                                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                            config = Config(b, s, s2, sp, n, n2, h)
+                                            past_kv_format = Formats.BNSH
+                                            all_close = parity_check_gqa_past(
+                                                config,
+                                                local=local,
+                                                past_format=past_kv_format,
+                                                rtol=1e-3,
+                                                atol=1e-3,
+                                                rotary=rotary,
+                                                rotary_interleaved=rotary_interleaved,
+                                                packed=packed,
+                                                softcap=softcap,
+                                                use_smooth_softmax=use_smooth_softmax,
+                                            )
+                                            self.assertTrue(all_close)
+                                            all_close = parity_check_gqa_past_no_buff(
+                                                config,
+                                                local=local,
+                                                past_format=past_kv_format,
+                                                rtol=1e-3,
+                                                atol=1e-3,
+                                                rotary=rotary,
+                                                rotary_interleaved=rotary_interleaved,
+                                                packed=packed,
+                                                softcap=softcap,
+                                                use_smooth_softmax=use_smooth_softmax,
+                                            )
+                                            self.assertTrue(all_close)
 
 
 if __name__ == "__main__":

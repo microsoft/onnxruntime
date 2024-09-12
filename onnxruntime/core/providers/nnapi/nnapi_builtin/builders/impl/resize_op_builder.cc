@@ -9,6 +9,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
+#include "core/providers/utils.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
@@ -251,13 +252,33 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const N
       const Initializer unpacked_tensor(*scales);
       auto scales_data = unpacked_tensor.DataAsSpan<float>();
       input_is_nchw = scales_data[1] == 1.0F;
-      float const scale_n = scales_data[0];
-      float const scale_c = input_is_nchw ? scales_data[1] : scales_data[3];
+      const float scale_n = scales_data[0];
+      const float scale_c = input_is_nchw ? scales_data[1] : scales_data[3];
+      const float scale_h = input_is_nchw ? scales_data[2] : scales_data[1];
+      const float scale_w = input_is_nchw ? scales_data[3] : scales_data[2];
+
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
                               << ", scale_n, " << scale_n << ", scale_c, " << scale_c;
         return false;
+      }
+
+      // if downsampling the input size must be evenly divisible by the output size to match the onnx output
+      if (scale_h < 1.0f || scale_w < 1.0f) {
+        // we also require input_shape to be known to check
+        auto h_in = input_is_nchw ? input_shape[2] : input_shape[1];
+        auto w_in = input_is_nchw ? input_shape[3] : input_shape[2];
+        if (h_in == 0 || w_in == 0) {
+          LOGS_DEFAULT(VERBOSE) << "Input H and W must be known to downsample with scales";
+          return false;
+        }
+
+        if (!utils::ReciprocalIsAFactorOfN(h_in, scale_h) ||
+            !utils::ReciprocalIsAFactorOfN(w_in, scale_w)) {
+          LOGS_DEFAULT(VERBOSE) << "Input size must be evenly divisible by output size when downsampling";
+          return false;
+        }
       }
     } else {
       const auto* sizes = graph_viewer.GetConstantInitializer(inputs[3].node_arg.Name());

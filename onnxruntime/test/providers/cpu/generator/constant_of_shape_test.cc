@@ -85,6 +85,10 @@ inline void SetValue(TensorProto& t_proto, MLFloat16 value) {
   t_proto.mutable_int32_data()->Add(value.val);
 }
 
+inline void SetValue(TensorProto& t_proto, BFloat16 value) {
+  t_proto.mutable_int32_data()->Add(value.val);
+}
+
 // This works for int64_t
 template <class T>
 inline void SetValue(TensorProto& t_proto, T value,
@@ -100,7 +104,7 @@ inline void SetValue(TensorProto& t_proto, T value,
   t_proto.mutable_uint64_data()->Add(value);
 }
 
-// For everything else except float, double and MLFloat16
+// For everything else except float, double, MLFloat16 and BFloat16
 template <class T>
 inline void SetValue(TensorProto& t_proto, T value,
                      typename std::enable_if<!std::is_same<T, int64_t>::value &&
@@ -153,6 +157,7 @@ TEST(ConstantOfShape, TypeTests) {
     RunTypedTest(TensorProto::UINT16, uint16_t(6U), opset);
     RunTypedTest(TensorProto::UINT32, uint32_t(32U), opset);
     RunTypedTest(TensorProto::UINT64, uint64_t(64U), opset);
+    RunTypedTest(TensorProto::BFLOAT16, BFloat16::FromBits(static_cast<uint16_t>(7)), opset);
   }
 }
 

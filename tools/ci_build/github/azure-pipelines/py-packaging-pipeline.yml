@@ -34,6 +34,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_arm64ec_qnn
+  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
+  type: boolean
+  default: true
+
 - name: enable_windows_x64_qnn
   displayName: 'Whether Windows x86_64 package with QNN EP is built.'
   type: boolean
@@ -59,17 +64,9 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.19.2.240210
+  default: 2.26.0.240828
 
 trigger: none
-
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - template: templates/py-packaging-stage.yml
@@ -81,7 +78,9 @@ stages:
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
     enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
+    enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
     enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
     build_py_parameters: ${{ parameters.build_py_parameters }}
     cmake_build_type: ${{ parameters.cmake_build_type }}
     qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
+    publish_symbols: true

@@ -226,7 +226,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(miopen_handle, reduce_desc, input_tensor, output_tensor, &indices_bytes));
   auto indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes, stream);
 
-  // need to allocate a separate buffer for ArgMin/ArgMax comparsion output
+  // need to allocate a separate buffer for ArgMin/ArgMax comparison output
   auto output_count = output_shape.Size();
 
   if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES) {

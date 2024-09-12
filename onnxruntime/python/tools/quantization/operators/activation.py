@@ -106,8 +106,10 @@ class QDQRemovableActivation(QDQOperatorBase):
         if not self.quantizer.is_tensor_quantized(node.input[0]):
             return
 
-        if not self.quantizer.is_activation_symmetric and self.quantizer.try_replacing_upstream_output(
-            node.input[0], node.output[0]
+        if (
+            not self.quantizer.is_activation_symmetric
+            and not self.quantizer.qdq_keep_removable_activations
+            and self.quantizer.try_replacing_upstream_output(node.input[0], node.output[0])
         ):
             self.quantizer.remove_node(self.node)
         else:

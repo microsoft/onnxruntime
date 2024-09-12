@@ -25,7 +25,7 @@ struct ConverterResourceDescription {
     // 2) the resources are on different devices
     // 3) the resources have different pixel formats
     if (desc.width != width || desc.height != height || desc.luid.HighPart != luid.HighPart ||
-            desc.luid.LowPart != luid.LowPart || desc.pixel_format != pixel_format) {
+        desc.luid.LowPart != luid.LowPart || desc.pixel_format != pixel_format) {
       return false;
     }
 

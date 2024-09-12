@@ -24,7 +24,7 @@ Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
     const auto rank = orig_shape.NumDimensions();
 
     if (conv_transpose_attrs_.group > 1) {
-      // Xnnpack [G, Oc, H, W Ic/G]
+      // Xnnpack [G, Oc, H, W, Ic/G]
       // (ref: https://github.com/google/XNNPACK/blob/ecd8311c8fd3d9ab47edbc3df5f2b5de7dabe75f/test/deconvolution-operator-tester.h#L678)
       if (rank == 4) {
         // split C (dim 0) into {group, C/group}

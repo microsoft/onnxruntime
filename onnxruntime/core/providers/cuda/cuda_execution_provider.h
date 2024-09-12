@@ -17,6 +17,10 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
 
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
+#endif
+
 namespace onnxruntime {
 
 void RunOnUnload(std::function<void()> function);
@@ -78,7 +82,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
   bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
   bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
+  bool IsFuseConvBias() const { return info_.fuse_conv_bias; }
   bool UseTF32() const { return info_.use_tf32; }
+
+#ifndef DISABLE_CONTRIB_OPS
+  // Attention kernel options parsed from sdpa_kernel cuda provider option.
+  const AttentionKernelOptions* GetAttentionKernelOptions() const {
+    attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true, true);
+    return &attention_kernel_options_;
+  }
+#endif
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -109,6 +122,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   // the tuning context might be altered when calling into a TunableOp
   mutable cuda::tunable::CudaTuningContext tuning_context_;
+
+#ifndef DISABLE_CONTRIB_OPS
+  // Attention kernel options parsed from sdpa_kernel cuda provider option.
+  mutable AttentionKernelOptions attention_kernel_options_;
+#endif
 
   class PerThreadContext final {
    public:

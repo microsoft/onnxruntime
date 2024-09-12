@@ -33,6 +33,10 @@ static void TestNaiveDFTFloat(bool onesided, int since_version) {
     expected_output.resize(6);
   }
   test.AddInput<float>("input", shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {5});
+    test.AddInput<int64_t>("axis", {}, {-2});
+  }
   test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
   test.AddOutput<float>("output", output_shape, expected_output);
   test.Run();
@@ -53,6 +57,10 @@ static void TestRadix2DFTFloat(bool onesided, int since_version) {
     expected_output.resize(10);
   }
   test.AddInput<float>("input", shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {8});
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
   test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
   test.AddOutput<float>("output", output_shape, expected_output);
   test.Run();
@@ -67,6 +75,10 @@ static void TestInverseFloat(int since_version) {
   vector<float> expected_output = {1.000f, 0.000f, 2.000f, 0.000f, 3.000f, 0.000f, 4.000f, 0.000f, 5.000f, 0.000f};
 
   test.AddInput<float>("input", shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {5});
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
   test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
   test.AddOutput<float>("output", shape, expected_output);
   test.Run();

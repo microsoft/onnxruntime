@@ -60,7 +60,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* relative_position_bias = context->Input<Tensor>(4);
+  const Tensor* attention_bias = context->Input<Tensor>(4);
   const Tensor* past_key = context->Input<Tensor>(kPastInputIndex);
   const Tensor* past_value = context->Input<Tensor>(kPastInputIndex + 1);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
@@ -75,13 +75,12 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
       attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
 
   bool is_unidirectional = false;
-  bool is_dmmha_packing = (key == nullptr && value == nullptr);
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
                                                                       bias,
                                                                       mask_index,
-                                                                      relative_position_bias,
+                                                                      attention_bias,
                                                                       past_key,
                                                                       past_value,
                                                                       past_seq_len,
@@ -91,7 +90,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       scale_,
                                                                       is_unidirectional,
                                                                       past_present_share_buffer_,
-                                                                      is_dmmha_packing,  // dmmha_packing
+                                                                      kDecoderMaskedMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
 
   if (bias) {
@@ -142,22 +141,22 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Update the q buffers
   parameters.q = const_cast<T1*>(query->Data<T1>());
 
-  // Update the relative position bias for self attention
-  if (relative_position_bias != nullptr) {
-    parameters.relative_attention_bias = const_cast<T1*>(relative_position_bias->Data<T1>());
+  // Update the attention bias for self attention
+  if (attention_bias != nullptr) {
+    parameters.attention_bias = const_cast<T1*>(attention_bias->Data<T1>());
   }
 
   // Decoder cross-attention
   if (past_key == nullptr && present_key == nullptr) {
-    if (relative_position_bias != nullptr) {
+    if (attention_bias != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
+                             "DecoderMaskedMultiHeadAttention does not support attention bias for cross-attention");
     }
 
     parameters.is_cross_attention = true;
     parameters.total_sequence_length = parameters.kv_sequence_length;
     parameters.max_sequence_length = parameters.kv_sequence_length;
-    // parameters.k and paraneters.v are nullptr
+    // parameters.k and parameters.v are nullptr
     parameters.k_cache = const_cast<T1*>(key->Data<T1>());
     parameters.v_cache = const_cast<T1*>(value->Data<T1>());
     parameters.k_bias = nullptr;
@@ -188,12 +187,14 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     }
 
     parameters.is_cross_attention = false;
-    parameters.is_packed_qkv = is_dmmha_packing;
 
-    parameters.k = is_dmmha_packing
+    bool is_packed_qkv = (key == nullptr && value == nullptr);
+    parameters.is_packed_qkv = is_packed_qkv;
+
+    parameters.k = is_packed_qkv
                        ? const_cast<T1*>(query->Data<T1>() + parameters.hidden_size)
                        : const_cast<T1*>(key->Data<T1>());
-    parameters.v = is_dmmha_packing
+    parameters.v = is_packed_qkv
                        ? const_cast<T1*>(query->Data<T1>() + 2 * static_cast<size_t>(parameters.hidden_size))
                        : const_cast<T1*>(value->Data<T1>());
     parameters.k_cache = present_key_data;

@@ -142,6 +142,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GreaterOrEqual", V_2022_1, {"CPU", "GPU"}},
     {"GridSample", V_2022_3, {"CPU"}},
     {"GridSample", V_2023_0, {"GPU"}},
+    {"GRU", V_2024_1, {"CPU", "GPU"}},
     {"HardMax", V_2023_1, {"CPU", "GPU"}},
     {"Identity", V_2020_4, {"CPU", "GPU"}},
     {"If", V_2022_3, {"CPU", "GPU"}},
@@ -155,6 +156,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
     {"Log", V_2020_4, {"CPU", "GPU"}},
     {"LogSoftMax", V_2022_1, {"CPU", "GPU"}},
+    {"LogSoftmax", V_2024_1, {"CPU", "GPU"}},
     {"Loop", V_2021_4, {"CPU", "GPU"}},
     {"LpNormalization", V_2023_1, {"CPU", "GPU"}},
     {"LRN", V_2020_4, {"CPU", "GPU"}},
@@ -361,7 +363,7 @@ void DataOps::populate_op_mode_supported() {
 
   // populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2024_1},
+    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -376,7 +378,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ReduceMax", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -393,7 +395,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Reshape", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -408,7 +410,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -691,7 +693,7 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
   // Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension, this, &optype](const NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&has_unsupported_dimension, this, &optype, &node](const NodeArg& node_arg, bool is_input) {
     if (is_input) {
       if (this->graph_viewer_.IsConstantInitializer(node_arg.Name(), true))
         return;
@@ -702,6 +704,16 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
       if (shape->dim_size() == 0) {
         if (op_is_supported(optype, no_dimension_supported_)) {
           return;
+        }
+        if (npu_qdq_optimizer_enabled_) {
+          // Pad Op with DQ inputs will be optimized out in the qdq optimization pass, so mark those no dim Pad ops
+          // supported here
+          if (optype == "Pad") {
+            for (Node::NodeConstIterator it_dq = node->InputNodesBegin(); it_dq != node->InputNodesEnd(); ++it_dq) {
+              const auto& DQ = &*it_dq;
+              if (DQ->OpType() == "DequantizeLinear") return;
+            }
+          }
         }
         has_unsupported_dimension = true;
         return;

@@ -22,7 +22,7 @@ _registered_ops: typing.AbstractSet[str] = set()
 
 
 def _reg(symbolic_fn: typing.Callable):
-    name = "::%s" % symbolic_fn.__name__
+    name = f"::{symbolic_fn.__name__}"
     torch.onnx.register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
     _registered_ops.add(name)
 

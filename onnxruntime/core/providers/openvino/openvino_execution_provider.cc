@@ -1,6 +1,7 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 #include <filesystem>
+#include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
@@ -9,6 +10,9 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "openvino/core/version.hpp"
+#ifdef USE_OVEP_NPU_MEMORY
+#include "core/providers/openvino/ov_allocator.h"
+#endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
@@ -31,12 +35,15 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->num_of_threads = info.num_of_threads_;
   global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
+  global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
+  global_context_->disable_cpu_fallback = info.disable_cpu_fallback_;
+  global_context_->ep_context_embed_mode = info.so_epctx_embed_mode_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
     bool device_found = false;
-    auto available_devices = global_context_->ie_core.GetAvailableDevices();
+    std::vector<std::string> available_devices = global_context_->ie_core.GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type_ != "") {
       if (info.device_type_.find("HETERO") != std::string::npos ||
@@ -44,7 +51,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
       } else {
-        for (auto device : available_devices) {
+        for (const std::string& device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
                                                                        info.precision_ == "FP16" ||
@@ -79,7 +86,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                      std::to_string(global_context_->OpenVINO_Version.at(1));
 
   // Check for valid ctx node and maintain state for validity
-  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, openvino_sdk_version))
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, std::move(openvino_sdk_version)))
     ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1,
                 "[Invalid Graph] EPContext Model with OpenVINO compiled blob should not have more than one node.");
 
@@ -87,14 +94,8 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
   }
-#ifdef _WIN32
-  std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
-  global_context_->onnx_model_path_name =
-      std::string(onnx_path.begin(), onnx_path.end());
-#else
-  global_context_->onnx_model_path_name =
-      graph_viewer.ModelPath().ToPathString();
-#endif
+  global_context_->onnx_model_path_name = graph_viewer.ModelPath().string();
+
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
@@ -118,7 +119,8 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   }(graph_viewer);
 
   openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type);
+                                 global_context_->device_type,
+                                 global_context_->enable_qdq_optimizer);
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
@@ -129,7 +131,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_graph : fused_nodes) {
+  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
 
@@ -147,11 +149,6 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       graph_body_viewer,
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
-
-    if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
-      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(graph_body_viewer,
-                                                                         *GetLogger()));
-    }
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {
@@ -185,5 +182,19 @@ common::Status OpenVINOExecutionProvider::Compile(
 
   return Status::OK();
 }
+
+#ifdef USE_OVEP_NPU_MEMORY
+std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo npu_allocator_info{
+      [this](OrtDevice::DeviceId device_id) {
+        return std::make_unique<OVRTAllocator>(global_context_->ie_core.Get(), OrtDevice::NPU, device_id, OpenVINO_RT_NPU);
+      },
+      0,
+  };
+
+  // fill in allocator
+  return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
+}
+#endif
 
 }  // namespace onnxruntime

@@ -465,15 +465,13 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-
-    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-
-    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);

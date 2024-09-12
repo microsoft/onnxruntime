@@ -68,7 +68,7 @@ class FusionRotaryAttention(FusionAttention):
             v_matmul.output[0],
             "",  # bias
             attn_mask,  # key_padding_mask
-            add_qk,  # relative_position_bias
+            add_qk,  # attention_bias
             past_k,
             past_v,
         ]

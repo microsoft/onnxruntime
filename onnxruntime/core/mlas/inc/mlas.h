@@ -1013,6 +1013,7 @@ MlasComputeSoftmax(
     size_t N,
     size_t D,
     bool LogSoftmax,
+    bool SmoothSoftmax,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -1028,14 +1029,13 @@ MlasComputeTanh(
 // Half-precision floating-point routines.
 //
 
-extern "C"
 void
 MLASCALL
 MlasConvertHalfToFloatBuffer(
     const unsigned short* Source,
     float* Destination,
     size_t Count
-    );
+);
 
 //
 // Transpose routines.
@@ -1220,6 +1220,26 @@ MlasQuantizeLinear(
     size_t N,
     float Scale,
     OutputType ZeroPoint
+    );
+
+void
+MLASCALL
+MlasQuantizeLinearU4(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasQuantizeLinearS4(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
     );
 
 /**
@@ -1731,6 +1751,7 @@ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* Pac
  * @brief Indirect Depthwise convolution for fp16
  * @param Input         Supplies the indirect buffer for NHWC input
  * @param Filter        Supplies the address for filter tensor
+ * @param Bias          Supplies the address for 1D bias tensor B, has size of M
  * @param Output        Supplies the address for the result tensor
  * @param Channels      # of input channels
  * @param OutputCount   # of output pixels
@@ -1742,6 +1763,7 @@ MLASCALL
 MlasConvDepthwise(
     const MLAS_FP16* const* Input,
     const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
     MLAS_FP16* Output,
     size_t Channels,
     size_t OutputCount,
@@ -1805,3 +1827,35 @@ MlasNhwcAvgPool(
     );
 
 #endif
+
+struct MlasFlashAttentionThreadedArgs {
+    int batch_size;
+    int num_heads;
+    int q_sequence_length;
+    int kv_sequence_length;
+    int qk_head_size;
+    int v_head_size;
+    int q_block_size;
+    int kv_block_size;
+    float scale;
+    int thread_count;
+    float* buffer;
+    size_t buffer_size_per_thread;
+    const float* query;
+    const float* key;
+    const float* value;
+    float* output;
+};
+
+/**
+ * @brief Per-thread worker function for fp32 Flash Attention
+ * @param thread_id    Thread index
+ * @param args         Arguments
+ * @return
+*/
+void
+MLASCALL
+MlasFlashAttention(
+    MlasFlashAttentionThreadedArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);

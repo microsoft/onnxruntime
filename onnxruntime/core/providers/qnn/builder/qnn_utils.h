@@ -63,6 +63,8 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
 Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
                       Qnn_DataType_t& tensor_data_type);
 
+const std::string& GetNodeName(const NodeUnit& node_unit);
+
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
 inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
@@ -124,13 +126,14 @@ Status GetQuantParams(float rmin,
                       float rmax,
                       const Qnn_DataType_t qnn_data_type,
                       float& scale,
-                      int& zero_point);
+                      int32_t& zero_point,
+                      bool symmetric = false);
 
 double Dequantize(int32_t offset, float scale, const double quant_value);
 
 Status Quantize(const double double_value,
                 const float scale,
-                const int zero_point,
+                const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
 

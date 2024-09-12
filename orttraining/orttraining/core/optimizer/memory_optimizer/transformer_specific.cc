@@ -37,6 +37,24 @@ bool IsSoftmaxNode(const Node& node) {
   return softmax_ops.find(node.OpType()) != softmax_ops.end();
 }
 
+bool IsAttentionOp(const Node& node) {
+  if (node.OpType() != "PythonOp") {
+    return false;
+  }
+
+  // Check the func_name attribute of the PythonOp node.
+  const auto* func_name_attr = graph_utils::GetNodeAttribute(node, "func_name");
+  if (func_name_attr == nullptr) {
+    return false;
+  }
+
+  static const std::set<std::string> attn_op_names = {
+      "flash_attn.flash_attn_interface.FlashAttnVarlenFunc",
+      "flash_attn.flash_attn_interface.FlashAttnFunc",
+  };
+  return attn_op_names.find(func_name_attr->s()) != attn_op_names.end();
+}
+
 std::tuple<bool, const Node*, const Node*> IsResidualNodeArg(const GraphViewer& graph_viewer, const NodeArg* node_arg) {
   auto consumers = graph_viewer.GetConsumerNodes(node_arg->Name());
   if (2 > consumers.size()) {
@@ -70,7 +88,7 @@ std::tuple<bool, const Node*, const Node*> IsResidualNodeArg(const GraphViewer& 
       ----------------------|
       |                     |
       |                     |
-      |        SimplifiedLayerNormalization (layer boudary node)
+      |        SimplifiedLayerNormalization (layer boundary node)
       |                     |
       |                     |
       |               MistralAttention
@@ -104,8 +122,8 @@ void FindLayerBoundaryLayerNormNodes(
     InlinedVector<const Node*>& layer_boundary_ln_nodes) {
   // Loop all nodes to find LayerNormalization nodes.
   // For each LayerNormalization node, keep checking its output nodes,
-  // until find a node that is Softmax or BiasSoftmax or another LayerNormalization.
-  // If the found node is Softmax or BiasSoftmax, the LayerNormalization node as ATTENTION.
+  // until find a node that is Softmax or Attention or another LayerNormalization.
+  // If the found node is Softmax or Attention, the LayerNormalization node as ATTENTION.
   // If the found node is another LayerNormalization, the LayerNormalization node as MLP.
 
   layer_boundary_ln_nodes.clear();
@@ -159,7 +177,7 @@ void FindLayerBoundaryLayerNormNodes(
       }
 
       visited_nodes.insert(next_node);
-      if (IsSoftmaxNode(*next_node)) {
+      if (IsSoftmaxNode(*next_node) || IsAttentionOp(*next_node)) {
         MO_LOG_DEBUG_INFO(logger, "Found layer boundary node " + node.Name() + " with its input arg: " +
                                       input_arg->Name());
         layer_boundary_ln_nodes.push_back(&node);

@@ -87,6 +87,7 @@ namespace Dml
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
         bool CpuSyncSpinningEnabled() const { return m_cpuSyncSpinningEnabled; }
+        bool IsClosed() const { return m_closed; }
 
     private:
         Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;

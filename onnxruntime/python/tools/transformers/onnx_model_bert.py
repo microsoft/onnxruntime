@@ -21,6 +21,7 @@ from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
 from fusion_qordered_matmul import FusionQOrderedMatMul
+from fusion_quickgelu import FusionQuickGelu
 from fusion_reshape import FusionReshape
 from fusion_rotary_attention import FusionRotaryEmbeddings
 from fusion_shape import FusionShape
@@ -64,6 +65,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionGelu(self)
         fusion.apply()
         fusion = FusionFastGelu(self)
+        fusion.apply()
+        fusion = FusionQuickGelu(self)
         fusion.apply()
         # Only relevant in models with Q-DQ nodes
         fusion = FusionQOrderedGelu(self)
@@ -112,8 +115,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSimplifiedLayerNormalization(self)
         fusion.apply()
 
-    def fuse_skip_layer_norm(self):
-        fusion = FusionSkipLayerNormalization(self)
+    def fuse_skip_layer_norm(self, shape_infer=True):
+        fusion = FusionSkipLayerNormalization(self, shape_infer=shape_infer)
         fusion.apply()
 
     def fuse_skip_simplified_layer_norm(self):
@@ -341,7 +344,7 @@ class BertOnnxModel(OnnxModel):
         self.fuse_reshape()
 
         if (options is None) or options.enable_skip_layer_norm:
-            self.fuse_skip_layer_norm()
+            self.fuse_skip_layer_norm(options.enable_shape_inference)
             self.fuse_skip_simplified_layer_norm()
 
         if (options is None) or options.enable_rotary_embeddings:

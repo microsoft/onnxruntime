@@ -208,8 +208,8 @@ TEST(TrainingApiTest, ModuleParametersSize) {
   }
 
   // ((500*784) + 500 + (10*500) + 10) = 397510
-  ASSERT_EQ(params_size, 397510);
-  ASSERT_EQ(model->GetParametersSize(), 397510);
+  ASSERT_EQ(params_size, size_t{397510});
+  ASSERT_EQ(model->GetParametersSize(), size_t{397510});
 }
 
 TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
@@ -269,7 +269,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifier,
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
+  ASSERT_EQ(model->GetTrainingModelOutputCount(), size_t{1});
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
@@ -542,8 +542,9 @@ TEST(TrainingApiTest, OptimStep) {
   std::string param_name = "fc2.weight";
   // before training, check if optim state is initialized to 0
   onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
+  std::shared_ptr<onnxruntime::training::api::GroupOptimizerState> group0_states = optimizer_states.group_named_optimizer_states["group0"];
   onnxruntime::training::api::ParameterOptimizerState& param_state =
-      optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
+      group0_states->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
@@ -659,7 +660,7 @@ TEST(TrainingApiTest, ModuleAndOptimizerWithNominalState) {
     ASSERT_STATUS_OK(model_with_complete_state->TrainStep(inputs, complete_fetches));
     ASSERT_STATUS_OK(model_with_nominal_state->TrainStep(inputs, nominal_fetches));
 
-    ASSERT_GT(complete_fetches.size(), 0);
+    ASSERT_GT(complete_fetches.size(), size_t{0});
     for (size_t i = 0; i < complete_fetches.size(); ++i) {
       ASSERT_TRUE(complete_fetches[i].IsTensor());
       ASSERT_TRUE(nominal_fetches[i].IsTensor());
@@ -730,7 +731,7 @@ TEST(TrainingApiTest, ModuleAndOptimizerWithNominalState) {
     ASSERT_STATUS_OK(model_with_complete_state->EvalStep(inputs, complete_eval_fetches));
     ASSERT_STATUS_OK(model_with_nominal_state->EvalStep(inputs, nominal_eval_fetches));
 
-    ASSERT_GT(complete_eval_fetches.size(), 0);
+    ASSERT_GT(complete_eval_fetches.size(), size_t{0});
     for (size_t i = 0; i < complete_eval_fetches.size(); ++i) {
       ASSERT_TRUE(complete_eval_fetches[i].IsTensor());
       ASSERT_TRUE(nominal_eval_fetches[i].IsTensor());

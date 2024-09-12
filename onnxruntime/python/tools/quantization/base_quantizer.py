@@ -25,6 +25,7 @@ from .quant_utils import (
     find_by_name,
     model_has_infer_metadata,
     normalize_axis,
+    pack_bytes_to_4bit,
     quantize_data,
     quantize_nparray,
     save_and_reload_model_with_shape_infer,
@@ -229,7 +230,9 @@ class BaseQuantizer:
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
 
-            quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
+            quantized_data = (np.asarray(bias_data) / bias_scale).round()
+            quantized_data = np.clip(quantized_data, np.iinfo(np.int32).min, np.iinfo(np.int32).max)
+            quantized_data = quantized_data.astype(np.int32)
 
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
@@ -339,6 +342,18 @@ class BaseQuantizer:
                             f"{q_weight_data.tobytes()[:10]}, got {check.tobytes()[:10]} and shape={weight.shape}"
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
+            elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
+                if q_weight_data.dtype not in (np.int8, np.uint8):
+                    raise RuntimeError(
+                        f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
+                    )
+
+                # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+                # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+                packed_data = bytes(pack_bytes_to_4bit(q_weight_data.tobytes()))
+
+                # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
+                q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, packed_data, raw=True)
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
@@ -396,12 +411,18 @@ class BaseQuantizer:
 
         symmetric = quant_overrides_for_channels[0].get(
             "symmetric",
-            (self.is_weight_symmetric or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN)),
+            (
+                self.is_weight_symmetric
+                or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN, onnx.TensorProto.INT4)
+            ),
         )
         reduce_range = quant_overrides_for_channels[0].get("reduce_range", self.reduce_range and reduce_range)
         zero_point_list = []
         scale_list = []
         quantized_per_channel_data_list = []
+        weights_shape = list(weights.shape)
+        reshape_dims = list(weights_shape)  # deep copy
+        reshape_dims[channel_axis] = 1  # only one per channel for reshape
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             channel_override_index = i if i < num_channel_overrides else 0
@@ -444,16 +465,10 @@ class BaseQuantizer:
 
             zero_point_list.append(zero_point)
             scale_list.append(scale)
-            quantized_per_channel_data_list.append(quantized_per_channel_data)
+            quantized_per_channel_data_list.append(np.asarray(quantized_per_channel_data).reshape(reshape_dims))
 
         # combine per_channel_data into one
-        reshape_dims = list(weights.shape)  # deep copy
-        reshape_dims[channel_axis] = 1  # only one per channel for reshape
-        quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        for i in range(1, len(quantized_per_channel_data_list)):
-            channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
-
+        quantized_weights = np.concatenate(quantized_per_channel_data_list, channel_axis)
         q_weight_name = weight_name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight_name + "_zero_point"
         scale_name = weight_name + "_scale"
@@ -470,12 +485,28 @@ class BaseQuantizer:
         self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
-            quantized_weights = np.asarray(
-                quantized_weights,
-                dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
-            ).reshape(initializer.dims)
-            q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
-            self.model.initializer_extend([q_weight_initializer])
+            if weight_qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
+                if quantized_weights.dtype not in (np.int8, np.uint8):
+                    raise RuntimeError(
+                        f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
+                    )
+
+                # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+                # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+                packed_data = bytes(pack_bytes_to_4bit(quantized_weights.tobytes()))
+
+                # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
+                q_weight_initializer = onnx.helper.make_tensor(
+                    q_weight_name, weight_qType, weights_shape, packed_data, raw=True
+                )
+                self.model.initializer_extend([q_weight_initializer])
+            else:
+                quantized_weights = np.asarray(
+                    quantized_weights,
+                    dtype=onnx.helper.tensor_dtype_to_np_dtype(weight_qType),
+                ).reshape(initializer.dims)
+                q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
+                self.model.initializer_extend([q_weight_initializer])
 
         return q_weight_name, zp_name, scale_name
 
@@ -486,8 +517,6 @@ class BaseQuantizer:
         for node in self.model.nodes():
             # adjust tensor_ranges for input of Clip and Relu node
             if node.op_type in ["Clip", "Relu"]:
-                if self.is_activation_symmetric:
-                    continue
                 if not self.should_quantize_node(node):
                     continue
                 if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:

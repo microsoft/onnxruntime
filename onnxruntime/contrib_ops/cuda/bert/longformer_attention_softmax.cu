@@ -148,7 +148,7 @@ __launch_bounds__(blockSize)
     // following the Softmax.
     //
     // For now zero-out only [row_index - 2*attention_window, row_index + 2*attention_window],
-    // we can even be more agressive and reduce the zeroing out window size since
+    // we can even be more aggressive and reduce the zeroing out window size since
     // each row has entries in 3 blocks (3*attention_window size instead of 4*attention_window)
     int zero_start = row_index - 2 * attention_window;
     if (zero_start < 0) {

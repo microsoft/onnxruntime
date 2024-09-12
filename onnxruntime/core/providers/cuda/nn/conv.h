@@ -6,6 +6,12 @@
 
 #include <list>
 #include <memory>
+#include <vector>
+#include <unordered_map>
+
+#if !defined(__CUDACC__)
+#include <cudnn_frontend.h>
+#endif
 
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_kernel.h"
@@ -150,6 +156,24 @@ struct CudnnConvState {
   CudnnTensor z_tensor;
   const void* z_data = nullptr;
   CudnnConvolutionDescriptor conv_desc;
+  bool bias_fused = true;
+  bool act_fused = true;
+
+#if !defined(__CUDACC__)
+  std::unique_ptr<cudnn_frontend::graph::Graph> cudnn_fe_graph;
+  std::unique_ptr<cudnn_frontend::graph::Graph> cudnn_fe_bias_graph;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_X;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_W;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_conv_Y;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_Z;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_B;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_Y;
+
+  std::optional<cudnn_frontend::graph::Pointwise_attributes> cudnn_fe_act_attr = std::nullopt;
+
+  std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack;
+  std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack_bias;
+#endif
 
   struct PerfResultParams {
     decltype(AlgoPerfType().algo) algo;
@@ -183,7 +207,7 @@ enum : size_t {
 
 // ONNX Conv operator uses NCHW format for input, weights and output.
 // NhwcConv contrib ops uses NHWC format: last dimension of input, weights and output are channels.
-template <typename T, bool NHWC>
+template <typename T, bool Layout>
 class Conv : public CudaKernel {
  public:
   using CudaT = typename ToCudaType<T>::MappedType;
@@ -205,12 +229,32 @@ class Conv : public CudaKernel {
   }
 
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
+
+#if !defined(__CUDACC__) && CUDNN_MAJOR >= 9
+  Status CreateCudnnFeExecutionPlan(const onnxruntime::TensorShapeVector& x_dims,
+                                    const onnxruntime::TensorShapeVector& w_dims,
+                                    const Tensor* B,
+                                    const Tensor* Z,
+                                    const TensorShapeVector& y_dims,
+                                    cudnnContext* handle,
+                                    const cudnn_frontend::HeurMode_t heur_mode,
+                                    const std::vector<int64_t>& pads,
+                                    const std::vector<int64_t>& strides,
+                                    const std::vector<int64_t>& dilations,
+                                    const bool bias_expected,
+                                    const bool fuse_bias,
+                                    const bool fuse_act,
+                                    const bool w_in_nhwc,
+                                    const bool use_tf32) const;
+#endif
+
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
-  static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
   std::unique_ptr<Tensor> W_;
-  bool is_nhwc_domain_;  // prepack is only needed for the Conv in kMSInternalNHWCDomain
+  bool is_nhwc_domain_;         // prepack is only needed for the Conv in kMSInternalNHWCDomain
+  bool is_fused_node_ = false;  // ensures the node is fused although the session option is not set
+  bool W_already_nhwc = false;  // In case NHWC == true and Conv is not in kMSInternalNHWCDomain
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

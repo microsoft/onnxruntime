@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/graph/graph_utils.h"  // TODO: Minimize usage of this given we want to use Actions in a minimal build
 #include "core/graph/runtime_optimization_record.h"
 #include "core/optimizer/selectors_actions/helpers.h"
@@ -92,18 +92,36 @@ struct RemoveNodes : public Action {
   bool preserve_target_node_;
 };
 
-// Merge one input and/or one output node into the target node.
-//   - inputs from the input node, if present, will become the inputs of the target node
-//   - outputs from the output node, if present, will become the outputs of the target node
-// The input and/or output node will be removed after the merge. The target node will not.
+// Merge input and/or output node(s) into the target node.
+// The input and/or output node(s) will be removed after the merge. The target node will not.
 struct MergeIntoTarget : public Action {
-  MergeIntoTarget(std::vector<NodeAndMoveInfo>&& value_moves) : value_moves_{std::move(value_moves)} {}
+  MergeIntoTarget() = default;
 
- private:
   Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
-  std::vector<NodeAndMoveInfo> value_moves_;
+ protected:
+  // contains runtime state that may be used when overriding virtual methods below
+  struct RuntimeState {
+    const Graph& graph;
+    const NodesToOptimize& selected_nodes;
+  };
+
+ private:
+  // specifies how the inputs and outputs from the nodes to be merged are moved to the target node
+  virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
+
   RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
+};
+
+// merge into target with value moves specified at construction time
+struct MergeIntoTargetFixed : public MergeIntoTarget {
+  MergeIntoTargetFixed(std::vector<NodeAndMoveInfo>&& value_moves) : value_moves_{std::move(value_moves)} {}
+
+ protected:
+  std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const override { return value_moves_; }
+
+ private:
+  std::vector<NodeAndMoveInfo> value_moves_;
 };
 
 // replace the selected_nodes with a new node. all nodes in selected_nodes will be removed.
@@ -140,6 +158,12 @@ struct ReplaceWithNew : public Action {
   // specifies how the inputs and outputs for the replaced nodes are moved to the new node
   virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
 
+  // For the changes that cannot be done by simply moving node args around, use this method to make
+  // additional changes to the new node and the graph. e.g., DQMatMulToMatMulNBitsAction transposes
+  // the second weight of MatMul ops and create new node args.
+  // Note: This method is only used in Run(), but not in RunForSave().
+  virtual Status ProcessNewNode(Graph&, const NodesToOptimize&, Node&) const { return Status::OK(); }
+
   RemoveNodes node_remover_;
 };
 
@@ -169,5 +193,4 @@ struct ReplaceWithNewFixed : public ReplaceWithNew {
   const NodeAttributes extra_attrs_;
   const std::vector<NodeAndMoveInfo> value_moves_;
 };
-
 }  // namespace onnxruntime
