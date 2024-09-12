@@ -36,58 +36,48 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-
-
 // Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
-template<typename T, typename Ret>
+template <typename T, typename Ret>
 ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
 
-template<>
-ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val)
-{
+template <>
+ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val) {
   return val.ToFloat();
 }
 
-template<>
-ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val)
-{
+template <>
+ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val) {
   return double(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
 }
 
-template<>
-ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val)
-{
+template <>
+ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val) {
   return val;
 }
 
-template<>
-ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val)
-{
+template <>
+ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val) {
   return val;
 }
-
-
 
 // Function template that only converts the input value to MLFloat16 if T is MLFloat16.
-template<typename T>
+template <typename T>
 ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(T val) {
   return val;
 }
 
-template<typename T>
+template <typename T>
 ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(float val) {
   return MLFloat16(val);
 }
 
-template<typename T>
+template <typename T>
 ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(double val) {
   return MLFloat16(float(val));
 }
-
-
 
 template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
@@ -147,10 +137,10 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
         using DoubleOrFloat = typename std::conditional<
-          std::is_same<T, double>::value,  // If T is double
-          double,                          // Use double
-          float                            // Otherwise, use float (covers float and MLFloat16)
-        >::type;
+            std::is_same<T, double>::value,  // If T is double
+            double,                          // Use double
+            float                            // Otherwise, use float (covers float and MLFloat16)
+            >::type;
 
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
@@ -199,8 +189,6 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
   return Status::OK();
 }
-
-
 
 }  // namespace contrib
 }  // namespace onnxruntime
