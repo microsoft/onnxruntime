@@ -148,12 +148,11 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         for (int64_t h = 0; h < hidden_size; h++) {
           DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
           DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
-          DoubleOrFloat bias_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
 
           DoubleOrFloat value = input_value + skip_value;
 
           if (nullptr != bias_data) {
-            value += bias_value;
+            value += ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
           }
 
           if (nullptr != p_skip_input_bias_add_output_data) {
