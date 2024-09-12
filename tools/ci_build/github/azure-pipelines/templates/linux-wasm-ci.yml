@@ -90,6 +90,7 @@ jobs:
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
           ./emsdk install 3.1.59
           ./emsdk activate 3.1.59
+          apt-cache search npm
           source $(Build.SourcesDirectory)/cmake/external/emsdk/emsdk_env.sh
           which -a node
           which -a npm
