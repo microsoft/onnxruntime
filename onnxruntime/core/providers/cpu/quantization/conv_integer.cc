@@ -59,7 +59,12 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   if (num_inputs >= 4) {
     const auto* W_Zero_Point = context->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(W_Zero_Point), "Non per-tensor quantization is not supported now.");
-    filter_offset = *static_cast<const uint8_t*>(W_Zero_Point->DataRaw());
+    if(W->IsDataType<uint8_t>())
+      filter_offset = *static_cast<const uint8_t*>(W_Zero_Point->DataRaw());
+    else if(W->IsDataType<int8_t>())
+      filter_offset = *static_cast<const int8_t*>(W_Zero_Point->DataRaw());
+    else
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported data type for W_Zero_Point.");
   }
 
   const int64_t N = X->Shape()[0];
