@@ -44,8 +44,8 @@ const calculateOutputShapeAndPads = (
 ) => {
   const spatialRank = inputShape.length - 2;
   const updateOutputShape = outputShape.length === 0;
-  if (outputPadding.length === 0) {
-    for (let i = 0; i < spatialRank; ++i) {
+  if (outputPadding.length < spatialRank) {
+    for (let i = 0; i < spatialRank - outputPadding.length; ++i) {
       outputPadding.push(0);
     }
   }

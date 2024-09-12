@@ -103,7 +103,12 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
 
 const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
   const kernelShape = attributes.kernelShape.slice();
-  // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
+  // if kernelShape is not well specified in the attributes, infer it from the weight tensor dims
+  if (kernelShape.length < inputs[1].dims.length - 2) {
+    for (let i = 0; i < inputs[1].dims.length - 2 - kernelShape.length; ++i) {
+      kernelShape.push(0);
+    }
+  }
   for (let i = 2; i < inputs[1].dims.length; ++i) {
     if (kernelShape[i - 2] === 0) {
       kernelShape[i - 2] = inputs[1].dims[i];
