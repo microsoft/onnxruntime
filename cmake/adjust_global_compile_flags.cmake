@@ -1,7 +1,7 @@
 # work around Android NDK bug which doesn't include -O flag for Release configuration
 # https://github.com/android/ndk/issues/1740
 # TODO: remove this when the NDK version(s) we support get fixed
-if (Android)
+if (ANDROID)
   # NB: attempting to match the effects of this fix: https://android-review.googlesource.com/c/platform/ndk/+/2168845
   string(APPEND CMAKE_C_FLAGS_RELEASE " -O3")
   string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
