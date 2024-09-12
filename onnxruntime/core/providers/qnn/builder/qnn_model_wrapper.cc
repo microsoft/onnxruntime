@@ -308,7 +308,6 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
     return true;
   }
 
-  // We already checked the shape has no dynamic dimension
   for (const auto& dim : shape_proto->dim()) {
     if (!dim.has_dim_value()) {
       return false;  // Do not support dynamic shapes.
