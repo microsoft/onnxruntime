@@ -354,27 +354,48 @@ void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& op
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-value-type
 // BTW, the spec is discussing if the builer.constant(value, type) should be dropped at
 // https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
-const emscripten::val& ModelBuilder::GetZeroConstant(const std::string& data_type) {
-  std::string name = "webnn_zero_constant_" + data_type;
+const emscripten::val& ModelBuilder::GetZeroConstant(const int32_t& data_type) {
+  std::string name = "webnn_zero_constant_" + std::to_string(data_type);
   // If the operand does not exist, create it.
   if (wnn_operands_.find(name) == wnn_operands_.end()) {
     emscripten::val desc = emscripten::val::object();
     emscripten::val dims = emscripten::val::array();
     desc.set("dimensions", dims);
     emscripten::val zero_buffer = emscripten::val::undefined();
-    if (data_type == "uint8") {
-      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
-        ORT_THROW("Unsupported data type: " + data_type);
-      }
-      zero_buffer = emscripten::val::global("Uint8Array").new_(1);
-    } else if (data_type == "float32") {
-      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-        ORT_THROW("Unsupported data type: " + data_type);
-      }
-      zero_buffer = emscripten::val::global("Float32Array").new_(1);
-    } else {
-      ORT_THROW("Unsupported data type: " + data_type);
+    if (!SetWebnnDataType(desc, data_type)) {
+      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
     }
+
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        zero_buffer = emscripten::val::global("Uint8Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        zero_buffer = emscripten::val::global("Int8Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        zero_buffer = emscripten::val::global("Uint16Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        zero_buffer = emscripten::val::global("Float32Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        zero_buffer = emscripten::val::global("Int32Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        zero_buffer = emscripten::val::global("BigInt64Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        zero_buffer = emscripten::val::global("Uint32Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        zero_buffer = emscripten::val::global("BigUint64Array").new_(1);
+        break;
+      default:
+        break;
+    }
+
     emscripten::val zero_constant = wnn_builder_.call<emscripten::val>("constant", desc, zero_buffer);
     wnn_operands_.insert(std::make_pair(name, zero_constant));
   }
