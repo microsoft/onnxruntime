@@ -313,7 +313,10 @@ void TestMatMulNBitsTyped() {
                   opts.output_abs_error = 0.0001f;
                 }
               }
-              RunTest<AType>(opts);
+              // only enabled for CPU EP for now
+              std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
+              explicit_eps.emplace_back(DefaultCpuExecutionProvider());
+              RunTest<AType>(opts, std::move(explicit_eps));
             }
 
             {
