@@ -3,8 +3,6 @@
 
 #include <charconv>
 
-#include <dawn/dawn_proc.h>
-
 #include "core/framework/error_code_helper.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -35,19 +33,7 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
   //
-  // STEP.1 - set dawn proc table
-  //
-  std::string dawn_proc_table_str;
-  if (config_options.TryGetConfigEntry(kDawnProcTable, dawn_proc_table_str)) {
-    size_t dawn_proc_table = 0;
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(dawn_proc_table_str.data(), dawn_proc_table_str.data() + dawn_proc_table_str.size(), dawn_proc_table).ec);
-    // TODO: do this for static link build
-    // dawnProcSetProcs(reinterpret_cast<const DawnProcTable*>(dawn_proc_table));
-  }
-
-  //
-  // STEP.2 - prepare WebGpuExecutionProviderInfo
+  // STEP.1 - prepare WebGpuExecutionProviderInfo
   //
   WebGpuExecutionProviderInfo webgpu_ep_info{
       // preferred layout is NHWC by default
@@ -114,7 +100,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << webgpu_ep_info.default_buffer_cache_mode;
 
   //
-  // STEP.3 - prepare WebGpuContext
+  // STEP.2 - prepare WebGpuContext
   //
   int context_id = 0;
   std::string context_id_str;
