@@ -34,10 +34,10 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
 
 class AdapterFormat:
     """
-    This class is used to create adapter files
+    This class is used to create adapter files from python structures
     """
 
-    def __init__(self, adapter=None):
+    def __init__(self, adapter=None) -> None:
         if adapter is None:
             self._adapter = C.AdapterFormat()
         else:

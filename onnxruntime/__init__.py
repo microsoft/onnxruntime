@@ -23,6 +23,7 @@ try:
     from onnxruntime.capi._pybind_state import ExecutionMode  # noqa: F401
     from onnxruntime.capi._pybind_state import ExecutionOrder  # noqa: F401
     from onnxruntime.capi._pybind_state import GraphOptimizationLevel  # noqa: F401
+    from onnxruntime.capi._pybind_state import LoraAdapter  # noqa: F401
     from onnxruntime.capi._pybind_state import ModelMetadata  # noqa: F401
     from onnxruntime.capi._pybind_state import NodeArg  # noqa: F401
     from onnxruntime.capi._pybind_state import OrtAllocatorType  # noqa: F401

@@ -27,139 +27,6 @@ namespace python {
 
 namespace py = pybind11;
 namespace {
-
-// Check if the numpy dtype descr property has any of the known types
-// that is not supported natively by numpy arrays.
-// For example:
-// >>> bfloat16 = np.dtype((np.uint16, {"bfloat16": (np.uint16, 0)}))
-// >>> print(bfloat16.descr)
-//    [('bfloat16', '<u2')]
-// descr property has an array interface. We query the zero element and
-// get a tuple, then query the 0th element of the tuple and check if it is among
-// any of the ONNX types that are unsupported natively by numpy.
-// If so we adjust the base type such as uint16_t to blfoat16
-// See https://github.com/onnx/onnx/blob/main/onnx/_custom_element_types.py
-std::optional<std::string> GetDescrPropertyString(const py::dtype& arr_dtype) {
-  std::optional<std::string> custom_type;
-  try {
-    if (py::hasattr(arr_dtype, "descr")) {
-      auto descr = py::getattr(arr_dtype, "descr").cast<py::array>();
-      if (descr.size() > 0) {
-        auto item = descr[0].cast<py::tuple>();
-        if (item.size() > 0) {
-          custom_type = item[0].cast<std::string>();
-        }
-      }
-    }
-  } catch (const py::cast_error&) {
-    // Ignore the exception
-    PyErr_Clear();
-  }
-  return custom_type;
-}
-
-// bfloat16 = np.dtype((np.uint16, {"bfloat16": (np.uint16, 0)}))
-py::dtype ConstructCustomDtype(int32_t npy_type, const std::string& custom_type_tag) {
-  py::dtype first_arg(npy_type);
-
-  py::dict second_arg;
-  second_arg[py::str(custom_type_tag)] = py::make_tuple(first_arg, 0);
-  auto tuple = py::make_tuple(std::move(first_arg), std::move(second_arg));
-
-  py::dtype result{py::dtype::from_args(tuple)};
-  return result;
-}
-
-// Get mapped OnnxDataType from numpy dtype descriptior
-// float4e2m1 unsupported at the moment
-std::optional<int32_t> GetOnnxDataTypeFromCustomPythonDescr(const std::string& descr) {
-  static const std::unordered_map<std::string, int32_t> dtype_descr = {
-      {"bfloat16", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16},
-      {"e4m3fn", ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN},
-      {"e4m3fnuz", ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ},
-      {"e5m2", ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2},
-      {"e5m2fnuz", ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ},
-      {"int4", ONNX_NAMESPACE::TensorProto_DataType_INT4},
-      {"uint4", ONNX_NAMESPACE::TensorProto_DataType_UINT4},
-  };
-
-  auto hit = dtype_descr.find(descr);
-  if (hit == dtype_descr.end()) {
-    return std::nullopt;
-  }
-
-  return hit->second;
-}
-
-// If a custom type is discovered in numpy array we set the correct ONNX type.
-int32_t AdjustOnnxTypeIfNeeded(const py::dtype& arr_dtype, int32_t base_type_from_array) {
-  auto descr = GetDescrPropertyString(arr_dtype);
-  if (descr.has_value()) {
-    auto adjusted_type = GetOnnxDataTypeFromCustomPythonDescr(*descr);
-    if (adjusted_type.has_value()) {
-      return *adjusted_type;
-    }
-  }
-  return base_type_from_array;
-}
-
-std::optional<int> FromOnnxTypeToNumpySupportedType(int32_t onnx_type) {
-  // Numpy supported types mapping
-  static std::unordered_map<int32_t, int> onnxtype_to_numpy{
-      {ONNX_NAMESPACE::TensorProto_DataType_BOOL, NPY_BOOL},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, NPY_FLOAT},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, NPY_FLOAT16},
-      {ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, NPY_DOUBLE},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT8, NPY_INT8},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT8, NPY_UINT8},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT16, NPY_INT16},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT16, NPY_UINT16},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT32, NPY_INT},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT32, NPY_UINT},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT64, NPY_LONGLONG},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT64, NPY_ULONGLONG},
-      {ONNX_NAMESPACE::TensorProto_DataType_STRING, NPY_STRING},
-  };
-
-  auto hit = onnxtype_to_numpy.find(onnx_type);
-  if (hit == onnxtype_to_numpy.end())
-    return std::nullopt;
-
-  return hit->second;
-}
-
-std::optional<std::pair<int, std::string>> GetCustomNumpyTypeFromOnnxType(int32_t onnx_data_type) {
-  static const std::unordered_map<int32_t, std::pair<int, std::string>> onnxtype_to_custom_numpy_type = {
-      {ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {NPY_UINT16, "bfloat16"}},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN, {NPY_UINT8, "e4m3fn"}},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ, {NPY_UINT8, "e4m3fnuz"}},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2, {NPY_UINT8, "e5m2"}},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ, {NPY_UINT8, "e5m2fnuz"}},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT4, {NPY_INT8, "int4"}},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT4, {NPY_UINT8, "uint4"}}};
-
-  auto hit = onnxtype_to_custom_numpy_type.find(onnx_data_type);
-  if (hit == onnxtype_to_custom_numpy_type.end()) {
-    return std::nullopt;
-  }
-
-  return hit->second;
-}
-
-py::dtype ConstructDType(int32_t onnx_type) {
-  // check if the type maps to onnx custom type
-  auto custom_type = GetCustomNumpyTypeFromOnnxType(onnx_type);
-  if (custom_type.has_value()) {
-    return ConstructCustomDtype(custom_type->first, custom_type->second);
-  }
-
-  auto npy_type = FromOnnxTypeToNumpySupportedType(onnx_type);
-  if (npy_type.has_value()) {
-    return py::dtype(*npy_type);
-  }
-  ORT_THROW("Unsupported type detected:", onnx_type);
-}
-
 /// <summary>
 /// Class that supports writing and reading adapters
 /// in innxruntime format
@@ -251,7 +118,8 @@ void addAdapterFormatMethods(pybind11::module& m) {
               ORT_THROW("Failed to flush :", file_name, " on close");
             }
           },
-          "Save adapter parameters into a onnxruntime adapter file format.")
+          R"pbdoc("Save adapter parameters into a onnxruntime adapter file format.)pbdoc")
+
       .def_static(
           "read_adapter", [](const std::string& file_name) -> std::unique_ptr<PyAdapterFormatReaderWriter> {
             lora::LoraAdapter lora_adapter;
@@ -271,7 +139,11 @@ void addAdapterFormatMethods(pybind11::module& m) {
 
             return py_adapter;
           },
-          "The function returns an instance of the class that contains a dictionary of name -> numpy arrays");
+          R"pbdoc(The function returns an instance of the class that contains a dictionary of name -> numpy arrays)pbdoc");
+
+  py::class_<lora::LoraAdapter> lora_adapter_binding(m, "LoraAdapter");
+  lora_adapter_binding.def(py::init())
+      .def("Load", [](lora::LoraAdapter* adapter, const std::wstring& file_path) { adapter->MemoryMap(file_path); }, R"pbdoc(Memory map the specified file as LoraAdapter)pbdoc");
 }
 
 }  // namespace python

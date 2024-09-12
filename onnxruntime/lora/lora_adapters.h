@@ -52,6 +52,13 @@ class LoraAdapter {
       return ort_value_mapped_;
     }
 
+    const OrtValue& GetDeviceOrMapped() const noexcept {
+      if (ort_value_device_.IsAllocated()) {
+        return ort_value_device_;
+      }
+      return ort_value_mapped_;
+    }
+
    private:
     OrtValue ort_value_mapped_;
     OrtValue ort_value_device_;
