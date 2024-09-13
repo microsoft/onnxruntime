@@ -78,7 +78,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     size_t index = attrs.at("index").i();
     auto& ep = (**this->execution_providers_)[index];
     ep->set_fused_node(&fused_node_graph.fused_node.get());
-    {
+    if (ep->get_meta_def_fallback_CPU()) {
       auto& subgraph = fused_node_graph.filtered_graph.get();
       auto& logger = logging::LoggingManager::DefaultLogger();
       auto model_proto = subgraph.CreateModel(logger)->ToProto();
@@ -99,7 +99,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
       }
     };
     compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      reinterpret_cast<vaip_core::CustomOp*>(state)->Compute_base(api, context);
+      reinterpret_cast<vaip_core::CustomOp*>(state)->Compute(api, context);
       return Status::OK();
     };
     node_compute_funcs.push_back(compute_info);

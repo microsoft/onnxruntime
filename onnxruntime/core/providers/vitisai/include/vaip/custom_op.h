@@ -25,6 +25,7 @@ class ExecutionProvider {
   virtual DllSafe<std::vector<std::string>> get_meta_def_nodes() const = 0;
   virtual DllSafe<std::vector<std::string>>
   get_meta_def_constant_initializer() const = 0;
+  virtual bool get_meta_def_fallback_CPU() const = 0;
   virtual std::unique_ptr<CustomOp> compile() const = 0;
 
  public:
@@ -44,7 +45,7 @@ class CustomOp {
   VAIP_DLL_SPEC virtual ~CustomOp();
 
  public:
-  virtual void Compute_base(const OrtApi* api, OrtKernelContext* context) const = 0;
+  virtual void Compute(const OrtApi* api, OrtKernelContext* context) const = 0;
 };
 
 }  // namespace vaip_core
