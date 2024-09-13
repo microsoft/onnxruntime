@@ -61,7 +61,7 @@ RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ];
 RUN apt-get install -y valgrind
 
 # Build final image from base. Builds ORT.
-FROM base as final
+FROM base AS final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
