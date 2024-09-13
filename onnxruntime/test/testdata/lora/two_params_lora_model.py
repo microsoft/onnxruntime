@@ -1,7 +1,6 @@
 import onnx
 import numpy as np
 import onnxruntime as ort
-import sys
 import os
 
 model_path = "C:/dev/ort_main/onnxruntime/test/testdata/lora/two_params_lora_model.onnx"
