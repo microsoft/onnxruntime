@@ -147,18 +147,17 @@ class MatMulNBits final : public OpKernel {
 
 #endif  // defined(ORT_NEURAL_SPEED)
 
-  template<typename AType>
+  template <typename AType>
   Status ComputeTyped(OpKernelContext* ctx) const;
 };
 
-bool IsATypeFloat16(const Tensor& tensor)
-{
+bool IsATypeFloat16(const Tensor& tensor) {
   return tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 }
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                                   /*out*/ bool& is_packed,
-                                   /*out*/ PrePackedWeights* prepacked_weights) {
+                            /*out*/ bool& is_packed,
+                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
@@ -237,7 +236,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
       if (IsATypeFloat16(tensor)) {
         auto sptr = tensor.Data<MLFloat16>();
         std::vector<float> scales_v(static_cast<unsigned int>(tensor.Shape().Size()));
-        ConvertFp16ToFp32(sptr, &scales_v[0], scales_v.size());
+        MlasConvertHalfToFloatBuffer(sptr, &scales_v[0], scales_v.size());
         MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), &scales_v[0], has_zp_input_, nullptr, nullptr);
       } else {
         auto sptr = tensor.Data<float>();
@@ -257,7 +256,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
 }
 
 Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
-                                                     /*out*/ bool& used_shared_buffers) {
+                                              /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
 #if defined(ORT_NEURAL_SPEED)
@@ -298,7 +297,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   }
 }
 
-template<typename AType>
+template <typename AType>
 Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
@@ -385,15 +384,15 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
         ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
 
         auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-        ConvertFp16ToFp32(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
+        MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
 
         auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(scales->Shape().Size()));
-        ConvertFp16ToFp32(scales_data, tmp_scales_data_ptr.get(), scales->Shape().Size());
+        MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), scales->Shape().Size());
 
         std::vector<float> bias_data_v;
         if (bias_data != nullptr) {
           bias_data_v.resize((const unsigned int)(bias->Shape().Size()));
-          ConvertFp16ToFp32(bias_data, &bias_data_v[0], bias_data_v.size());
+          MlasConvertHalfToFloatBuffer(bias_data, &bias_data_v[0], bias_data_v.size());
         }
         std::vector<float> C_v((const unsigned int)(y->Shape().Size()));
         for (size_t i = 0; i < batch_count; ++i) {
@@ -413,7 +412,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
         }
         MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
                             thread_pool);
-        ConvertFp32ToFp16(&C_v[0], y_data, C_v.size());
+        MlasConvertFloatToHalfBuffer(&C_v[0], y_data, C_v.size());
         return Status::OK();
       } else {
         InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
@@ -452,7 +451,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
   std::vector<float> scales_data_v;
   if constexpr (std::is_same<AType, MLFloat16>::value) {
     scales_data_v.resize((const unsigned int)scales->Shape().Size());
-    ConvertFp16ToFp32(scales_data, &scales_data_v[0], scales_data_v.size());
+    MlasConvertHalfToFloatBuffer(scales_data, &scales_data_v[0], scales_data_v.size());
     scales_data_ = &scales_data_v[0];
   } else {
     scales_data_ = scales_data;
@@ -517,7 +516,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
 
     auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-    ConvertFp16ToFp32(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
+    MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
 
     auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(y->Shape().Size()));
     for (size_t i = 0; i < batch_count; i++) {
@@ -536,7 +535,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
     if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
         bias != nullptr) {
       auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(bias->Shape().Size()));
-      ConvertFp16ToFp32(bias->Data<AType>(), tmp_bias_data_ptr.get(), bias->Shape().Size());
+      MlasConvertHalfToFloatBuffer(bias->Data<AType>(), tmp_bias_data_ptr.get(), bias->Shape().Size());
       for (size_t i = 0; i < batch_count; ++i) {
         float* C_row = data[i].C;
         const size_t ldc = data[i].ldc;
@@ -550,7 +549,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
 
     MlasGemmBatch(CblasNoTrans, CblasTrans,
                   M, N, K, data.data(), batch_count, thread_pool);
-    ConvertFp32ToFp16(tmp_c_ptr.get(), y_data, y->Shape().Size());
+    MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, y->Shape().Size());
     return Status::OK();
   } else {
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);

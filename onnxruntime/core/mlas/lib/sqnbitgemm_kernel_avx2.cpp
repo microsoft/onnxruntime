@@ -29,7 +29,8 @@ Abstract:
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen32.h"
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h"
 
-void ConvertFp16ToFp32Avx(const MLAS_FP16* src_fp16, float* dst_fp32, uint64_t size)
+void
+MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, uint64_t size)
 {
     size_t i = 0;
 
@@ -48,12 +49,14 @@ void ConvertFp16ToFp32Avx(const MLAS_FP16* src_fp16, float* dst_fp32, uint64_t s
     }
 
     // Process any remaining elements
+    const MLAS_FP16* fp16 = reinterpret_cast<const MLAS_FP16*>(src_fp16);
     for (; i < size; ++i) {
-        dst_fp32[i] = src_fp16[i].ToFloat();
+        dst_fp32[i] = fp16[i].ToFloat();
     }
 }
 
-void ConvertFp32ToFp16Avx(const float* src_fp32, MLAS_FP16* dst_fp16, uint64_t size)
+void
+MlasCastF32ToF16KernelAvx2(const float* src_fp32, unsigned short* dst_fp16, uint64_t size)
 {
     size_t i = 0;
 
@@ -66,7 +69,8 @@ void ConvertFp32ToFp16Avx(const float* src_fp32, MLAS_FP16* dst_fp16, uint64_t s
 
     // Process any remaining elements
     for (; i < size; ++i) {
-        dst_fp16[i] = MLAS_FP16(src_fp32[i]);
+        MLAS_FP16 fp16(src_fp32[i]);
+        dst_fp16[i] = fp16.val;
     }
 }
 
@@ -1342,8 +1346,6 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
-    d.ConvertFp32ToFp16 = ConvertFp32ToFp16Avx;
-    d.ConvertFp16ToFp32 = ConvertFp16ToFp32Avx;
     return d;
 }();
 
@@ -1363,7 +1365,5 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
-    d.ConvertFp32ToFp16 = ConvertFp32ToFp16Avx;
-    d.ConvertFp16ToFp32 = ConvertFp16ToFp32Avx;
     return d;
 }();

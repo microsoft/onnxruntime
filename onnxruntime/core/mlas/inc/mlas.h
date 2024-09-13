@@ -1027,18 +1027,6 @@ MlasComputeTanh(
     );
 
 //
-// Half-precision floating-point routines.
-//
-
-void
-MLASCALL
-MlasConvertHalfToFloatBuffer(
-    const unsigned short* Source,
-    float* Destination,
-    size_t Count
-);
-
-//
 // Transpose routines.
 //
 
@@ -1427,7 +1415,27 @@ using MLAS_FP16 = onnxruntime::MLFloat16;
 
 constexpr size_t FP16_SIZE = sizeof(uint16_t);
 
-/**
+//
+// Half-precision floating-point routines.
+//
+
+void
+MLASCALL
+MlasConvertHalfToFloatBuffer(
+    const MLAS_FP16* Source,
+    float* Destination,
+    size_t Count
+);
+
+void
+MLASCALL
+MlasConvertFloatToHalfBuffer(
+const float* Source,
+MLAS_FP16* Destination,
+size_t Count
+);
+
+    /**
  * @brief Whether current CPU supports FP16 acceleration.
 */
 bool MLASCALL
@@ -1787,14 +1795,6 @@ MlasTranspose(
         reinterpret_cast<uint16_t*>(Output),
         M, N);
 }
-
-void
-MLASCALL
-ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size);
-
-void
-MLASCALL
-ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size);
 
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
