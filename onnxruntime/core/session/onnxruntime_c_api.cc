@@ -2824,7 +2824,7 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-const char* _stdcall OrtApis::GetBuildInfoString() noexcept {
+const char* ORT_API_CALL OrtApis::GetBuildInfoString() noexcept {
   return ORT_BUILD_INFO;
 }
 
@@ -2837,8 +2837,6 @@ ORT_API(void, OrtApis::ReleaseEnv, OrtEnv* value) {
 }
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
-void _stdcall OrtApis::ReleaseRunOptions(OrtRunOptions* value) noexcept {
-  delete reinterpret_cast<OrtRunOptions*>(value);
-}
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
