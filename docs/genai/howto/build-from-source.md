@@ -81,31 +81,31 @@ All of the build commands below have a `--config` argument, which takes the foll
 #### Windows CPU build
 
 ```bash
-python build.py --config `Release`
+python build.py --config Release
 ```
 
 #### Windows DirectML build
 
 ```bash
-python build.py --use_dml --config `Release`
+python build.py --use_dml --config Release
 ```
 
 #### Linux build
 
 ```bash
-python build.py --config `Release`
+python build.py --config Release
 ```
 
 #### Linux CUDA build
 
 ```bash
-python build.py --use_cuda --config `Release`
+python build.py --use_cuda --config Release
 ```
 
 #### Mac build
 
 ```bash
-python build.py --config `Release`
+python build.py --config Release
 ```
 
 ### Build Java API
