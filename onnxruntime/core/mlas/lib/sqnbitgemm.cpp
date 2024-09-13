@@ -19,7 +19,6 @@ Abstract:
 #include "sqnbitgemm_q8_block.h"
 
 #include <cassert>
-#include <iostream> // Include this header for std::cerr
 
 namespace
 {
