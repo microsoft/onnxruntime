@@ -144,7 +144,8 @@ void addAdapterFormatMethods(pybind11::module& m) {
 
   py::class_<lora::LoraAdapter> lora_adapter_binding(m, "LoraAdapter");
   lora_adapter_binding.def(py::init())
-      .def("Load", [](lora::LoraAdapter* adapter, const std::wstring& file_path) { adapter->Load(file_path); }, R"pbdoc(Memory map the specified file as LoraAdapter)pbdoc");
+      .def("Load", [](lora::LoraAdapter* adapter, const std::wstring& file_path) { adapter->MemoryMap(file_path); },
+        R"pbdoc(Memory map the specified file as LoraAdapter)pbdoc");
 }
 
 }  // namespace python
