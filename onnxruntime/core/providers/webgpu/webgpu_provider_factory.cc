@@ -99,6 +99,28 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   webgpu_ep_info.default_buffer_cache_mode = parse_buffer_cache_mode(kDefaultBufferCacheMode, webgpu::BufferCacheMode::Disabled);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << webgpu_ep_info.default_buffer_cache_mode;
 
+  webgpu::ValidationMode validation_mode =
+#ifndef NDEBUG
+      webgpu::ValidationMode::Full  // for debug build, enable full validation by default
+#else
+      webgpu::ValidationMode::WGPUOnly  // for release build, only enable WGPU validation.
+#endif  // !NDEBUG
+      ;
+  std::string validation_mode_str;
+  if (config_options.TryGetConfigEntry(kValidationMode, validation_mode_str)) {
+    if (validation_mode_str == kValidationMode_Disabled) {
+      validation_mode = webgpu::ValidationMode::Disabled;
+    } else if (validation_mode_str == kValidationMode_wgpuOnly) {
+      validation_mode = webgpu::ValidationMode::WGPUOnly;
+    } else if (validation_mode_str == kValidationMode_basic) {
+      validation_mode = webgpu::ValidationMode::Basic;
+    } else if (validation_mode_str == kValidationMode_full) {
+      validation_mode = webgpu::ValidationMode::Full;
+    } else {
+      ORT_THROW("Invalid validation mode: ", validation_mode_str);
+    }
+  }
+
   //
   // STEP.2 - prepare WebGpuContext
   //
@@ -136,7 +158,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   auto& context = webgpu::WebGpuContextFactory::CreateContext(context_id,
                                                               reinterpret_cast<WGPUInstance>(webgpu_instance),
                                                               reinterpret_cast<WGPUAdapter>(webgpu_adapter),
-                                                              reinterpret_cast<WGPUDevice>(webgpu_device));
+                                                              reinterpret_cast<WGPUDevice>(webgpu_device),
+                                                              validation_mode);
   context.Initialize(webgpu_ep_info);
 
   return std::make_shared<WebGpuProviderFactory>(context_id, context, webgpu_ep_info);

@@ -253,6 +253,13 @@ struct ProgramOutput {
   TensorShape override_shape;
 };
 
+enum class ValidationMode {
+  Disabled = 0,
+  WGPUOnly,
+  Basic,
+  Full
+};
+
 namespace detail {
 class ProgramWrapper;
 }
