@@ -204,8 +204,8 @@ int main() {
     //TestOriginalTensorRTEp(g_ort, so);
 
     //RunRelu(g_ort, p_env, so);
-    //RunResnet18v1_7(g_ort, p_env, so);
-    RunFastRcnn(g_ort, p_env, so);
+    RunResnet18v1_7(g_ort, p_env, so);
+    //RunFastRcnn(g_ort, p_env, so);
 
     g_ort->ReleaseEnv(p_env);
     return 0;

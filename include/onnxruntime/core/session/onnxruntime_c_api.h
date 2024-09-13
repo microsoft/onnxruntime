@@ -743,6 +743,14 @@ typedef struct OrtNodeComputeInfo {
   void(ORT_API_CALL* DestroyFunctionStateFunc)(void*);
 } OrtNodeComputeInfo;
 
+typedef struct OrtTensorRef {
+  int64_t* shape;
+  size_t shape_len;
+  ONNXTensorElementDataType data_type;
+  char* data;
+  size_t data_len;
+} OrtTensorRef;
+
 typedef struct OrtExecutionProvider {
 #ifdef __cplusplus
   OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr}, CanCopy{nullptr}, CopyTensor{nullptr}, CreatePreferredAllocators{nullptr}, type{nullptr}, create_stream{nullptr}, default_device{nullptr},
@@ -4791,7 +4799,11 @@ struct OrtApi {
 
   int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
-  size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;
+  bool(ORT_API_CALL* OrtGraph_GetInitializerTensor)(const char* initializer_name, _Outptr_ OrtTensorRef**);
+
+  size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;  // TODO(leca): review and discuss
+
+  ORT_API2_STATUS(OrtGraph_DeserializeFromArray, const void* data, size_t len, _Outptr_ OrtGraphViewer**);  // TODO(leca): review and discuss
 
   ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 

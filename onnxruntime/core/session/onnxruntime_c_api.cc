@@ -2521,6 +2521,28 @@ ORT_API(int32_t, OrtApis::OrtGraph_GetIthOutputElemType, const OrtGraphViewer* g
   return graph_viewer->GetOutputs()[i]->TypeAsProto()->tensor_type().elem_type();
 }
 
+ORT_API(bool, OrtApis::OrtGraph_GetInitializerTensor, const char* initializer_name, _Outptr_ OrtTensorRef** out) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const onnx::TensorProto* initializer = nullptr;
+  if (!graph_viewer->GetInitializedTensor(initializer_name, initializer)) return false;
+  *out = new OrtTensorRef();  // TODO(leca): release
+  (*out)->shape_len = initializer->dims_size();
+  (*out)->shape = new int64_t [initializer->dims_size()];
+  for (int i = 0; i < (*out)->shape_len; i++) {
+    ((*out)->shape)[i] = initializer->dims(i);
+  }
+
+  (*out)->data_type = initializer->data_type();
+  // see utils::ConvertRawDataInTensorProto()
+  switch (initializer->data_type()) {
+    case TensorProto_DataType_FLOAT:
+      (*out)->data_len = initializer->float_data_size();
+      (*out)->data = reinterpret_cast<char*>(initializer->mutable_float_data()->mutable_data());
+      break;
+  }
+  return true;
+}
+
 ORT_API(size_t, OrtApis::OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   Model model(graph_viewer->Name(), true, ModelMetaData(), PathString(),
@@ -2533,9 +2555,20 @@ ORT_API(size_t, OrtApis::OrtGraph_SerializeToArray, const OrtGraphViewer* graph,
   onnx::ModelProto model_proto = model.ToProto();
   GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true);
   size_t ret = model_proto.ByteSizeLong();
-  *data = malloc(ret);
+  *data = malloc(ret);    // TODO(leca): release
   model_proto.SerializeToArray(*data, ret);
   return ret;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_DeserializeFromArray, const void* data, size_t len, _Outptr_ OrtGraphViewer** ret) {
+  onnx::ModelProto model_proto;
+  if (!model_proto.ParseFromArray(data, len)) return OrtApis::CreateStatus(ORT_INVALID_PROTOBUF, "Parse model proto from array returns false");
+  std::shared_ptr<Model> model;
+  Status status = Model::Load(std::move(model_proto), model, nullptr, logging::LoggingManager::DefaultLogger());
+  if (status != Status::OK()) return ToOrtStatus(status);
+  std::unique_ptr<GraphViewer> graph_viewer = std::make_unique<GraphViewer>(model->MainGraph());
+  *ret = reinterpret_cast<OrtGraphViewer*>(graph_viewer.release());  // TODO(leca): release from the caller
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetName, const OrtNode* node, _Out_ const char** name) {
@@ -3117,7 +3150,9 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetOutputSize,
     &OrtApis::OrtGraph_GetIthOutputName,
     &OrtApis::OrtGraph_GetIthOutputElemType,
+    &OrtApis::OrtGraph_GetInitializerTensor,
     &OrtApis::OrtGraph_SerializeToArray,
+    &OrtApis::OrtGraph_DeserializeFromArray,
     &OrtApis::OrtNode_GetName,
     &OrtApis::OrtNode_GetDescription,
     &OrtApis::OrtNode_GetDomain,

@@ -3591,17 +3591,17 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
+        std::unordered_set<const std::string> initializers;
         onnx::ModelProto m;
         m.set_ir_version(3);
         onnx::OperatorSetIdProto* p = m.add_opset_import();
         p->set_domain("");
         p->set_version(10);
         onnx::GraphProto* g = m.mutable_graph();
-        for (size_t i = 0; i < nodes_count; i++) {
+        for (const auto& index : group.first) {
           onnx::NodeProto* n = g->add_node();
           const OrtNode* node = nullptr;
-          api_->OrtGraph_GetOrtNode(graph, node_index[i], &node);
-
+          api_->OrtGraph_GetOrtNode(graph, node_index[index], &node);
           const char* op_type = nullptr;
           api_->OrtNode_GetOpType(node, &op_type);
           n->set_op_type(op_type);
@@ -3617,6 +3617,20 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             const char* jth_input_name = nullptr;
             api_->OrtNode_GetIthInputName(node, j, &jth_input_name);
             n->add_input(jth_input_name, strlen(jth_input_name));
+
+            OrtTensorRef* tensor_ref = nullptr;
+            if (api_->OrtGraph_GetInitializerTensor(graph, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
+              onnx::TensorProto* t = g->add_initializer();
+              for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
+              t->set_data_type(tensor_ref->data_type);
+              t->set_raw_data(tensor_ref->data, tensor_ref->data_len);  // TODO(leca): correct? need to set other data type?
+            }
+          }
+
+          size_t implicit_input_size = 0;
+          api_->OrtNode_GetImplicitInputSize(node, &implicit_input_size);
+          for (size_t j = 0; j < implicit_input_size; j++) {
+
           }
 
           size_t output_size = 0;
@@ -3644,151 +3658,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           output->mutable_type()->mutable_tensor_type()->set_elem_type(api_->OrtGraph_GetIthOutputElemType(graph, i));
         }
 
-//        auto model_build = graph.CreateModel(*GetLogger());
-//        auto& graph_build = model_build->MainGraph();
-//        bool has_control_flow_op = false;
-//
-//        // Add node and node args
-//        // If node output is also parent graph output, the output will be added to the
-//        // subgraph's output list
-//        std::vector<std::string> subgraph_output_names;
-//        for (const auto& index : group.first) {
-//          const auto& node = graph.GetNode(node_index[index]);
-//          std::vector<onnxruntime::NodeArg*> inputs, outputs;
-//          for (auto input : node->InputDefs()) {
-//            auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-//            inputs.push_back(&n_input);
-//            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-//            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-//              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-//              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-//                graph_build.AddInitializedTensor(*(initializer));
-//              }
-//            }
-//          }
-//
-//          for (auto input : node->ImplicitInputDefs()) {
-//            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-//            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-//              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-//              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-//                graph_build.AddInitializedTensor(*(initializer));
-//              }
-//            }
-//          }
-//          for (auto output : node->OutputDefs()) {
-//            auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-//            outputs.push_back(&n_output);
-//            const auto name = output->Name();
-//            if (graph_output_names.find(name) != graph_output_names.end()) {
-//              subgraph_output_names.push_back(name);
-//            }
-//          }
-//
-//          if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
-//            has_control_flow_op = true;
-//          }
-//
-//          // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
-//          // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
-//          if (node->GetAttributes().size() > 0) {
-//            auto node_proto = ONNX_NAMESPACE::NodeProto::Create();
-//            // we need to update any GraphProto attributes for subgraphs so that any changes made by things
-//            // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
-//            node->ToProto(*node_proto, /* update_subgraphs */ true);
-//            const int num_attributes = node_proto->attribute_size();
-//            auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-//            node_attributes->reserve(num_attributes);
-//
-//            for (int i = 0; i < num_attributes; ++i) {
-//              auto& attr = node_proto->attribute(i);
-//              node_attributes->emplace(attr.name(), attr);
-//            }
-//
-//            // The GraphProto attributes are the updated ones.
-//            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, node_attributes.get(), node->Domain());
-//          } else {
-//            // The GraphProto attributes are the original ones.
-//            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
-//          }
-//        }
-//
-//        // Only if the newly built graph has control flow op as well as it has parent node,
-//        // it needs to handle outer scope values before calling graph.Resolve().
-//        if (has_control_flow_op && graph.ParentNode()) {
-//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
-//          BuildSubGraphContext(graph_build);
-//          SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
-//          SetAllGraphInputs(graph_build);
-//        }
-//
-//        ORT_ENFORCE(graph_build.Resolve().IsOK());
-//
-//        // Add parent graph output to the subgraph
-//        int i = 0;
-//        std::vector<const NodeArg*> subgraph_outputs;
-//        subgraph_outputs.resize(subgraph_output_names.size());
-//        for (auto& name : subgraph_output_names) {
-//          auto output_arg = graph.GetNodeArg(name);
-//          auto& subgraph_output_arg = graph_build.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
-//          subgraph_outputs[i] = &subgraph_output_arg;
-//          ++i;
-//        }
-//        auto& graph_build_outputs = graph_build.GetOutputs();
-//        subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
-//        graph_build.SetOutputs(graph_build_outputs);
-//        ORT_ENFORCE(graph_build.Resolve().IsOK());
-//
-//        // Check if input tensors have shapes
-//        if (iterations > 1) {
-//          auto graph_inputs = graph_build.GetInputs();
-//          for (auto input_arg : graph_inputs) {
-//            bool has_dim_value_or_param = true;
-//            auto input_shape = input_arg->Shape();
-//            if (input_shape != nullptr) {
-//              auto dim_size = input_shape->dim_size();
-//              for (int i = 0; i < dim_size; ++i) {
-//                auto& dim = input_shape->dim(i);
-//                if (!dim.has_dim_value() && !dim.has_dim_param()) {
-//                  has_dim_value_or_param = false;
-//                  break;
-//                }
-//              }
-//            }
-//
-//            if (input_shape == nullptr || !has_dim_value_or_param) {
-//              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-//                                                 "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
-//                                                     "Please run shape inference on the onnx model first. Details can be found in " +
-//                                                     "https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
-//            }
-//          }
-//        }
-//
-//        // Serialize modelproto to string
-//        auto graph_viewer = graph_build.CreateGraphViewer();
-//        auto model = graph_viewer->CreateModel(*GetLogger());
-//        auto model_proto = model->ToProto();
-//
-//        // ORT's default topological sort is using reversed DFS.
-//        // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
-//        // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
-//        // the model proto that has different node ordering compared to original onnx model.
-//        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
-//        model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-//
-//        std::string string_buf;
-//        model_proto->SerializeToString(string_buf);
-//
-//        if (dump_subgraphs_) {
-//          // Dump TensorRT subgraph for debugging
-//          std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-//          model_proto->SerializeToOstream(dump);
-//        }
-
-        void* buf_data = nullptr;
-        size_t buf_size = api_->OrtGraph_SerializeToArray(graph, &buf_data);
+        size_t buf_size = m.ByteSizeLong();
+        void* buf_data = malloc(buf_size);
+        m.SerializeToArray(buf_data, buf_size);
         std::string string_buf(reinterpret_cast<const char*>(buf_data), buf_size);
+        OrtGraphViewer* graph_viewer = nullptr;
+        api_->OrtGraph_DeserializeFromArray(buf_data, buf_size, &graph_viewer);
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
@@ -3814,12 +3689,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t next_nodes_list;
         size_t subgraph_node_count = 0;
         const size_t* subgraph_node_index = nullptr;
-        api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &subgraph_node_count, &subgraph_node_index);
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph, early_termination);
+        api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 1, &subgraph_node_count, &subgraph_node_index);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
-//          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-//            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
-//          }
+          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
+            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+          }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
       }
