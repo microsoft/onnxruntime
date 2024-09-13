@@ -80,21 +80,8 @@ bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
       !GetType(indices, indices_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input_type, wnn_limits["gather"]["input"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  if (!IsSupportedDataType(indices_type, wnn_limits["gather"]["indices"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << indices_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

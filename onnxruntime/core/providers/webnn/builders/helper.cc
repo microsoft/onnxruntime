@@ -131,8 +131,21 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
-bool IsSupportedDataType(const int32_t data_type, const emscripten::val& webnn_supported_data_types) {
-  auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(data_type));
+bool AreInputDataTypesSame(const std::string& op_type,
+                           const std::vector<int32_t>& input_types,
+                           const logging::Logger& logger) {
+  for (size_t i = 1; i < input_types.size(); i++) {
+    if (input_types[0] != input_types[i]) {
+      LOGS(logger, VERBOSE) << "[" << op_type
+                            << "] Input data types should be the same.";
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types) {
+  auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(onnx_data_type));
   if (it == onnx_to_webnn_data_type_map.end())
     return false;
 
@@ -142,6 +155,28 @@ bool IsSupportedDataType(const int32_t data_type, const emscripten::val& webnn_s
   emscripten::val is_supported = webnn_supported_data_types.call<emscripten::val>("includes",
                                                                                   emscripten::val(webnn_data_type));
   return is_supported.as<bool>();
+}
+
+// Check if the input or output data type of ONNX node is supported by the WebNN operator.
+bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
+                             const int32_t onnx_data_type,
+                             const emscripten::val& wnn_limits,
+                             const std::string& webnn_input_output_name,
+                             const std::string& onnx_input_output_name,
+                             const logging::Logger& logger) {
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(onnx_op_type, webnn_op_type))
+    return false;
+
+  if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type
+                          << "] " << onnx_input_output_name
+                          << " type: [" << onnx_data_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
 }
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,

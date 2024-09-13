@@ -89,24 +89,13 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::v
   if (!GetType(*input_defs[0], input_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input_type, wnn_limits["cast"]["input"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
+  if (!IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "input", logger))
     return false;
-  }
 
   NodeAttrHelper helper(node);
   // Check cast to type.
   const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED);
-  if (!IsSupportedDataType(to_type, wnn_limits["cast"]["output"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] to type: [" << to_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, to_type, wnn_limits, "output", "to", logger);
 }
 
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

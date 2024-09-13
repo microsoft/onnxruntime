@@ -92,33 +92,22 @@ bool MaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;
-  int32_t input1_type;
 
   if (!GetType(*input_defs[0], input0_type, logger))
     return false;
 
-  if (input_defs.size() > 1 && !GetType(*input_defs[1], input1_type, logger)) {
-    return false;
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    int32_t input_type;
+    if (!GetType(*input_defs[i], input_type, logger)) {
+      return false;
+    }
+
+    if (!AreInputDataTypesSame(op_type, {input0_type, input_type}, logger)) {
+      return false;
+    }
   }
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type))
-    return false;
-
-  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type]["a"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  if (input_defs.size() > 1 && input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "data_0", logger);
 }
 
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

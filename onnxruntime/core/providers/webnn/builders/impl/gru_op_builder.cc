@@ -208,24 +208,21 @@ bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::va
     return false;
   }
 
-  if (!IsSupportedDataType(input0_type, wnn_limits["gru"]["input"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  std::vector<int32_t> input_types = {input0_type, input1_type, input2_type};
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (has_input4) {
+    input_types.push_back(input4_type);
+  }
+  if (has_input5) {
+    input_types.push_back(input5_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type ||
-      input0_type != input2_type ||
-      (has_input3 && input0_type != input3_type) ||
-      (has_input4 && input0_type != input4_type) ||
-      (has_input5 && input0_type != input5_type)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

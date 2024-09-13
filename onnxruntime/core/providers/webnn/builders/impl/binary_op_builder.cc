@@ -97,25 +97,13 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
       !GetType(*input_defs[1], input1_type, logger))
     return false;
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type))
+  if (!AreInputDataTypesSame(op_type, {input0_type, input1_type}, logger)) {
     return false;
+  }
 
   std::string webnn_input_name = op_type == "PRelu" ? "input" : "a";
-  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type][webnn_input_name]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  if (input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  std::string onnx_input_name = op_type == "PRelu" || op_type == "Pow" ? "X" : "A";
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger);
 }
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

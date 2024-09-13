@@ -59,26 +59,13 @@ bool TernaryOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten
       !GetType(*input_defs[2], input2_type, logger))
     return false;
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type))
-    return false;
-
   // ONNX's condition data type is bool which is same as WebNN.
   // Only need to check X, Y data types.
-  if (!IsSupportedDataType(input1_type, wnn_limits[webnn_op_type]["trueValue"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input1_type
-                          << "] is not supported for now";
+  if (!AreInputDataTypesSame(op_type, {input1_type, input2_type}, logger)) {
     return false;
   }
 
-  if (input1_type != input2_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input X, Y data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "trueValue", "X", logger);
 }
 
 void CreateTernaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

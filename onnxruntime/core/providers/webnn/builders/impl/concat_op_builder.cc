@@ -65,27 +65,18 @@ bool ConcatOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
   if (!GetType(*input_defs[0], input0_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input0_type, wnn_limits["concat"]["inputs"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
-  }
-
   for (size_t i = 1; i < input_defs.size(); i++) {
     int32_t input_type;
     if (!GetType(*input_defs[i], input_type, logger)) {
       return false;
     }
 
-    if (input0_type != input_type) {
-      LOGS(logger, VERBOSE) << "[" << op_type
-                            << "] Input data types should be the same.";
-      return false;
-    }
+  if (!AreInputDataTypesSame(op_type, {input0_type, input_type}, logger)) {
+    return false;
+  }
   }
 
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "inputs", "inputs", logger);
 }
 
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

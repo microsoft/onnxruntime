@@ -273,7 +273,16 @@ static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> o
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
 };
 
-bool IsSupportedDataType(const int32_t data_type, const emscripten::val& webnn_supported_data_types);
+bool AreInputDataTypesSame(const std::string& op_type,
+                           const std::vector<int32_t>& input_types,
+                           const logging::Logger& logger);
+bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);
+bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
+                             const int32_t onnx_data_type,
+                             const emscripten::val& wnn_limits,
+                             const std::string& webnn_input_output_name,
+                             const std::string& onnx_input_output_name,
+                             const logging::Logger& logger);
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
                                     std::vector<int64_t>& shape_b,

@@ -87,24 +87,12 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten
       (op_type != "Not" && !GetType(*input_defs[1], input1_type, logger)))
     return false;
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type))
-    return false;
-
-  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type]["a"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  if (op_type != "Not" && !AreInputDataTypesSame(op_type, {input0_type, input1_type}, logger)) {
     return false;
   }
 
-  if (op_type != "Not" && input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  std::string onnx_input_name = op_type == "Not" ? "X" : "A";
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", onnx_input_name, logger);
 }
 
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

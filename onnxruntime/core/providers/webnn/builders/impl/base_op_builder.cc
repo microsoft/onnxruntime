@@ -90,19 +90,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
   if (!GetType(input, input_type, logger))
     return false;
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type)) {
-    return false;
-  }
-
-  if (!IsSupportedDataType(input_type, wnn_limits[webnn_op_type]["input"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
@@ -115,19 +103,7 @@ bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
   if (!GetType(output, output_type, logger))
     return false;
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type)) {
-    return false;
-  }
-
-  if (!IsSupportedDataType(output_type, wnn_limits[webnn_op_type]["output"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Output type: [" << output_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
 }
 
 bool BaseOpBuilder::HasSupportedOpSet(const Node& node,

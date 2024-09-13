@@ -415,26 +415,18 @@ bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::v
     return false;
   }
 
-  std::string webnn_op_type;
-  if (!GetWebNNOpType(op_type, webnn_op_type))
-    return false;
-
-  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type]["input"]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  std::vector<int32_t> input_types = {input0_type, input1_type};
+  if (has_input2) {
+    input_types.push_back(input2_type);
+  }
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type ||
-      (has_input2 && input0_type != input2_type) ||
-      (has_input3 && input0_type != input3_type)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
