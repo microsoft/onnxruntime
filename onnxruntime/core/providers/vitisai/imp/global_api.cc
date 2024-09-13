@@ -328,7 +328,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.attr_proto_get_floats = vaip::attr_proto_get_floats;
   the_global_api.attr_proto_get_strings = vaip::attr_proto_get_strings;
   the_global_api.attr_proto_get_type = [](const ONNX_NAMESPACE::AttributeProto& attr) -> int { return attr.type(); };
-  the_global_api.attr_proto_release_string = vaip::attr_proto_release_string;
+  the_global_api.attr_proto_release_string = [](ONNX_NAMESPACE::AttributeProto* attr) -> vaip_core::DllSafe<std::string*> { return vaip_core::DllSafe<std::string*>(vaip::attr_proto_release_string(attr)); }; 
 
   /// node attributes
   the_global_api.node_attributes_new = []() { return NodeAttributes::Create().release(); };
