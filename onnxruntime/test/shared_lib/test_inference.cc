@@ -4402,6 +4402,53 @@ TEST(CApiTest, RunAsyncFail) {
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
 
+TEST(CApiTest, RunWithLoraAdapter) {
+
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model.onnx");
+  constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
+
+  Ort::LoraAdapter adapter(adapter_path, nullptr);
+  Ort::RunOptions run_options;
+  run_options.SetLoraAdapterActive(adapter);
+
+  // Single input
+  constexpr const std::array<int64_t, 2> input_shape = {4, 4};
+  std::vector<float> input_x(16);
+  std::fill(input_x.begin(), input_x.end(), 1.0f);
+  constexpr const char* input_names[] = { "input_x" };
+  constexpr const char* output_names[] = {"output"};
+
+  auto cpu_meminfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+
+  auto input_x_val = Ort::Value::CreateTensor(
+    cpu_meminfo, input_x.data(), input_x.size(), input_shape.data(), input_shape.size());
+
+  Ort::Value inputs[] = {std::move(input_x_val)};
+
+  Ort::SessionOptions default_session_options;
+
+  constexpr const std::array<float, 16> expected_output = {
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f};
+
+  Ort::Session session(env, model_path, default_session_options);
+
+  auto outputs = session.Run(run_options, input_names, inputs, std::size(input_names), output_names, std::size(output_names));
+  ASSERT_EQ(1U, outputs.size());
+
+  auto tensor_type_shape = outputs[0].GetTensorTypeAndShapeInfo();
+  const auto elements = tensor_type_shape.GetElementCount();
+  ASSERT_EQ(expected_output.size(), elements);
+  const float* data = outputs[0].GetTensorData<float>();
+  for (size_t i = 0; i < elements; ++i) {
+    EXPECT_NEAR(expected_output[i], data[i], 0.06);
+  }
+}
+
 struct MockGQA : public OrtCustomOp {
   MockGQA() {
     OrtCustomOp::GetMayInplace = [](int** input_index, int** output_index) {

@@ -819,7 +819,7 @@ namespace {
 // Checks if there are active lora adapters and adjusts input spans.
 void CheckAndAdjustForLora(const OrtRunOptions* run_options,
                            InlinedVector<const char*>& input_names_with_lora,
-                           InlinedVector<const OrtValue*> input_with_lora,
+                           InlinedVector<const OrtValue*>& input_with_lora,
                            gsl::span<const char* const>& input_names,
                            gsl::span<const OrtValue* const>& inputs) {
   if (!run_options->active_adapters_.empty()) {
