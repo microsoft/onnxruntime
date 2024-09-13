@@ -39,13 +39,8 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
 
-  if (!use_device_mem) {
-    auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                      output_names_raw_ptr.data(), output_names_raw_ptr.size());
-  } else {
-    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                 output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
-  }
+  session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+               output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
@@ -857,10 +852,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
               "should be a boolean i.e. true or false. Default value is false.\n");
         }
-      } else if (key == "use_device_mem") {
-        if (value == "true" || value == "True") {
-          use_device_mem = true;
-        }
+      } else if (key == "device_memory_name") {
+        device_memory_name_ = std::move(value);
       } else {
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
@@ -905,25 +898,26 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  if (use_device_mem) {
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo("OpenVINO_RT_NPU", OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+  auto transform_fcn = std::function<int64_t(int64_t)>();
+  if (device_memory_name_.empty()) {
+    transform_fcn = [](int64_t input) { return input; };
+  } else {
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     custom_allocator_ = std::make_unique<Ort::Allocator>(session_, memory_info);
-    for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
-      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    allocator_ = *custom_allocator_;
+    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+  }
 
-      std::vector<int64_t> output_shape = tensor_info.GetShape();
+  for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
+    Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
-      // free dimensions are treated as 1 if not overridden
-      for (int64_t& dim : output_shape) {
-        if (dim == -1) {
-          dim = 1;
-        }
-      }
+    // free dimensions are treated as 1 if not overridden
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
 
-      outputs_.push_back(Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)output_shape.data(),
-                                                  output_shape.size(), tensor_info.GetElementType()));
-    }
+    outputs_.push_back(Ort::Value::CreateTensor(allocator_, output_shape.data(),
+                                                output_shape.size(), tensor_info.GetElementType()));
   }
 }
 
@@ -1013,29 +1007,16 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      if (!use_device_mem) {
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-      }
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
       // free dimensions are treated as 1 if not overridden
-      for (int64_t& dim : input_node_dim) {
-        if (dim == -1) {
-          dim = 1;
-        }
-      }
-      if (use_device_mem) {
-        Ort::Value input_tensor = Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)input_node_dim.data(),
-                                                           input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, input_tensor);
-        PreLoadTestData(0, i, std::move(input_tensor));
-      } else {
-        auto allocator = Ort::AllocatorWithDefaultOptions();
-        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                           input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, input_tensor);
-        PreLoadTestData(0, i, std::move(input_tensor));
-      }
+      auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+      std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
+
+      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
+                                                         input_node_dim.size(), tensor_info.GetElementType());
+      InitializeTensorWithSeed(seed, input_tensor);
+      PreLoadTestData(0, i, std::move(input_tensor));
     }
   }
   return true;
