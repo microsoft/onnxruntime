@@ -1,7 +1,7 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import { fade } from 'svelte/transition';
-	import coffee from '$lib/assets/coffee.png';
+	import coffee from './coffee.png';
 	import whisper from './whisper.png';
 	import vision_ui from './vision_UI.png';
 	import mobile from './mobile.png';
@@ -52,8 +52,10 @@
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 
 <div class="container mx-auto px-10 my-10">
-	<div class="my-8 grid grid-cols-1 md:grid-cols-4 gap-16">
-		<img class="m-auto rounded-xl" src={aibrain} alt="Representing generative AI" />
+	<div class="m-8 grid grid-cols-1 md:grid-cols-4">
+		<div class="m-2 lg:m-8">
+			<img class="rounded-xl" src={aibrain} alt="Representing generative AI" />
+		</div>
 		<div class="col-span-3 my-auto">
 			<h2 class="text-3xl pb-4">What is Generative AI?</h2>
 			<p>
