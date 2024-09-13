@@ -30,7 +30,7 @@ Abstract:
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h"
 
 void
-MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, uint64_t size)
+MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, size_t size)
 {
     size_t i = 0;
 
@@ -56,7 +56,7 @@ MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, uint
 }
 
 void
-MlasCastF32ToF16KernelAvx2(const float* src_fp32, unsigned short* dst_fp16, uint64_t size)
+MlasCastF32ToF16KernelAvx2(const float* src_fp32, unsigned short* dst_fp16, size_t size)
 {
     size_t i = 0;
 

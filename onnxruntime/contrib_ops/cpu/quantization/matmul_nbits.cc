@@ -384,10 +384,10 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
         ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
 
         auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-        MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
+        MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()));
 
         auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(scales->Shape().Size()));
-        MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), scales->Shape().Size());
+        MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), static_cast<size_t>(scales->Shape().Size()));
 
         std::vector<float> bias_data_v;
         if (bias_data != nullptr) {
@@ -516,7 +516,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
 
     auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-    MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
+    MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()));
 
     auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(y->Shape().Size()));
     for (size_t i = 0; i < batch_count; i++) {
@@ -535,7 +535,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
     if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
         bias != nullptr) {
       auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(bias->Shape().Size()));
-      MlasConvertHalfToFloatBuffer(bias->Data<AType>(), tmp_bias_data_ptr.get(), bias->Shape().Size());
+      MlasConvertHalfToFloatBuffer(bias->Data<AType>(), tmp_bias_data_ptr.get(), static_cast<size_t>(bias->Shape().Size()));
       for (size_t i = 0; i < batch_count; ++i) {
         float* C_row = data[i].C;
         const size_t ldc = data[i].ldc;
@@ -549,7 +549,7 @@ Status MatMulNBits::ComputeTyped(OpKernelContext* ctx) const {
 
     MlasGemmBatch(CblasNoTrans, CblasTrans,
                   M, N, K, data.data(), batch_count, thread_pool);
-    MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, y->Shape().Size());
+    MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, static_cast<size_t>(y->Shape().Size()));
     return Status::OK();
   } else {
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
