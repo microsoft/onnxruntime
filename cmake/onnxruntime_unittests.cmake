@@ -921,6 +921,15 @@ if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
 target_compile_options(onnxruntime_test_all PRIVATE  "/analyze:stacksize 131072")
 endif()
 
+#In AIX + gcc compiler ,crash is observed with the usage of googletest EXPECT_THROW,
+#because some needed symbol is garbaged out by linker.
+#So, fix is to exports the symbols from executable.
+#Another way is to use -Wl,-bkeepfile for each object file where EXPECT_THROW is used like below
+#target_link_options(onnxruntime_test_all PRIVATE "-Wl,-bkeepfile:CMakeFiles/onnxruntime_test_all.dir${TEST_SRC_DIR}/framework/tensor_test.cc.o")
+if (CMAKE_SYSTEM_NAME MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set_target_properties(onnxruntime_test_all PROPERTIES ENABLE_EXPORTS 1)
+endif()
+
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
@@ -1259,6 +1268,37 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       endif()
     endif()
   endif()
+
+
+  if(onnxruntime_USE_QNN)
+    #qnn ctx generator
+    set(onnxruntime_qnn_ctx_gen_src_dir ${TEST_SRC_DIR}/qnn_ctx_gen)
+    set(onnxruntime_qnn_ctx_gen_src_patterns
+    "${onnxruntime_qnn_ctx_gen_src_dir}/*.cc"
+    "${onnxruntime_qnn_ctx_gen_src_dir}/*.h")
+
+    file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
+      ${onnxruntime_qnn_ctx_gen_src_patterns}
+      )
+    onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
+    target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
+          ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
+          ${CMAKE_CURRENT_BINARY_DIR})
+    if (WIN32)
+      target_compile_options(onnxruntime_qnn_ctx_gen PRIVATE ${disabled_warnings})
+      if (NOT DEFINED SYS_PATH_LIB)
+        set(SYS_PATH_LIB shlwapi)
+      endif()
+    endif()
+
+    if(WIN32)
+      target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE debug dbghelp advapi32)
+    endif()
+    target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers onnx_test_data_proto ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+
+    set_target_properties(onnxruntime_qnn_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
+
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
@@ -1773,7 +1813,12 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
   add_dependencies(test_execution_provider onnxruntime_providers_shared onnx ${ABSEIL_LIBS})
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS} Boost::mp11)
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+    target_link_options(test_execution_provider PRIVATE -Wl,-brtl -lonnxruntime_providers_shared)
+    target_link_libraries(test_execution_provider PRIVATE ${ABSEIL_LIBS} Boost::mp11)
+  else()
+    target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS} Boost::mp11)
+  endif()
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})

@@ -487,6 +487,7 @@ struct ProviderHostImpl : ProviderHost {
   float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) override { return p->f(); }
   const ONNX_NAMESPACE::TensorProto& AttributeProto__t(const ONNX_NAMESPACE::AttributeProto* p) override { return p->t(); }
   void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_s(value); }
+  void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, ::std::string&& value) override { return p->set_s(::std::move(value)); }
   void AttributeProto__set_f(ONNX_NAMESPACE::AttributeProto* p, const float& value) override { return p->set_f(value); }
   void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) override { return p->set_i(value); }
   void AttributeProto__set_t(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::TensorProto& value) override { *p->mutable_t() = value; }
@@ -682,135 +683,13 @@ struct ProviderHostImpl : ProviderHost {
   int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->metadata_props_size(); }
   ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) override { return p->add_metadata_props(); }
 
-  static int32_t convert_elem_type(const ONNX_NAMESPACE::AttributeProto* data_type) {
-    int32_t elemType = 0;
-    if (data_type->s() == "float32") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    } else if (data_type->s() == "int8") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT8;
-    } else if (data_type->s() == "uint8") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-    } else if (data_type->s() == "int32") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    } else if (data_type->s() == "uint32") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-    } else if (data_type->s() == "int64") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT64;
-    } else if (data_type->s() == "uint64") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-    } else if (data_type->s() == "int1") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-    } else if (data_type->s() == "bfloat16") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-    } else if (data_type->s() == "float16") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-    } else if (data_type->s() == "uint16") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-    } else if (data_type->s() == "int16") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT16;
-    } else if (data_type->s() == "double") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-    } else if (data_type->s() == "string") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_STRING;
-    } else if (data_type->s() == "complex64") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64;
-    } else if (data_type->s() == "complex128") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128;
-    } else if (data_type->s() == "float8e4m3fn") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
-    } else if (data_type->s() == "float8e4m3fnuz") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ;
-    } else if (data_type->s() == "float8e5m2") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
-    } else if (data_type->s() == "float8e5m2funz") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
-    } else if (data_type->s() == "uint4") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
-    } else if (data_type->s() == "int4") {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT4;
-    }
-    return elemType;
-  }
-
-  static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
-    auto num_output = ctx.getNumOutputs();
-    if (num_output == 1) {
-      auto* shape = ctx.getAttribute("shape");
-      auto* data_type = ctx.getAttribute("data_type");
-      if (data_type == nullptr) {
-        std::cerr << "Custom op is missing `data_type` attr." << std::endl;
-        return;
-      }
-      int32_t elemType = convert_elem_type(data_type);
-      ONNX_NAMESPACE::updateOutputElemType(ctx, 0, elemType);
-      if (shape != nullptr) {
-        for (auto i = 0; i < shape->ints_size(); ++i) {
-          ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
-        }
-      } else {
-        // set scalar type.
-        ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->clear_dim();
-      }
-    } else {
-      for (auto idx = 0u; idx < num_output; idx++) {
-        auto* shape = ctx.getAttribute("shape_" + std::to_string(idx));
-        auto* data_type = ctx.getAttribute("data_type_" + std::to_string(idx));
-        if (shape == nullptr || data_type == nullptr) {
-          // this output is optional
-        } else {
-          int32_t elemType = convert_elem_type(data_type);
-          ONNX_NAMESPACE::updateOutputElemType(ctx, idx, elemType);
-          for (auto i = 0; i < shape->ints_size(); ++i) {
-            ONNX_NAMESPACE::getOutputShape(ctx, idx, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
-          }
-        }
-      }
-    }
-  }
-
-  static void xir_fixneuron_shape_inference(ONNX_NAMESPACE::InferenceContext& ctx) {
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-    ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
-  }
-
-  static void xir_subgraph_shape_inference(ONNX_NAMESPACE::InferenceContext& ctx) {
-    auto num_inputs = ctx.getNumInputs();
-
-    // Run inferencing on the subgraph
-    auto* graphInferencer = ctx.getGraphAttributeInferencer("body");
-
-    std::vector<const ONNX_NAMESPACE::TensorProto*> input_data;
-    std::vector<const ONNX_NAMESPACE::TypeProto*> subgraph_input_types;
-    for (size_t i = 0; i < num_inputs; ++i) {
-      input_data.push_back(ctx.getInputData(i));
-      subgraph_input_types.push_back(ctx.getInputType(i));
-    }
-
-    auto output_types = graphInferencer->doInferencing(subgraph_input_types, input_data);
-    for (size_t i = 0, end = output_types.size(); i < end; ++i) {
-      *ctx.getOutputType(i) = *output_types[i];
-    }
-  }
-  void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) override {
+  void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
     const auto& domain_to_version_map = domain_instance.Map();
     if (domain_to_version_map.find(domain) == domain_to_version_map.end()) {
       domain_instance.AddDomainToVersion(domain, 1, 1000);
     }
     auto schema = CreateSchema(domain, {op});
-    switch (type) {
-      case 1:
-        schema.TypeAndShapeInferenceFunction(xir_subgraph_shape_inference);
-        break;
-      case 2:
-        schema.TypeAndShapeInferenceFunction(xir_fixneuron_shape_inference);
-        break;
-      case 3:
-        schema.TypeAndShapeInferenceFunction(xir_shape_infer);
-        break;
-      default:
-        break;
-    }
     ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
   }
   const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) override {
@@ -1121,6 +1000,7 @@ struct ProviderHostImpl : ProviderHost {
   }
   void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
   void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->emplace(k, v); }
+  void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, ONNX_NAMESPACE::AttributeProto&& v) override { p->emplace(k, std::move(v)); }
   void NodeAttributes__insert_or_assign(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->insert_or_assign(k, v); }
   void NodeAttributes__reserve(NodeAttributes* p, size_t size) override { p->reserve(size); }
 
@@ -1198,6 +1078,9 @@ struct ProviderHostImpl : ProviderHost {
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
+  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, NodeAttributes&& attributes, const std::string& domain) override {
+    return p->AddNode(name, op_type, description, input_args, output_args, ::std::move(attributes), domain);
+  }
   Node& Graph__AddNode(Graph* p, const Node& other) override {
     return p->AddNode(other);
   }
@@ -1260,6 +1143,7 @@ struct ProviderHostImpl : ProviderHost {
   const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
   IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const override { return p->GetSchemaRegistry(); }
+  bool Graph__SetOpSchemaFromRegistryForNode(Graph* p, Node& node) override { return p->SetOpSchemaFromRegistryForNode(node); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }

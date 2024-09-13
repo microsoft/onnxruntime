@@ -1389,6 +1389,13 @@ class TestInferenceSession(unittest.TestCase):
         # The constructed OrtValue should still be valid after being used in a session
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
+        # test ort_value creation on top of the bytes
+        float_tensor_data_type = 1  # TensorProto_DataType_FLOAT
+        ort_value_with_type = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(numpy_arr_input, float_tensor_data_type)
+        self.assertTrue(ort_value_with_type.is_tensor())
+        self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
+        self.assertEqual([3, 2], ort_value_with_type.shape())
+
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, "cuda", 0)
             self.assertEqual(ortvalue2.device_name(), "cuda")
@@ -1600,7 +1607,12 @@ class TestInferenceSession(unittest.TestCase):
             )
 
     def test_memory_arena_shrinkage(self):
-        if platform.architecture()[0] == "32bit" or "ppc" in platform.machine() or "powerpc" in platform.machine():
+        if (
+            platform.architecture()[0] == "32bit"
+            or "ppc" in platform.machine()
+            or "powerpc" in platform.machine()
+            or "powerpc" in platform.processor()
+        ):
             # on x86 or ppc builds, the CPU allocator does not use an arena
             print("Skipping testMemoryArenaShrinkage in 32bit or powerpc platform.")
         else:
@@ -1689,8 +1701,9 @@ class TestInferenceSession(unittest.TestCase):
 
         available_eps = C.get_available_providers()
         # skip amd gpu build
-        if "kRocmExecutionProvider" in available_eps:
+        if "RocmExecutionProvider" in available_eps:
             return
+
         if sys.platform.startswith("win"):
             shared_library = "test_execution_provider.dll"
 
@@ -1817,6 +1830,45 @@ class TestInferenceSession(unittest.TestCase):
             device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
             device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
             device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+
+    def test_adater_export_read(self):
+        adapter_version = 1
+        model_version = 1
+        exported_adapter_file = "test_adapter.onnx_adapter"
+
+        float_data_type = 1
+        int64_data_type = 7
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+        param_2 = np.array(val).astype(np.int64).reshape(2, 5)
+
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(param_1, float_data_type)
+        ort_val_2 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(param_2, int64_data_type)
+
+        params = {"param_1": ort_val_1, "param_2": ort_val_2}
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters(params)
+
+        adapter_format.export_adapter(exported_adapter_file)
+
+        adapter_format_read = onnxrt.AdapterFormat.read_adapter(exported_adapter_file)
+        os.remove(exported_adapter_file)
+
+        self.assertEqual(adapter_version, adapter_format_read.get_adapter_version())
+        self.assertEqual(model_version, adapter_format_read.get_model_version())
+
+        actual_params = adapter_format_read.get_parameters()
+        self.assertCountEqual(params, actual_params)
+        for key, value in actual_params.items():
+            self.assertIn(key, params)
+            expected_val = params.get(key)
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(expected_val.element_type(), value.element_type())
+            self.assertEqual(expected_val.shape(), value.shape())
+            np.testing.assert_allclose(expected_val.numpy(), value.numpy())
 
 
 if __name__ == "__main__":

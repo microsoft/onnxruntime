@@ -50,7 +50,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* sin_cache = context->Input<Tensor>(8);
 
   GroupQueryAttentionParameters parameters = {};
-  constexpr float scale = 1.0f;
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
                                                                 value,
@@ -63,7 +62,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 kv_num_heads_,
                                                                 seqlens_k,
                                                                 total_seqlen,
-                                                                scale));
+                                                                scale_,
+                                                                softcap_));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;

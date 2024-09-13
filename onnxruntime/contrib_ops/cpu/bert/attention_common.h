@@ -102,6 +102,7 @@ struct GroupQueryAttentionParameters {
   int sequence_length;          // sequence length of input query, key, value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
+  int total_sequence_length;    // maximum total sequence length (past_sequence_length + sequence_length) among keys
   int hidden_size;
   int num_heads;
   int head_size;
@@ -118,6 +119,7 @@ struct GroupQueryAttentionParameters {
   bool rotary_interleaved;
   bool use_smooth_softmax;
   float scale;
+  float softcap;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
   int zeros_count;

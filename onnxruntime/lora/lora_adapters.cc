@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "lora_adapters.h"
-#include "lora_format_utils.h"
+#include "adapter_format_utils.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
@@ -14,28 +14,28 @@
 namespace onnxruntime {
 namespace lora {
 
-LoraAdapter::LoraParam::LoraParam(OrtValue ort_value_mapped) noexcept
+LoraAdapter::Param::Param(OrtValue ort_value_mapped) noexcept
     : ort_value_mapped_(std::move(ort_value_mapped)) {}
 
-LoraAdapter::LoraParam::LoraParam(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept
+LoraAdapter::Param::Param(OrtValue ort_value_mapped, OrtValue ort_value_device) noexcept
     : ort_value_mapped_(std::move(ort_value_mapped)), ort_value_device_(std::move(ort_value_device)) {
 }
 
 void LoraAdapter::Load(const std::filesystem::path& file_path) {
-  auto buffer = utils::LoadLoraAdapterBytes(file_path);
+  auto buffer = adapters::utils::LoadLoraAdapterBytes(file_path);
   Load(std::move(buffer));
 }
 
 void LoraAdapter::Load(std::vector<uint8_t> buffer) {
-  adapter_ = utils::ValidateAndGetAdapterFromBytes(buffer);
+  adapter_ = adapters::utils::ValidateAndGetAdapterFromBytes(buffer);
   buffer_.emplace<BufferHolder>(std::move(buffer));
   InitializeParamsValues();
 }
 
 void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
-  auto [mapped_memory, file_size] = utils::MemoryMapAdapterFile(file_path);
+  auto [mapped_memory, file_size] = adapters::utils::MemoryMapAdapterFile(file_path);
   auto u8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(mapped_memory.get(), file_size));
-  adapter_ = utils::ValidateAndGetAdapterFromBytes(u8_span);
+  adapter_ = adapters::utils::ValidateAndGetAdapterFromBytes(u8_span);
   buffer_.emplace<MemMapHolder>(std::move(mapped_memory), file_size);
 
   InitializeParamsValues();
@@ -47,11 +47,11 @@ void LoraAdapter::InitializeParamsValues() {
   }
 
   const auto* params = adapter_->parameters();
-  InlinedHashMap<std::string, LoraParam> params_values;
+  InlinedHashMap<std::string, Param> params_values;
   params_values.reserve(params->size());
   for (const auto* param : *params) {
-    auto [name, ort_value] = utils::CreateOrtValueOverLoraParameter(*param);
-    LoraParam lora_param(std::move(ort_value));
+    auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
+    Param lora_param(std::move(ort_value));
     params_values.emplace(std::move(name), std::move(lora_param));
   }
   params_values_.swap(params_values);
@@ -69,12 +69,12 @@ size_t LoraAdapter::GetBufferSize() const {
 }  // namespace lora
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* /* allocator */,
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* /* allocator */,
                     _Outptr_ OrtLoraAdapter** adapter) {
   API_IMPL_BEGIN
   auto lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
   // For platforms that do not support Memmap, we can #ifdef it to ->Load(adapter_file_path)
-  lora_adapter->Load(adapter_file_path);
+  lora_adapter->MemoryMap(adapter_file_path);
   *adapter = reinterpret_cast<OrtLoraAdapter*>(lora_adapter.release());
   return nullptr;
   API_IMPL_END

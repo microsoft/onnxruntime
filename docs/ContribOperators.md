@@ -2543,6 +2543,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
 #### Inputs (7 - 9)

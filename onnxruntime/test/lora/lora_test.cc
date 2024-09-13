@@ -6,8 +6,8 @@
 #include "core/framework/to_tensor_proto_element_type.h"
 
 #include "lora/lora_adapters.h"
-#include "lora/lora_format_version.h"
-#include "lora/lora_format_utils.h"
+#include "lora/adapter_format_version.h"
+#include "lora/adapter_format_utils.h"
 #include "gtest/gtest.h"
 
 #include <cmath>
@@ -90,7 +90,7 @@ auto verify_load = [](const lora::LoraAdapter& adapter) {
   names.reserve(param_num);
   ort_values.reserve(param_num);
 
-  adapter.OutputLoadedAdaptersParameters(std::back_inserter(names), std::back_inserter(ort_values));
+  adapter.OutputAdapterParameters(std::back_inserter(names), std::back_inserter(ort_values));
   ASSERT_EQ(param_num, names.size());
   ASSERT_EQ(param_num, ort_values.size());
 
@@ -150,10 +150,10 @@ struct GenerateTestParameters {
       std::iota(param_2.begin(), param_2.end(), T{32});
     }
 
-    lora::utils::AdapterFormatBuilder adapter_builder;
-    adapter_builder.AddParameter("param_1", static_cast<lora::TensorDataType>(data_type),
+    adapters::utils::AdapterFormatBuilder adapter_builder;
+    adapter_builder.AddParameter("param_1", static_cast<adapters::TensorDataType>(data_type),
                                  param_shape, ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_1)));
-    adapter_builder.AddParameter("param_2", static_cast<lora::TensorDataType>(data_type),
+    adapter_builder.AddParameter("param_2", static_cast<adapters::TensorDataType>(data_type),
                                  param_shape, ReinterpretAsSpan<const uint8_t>(gsl::make_span(param_2)));
 
     return adapter_builder.Finish(kAdapterVersion, kModelVersion);
@@ -174,7 +174,7 @@ struct TestDataType {
 
 TEST(LoraAdapterTest, Load) {
   // Test different data types
-  const auto data_types = gsl::make_span(lora::EnumValuesTensorDataType());
+  const auto data_types = gsl::make_span(adapters::EnumValuesTensorDataType());
   for (size_t i = 1, size = data_types.size(); i < size; ++i) {
     if (i == 8 || i == 9 || i == 14 || i == 15 || (i > 16 && i < 21))
       continue;

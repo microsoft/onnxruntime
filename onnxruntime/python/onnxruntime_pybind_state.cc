@@ -31,6 +31,8 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
+#include "lora/lora_adapters.h"
+
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
@@ -65,6 +67,14 @@ namespace onnxruntime {
 
 namespace onnxruntime {
 namespace python {
+
+template<class T>
+void print_span(std::ostream& os, gsl::span<const T> span) {
+  for (auto v : span) {
+    os << v << ' ';
+  }
+  os << std::endl;
+}
 
 namespace py = pybind11;
 using namespace onnxruntime;
@@ -1883,7 +1893,12 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 
             return value;
           },
-          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc");
+          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc")
+      .def(
+          "set_adapter_active", [](RunOptions* options, lora::LoraAdapter* adapter) {
+            options->active_adapters_.push_back(adapter);
+          },
+          R"pbdoc(Activates the specified lora adapter)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -2004,7 +2019,30 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               const std::map<std::string, const py::object>& pyfeeds, RunOptions* run_options = nullptr)
                -> py::list {
              NameMLValMap feeds;
-             feeds.reserve(pyfeeds.size());
+             if (run_options != nullptr && !run_options->active_adapters_.empty()) {
+               size_t total_entries = pyfeeds.size();
+               for (const auto* adapter : run_options->active_adapters_) {
+                 total_entries += adapter->GetParamNum();
+               }
+               feeds.reserve(total_entries);
+
+               std::cout << "Adapter inputs: " << std::endl;
+               // Append necessary inputs for active adapters
+               for (const auto* adapter : run_options->active_adapters_) {
+                 auto [begin, end] = adapter->GetParamIterators();
+                 for (; begin != end; ++begin) {
+                   const auto& [name, param] = *begin;
+                   std::cout << name << ':';
+                   print_span(std::cout, param.GetMapped().Get<Tensor>().DataAsSpan<float>());
+                   feeds.insert(std::make_pair(name, param.GetMapped()));
+                 }
+               }
+               std::cout << std::endl;
+             } else {
+               feeds.reserve(pyfeeds.size());
+             }
+
+             std::cout << "Normal inputs: " << std::endl;
              for (const auto& feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
@@ -2018,9 +2056,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  }
                  CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
                  ThrowIfPyErrOccured();
-                 feeds.insert(std::make_pair(feed.first, ml_value));
+                 std::cout << feed.first << ':'; print_span(std::cout, ml_value.Get<Tensor>().DataAsSpan<float>());
+                 feeds.insert(std::make_pair(feed.first, std::move(ml_value)));
                }
              }
+             std::cout << std::endl;
 
              std::vector<OrtValue> fetches;
              fetches.reserve(output_names.size());
@@ -2243,6 +2283,7 @@ bool CreateInferencePybindStateModule(py::module& m) {
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
+  addAdapterFormatMethods(m);
 
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {

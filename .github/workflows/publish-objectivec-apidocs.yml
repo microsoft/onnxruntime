@@ -48,4 +48,4 @@ jobs:
       with:
         name: onnxruntime-objectivec-apidocs
         path: ./_site
-        retention-days: 60
+        retention-days: 30
