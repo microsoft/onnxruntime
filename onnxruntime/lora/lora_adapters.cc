@@ -74,7 +74,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_fi
   API_IMPL_BEGIN
   auto lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
   // For platforms that do not support Memmap, we can #ifdef it to ->Load(adapter_file_path)
-  lora_adapter->Load(adapter_file_path);
+  lora_adapter->MemoryMap(adapter_file_path);
   *adapter = reinterpret_cast<OrtLoraAdapter*>(lora_adapter.release());
   return nullptr;
   API_IMPL_END
