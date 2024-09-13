@@ -25,7 +25,7 @@ class ExecutionProvider {
   virtual DllSafe<std::vector<std::string>> get_meta_def_nodes() const = 0;
   virtual DllSafe<std::vector<std::string>>
   get_meta_def_constant_initializer() const = 0;
-  virtual bool get_meta_def_fallback_CPU() const = 0;
+  virtual bool get_meta_def_fallback_CPU() const { return false; };
   virtual std::unique_ptr<CustomOp> compile() const = 0;
 
  public:
