@@ -4403,7 +4403,6 @@ TEST(CApiTest, RunAsyncFail) {
 }
 
 TEST(CApiTest, RunWithLoraAdapter) {
-
   constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model.onnx");
   constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
 
@@ -4417,13 +4416,13 @@ TEST(CApiTest, RunWithLoraAdapter) {
   constexpr const std::array<int64_t, 2> input_shape = {4, 4};
   std::vector<float> input_x(16);
   std::fill(input_x.begin(), input_x.end(), 1.0f);
-  constexpr const char* input_names[] = { "input_x" };
+  constexpr const char* input_names[] = {"input_x"};
   constexpr const char* output_names[] = {"output"};
 
   auto cpu_meminfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
   auto input_x_val = Ort::Value::CreateTensor(
-    cpu_meminfo, input_x.data(), input_x.size(), input_shape.data(), input_shape.size());
+      cpu_meminfo, input_x.data(), input_x.size(), input_shape.data(), input_shape.size());
 
   Ort::Value inputs[] = {std::move(input_x_val)};
 
