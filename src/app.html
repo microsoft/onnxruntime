@@ -36,6 +36,11 @@
 				},
 				propertyConfiguration: {
 					// Properties Plugin configuration
+					gpcDataSharingOptIn: false, 
+					callback: {
+						userConsentDetails: _getWcpUserConsentDetails
+					},
+
 					env: 'PROD' // Environment can be set to PPE or PROD as needed.
 				},
 				webAnalyticsConfiguration: {
@@ -77,6 +82,7 @@
 			}
 		};
 
+		var siteConsent = null;
 		WcpConsent.init(
 			'en-US',
 			'cookie-banner',
@@ -90,6 +96,24 @@
 			onConsentChanged,
 			WcpConsent.themes.light
 		);
+
+		function _getWcpUserConsentDetails() {
+			if (siteConsent) {
+				return siteConsent.getConsent();
+			}
+
+			// The exact value that you return here is dependent on your site, team and how
+			// use any data that is stored (work with you privacy team to determine what the
+			// correct "defaults" (true or false) should be for each item when the code is
+			// unable to determine (via WCP) if or what the user has (or has not) consented
+			// to.
+			return {
+				Required: [true], // Most likely `true`
+				Analytics: [true],
+				SocialMedia: [true],
+				Advertising: [false]
+			};
+		}
 
 		function onConsentChanged(categoryPreferences) {
 			if (categoryPreferences.Analytics) {
