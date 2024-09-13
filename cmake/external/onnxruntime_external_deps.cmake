@@ -663,7 +663,7 @@ if (onnxruntime_USE_WEBGPU)
   set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
   set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
   set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
-  set(TINT_BUILD_WGSL_WRITER OFF CACHE BOOL "" FORCE)
+  set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
 
   # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -680,7 +680,6 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (ANDROID)
-    set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key for Vulkan shader
   endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
