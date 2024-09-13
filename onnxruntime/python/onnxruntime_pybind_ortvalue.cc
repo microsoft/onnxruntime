@@ -160,8 +160,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
         auto cpu_allocator = GetAllocator();
         auto ort_value = std::make_unique<OrtValue>();
-        const auto shape_span = gsl::make_span(data.shape(), data.ndim());
-        Tensor::InitOrtValue(element_type, TensorShape{shape_span},
+        Tensor::InitOrtValue(element_type, GetShape(data),
                              const_cast<void*>(data.data()), cpu_allocator->Info(), *ort_value);
         return ort_value;
       })
