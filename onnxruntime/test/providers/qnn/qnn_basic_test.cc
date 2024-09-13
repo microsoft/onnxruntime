@@ -1026,6 +1026,65 @@ TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
   // TODO(adrianlizarraga): Check that output json files were generated.
 }
 
+TEST_F(QnnHTPBackendTests, TestAIHubJob) {
+  Ort::SessionOptions so;
+
+#if 1
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "job_aihub.onnx";
+  //so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+#else
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "gatherelements_repro.onnx_ctx.onnx";
+#endif
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.RemoveSink(logging::SinkType::EtwSink);
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kINFO);
+
+  // Ensure all type/shape inference warnings result in errors!
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "0");  // Disable fallback to the CPU EP.
+  so.AddConfigEntry(kDebugLayoutTransformation, "1");
+  //so.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+  //so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  options["enable_htp_fp16_precision"] = "1";
+
+  so.AppendExecutionProvider("QNN", options);
+
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  std::vector<uint16_t> input0_data(1*3*224*224, 1);
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input "image_tensor" float32[1,3,224,224]
+  std::array<int64_t, 4> input0_shape{1, 3, 224, 224};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<uint16_t>(
+      memory_info, input0_data.data(), input0_data.size(), input0_shape.data(), input0_shape.size()));
+  ort_input_names.push_back("image_tensor");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"class_logits"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  const uint16_t* results = ort_output.GetTensorData<uint16_t>();
+
+  for (size_t i = 0; i < typeshape.GetElementCount() && i < 20; i++) {
+    std::cout << i << ": " << results[i] << std::endl;
+  }
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
