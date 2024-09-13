@@ -55,7 +55,7 @@
 	<div class="my-8 grid grid-cols-1 md:grid-cols-4 gap-4">
 		<img class="m-auto rounded-xl" src={aibrain} alt="Representing generative AI">
 		<div class="col-span-3 my-auto">
-			<h2 class="text-3xl">What is Generative AI?</h2>
+			<h2 class="text-3xl pb-4">What is Generative AI?</h2>
 			<p>
 				Generative AI refers to artificial intelligence that creates new content—such as text, images, audio, or code—based on patterns learned from existing data. Unlike traditional AI models, which classify or predict based on inputs, generative AI models produce entirely new outputs.
 				<br /><br />
@@ -81,7 +81,7 @@
 						<h3 class="text-2xl">{model.title}</h3>
 						<p>{model.description}</p>
 					</div>
-					<div class="grid gap-4 grid-cols-1 mt-auto">
+					<div class="grid gap-4 grid-cols-{model.demos.length} mt-auto">
 						{#each model.demos as demo}
 							<a href={demo.url} class="btn btn-primary btn-block">{demo.name}</a>
 						{/each}
@@ -120,12 +120,12 @@
 			<!-- Feature Cards -->
 			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2 my-8">
 				{#each [
-					{title: 'Multiplatform', description: 'Run ONNX Runtime on Desktop, Mobile, Browser, or Cloud.'},
-					{title: 'On Device', description: 'Inference privately and save costs with on-device models.'},
-					{title: 'Multimodal Compatibility', description: 'Use ONNX Runtime with vision or omni models.'},
-					{title: 'Easy to Use', description: 'Get started quickly with our examples and tutorials.'}
+					{title: 'Multiplatform', description: 'Run ONNX Runtime on Desktop 🖥️, Mobile 📱, Browser 💻, or Cloud ☁️.'},
+					{title: 'On Device', description: 'Inference privately 🔐 and save costs ⚙️ with on-device models.'},
+					{title: 'Multimodal Compatibility', description: 'Use ONNX Runtime with vision or omni models. We work to quickly enable all new model scenarios 🚀.'},
+					{title: 'Easy to Use', description: 'Get started quickly ⏩ with our examples and tutorials.'}
 				] as feature}
-					<div class="card bg-base-300 text-neutral-content">
+					<div class="card bg-primary dark:text-black text-neutral-content">
 						<div class="card-body items-center text-center">
 							<h2 class="card-title">{feature.title}</h2>
 							<p class="my-auto pt-10">{feature.description}</p>
@@ -158,6 +158,6 @@
 			<!-- More tutorials -->
 			
 		</div>
-		<a href="https://onnxruntime.ai/microsoft/onnxruntime-inference-examples" class="btn btn-secondary btn-block mt-auto">See more demos!</a>
+		<a href="https://github.com/microsoft/onnxruntime-inference-examples" class="btn btn-secondary btn-block mt-auto">See more demos!</a>
 	</div>
 </div>
