@@ -45,9 +45,7 @@ const calculateOutputShapeAndPads = (
   const spatialRank = inputShape.length - 2;
   const updateOutputShape = outputShape.length === 0;
   if (outputPadding.length < spatialRank) {
-    for (let i = 0; i < spatialRank - outputPadding.length; ++i) {
-      outputPadding.push(0);
-    }
+    outputPadding.push(...Array(spatialRank - outputPadding.length).fill(0));
   }
   const batchSize = inputShape[0];
   const outChannels = kernelShape[isChannelLast ? 3 : 1] * group;

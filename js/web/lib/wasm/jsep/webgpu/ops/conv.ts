@@ -105,9 +105,7 @@ const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inpu
   const kernelShape = attributes.kernelShape.slice();
   // if kernelShape is not well specified in the attributes, infer it from the weight tensor dims
   if (kernelShape.length < inputs[1].dims.length - 2) {
-    for (let i = 0; i < inputs[1].dims.length - 2 - kernelShape.length; ++i) {
-      kernelShape.push(0);
-    }
+    kernelShape.push(...Array(inputs[1].dims.length - 2 - kernelShape.length).fill(0));
   }
   for (let i = 2; i < inputs[1].dims.length; ++i) {
     if (kernelShape[i - 2] === 0) {
