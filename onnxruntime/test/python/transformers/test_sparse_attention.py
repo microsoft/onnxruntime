@@ -890,7 +890,7 @@ def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rot
                                 dtype=dtype,
                                 is_packed_qkv=packed_qkv,
                                 do_rotary=do_rotary,
-                                rotary_interleaved=sequence_length <= 128,
+                                rotary_interleaved=do_rotary and sequence_length <= 128,
                                 max_cache_sequence_length=None if sequence_length >= 128 else 128,
                             )
                             yield config
@@ -929,7 +929,7 @@ def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rot
                 dtype=dtype,
                 is_packed_qkv=packed_qkv,
                 do_rotary=do_rotary,
-                rotary_interleaved=sequence_length <= 128,
+                rotary_interleaved=do_rotary and sequence_length <= 128,
                 max_cache_sequence_length=None if sequence_length >= 128 else 128,  # test smaller kv cache buffer.
             )
             yield config
@@ -940,7 +940,6 @@ comprehensive_mode = False
 
 
 class TestSparseAttention(unittest.TestCase):
-
     @unittest.skipUnless(has_cuda_support(), "cuda not available")
     def test_sparse_attention_cuda(self):
         major, minor = torch.cuda.get_device_capability()
@@ -1056,7 +1055,7 @@ class TestSparseAttention(unittest.TestCase):
                     vert_stride=4,
                     softmax_scale=None,
                     do_rotary=do_rotary,
-                    rotary_interleaved=(past_seq_len % 2 == 1),
+                    rotary_interleaved=do_rotary and (past_seq_len % 2 == 1),
                     device=device,
                     is_packed_qkv=packed_qkv,
                     max_rotary_sequence_length=None if past_seq_len >= 128 else 128,  # test smaller rotary buffer.
