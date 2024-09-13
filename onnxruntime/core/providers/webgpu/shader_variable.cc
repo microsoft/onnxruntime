@@ -76,7 +76,7 @@ inline std::string GetIndicesType(int rank) {
 
 }  // namespace
 
-ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, Usage usage, const TensorShape& dims)
+ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims)
     : name_(name),
       type_(type),
       num_components_{NumberOfComponents(type)},
@@ -86,30 +86,33 @@ ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType ty
       indices_type_{GetIndicesType(rank_)},
       value_type_alias_{name_ + "_value_t"},
       element_type_alias_{name_ + "_element_t"},
-      indices_type_alias_{name_ + "_indices_t"} {
+      indices_type_alias_{name_ + "_indices_t"} {}
+
+ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims)
+    : ShaderIndicesHelper{name, type, usage, dims} {
   ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
   ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
 }
 
-void ShaderVariable::Impl(std::ostringstream& ss) const {
+void ShaderIndicesHelper::Impl(std::ostringstream& ss) const {
   // Start generating code
 
-  const std::string shape = (usage_ & UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
-  const std::string stride = (usage_ & UseUniform) ? "uniforms." + name_ + "_stride" : name_ + "_stride";
+  const std::string shape = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
+  const std::string stride = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_stride" : name_ + "_stride";
 
   // Types
-  if (usage_ & UseValueTypeAlias) {
+  if (usage_ & ShaderUsage::UseValueTypeAlias) {
     SS("alias ", value_type_alias_, " = ", VALUE_TYPE[static_cast<int>(type_)], ";\n");
   }
-  if (usage_ & UseIndicesTypeAlias) {
+  if (usage_ & ShaderUsage::UseIndicesTypeAlias) {
     SS("alias ", indices_type_alias_, " = ", indices_type_, ";\n");
   }
-  if (usage_ & UseElementTypeAlias) {
+  if (usage_ & ShaderUsage::UseElementTypeAlias) {
     SS("alias ", element_type_alias_, " = ", ELEMENT_TYPE[static_cast<int>(type_)], ";\n");
   }
 
   // Need shape and strides when (not use uniform) and (use shape and stride is enabled)
-  if (!(usage_ & UseUniform) && (usage_ & UseShapeAndStride) && rank_ > 0) {
+  if (!(usage_ & ShaderUsage::UseUniform) && (usage_ & ShaderUsage::UseShapeAndStride) && rank_ > 0) {
     SS("const ", shape, " = ", IndicesType(), "(");
 
     bool first = true;
@@ -138,7 +141,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Implementation of "fn o2i_{name}"
-  if (usage_ & UseOffsetToIndices) {
+  if (usage_ & ShaderUsage::UseOffsetToIndices) {
     if (rank_ >= 2) {
       SS("fn o2i_", name_, "(offset : u32)->", IndicesType(), " {\n");
       SS("  var indices: ", IndicesType(), ";\n");
@@ -157,7 +160,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Implementation of "fn i2o_{name}"
-  if (usage_ & UseIndicesToOffset) {
+  if (usage_ & ShaderUsage::UseIndicesToOffset) {
     if (rank_ >= 2) {
       SS("fn i2o_", name_, "(indices : ", IndicesType(), ")->u32 {\n");
       SS("  return ");
@@ -170,7 +173,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Implementation of "fn {res_name}_bi2o_{name}"
-  if (usage_ & UseBroadcastedIndicesToOffset) {
+  if (usage_ & ShaderUsage::UseBroadcastedIndicesToOffset) {
     if (rank_ > 0) {
       for (const auto& broadcasted_result_ptr : broadcasted_to_) {
         const auto& broadcasted_result = *broadcasted_result_ptr;
@@ -190,9 +193,13 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
       }
     }
   }
+}
+
+void ShaderVariableHelper::Impl(std::ostringstream& ss) const {
+  ShaderIndicesHelper::Impl(ss);
 
   // Implementation of "fn set_{name}"
-  if (usage_ & UseSet) {
+  if (usage_ & ShaderUsage::UseSet) {
     if (rank_ >= 2) {
       SS("fn set_", name_, "(d0: u32");
       for (int i = 1; i < rank_; i++) {
@@ -209,7 +216,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Implementation of "fn set_{name}_by_indices"
-  if (usage_ & UseSetByIndices) {
+  if (usage_ & ShaderUsage::UseSetByIndices) {
     if (rank_ >= 2) {
       SS("fn set_", name_, "_by_indices(indices: ", IndicesType(), ", value: ", ValueType(), ") {\n");
       SS("  ", SetByOffset("i2o_" + name_ + "(indices)", "value"), "\n");
@@ -218,7 +225,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Implementation of "fn get_{name}"
-  if (usage_ & UseGet) {
+  if (usage_ & ShaderUsage::UseGet) {
     if (rank_ >= 2) {
       SS("fn get_", name_, "(d0: u32");
       for (int i = 1; i < rank_; i++) {
@@ -235,7 +242,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 
   // Implementation of "fn get_{name}_by_indices"
-  if (usage_ & UseGetByIndices) {
+  if (usage_ & ShaderUsage::UseGetByIndices) {
     if (rank_ >= 2) {
       SS("fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
       SS("  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
@@ -244,7 +251,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 }
 
-std::string ShaderVariable::GetByOffsetImpl(std::string_view offset) const {
+std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
 
@@ -270,7 +277,7 @@ std::string ShaderVariable::GetByOffsetImpl(std::string_view offset) const {
   return ss.str();
 }
 
-std::string ShaderVariable::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
+std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
 
@@ -294,20 +301,20 @@ std::string ShaderVariable::SetByOffsetImpl(std::string_view offset, std::string
   return ss.str();
 }
 
-std::string_view ShaderVariable::StorageType() const {
+std::string_view ShaderVariableHelper::StorageType() const {
   return STORAGE_TYPE[static_cast<int>(type_)];
 }
 
-std::string_view ShaderVariable::ValueType() const {
-  return (usage_ & UseValueTypeAlias) ? value_type_alias_ : VALUE_TYPE[static_cast<int>(type_)];
+std::string_view ShaderVariableHelper::ValueType() const {
+  return (usage_ & ShaderUsage::UseValueTypeAlias) ? value_type_alias_ : VALUE_TYPE[static_cast<int>(type_)];
 }
 
-std::string_view ShaderVariable::ElementType() const {
-  return (usage_ & UseElementTypeAlias) ? element_type_alias_ : ELEMENT_TYPE[static_cast<int>(type_)];
+std::string_view ShaderVariableHelper::ElementType() const {
+  return (usage_ & ShaderUsage::UseElementTypeAlias) ? element_type_alias_ : ELEMENT_TYPE[static_cast<int>(type_)];
 }
 
-std::string_view ShaderVariable::IndicesType() const {
-  return (usage_ & UseIndicesTypeAlias) ? indices_type_alias_ : indices_type_;
+std::string_view ShaderIndicesHelper::IndicesType() const {
+  return (usage_ & ShaderUsage::UseIndicesTypeAlias) ? indices_type_alias_ : indices_type_;
 }
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -37,9 +37,8 @@ std::string GetElementAt(std::string_view var, const TIdx& idx, int rank, bool i
   return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : std::string{var};
 }
 
-class ShaderVariable {
- public:
-  enum Usage : uint32_t {
+struct ShaderUsage {
+  enum : uint32_t {
     None = 0,                             // no usage. this means no additional implementation code will be generated.
     UseIndicesTypeAlias = 1,              // use type alias "{name}_indices_t" for indices (eg. u32, vec2<u32>, vec3<u32>, vec4<u32>, ...)
     UseValueTypeAlias = 2,                // use type alias "{name}_value_t" for value (eg. f32, vecT<f32>, vec4<bool>, ...)
@@ -53,18 +52,20 @@ class ShaderVariable {
     UseGet = 1024,                        // use implementation of fn get_{name}
     UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
     UseUniform = 32768,                   // use uniform for shape and stride
-  };
+  } usage;
 
-  ShaderVariable(std::string_view name, ProgramVariableDataType type, Usage usage, const TensorShape& dims);
+  ShaderUsage(decltype(usage) usage) : usage{usage} {}
+  ShaderUsage(uint32_t usage) : usage{usage} {}
 
-  ShaderVariable(ShaderVariable&&) = default;
-  ShaderVariable& operator=(ShaderVariable&&) = default;
+  explicit operator bool() {
+    return usage != None;
+  }
+};
 
-  // get the name of the variable.
-  inline std::string_view Name() const { return name_; }
-
-  // get the number of components of the variable.
-  inline int NumComponents() const { return num_components_; }
+// A helper class to make it easier to generate shader code related to indices calculation.
+class ShaderIndicesHelper {
+ public:
+  ShaderIndicesHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
 
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
@@ -77,7 +78,7 @@ class ShaderVariable {
   // create a WGSL expression (u32) for getting original offset from broadcasted indices.
   // \param indices: a WGSL expression ({broadcasted_result_varname}_indices_t) representing the broadcasted indices.
   // \param broadcasted_result: the broadcasted result variable.
-  inline std::string BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const;
+  inline std::string BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderIndicesHelper& broadcasted_result) const;
 
   // create a WGSL expression ({varname}_indices_t) as an indices literal
   // \param init: a list of indices values.
@@ -96,6 +97,41 @@ class ShaderVariable {
   // \param idx: the index (i32|u32) of the dimension to get.
   template <typename TIdx>
   inline std::string IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const;
+
+ protected:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderIndicesHelper);
+
+  void Impl(std::ostringstream& ss) const;
+
+  std::string_view IndicesType() const;
+
+  std::string name_;
+  ProgramVariableDataType type_;  // for variable
+  int num_components_;            // for variable
+  int rank_;
+  TensorShape dims_;
+
+  mutable ShaderUsage usage_;
+  mutable std::set<const ShaderIndicesHelper*> broadcasted_to_;
+
+  // unlike storage/element/value type, indices type is not a string view to a constant string. so we need to store it.
+  std::string indices_type_;
+
+  // the alias for the types
+  std::string value_type_alias_;
+  std::string element_type_alias_;
+  std::string indices_type_alias_;
+
+  friend class ShaderHelper;
+};
+
+// A helper class to make it easier to generate shader code related to a variable setting/getting and its indices calculation.
+class ShaderVariableHelper : public ShaderIndicesHelper {
+ public:
+  ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
+
+  ShaderVariableHelper(ShaderVariableHelper&&) = default;
+  ShaderVariableHelper& operator=(ShaderVariableHelper&&) = default;
 
   // create a WGSL statement for setting data at the given indices.
   // \param args: a list of indices values (u32) followed by a value ({varname}_value_t).
@@ -128,12 +164,7 @@ class ShaderVariable {
   inline std::string GetByOffset(TOffset&& offset) const;
 
  private:
-  friend ShaderVariable::Usage operator|(ShaderVariable::Usage a, ShaderVariable::Usage b);
-  friend ShaderVariable::Usage operator&(ShaderVariable::Usage a, ShaderVariable::Usage b);
-  friend ShaderVariable::Usage& operator|=(ShaderVariable::Usage& a, ShaderVariable::Usage b);
-  friend ShaderVariable::Usage& operator&=(ShaderVariable::Usage& a, ShaderVariable::Usage b);
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariable);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariableHelper);
 
   void Impl(std::ostringstream& ss) const;
 
@@ -142,39 +173,23 @@ class ShaderVariable {
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
-  std::string_view IndicesType() const;
-
-  std::string name_;
-  ProgramVariableDataType type_;
-  int num_components_;
-  int rank_;
-  TensorShape dims_;
-
-  mutable Usage usage_;
-  mutable std::set<const ShaderVariable*> broadcasted_to_;
-
-  // unlike storage/element/value type, indices type is not a string view to a constant string. so we need to store it.
-  std::string indices_type_;
-
-  // the alias for the types
-  std::string value_type_alias_;
-  std::string element_type_alias_;
-  std::string indices_type_alias_;
 
   friend class ShaderHelper;
 };
 
-inline ShaderVariable::Usage operator|(ShaderVariable::Usage a, ShaderVariable::Usage b) {
-  return (ShaderVariable::Usage)((uint32_t&)a | (uint32_t&)b);
+inline ShaderUsage operator|(ShaderUsage a, ShaderUsage b) {
+  return (uint32_t)a.usage | (uint32_t)b.usage;
 }
-inline ShaderVariable::Usage operator&(ShaderVariable::Usage a, ShaderVariable::Usage b) {
-  return (ShaderVariable::Usage)((uint32_t&)a & (uint32_t&)b);
+inline ShaderUsage operator&(ShaderUsage a, ShaderUsage b) {
+  return (uint32_t)a.usage & (uint32_t)b.usage;
 }
-inline ShaderVariable::Usage& operator|=(ShaderVariable::Usage& a, ShaderVariable::Usage b) {
-  return (ShaderVariable::Usage&)((uint32_t&)a |= (uint32_t&)b);
+inline ShaderUsage& operator|=(ShaderUsage& a, ShaderUsage b) {
+  (uint32_t&)a.usage |= (uint32_t)b.usage;
+  return a;
 }
-inline ShaderVariable::Usage& operator&=(ShaderVariable::Usage& a, ShaderVariable::Usage b) {
-  return (ShaderVariable::Usage&)((uint32_t&)a &= (uint32_t&)b);
+inline ShaderUsage& operator&=(ShaderUsage& a, ShaderUsage b) {
+  (uint32_t&)a.usage &= (uint32_t)b.usage;
+  return a;
 }
 
 namespace detail {
@@ -192,20 +207,24 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace detail
 
-inline std::string ShaderVariable::OffsetToIndices(std::string_view offset_expr) const {
-  usage_ |= UseOffsetToIndices | UseShapeAndStride;
+inline std::string ShaderIndicesHelper::OffsetToIndices(std::string_view offset_expr) const {
+  usage_ |= ShaderUsage::UseOffsetToIndices | ShaderUsage::UseShapeAndStride;
   return rank_ < 2 ? std::string{offset_expr}
                    : MakeStringWithClassicLocale("o2i_", name_, '(', offset_expr, ')');
 }
 
-inline std::string ShaderVariable::IndicesToOffset(std::string_view indices_expr) const {
-  usage_ |= UseIndicesToOffset | UseShapeAndStride;
+inline std::string ShaderIndicesHelper::IndicesToOffset(std::string_view indices_expr) const {
+  usage_ |= ShaderUsage::UseIndicesToOffset | ShaderUsage::UseShapeAndStride;
   return rank_ < 2 ? std::string{indices_expr}
                    : MakeStringWithClassicLocale("i2o_", name_, '(', indices_expr, ')');
 }
 
-inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const {
-  usage_ |= UseBroadcastedIndicesToOffset | UseShapeAndStride;
+inline std::string ShaderIndicesHelper::BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderIndicesHelper& broadcasted_result) const {
+  ORT_ENFORCE(broadcasted_result.num_components_ == -1 ||
+                  num_components_ == -1 ||
+                  broadcasted_result.num_components_ == num_components_,
+              "number of components should be the same for 2 variables to calculate");
+  usage_ |= ShaderUsage::UseBroadcastedIndicesToOffset | ShaderUsage::UseShapeAndStride;
   broadcasted_to_.insert(&broadcasted_result);
   return rank_ == 0
              ? "0"
@@ -213,8 +232,8 @@ inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view i
 }
 
 template <typename... TIndices>
-inline std::string ShaderVariable::Indices(TIndices&&... indices_args) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderIndicesHelper::Indices(TIndices&&... indices_args) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   return rank_ == 0
              ? "0"
              : MakeStringWithClassicLocale(IndicesType(), "(",
@@ -223,77 +242,77 @@ inline std::string ShaderVariable::Indices(TIndices&&... indices_args) const {
 }
 
 template <typename TIdx, typename TVal>
-inline std::string ShaderVariable::IndicesSet(std::string_view indices_var, const TIdx& idx_expr, const TVal& value) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderIndicesHelper::IndicesSet(std::string_view indices_var, const TIdx& idx_expr, const TVal& value) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   return rank_ < 2 ? MakeStringWithClassicLocale(indices_var, '=', value, ';')
                    : MakeStringWithClassicLocale(GetElementAt(indices_var, idx_expr, rank_), '=', value, ';');
 }
 
 template <typename TIdx>
-inline std::string ShaderVariable::IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderIndicesHelper::IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   return rank_ < 2 ? std::string{indices_var}
                    : GetElementAt(indices_var, idx_expr, rank_);
 }
 
 template <typename TOffset, typename TValue>
-inline std::string ShaderVariable::SetByOffset(TOffset&& offset, TValue&& value) const {
+inline std::string ShaderVariableHelper::SetByOffset(TOffset&& offset, TValue&& value) const {
   return SetByOffsetImpl(detail::pass_as_string(offset), detail::pass_as_string(value));
 }
 
 template <typename... TIndicesAndValue>
-inline std::string ShaderVariable::Set(TIndicesAndValue&&... args) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderVariableHelper::Set(TIndicesAndValue&&... args) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   ORT_ENFORCE(sizeof...(TIndicesAndValue) == rank_ + 1, "Number of arguments should be ", rank_ + 1, "(rank + 1)");
   if constexpr (sizeof...(TIndicesAndValue) == 1) {
     return SetByOffset("0", std::forward<TIndicesAndValue>(args)...);
   } else if constexpr (sizeof...(TIndicesAndValue) == 2) {
     return SetByOffset(std::forward<TIndicesAndValue>(args)...);
   } else {
-    usage_ |= UseSet | UseSetByIndices | UseIndicesToOffset;
+    usage_ |= ShaderUsage::UseSet | ShaderUsage::UseSetByIndices | ShaderUsage::UseIndicesToOffset;
     return MakeStringWithClassicLocale("set_", name_, '(',
                                        absl::StrJoin(std::forward_as_tuple(std::forward<TIndicesAndValue>(args)...), ", "),
                                        ");");
   }
 }
 
-inline std::string ShaderVariable::SetByIndices(std::string_view indices_var, std::string_view value) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderVariableHelper::SetByIndices(std::string_view indices_var, std::string_view value) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   if (rank_ < 2) {
     return SetByOffset(indices_var, value);
   } else {
-    usage_ |= UseSetByIndices | UseIndicesToOffset;
+    usage_ |= ShaderUsage::UseSetByIndices | ShaderUsage::UseIndicesToOffset;
     return MakeStringWithClassicLocale("set_", name_, "_by_indices(", indices_var, ", ", value, ");");
   }
 }
 
 template <typename TOffset>
-inline std::string ShaderVariable::GetByOffset(TOffset&& offset) const {
+inline std::string ShaderVariableHelper::GetByOffset(TOffset&& offset) const {
   return GetByOffsetImpl(detail::pass_as_string(offset));
 }
 
 template <typename... TIndices>
-inline std::string ShaderVariable::Get(TIndices&&... indices) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderVariableHelper::Get(TIndices&&... indices) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   ORT_ENFORCE(sizeof...(TIndices) == rank_, "Number of arguments should be ", rank_, "(rank)");
   if constexpr (sizeof...(TIndices) == 0) {
     return GetByOffset("0");
   } else if constexpr (sizeof...(TIndices) == 1) {
     return GetByOffset(std::forward<TIndices>(indices)...);
   } else {
-    usage_ |= UseGet | UseGetByIndices | UseIndicesToOffset;
+    usage_ |= ShaderUsage::UseGet | ShaderUsage::UseGetByIndices | ShaderUsage::UseIndicesToOffset;
     return MakeStringWithClassicLocale("get_", name_, '(',
                                        absl::StrJoin(std::forward_as_tuple(std::forward<TIndices>(indices)...), ", "),
                                        ')');
   }
 }
 
-inline std::string ShaderVariable::GetByIndices(std::string_view indices_var) const {
-  usage_ |= UseShapeAndStride;
+inline std::string ShaderVariableHelper::GetByIndices(std::string_view indices_var) const {
+  usage_ |= ShaderUsage::UseShapeAndStride;
   if (rank_ < 2) {
     return GetByOffset(indices_var);
   } else {
-    usage_ |= UseGetByIndices | UseIndicesToOffset;
+    usage_ |= ShaderUsage::UseGetByIndices | ShaderUsage::UseIndicesToOffset;
     return MakeStringWithClassicLocale("get_", name_, "_by_indices(", indices_var, ")");
   }
 }

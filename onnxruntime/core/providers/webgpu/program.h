@@ -165,18 +165,6 @@ inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependen
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 
-// represents the scope of a variable in a shader program.
-//
-// this is not a full list of all possible variable scopes in shader programs.
-// it only includes what are used in WebGPU EP.
-enum class ProgramVariableScope {
-  Input = 0,   // storage buffer variable with access mode "read"
-  Output = 1,  // storage buffer variable with access mode "read_write"
-  Local = 2,   // local variable
-
-  Count  // should always be the last element
-};
-
 // data type of variable
 //
 // this is not a full list of all possible data types in shader programs.
