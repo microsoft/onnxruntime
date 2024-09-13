@@ -208,20 +208,9 @@ int NumberOfComponents(ProgramVariableDataType type);
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
 
 struct ProgramInput {
-  ProgramInput(const Tensor* tensor)
-      : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{false},
-        override_shape{} {}
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{true},
-        override_shape{override_shape} {}
+  ProgramInput(const Tensor* tensor);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -231,20 +220,9 @@ struct ProgramInput {
 };
 
 struct ProgramOutput {
-  ProgramOutput(Tensor* tensor)
-      : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{false},
-        override_shape{} {}
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{true},
-        override_shape{override_shape} {}
+  ProgramOutput(Tensor* tensor);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
