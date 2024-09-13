@@ -298,7 +298,7 @@ stages:
         scheme: 'OnnxruntimeModuleTest'
         packageApp: false
         destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 13,OS=latest'
+        destinationSimulators: 'iPhone 14,OS=16.4'
         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
         xcprettyArgs: '--output build/reports/test-results.xml'
         publishJUnitResults: true
