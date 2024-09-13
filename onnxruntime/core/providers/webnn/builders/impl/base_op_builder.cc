@@ -94,8 +94,8 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
 }
 
 bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
-                                           const emscripten::val& wnn_limits,
-                                           const logging::Logger& logger) const {
+                                            const emscripten::val& wnn_limits,
+                                            const logging::Logger& logger) const {
   // We only check the type of output 0 by default, specific op builder can override this.
   const auto& output = *node.OutputDefs()[0];
   const auto& op_type = node.OpType();

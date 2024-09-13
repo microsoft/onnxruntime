@@ -40,7 +40,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                       const logging::Logger& logger) const;
   virtual bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                      const logging::Logger& logger) const;
+                                       const logging::Logger& logger) const;
 
   // ONNX Runtime only *guarantees* support for models stamped
   // with opset version 7 or above for opset domain 'ai.onnx'.

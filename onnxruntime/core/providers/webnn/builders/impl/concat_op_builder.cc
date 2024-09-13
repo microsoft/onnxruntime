@@ -71,9 +71,9 @@ bool ConcatOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten:
       return false;
     }
 
-  if (!AreInputDataTypesSame(op_type, {input0_type, input_type}, logger)) {
-    return false;
-  }
+    if (!AreInputDataTypesSame(op_type, {input0_type, input_type}, logger)) {
+      return false;
+    }
   }
 
   return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "inputs", "inputs", logger);
