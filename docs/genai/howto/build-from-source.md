@@ -27,7 +27,7 @@ cd onnxruntime-genai
 
 ## Download ONNX Runtime binaries
 
-By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build via the --ort_home command line argument.
+By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build via the `--ort_home` command line argument.
 
 
 These instructions assume you are in the `onnxruntime-genai` folder.
