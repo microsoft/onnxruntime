@@ -817,34 +817,31 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
 
 namespace {
 // Checks if there are active lora adapters and adjusts input spans.
-void CheckAndAdjustForLora(const OrtRunOptions* run_options,
+void CheckAndAdjustForLora(const OrtRunOptions& run_options,
                            InlinedVector<const char*>& input_names_with_lora,
                            InlinedVector<const OrtValue*>& input_with_lora,
                            gsl::span<const char* const>& input_names,
                            gsl::span<const OrtValue* const>& inputs) {
-  if (!run_options->active_adapters_.empty()) {
-    size_t total_lora_params = 0;
-    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
-      total_lora_params += ad->GetParamNum();
-    }
-
-    input_names_with_lora.reserve(input_names.size() + total_lora_params);
-    input_with_lora.reserve(inputs.size() + total_lora_params);
-    std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
-    std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
-
-    for (const lora::LoraAdapter* ad : run_options->active_adapters_) {
-      ad->OutputAdapterParameters(std::back_inserter(input_names_with_lora),
-                                  std::back_inserter(input_with_lora));
-    }
-
-    input_names = gsl::make_span(input_names_with_lora);
-    inputs = gsl::make_span(input_with_lora);
+  size_t total_lora_params = 0;
+  for (const lora::LoraAdapter* ad : run_options.active_adapters_) {
+    total_lora_params += ad->GetParamNum();
   }
+
+  input_names_with_lora.reserve(input_names.size() + total_lora_params);
+  input_with_lora.reserve(inputs.size() + total_lora_params);
+  std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
+  std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
+
+  for (const lora::LoraAdapter* ad : run_options.active_adapters_) {
+    ad->OutputAdapterParameters(std::back_inserter(input_names_with_lora),
+                                std::back_inserter(input_with_lora));
+  }
+
+  input_names = gsl::make_span(input_names_with_lora);
+  inputs = gsl::make_span(input_with_lora);
 }
 
 }  // namespace
-
 
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
@@ -860,12 +857,11 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   auto output_span = gsl::make_span(output, output_names_len);
 
   Status status;
-  if (run_options) {
+  if (run_options != nullptr && !run_options->active_adapters_.empty()) {
     InlinedVector<const char*> input_names_with_lora;
     InlinedVector<const OrtValue*> input_with_lora;
 
-    CheckAndAdjustForLora(run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
-
+    CheckAndAdjustForLora(*run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
 
     status = session->Run(*run_options,
                           input_names_span,
@@ -873,7 +869,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                           output_name_span,
                           output_span);
   } else {
-
     const RunOptions default_run_options;
     status = session->Run(default_run_options,
                           input_names_span,
@@ -898,11 +893,6 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   auto input_span = gsl::make_span(input, input_len);
   auto output_name_span = gsl::make_span(output_names, output_names_len);
   auto output_span = gsl::make_span(output, output_names_len);
-
-  InlinedVector<const char*> input_names_with_lora;
-  InlinedVector<const OrtValue*> input_with_lora;
-
-  CheckAndAdjustForLora(run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
 
   return ToOrtStatus(session->RunAsync(run_options,
                                        input_names_span,

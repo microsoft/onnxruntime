@@ -68,14 +68,6 @@ namespace onnxruntime {
 namespace onnxruntime {
 namespace python {
 
-template<class T>
-void print_span(std::ostream& os, gsl::span<const T> span) {
-  for (auto v : span) {
-    os << v << ' ';
-  }
-  os << std::endl;
-}
-
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
@@ -2026,23 +2018,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                }
                feeds.reserve(total_entries);
 
-               std::cout << "Adapter inputs: " << std::endl;
                // Append necessary inputs for active adapters
                for (const auto* adapter : run_options->active_adapters_) {
                  auto [begin, end] = adapter->GetParamIterators();
                  for (; begin != end; ++begin) {
                    const auto& [name, param] = *begin;
                    std::cout << name << ':';
-                   print_span(std::cout, param.GetMapped().Get<Tensor>().DataAsSpan<float>());
                    feeds.insert(std::make_pair(name, param.GetMapped()));
                  }
                }
-               std::cout << std::endl;
              } else {
                feeds.reserve(pyfeeds.size());
              }
 
-             std::cout << "Normal inputs: " << std::endl;
              for (const auto& feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
@@ -2056,11 +2044,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  }
                  CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
                  ThrowIfPyErrOccured();
-                 std::cout << feed.first << ':'; print_span(std::cout, ml_value.Get<Tensor>().DataAsSpan<float>());
                  feeds.insert(std::make_pair(feed.first, std::move(ml_value)));
                }
              }
-             std::cout << std::endl;
 
              std::vector<OrtValue> fetches;
              fetches.reserve(output_names.size());
