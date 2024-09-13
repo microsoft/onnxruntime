@@ -63,6 +63,9 @@ class ShaderVariable {
   // get the name of the variable.
   inline std::string_view Name() const { return name_; }
 
+  // get the number of components of the variable.
+  inline int NumComponents() const { return num_components_; }
+
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
   inline std::string OffsetToIndices(std::string_view offset_expr) const;
