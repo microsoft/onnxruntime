@@ -1,7 +1,7 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import { fade } from 'svelte/transition';
-	import coffee from './coffee.png';
+	import coffee from '$lib/assets/coffee.png';
 	import whisper from './whisper.png';
 	import vision_ui from './vision_UI.png';
 	import mobile from './mobile.png';
@@ -52,30 +52,27 @@
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 
 <div class="container mx-auto px-10 my-10">
-	<div class="my-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-		<img class="m-auto rounded-xl" src={aibrain} alt="Representing generative AI">
+	<div class="my-8 grid grid-cols-1 md:grid-cols-4 gap-16">
+		<img class="m-auto rounded-xl" src={aibrain} alt="Representing generative AI" />
 		<div class="col-span-3 my-auto">
 			<h2 class="text-3xl pb-4">What is Generative AI?</h2>
 			<p>
-				Generative AI refers to artificial intelligence that creates new content—such as text, images, audio, or code—based on patterns learned from existing data. Unlike traditional AI models, which classify or predict based on inputs, generative AI models produce entirely new outputs.
-				<br /><br />
-				Generative AI leverages transformer models for text and diffusion models for images. These innovations are transforming industries, enabling personalized experiences, automating creative processes, and opening new possibilities for content generation!
+				Generative AI refers to artificial intelligence that creates new content—such as text,
+				images, audio, or code—based on patterns learned from existing data. Generative AI leverages
+				transformer models for text and diffusion models for images. These innovations are
+				transforming industries, enabling personalized experiences, automating creative processes,
+				and opening new possibilities for content generation!
 			</p>
 		</div>
 	</div>
 
-	<div class="divider"></div>
+	<div class="divider" />
 
 	<div>
 		<h2 class="text-3xl">Generative AI Models</h2>
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 my-8 gap-4">
 			<!-- Model cards -->
-			{#each [
-				{title: 'Text Generation Models', description: 'Generate human-like text for chatbots, content creation, summarization, and more.', demos: [{name: 'Llama', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/models/llama'}, {name: 'Mistral', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/models/mistral'}]},
-				{title: 'Image Generation Models', description: 'Create artwork or realistic images from descriptions using AI models like Stable Diffusion.', demos: [{name: 'Stable Diffusion', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/sd-turbo'}]},
-				{title: 'Audio Models', description: 'Generate audio, music, or speech from data inputs with AI models like Whisper.', demos: [{name: 'Whisper', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper'}]},
-				{title: 'Other Models', description: 'Generate diverse outputs like code, video, or 3D designs.', demos: [{name: 'Request a Model', url: 'https://github.com/microsoft/onnxruntime-genai'}]}
-			] as model}
+			{#each [{ title: 'Text Generation Models', description: 'Generate human-like text for chatbots, content creation, summarization, and more.', demos: [{ name: 'Llama', url: 'https://huggingface.co/meta-llama/Meta-Llama-3.1-8B' }, { name: 'Mistral', url: 'https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3' }, { name: 'Phi', url: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct' }] }, { title: 'Image Generation Models', description: 'Create artwork or realistic images from descriptions using AI models like Stable Diffusion.', demos: [{ name: 'Stable Diffusion', url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0' }] }, { title: 'Audio Models', description: 'Generate audio, music, or speech from data inputs with AI models like Whisper.', demos: [{ name: 'Whisper', url: 'https://huggingface.co/spaces/Xenova/whisper-web' }] }, { title: 'Other Models', description: 'Generate diverse outputs like code, video, or 3D designs.', demos: [{ name: 'Request a Model', url: 'https://github.com/microsoft/onnxruntime-genai' }] }] as model}
 				<div class="mx-auto flex flex-col gap-4 h-full">
 					<div class="flex-1">
 						<h3 class="text-2xl">{model.title}</h3>
@@ -91,12 +88,14 @@
 		</div>
 	</div>
 
-	<div class="divider"></div>
+	<div class="divider" />
 
 	<div>
 		<h2 class="text-3xl">ONNX Runtime ❤️ Generative AI</h2>
 		<p>
-			Use ONNX Runtime for high performance, scalability, and flexibility when deploying generative AI models. With support for diverse frameworks and hardware acceleration, ONNX Runtime ensures efficient, cost-effective model inference across platforms.
+			Use ONNX Runtime for high performance, scalability, and flexibility when deploying generative
+			AI models. With support for diverse frameworks and hardware acceleration, ONNX Runtime ensures
+			efficient, cost-effective model inference across platforms.
 		</p>
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 my-8">
@@ -119,12 +118,7 @@
 
 			<!-- Feature Cards -->
 			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2 my-8">
-				{#each [
-					{title: 'Multiplatform', description: 'Run ONNX Runtime on Desktop 🖥️, Mobile 📱, Browser 💻, or Cloud ☁️.'},
-					{title: 'On Device', description: 'Inference privately 🔐 and save costs ⚙️ with on-device models.'},
-					{title: 'Multimodal Compatibility', description: 'Use ONNX Runtime with vision or omni models. We work to quickly enable all new model scenarios 🚀.'},
-					{title: 'Easy to Use', description: 'Get started quickly ⏩ with our examples and tutorials.'}
-				] as feature}
+				{#each [{ title: 'Multiplatform', description: 'Run ONNX Runtime on Desktop 🖥️, Mobile 📱, Browser 💻, or Cloud ☁️.' }, { title: 'On Device', description: 'Inference privately 🔐 and save costs ⚙️ with on-device models.' }, { title: 'Multimodal Compatibility', description: 'Use ONNX Runtime with vision or omni models. We work to quickly enable all new model scenarios 🚀.' }, { title: 'Easy to Use', description: 'Get started quickly ⏩ with our examples and tutorials.' }] as feature}
 					<div class="card bg-primary dark:text-black text-neutral-content">
 						<div class="card-body items-center text-center">
 							<h2 class="card-title">{feature.title}</h2>
@@ -141,11 +135,7 @@
 		<p>Get started with any of these tutorials and demos:</p>
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-3 my-8">
 			<!-- Tutorial cards -->
-			{#each [
-				{title: 'Phi-3 Vision', img: coffee, description: 'A Desktop app demo to interact with text and images simultaneously.', url: 'https://onnxruntime.ai/docs/genai/tutorials/phi3-v.html'},
-				{title: 'LLM Chat App', img: vision_ui, description: 'Pick your favorite model and start chatting!', url: 'https://github.com/microsoft/onnxruntime-genai/tree/main/examples/chat_app'},
-				{title: 'Whisper in Browser', img: whisper, description: 'Run whisper to transcribe user audio in your browser!', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper'}
-			] as tutorial}
+			{#each [{ title: 'Phi-3 Vision', img: coffee, description: 'A Desktop app demo to interact with text and images simultaneously.', url: 'https://onnxruntime.ai/docs/genai/tutorials/phi3-v.html' }, { title: 'LLM Chat App', img: vision_ui, description: 'Pick your favorite model and start chatting!', url: 'https://github.com/microsoft/onnxruntime-genai/tree/main/examples/chat_app' }, { title: 'Whisper in Browser', img: whisper, description: 'Run whisper to transcribe user audio in your browser!', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper' }] as tutorial}
 				<div class="card bg-base-100 image-full sm:w-80 mx-auto">
 					<figure><img class="brightness-50" src={tutorial.img} alt={tutorial.title} /></figure>
 					<div class="card-body items-center text-center">
@@ -156,8 +146,10 @@
 				</div>
 			{/each}
 			<!-- More tutorials -->
-			
 		</div>
-		<a href="https://github.com/microsoft/onnxruntime-inference-examples" class="btn btn-secondary btn-block mt-auto">See more demos!</a>
+		<a
+			href="https://github.com/microsoft/onnxruntime-inference-examples"
+			class="btn btn-secondary btn-block mt-auto">See more demos!</a
+		>
 	</div>
 </div>
