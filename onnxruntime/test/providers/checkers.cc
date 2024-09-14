@@ -378,7 +378,7 @@ void InternalNumericalCheck(const Tensor& expected,
 
   auto tolerance_params = get_tolerance_params<T>(params, provider_type);
 
-  for (int64_t i = 0; i < size; ++i) {    
+  for (int64_t i = 0; i < size; ++i) {
     // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
     // If the isinf check is first the isnan check and branch gets omitted
     if (std::isnan(cur_expected[i])) {
