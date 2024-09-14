@@ -11,6 +11,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "nlohmann/json.hpp"
 
 using Exception = ov::Exception;
 
@@ -265,6 +266,28 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
   auto performanceMap = request->GetNewObj().get_profiling_info();
   printPerformanceCounts(performanceMap, stream, std::move(deviceName));
+}
+
+void LoadConfig(const std::string& filename, std::map<std::string, ov::AnyMap>& config) {
+  std::ifstream input_filestream(filename);
+  if (!input_filestream.is_open()) {
+    throw std::runtime_error("Can't load config file \"" + filename + "\".");
+  }
+
+  nlohmann::json json_config;
+  try {
+    input_filestream >> json_config;
+  } catch (const std::exception& e) {
+    throw std::runtime_error("Can't parse config file \"" + filename + "\".\n" + e.what());
+  }
+
+  for (auto item = json_config.cbegin(), end = json_config.cend(); item != end; ++item) {
+    const std::string& deviceName = item.key();
+    const auto& item_value = item.value();
+    for (auto option = item_value.cbegin(), item_value_end = item_value.cend(); option != item_value_end; ++option) {
+      config[deviceName][option.key()] = option.value().get<std::string>();
+    }
+  }
 }
 
 }  // namespace backend_utils

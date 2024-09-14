@@ -70,6 +70,8 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 
+void LoadConfig(const std::string& filename, std::map<std::string, ov::AnyMap>& config);
+
 }  // namespace backend_utils
 }  // namespace openvino_ep
 }  // namespace onnxruntime

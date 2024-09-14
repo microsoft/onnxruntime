@@ -27,6 +27,7 @@ struct GlobalContext {
   std::string precision_str;
   std::string model_precision;
   std::string cache_dir;
+  std::string load_config;
   std::string model_priority = "DEFAULT";
   int num_streams;
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};

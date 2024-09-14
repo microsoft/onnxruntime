@@ -831,6 +831,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ov_options[key] = value;
         }
+      } else if (key == "load_config") {
+        ov_options[key] = value;
       } else if (key == "model_priority") {
         ov_options[key] = value;
       } else if (key == "cache_dir") {
@@ -855,7 +857,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       } else if (key == "device_memory_name") {
         device_memory_name_ = std::move(value);
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', 'device_memory_name', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
