@@ -328,7 +328,6 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.attr_proto_get_floats = vaip::attr_proto_get_floats;
   the_global_api.attr_proto_get_strings = vaip::attr_proto_get_strings;
   the_global_api.attr_proto_get_type = [](const ONNX_NAMESPACE::AttributeProto& attr) -> int { return attr.type(); };
-  the_global_api.attr_proto_release_string = [](ONNX_NAMESPACE::AttributeProto* attr) -> vaip_core::DllSafe<std::string*> { return vaip_core::DllSafe<std::string*>(vaip::attr_proto_release_string(attr)); }; 
 
   /// node attributes
   the_global_api.node_attributes_new = []() { return NodeAttributes::Create().release(); };
@@ -407,6 +406,13 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.SetInputs(inputs);
   };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
+  the_global_api.attr_proto_release_string = [](ONNX_NAMESPACE::AttributeProto* attr) -> vaip_core::DllSafe<std::string> {
+    auto pstr = vaip::attr_proto_release_string(attr);
+    std::string local_str = std::move(*pstr);
+    pstr = nullptr;
+    return vaip_core::DllSafe<std::string>(std::move(local_str));
+  }; 
+
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {

@@ -171,8 +171,6 @@ struct OrtApiForVaip {
       const AttributeProto& attr);  // [68]
   std::vector<std::string> (*attr_proto_get_strings)(
       const AttributeProto& attr);  // [69]
-  DllSafe<std::string*> (*attr_proto_release_string)(
-      AttributeProto* attr);  // [70]
   // tensor_proto
   void (*tensor_proto_delete)(TensorProto* tp);  // [70]
   DllSafe<std::vector<int64_t>> (*tensor_proto_get_shape_unsafe)(
@@ -196,7 +194,6 @@ struct OrtApiForVaip {
   gsl::span<const char> (*tensor_proto_as_raw)(
       const Graph& graph,
       const TensorProto& tensor);  // [79]
-
   DllSafe<std::string> (*get_lib_id)();                                           // [80]
   DllSafe<std::string> (*get_lib_name)();                                         // [81]
                                                                                   /** new API after 2.0 */
@@ -231,7 +228,9 @@ struct OrtApiForVaip {
   void (*graph_set_inputs)(Graph& graph,
                            gsl::span<const NodeArg* const> inputs);                                                                                   // [92]
   int (*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
+  DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);  // [94]
 };
+
 
 #ifndef USE_VITISAI
 VAIP_DLL_SPEC const OrtApiForVaip* api();
