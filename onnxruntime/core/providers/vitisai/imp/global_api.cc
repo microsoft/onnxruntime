@@ -410,12 +410,12 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.SetInputs(inputs);
   };
   the_global_api.session_option_configuration = [](
-                                                    void* mmap, void* session_options, void (*push)(const char* name, const char* value, void* kv_map)) {
+                                                    void* mmap, void* session_options, void (*push)(void* mmap, const char* name, const char* value)) {
     auto options = reinterpret_cast<onnxruntime::SessionOptions*>(session_options);
     auto option_list = options->GetConfigOptions();
     // option_list.GetConfigEntry
     for (const auto& option : option_list) {
-      push(option.first.c_str(), option.second.c_str(), mmap);
+      push(mmap, option.first.c_str(), option.second.c_str());
     }
   };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
