@@ -830,6 +830,8 @@ struct ProviderHostImpl : ProviderHost {
   // OrtRunOptions (wrapped)
   const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
+  // OrtSessionOptions (wrapped)
+  std::unordered_map<std::string, std::string> SessionOptions__GetConfigOptionsMap(const onnxruntime::SessionOptions* p) override { return p->config_options.configurations; }
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }

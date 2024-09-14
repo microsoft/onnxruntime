@@ -229,6 +229,7 @@ struct OrtApiForVaip {
   void (*graph_set_inputs)(Graph& graph,
                            gsl::span<const NodeArg* const> inputs);                                                                                   // [92]
   int (*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
+  void (*session_option_configuration)(void* mmap, void* session_option, void (*push)(const char* name, const char* value, void* kv_map));            // [94]
 };
 
 #ifndef USE_VITISAI
