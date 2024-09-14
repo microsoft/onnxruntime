@@ -232,7 +232,7 @@ struct OrtApiForVaip {
                                     size_t& offset, size_t& size, size_t& checksum);  // [93]
   ModelProto* (*model_to_proto)(Model& model);                                        //[94]
   DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);   //[95]
-  void (*model_proto_delete)(ModelProto* p);                                      // [96]
+  void (*model_proto_delete)(ModelProto* p);                                          // [96]
 };
 
 #ifndef USE_VITISAI
