@@ -1053,6 +1053,7 @@ TEST_F(QnnHTPBackendTests, TestAIHubJob) {
 #endif
 
   options["enable_htp_fp16_precision"] = "1";
+  options["enable_qnn_graph_dump"] = "1";
 
   so.AppendExecutionProvider("QNN", options);
 
