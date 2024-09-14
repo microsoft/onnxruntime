@@ -2521,23 +2521,23 @@ ORT_API(int32_t, OrtApis::OrtGraph_GetIthOutputElemType, const OrtGraphViewer* g
   return graph_viewer->GetOutputs()[i]->TypeAsProto()->tensor_type().elem_type();
 }
 
-ORT_API(bool, OrtApis::OrtGraph_GetInitializerTensor, const char* initializer_name, _Outptr_ OrtTensorRef** out) {
+ORT_API(bool, OrtApis::OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef** out) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const onnx::TensorProto* initializer = nullptr;
   if (!graph_viewer->GetInitializedTensor(initializer_name, initializer)) return false;
   *out = new OrtTensorRef();  // TODO(leca): release
   (*out)->shape_len = initializer->dims_size();
   (*out)->shape = new int64_t [initializer->dims_size()];
-  for (int i = 0; i < (*out)->shape_len; i++) {
+  for (size_t i = 0; i < (*out)->shape_len; i++) {
     ((*out)->shape)[i] = initializer->dims(i);
   }
 
-  (*out)->data_type = initializer->data_type();
+  (*out)->data_type = static_cast<ONNXTensorElementDataType>(initializer->data_type());
   // see utils::ConvertRawDataInTensorProto()
   switch (initializer->data_type()) {
-    case TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       (*out)->data_len = initializer->float_data_size();
-      (*out)->data = reinterpret_cast<char*>(initializer->mutable_float_data()->mutable_data());
+      (*out)->data = reinterpret_cast<const char*>(initializer->float_data().data());
       break;
   }
   return true;

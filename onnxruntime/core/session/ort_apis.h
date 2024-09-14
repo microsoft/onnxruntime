@@ -573,7 +573,7 @@ ORT_API(const char*, OrtGraph_GetIthOutputName, const OrtGraphViewer*, size_t i)
 
 ORT_API(int32_t, OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i) ORT_ALL_ARGS_NONNULL;
 
-ORT_API(bool, OrtGraph_GetInitializerTensor, const char* initializer_name, _Outptr_ OrtTensorRef**);
+ORT_API(bool, OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
 
 ORT_API(size_t, OrtGraph_SerializeToArray, const OrtGraphViewer*, _Out_ void** data);
 
