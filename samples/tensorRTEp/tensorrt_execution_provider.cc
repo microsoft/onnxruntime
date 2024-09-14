@@ -3619,7 +3619,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             n->add_input(jth_input_name, strlen(jth_input_name));
 
             OrtTensorRef* tensor_ref = nullptr;
-            if (api_->OrtGraph_GetInitializerTensor(graph, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
+            if (api_->OrtGraph_GetInitializerTensor(graph, jth_input_name, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
               onnx::TensorProto* t = g->add_initializer();
               for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
               t->set_data_type(tensor_ref->data_type);
@@ -3630,7 +3630,17 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           size_t implicit_input_size = 0;
           api_->OrtNode_GetImplicitInputSize(node, &implicit_input_size);
           for (size_t j = 0; j < implicit_input_size; j++) {
+            const char* jth_input_name = nullptr;
+            api_->OrtNode_GetIthImplicitInputName(node, j, &jth_input_name);
+            n->add_input(jth_input_name, strlen(jth_input_name));
 
+            OrtTensorRef* tensor_ref = nullptr;
+            if (api_->OrtGraph_GetInitializerTensor(graph, jth_input_name, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
+              onnx::TensorProto* t = g->add_initializer();
+              for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
+              t->set_data_type(tensor_ref->data_type);
+              t->set_raw_data(tensor_ref->data, tensor_ref->data_len);  // correct? need to set other data type?
+            }
           }
 
           size_t output_size = 0;

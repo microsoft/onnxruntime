@@ -747,7 +747,7 @@ typedef struct OrtTensorRef {
   int64_t* shape;
   size_t shape_len;
   ONNXTensorElementDataType data_type;
-  char* data;
+  const char* data;
   size_t data_len;
 } OrtTensorRef;
 
@@ -4799,7 +4799,7 @@ struct OrtApi {
 
   int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
-  bool(ORT_API_CALL* OrtGraph_GetInitializerTensor)(const char* initializer_name, _Outptr_ OrtTensorRef**);
+  bool(ORT_API_CALL* OrtGraph_GetInitializerTensor)(const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
 
   size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;  // TODO(leca): review and discuss
 
