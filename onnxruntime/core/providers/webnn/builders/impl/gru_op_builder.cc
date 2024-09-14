@@ -26,7 +26,7 @@ class GruOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -185,7 +185,7 @@ bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
   return true;
 }
 
-bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                           const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -208,37 +208,21 @@ bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceTyp
     return false;
   }
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  if (device_type == WebnnDeviceType::CPU) {
-    // WebNN CPU backend only support float32 input data type.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-    };
-  } else if (device_type == WebnnDeviceType::GPU) {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
+  InlinedVector<int32_t, 6> input_types = {input0_type, input1_type, input2_type};
+  if (has_input3) {
+    input_types.push_back(input3_type);
   }
-
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  if (has_input4) {
+    input_types.push_back(input4_type);
+  }
+  if (has_input5) {
+    input_types.push_back(input5_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type ||
-      input0_type != input2_type ||
-      (has_input3 && input0_type != input3_type) ||
-      (has_input4 && input0_type != input4_type) ||
-      (has_input5 && input0_type != input5_type)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
