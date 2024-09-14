@@ -83,12 +83,16 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten
   int32_t input0_type;
   int32_t input1_type;
 
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      (op_type != "Not" && !GetType(*input_defs[1], input1_type, logger)))
+  if (!GetType(*input_defs[0], input0_type, logger))
     return false;
 
-  if (op_type != "Not" && !AreInputDataTypesSame(op_type, {input0_type, input1_type}, logger)) {
-    return false;
+  if (op_type != "Not") {
+    if (!GetType(*input_defs[1], input1_type, logger))
+      return false;
+    std::array<int32_t, 2> input_types{input0_type, input1_type};
+    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+      return false;
+    }
   }
 
   std::string onnx_input_name = op_type == "Not" ? "X" : "A";

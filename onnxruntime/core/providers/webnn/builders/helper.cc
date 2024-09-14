@@ -132,12 +132,14 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
 }
 
 bool AreInputDataTypesSame(const std::string& op_type,
-                           const std::vector<int32_t>& input_types,
+                           gsl::span<const int32_t> input_types,
                            const logging::Logger& logger) {
   for (size_t i = 1; i < input_types.size(); i++) {
     if (input_types[0] != input_types[i]) {
       LOGS(logger, VERBOSE) << "[" << op_type
-                            << "] Input data types should be the same.";
+                            << "] Input data types should be the same, but ["
+                            << input_types[0] << "] does not match "
+                            << input_types[i] << "].";
       return false;
     }
   }

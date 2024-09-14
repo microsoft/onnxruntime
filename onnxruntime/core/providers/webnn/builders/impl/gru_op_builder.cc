@@ -208,7 +208,7 @@ bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::va
     return false;
   }
 
-  std::vector<int32_t> input_types = {input0_type, input1_type, input2_type};
+  InlinedVector<int32_t, 6> input_types = {input0_type, input1_type, input2_type};
   if (has_input3) {
     input_types.push_back(input3_type);
   }

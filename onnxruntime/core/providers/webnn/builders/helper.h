@@ -274,7 +274,7 @@ static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> o
 };
 
 bool AreInputDataTypesSame(const std::string& op_type,
-                           const std::vector<int32_t>& input_types,
+                           gsl::span<const int32_t> input_types,
                            const logging::Logger& logger);
 bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);
 bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,

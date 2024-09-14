@@ -233,7 +233,7 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::v
     return false;
   }
 
-  std::vector<int32_t> input_types = {input0_type, input1_type};
+  InlinedVector<int32_t, 4> input_types = {input0_type, input1_type};
   if (has_input2) {
     input_types.push_back(input2_type);
   }
