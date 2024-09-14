@@ -1134,11 +1134,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (it != provider_options_map.end()) {
       info = it->second;
     }
-    for (const auto& option : session_options.config_options.configurations) {
-      auto key = std::string("ort_session_config.") + option.first;
-      const auto& value = option.second;
-      info[key] = value;
-    }
+    info["session_options"] = std::to_string((uintptr_t)(void*)session_options);
     return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
