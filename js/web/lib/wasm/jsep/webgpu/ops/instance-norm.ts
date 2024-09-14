@@ -50,9 +50,9 @@ const createInstanceNormProgramInfo = (
     const workgroupSize = 64;
 
     return `
-  var<workgroup> channelScale : f32;
-  var<workgroup> channelShift : f32;
-  var<workgroup> workgroupShared : array<${wgType}, ${workgroupSize}>;
+  var<workgroup> channel_scale : f32;
+  var<workgroup> channel_shift : f32;
+  var<workgroup> workgroup_shared : array<${wgType}, ${workgroupSize}>;
   const workgroup_size = ${workgroupSize}u;
   ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart(workgroupSize)}
@@ -61,36 +61,36 @@ const createInstanceNormProgramInfo = (
     let hight = uniforms.x_shape[2];
     // initialize workgroup memory
     var sum = ${f32Type}(0);
-    var squaredSum = ${f32Type}(0);
+    var squared_sum = ${f32Type}(0);
     for (var h = local_idx; h < hight; h += workgroup_size) {
       let value = ${f32Type}(${x.get('batch', 'channel', 'h')});
       sum += value;
-      squaredSum += value * value;
+      squared_sum += value * value;
     }
-    workgroupShared[local_idx] = ${wgType}(sum, squaredSum);
+    workgroup_shared[local_idx] = ${wgType}(sum, squared_sum);
     workgroupBarrier();
 
     // Calculate the mean of current channel data.
     for (var currSize = workgroup_size >> 1;  currSize > 0; currSize = currSize >> 1) {
       if (local_idx < currSize) {
-        workgroupShared[local_idx] = workgroupShared[local_idx] + workgroupShared[local_idx + currSize];
+        workgroup_shared[local_idx] = workgroup_shared[local_idx] + workgroup_shared[local_idx + currSize];
       }
       workgroupBarrier();
     }
     if (local_idx == 0) {
-      let sumShared = ${sumVector('workgroupShared[0][0]', components)} / f32(hight * ${components});
-      let squaredsumShared = ${sumVector('workgroupShared[0][1]', components)} / f32(hight * ${components});
+      let sum_final = ${sumVector('workgroup_shared[0][0]', components)} / f32(hight * ${components});
+      let squared_sum_final = ${sumVector('workgroup_shared[0][1]', components)} / f32(hight * ${components});
 
-      let invStdDev = inverseSqrt(squaredsumShared - sumShared * sumShared + f32(${attributes.epsilon}));
-      channelScale = invStdDev * f32(scale[channel]);
-      channelShift = f32(bias[channel]) - sumShared * channelScale;
+      let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(${attributes.epsilon}));
+      channel_scale = inv_std_dev * f32(scale[channel]);
+      channel_shift = f32(bias[channel]) - sum_final * channel_scale;
     }
     workgroupBarrier();
 
     for (var h = local_idx; h < hight; h += workgroup_size) {
-      let value = ${x.get('batch', 'channel', 'h')} * ${dataType}(${f32Type}(channelScale)) + ${dataType}(${
+      let value = ${x.get('batch', 'channel', 'h')} * ${dataType}(${f32Type}(channel_scale)) + ${dataType}(${
         f32Type
-      }(channelShift));
+      }(channel_shift));
       ${output.set('batch', 'channel', 'h', 'value')};
     }
   }`;
@@ -148,7 +148,7 @@ const computeChannelScaleShift = (
     const variables = [x, s, b, output];
     const workgroupSize = 64;
     return `
-  var<workgroup> workgroupShared : array<${wgType}, ${workgroupSize}>;
+  var<workgroup> workgroup_shared : array<${wgType}, ${workgroupSize}>;
   const workgroup_size = ${workgroupSize}u;
   ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart(workgroupSize)}
@@ -157,29 +157,29 @@ const computeChannelScaleShift = (
     let hight = uniforms.x_shape[2];
     // initialize workgroup memory
     var sum = ${f32Type}(0);
-    var squaredSum = ${f32Type}(0);
+    var squared_sum = ${f32Type}(0);
     for (var h = local_idx; h < hight; h += workgroup_size) {
       let value = ${f32Type}(${x.get('batch', 'channel', 'h')});
       sum += value;
-      squaredSum += value * value;
+      squared_sum += value * value;
     }
-    workgroupShared[local_idx] = ${wgType}(sum, squaredSum);
+    workgroup_shared[local_idx] = ${wgType}(sum, squared_sum);
     workgroupBarrier();
 
     for (var currSize = workgroup_size >> 1;  currSize > 0; currSize = currSize >> 1) {
       if (local_idx < currSize) {
-        workgroupShared[local_idx] = workgroupShared[local_idx] + workgroupShared[local_idx + currSize];
+        workgroup_shared[local_idx] = workgroup_shared[local_idx] + workgroup_shared[local_idx + currSize];
       }
       workgroupBarrier();
     }
     if (local_idx == 0) {
-      let sumShared = ${sumVector('workgroupShared[0][0]', components)} / f32(hight * ${components});
-      let squaredsumShared = ${sumVector('workgroupShared[0][1]', components)} / f32(hight * ${components});
+      let sum_final = ${sumVector('workgroup_shared[0][0]', components)} / f32(hight * ${components});
+      let squared_sum_final = ${sumVector('workgroup_shared[0][1]', components)} / f32(hight * ${components});
 
-      let invStdDev = inverseSqrt(squaredsumShared - sumShared * sumShared + f32(${epsilon}));
-      let channelScale = invStdDev * f32(scale[channel]);
-      let channelShift = f32(bias[channel]) - sumShared * channelScale;
-      output[workgroup_index] = vec2f(channelScale, channelShift);
+      let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(${epsilon}));
+      let channel_scale = inv_std_dev * f32(scale[channel]);
+      let channel_shift = f32(bias[channel]) - sum_final * channel_scale;
+      output[workgroup_index] = vec2f(channel_scale, channel_shift);
     }
   }`;
   };
@@ -250,17 +250,17 @@ const createInstanceNormNHWCProgramInfo = (
 
     return `
   @group(0) @binding(0) var<storage, read> input : array<${inputHelper.type.storage}>;
-  @group(0) @binding(1) var<storage, read> scaleInput : array<${scaleType}>;
+  @group(0) @binding(1) var<storage, read> scale_input : array<${scaleType}>;
   @group(0) @binding(2) var<storage, read_write> output : array<${outputHelper.type.storage}>;
   struct Uniforms {H: u32, C : u32};
   @group(0) @binding(3) var<uniform> uniforms: Uniforms;
 
   ${shaderHelper.mainStart()}
-    let currentImageNumber = global_idx / (uniforms.C * uniforms.H);
-    let currentChannelNumber = global_idx % uniforms.C;
+    let current_image_number = global_idx / (uniforms.C * uniforms.H);
+    let current_channel_number = global_idx % uniforms.C;
 
-    let scaleOffset = currentImageNumber * uniforms.C + currentChannelNumber;
-    let scale = scaleInput[scaleOffset];
+    let scale_offset = current_image_number * uniforms.C + current_channel_number;
+    let scale = scale_input[scale_offset];
     output[global_idx] = fma(input[global_idx], ${scaleData(0)}, ${scaleData(1)});
   }`;
   };
