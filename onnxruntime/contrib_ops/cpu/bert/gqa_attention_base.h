@@ -131,7 +131,7 @@ class GQAAttentionBase {
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
     if (!past_present_share_buffer) {
-      memset(present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+      memset((void*)present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
 
     const size_t loop_len = batch_size * num_heads_;
@@ -190,8 +190,8 @@ class GQAAttentionBase {
           q = Q + q_input_chunk_length * i;
         }
 
-        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
-                                    static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/, output,
+        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, static_cast<T>(alpha), q,
+                                    static_cast<int>(head_size), k, static_cast<int>(head_size), static_cast<T>(0.0f) /*bata*/, output,
                                     static_cast<int>(present_buffer_sequence_length), nullptr);
 
         // compute Softmax
@@ -200,7 +200,7 @@ class GQAAttentionBase {
           size_t seq_causal_length = past_seqlen + seq + 1;
           if (local_window_size_ > 0 && seq_causal_length > static_cast<size_t>(local_window_size_) + 1) {
             for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
-              output_softmax[total_seq_id] = 0.f;
+              output_softmax[total_seq_id] = static_cast<T>(0.f);
             }
             if (softcap_ > 0.f) {
               ComputeAttentionSoftcapInplace(output_softmax + seq_causal_length - local_window_size_ - 1,
@@ -226,7 +226,7 @@ class GQAAttentionBase {
 
           // set causal [seq_causal_length, total_seqlen) to 0.f
           for (size_t total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
-            output_softmax[total_seq_id] = 0.f;
+            output_softmax[total_seq_id] = static_cast<T>(0.f);
           }
 
           output_softmax += present_buffer_sequence_length;
@@ -261,7 +261,7 @@ class GQAAttentionBase {
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
     if (!past_present_share_buffer) {
-      memset(present_value, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+      memset((void*)present_value, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
 
     const size_t loop_len = batch_size * num_heads_;
@@ -308,10 +308,10 @@ class GQAAttentionBase {
         T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 
-        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen, 1.f, /*alpha*/
+        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen, static_cast<T>(1.f), /*alpha*/
                                     attention_probs + attention_probs_offset,
                                     static_cast<int>(present_buffer_sequence_length), v, static_cast<int>(head_size),
-                                    0.0f /*beta*/, output_current, static_cast<int>(hidden_size), nullptr);
+                                    static_cast<T>(0.0f) /*beta*/, output_current, static_cast<int>(hidden_size), nullptr);
       }
     });
   }
