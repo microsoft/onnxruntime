@@ -575,10 +575,6 @@ if (onnxruntime_USE_MIMALLOC)
   onnxruntime_fetchcontent_makeavailable(mimalloc)
 endif()
 
-#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
-# dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
-# pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date ${ONNXRUNTIME_CLOG_TARGET_NAME})
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
@@ -701,8 +697,69 @@ endif()
 
 if(onnxruntime_USE_SNPE)
     include(external/find_snpe.cmake)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
+
+# add dependencies to the list of external libraries and populate onnxruntime_EXTERNAL_LIBRARIES with the result
+function(add_dependencies_to_external_libs output_var)
+  set (external_libs ${ARGN})
+  set(extended_deps)
+
+  function(get_dependencies input_target)
+    message(STATUS "get_dependencies: ${input_target}")
+    get_target_property(alias ${input_target} ALIASED_TARGET)
+    if(TARGET ${alias})
+      set(input_target ${alias})
+    endif()
+
+    if(${input_target} IN_LIST all_dependencies)
+      return()
+    endif()
+
+    list(APPEND all_dependencies ${input_target})
+
+    get_target_property(link_libraries ${input_target} LINK_LIBRARIES)
+    foreach(dependency IN LISTS link_libraries)
+      if(TARGET ${dependency})
+        get_dependencies(${dependency})
+      endif()
+    endforeach()
+
+    # get_target_property(link_libraries ${input_target} INTERFACE_LINK_LIBRARIES)
+    # foreach(dependency IN LISTS link_libraries)
+    #   if(TARGET ${dependency})
+    #     get_dependencies(${dependency})
+    #   endif()
+    # endforeach()
+
+    set(all_dependencies ${all_dependencies} PARENT_SCOPE)
+  endfunction()
+
+  foreach(external_lib IN LISTS external_libs)
+    message(STATUS "### Getting dependencies for : ${external_lib}")
+    get_dependencies(${external_lib})
+  endforeach()
+
+  foreach(dependency IN LISTS all_dependencies)
+    get_target_property(type ${dependency} TYPE)
+    if((${type} STREQUAL "STATIC_LIBRARY" OR ${type} STREQUAL "OBJECT_LIBRARY") AND
+       NOT ${dependency} IN_LIST external_libs_extended)
+      list(APPEND extended_deps ${dependency})
+    endif()
+  endforeach()
+
+  set(${output_var} ${extended_deps} PARENT_SCOPE)
+endfunction()
+
+# Create list of external libraries potentially added in this file.
+set(_external_libraries ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${SNPE_NN_LIBS} ${WIL_TARGET}
+                                   dawn::dawn_native dawn::dawn_proc nlohmann_json::nlohmann_json
+                                   onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
+                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
+                                   ${ONNXRUNTIME_CLOG_TARGET_NAME})
+
+# add the dependencies as well. this is need in some places where we have to process the full list of libraries
+# e.g. iOS pre-linking.
+add_dependencies_to_external_libs(onnxruntime_EXTERNAL_LIBRARIES "${_external_libraries}")
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
 FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
