@@ -89,10 +89,22 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # create Info.plist for the framework and podspec for CocoaPods (optional)
   set(MACOSX_FRAMEWORK_NAME "onnxruntime")
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
-  # Need to include CoreML as a weaklink for CocoaPods package if the EP is enabled
+
+  # Setup weak frameworks for macOS/iOS. 'weak' as the CoreML or WebGPU EPs are optionally enabled.
   if(onnxruntime_USE_COREML)
-    set(APPLE_WEAK_FRAMEWORK "\\\"CoreML\\\"")
+    list(APPEND _weak_frameworks "\\\"CoreML\\\"")
   endif()
+
+  if(onnxruntime_USE_WEBGPU)
+    # TODO: Dawn includes all these. TBD if we need any others. As we're not doing anything graphical we may not.
+    # Cocoa (MacOS only), Foundation, IOKit, IOSurface, QuartzCore
+    list(APPEND _weak_frameworks "\\\"Metal\\\"")
+  endif()
+
+  if (_weak_frameworks)
+    string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
+  endif()
+
   set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
   configure_file(
