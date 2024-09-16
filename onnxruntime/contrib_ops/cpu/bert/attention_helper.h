@@ -20,13 +20,14 @@ template <typename T>
 void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t j = begin; j != end; ++j) {
-      float* x = reinterpret_cast<T*>(score) + j * D;
-      float* y = x;
+      T* x = reinterpret_cast<T*>(score) + j * D;
+      T* y = x;
 
       float max = -std::numeric_limits<float>::infinity();
       for (int i = 0; i < D; i++) {
-        if (max < x[i])
-          max = x[i];
+        float x_i = static_cast<float>(x[i]);
+        if (max < x_i)
+          max = x_i;
       }
 
       if (max < 0.0f) {
@@ -34,19 +35,19 @@ void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
       }
 
       for (int i = 0; i < D; i++) {
-        y[i] = expf(x[i] - max);
+        y[i] = static_cast<T>(expf(static_cast<float>(x[i]) - max));
       }
 
       double sum = 0.0;
 
       for (int i = 0; i < D; i++) {
-        sum += x[i];
+        sum += static_cast<float>(x[i]);
       }
 
       sum += exp(static_cast<double>(-max));
 
       for (int i = 0; i < D; i++) {
-        y[i] = x[i] / (float)sum;
+        y[i] = static_cast<T>(static_cast<float>(x[i]) / static_cast<float>(sum));
       }
     }
   });
@@ -61,8 +62,8 @@ template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t j = begin; j != end; ++j) {
-      float* x = reinterpret_cast<T*>(score) + j * D;
-      float* y = x;
+      T* x = reinterpret_cast<T*>(score) + j * D;
+      T* y = x;
 
       // e^x is represented as infinity if x is large enough, like 100.f.
       // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if
@@ -71,26 +72,27 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
       // max) / (e^(x1 - max) + ... + e^(xn - max))
       float max = -std::numeric_limits<float>::infinity();
       for (int i = 0; i < D; i++) {
-        if (max < x[i])
-          max = x[i];
+        float x_i = static_cast<float>(x[i]);
+        if (max < x_i)
+          max = x_i;
       }
       for (int i = 0; i < D; i++) {
-        y[i] = expf(x[i] - max);
+        y[i] = static_cast<T>(expf(static_cast<float>(x[i]) - max));
       }
 
       double sum = 0.0;
 
       for (int i = 0; i < D; i++) {
-        sum += x[i];
+        sum += static_cast<float>(x[i]);
       }
 
       if (sum == 0) {
         for (int i = 0; i < D; i++) {
-          y[i] = 1.0f / (float)D;
+          y[i] = static_cast<T>(1.0f / static_cast<float>(D));
         }
       } else {
         for (int i = 0; i < D; i++) {
-          y[i] = x[i] / (float)sum;
+          y[i] = static_cast<T>(x[i] / static_cast<float>(sum));
         }
       }
     }
@@ -105,9 +107,9 @@ inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPoo
 template <typename T>
 void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, float softcap) {
   for (int i = 0; i < sequence_length; i++) {
-    scores[i] = scores[i] / softcap;
-    scores[i] = std::tanh(scores[i]);
-    scores[i] = scores[i] * softcap;
+    float score = static_cast<float>(scores[i]) / softcap;
+    score = std::tanh(score);
+    scores[i] = static_cast<T>(score * softcap);
   }
 }
 
