@@ -52,7 +52,7 @@
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 
 <div class="container mx-auto px-10 my-10">
-	<div class="m-8 grid grid-cols-1 md:grid-cols-4">
+	<div class=" grid grid-cols-1 md:grid-cols-4">
 		<div class="m-2 lg:m-8">
 			<img class="rounded-xl" src={aibrain} alt="Representing generative AI" />
 		</div>
@@ -74,7 +74,7 @@
 		<h2 class="text-3xl">Generative AI Models</h2>
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 my-8 gap-4">
 			<!-- Model cards -->
-			{#each [{ title: 'Text Generation Models', description: 'Generate human-like text for chatbots, content creation, summarization, and more.', demos: [{ name: 'Llama', url: 'https://huggingface.co/meta-llama/Meta-Llama-3.1-8B' }, { name: 'Mistral', url: 'https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3' }, { name: 'Phi', url: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct' }] }, { title: 'Image Generation Models', description: 'Create artwork or realistic images from descriptions using AI models like Stable Diffusion.', demos: [{ name: 'Stable Diffusion', url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0' }] }, { title: 'Audio Models', description: 'Generate audio, music, or speech from data inputs with AI models like Whisper.', demos: [{ name: 'Whisper', url: 'https://huggingface.co/spaces/Xenova/whisper-web' }] }, { title: 'Other Models', description: 'Generate diverse outputs like code, video, or 3D designs.', demos: [{ name: 'Request a Model', url: 'https://github.com/microsoft/onnxruntime-genai' }] }] as model}
+			{#each [{ title: 'Text Generation Models', description: 'Generate human-like text for chatbots, content creation, summarization, and more.', demos: [{ name: 'Llama', url: 'https://huggingface.co/meta-llama/Meta-Llama-3.1-8B' }, { name: 'Mistral', url: 'https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3' }, { name: 'Phi', url: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct' }] }, { title: 'Image Generation Models', description: 'Create artwork or realistic images from descriptions using AI models like Stable Diffusion.', demos: [{ name: 'Stable Diffusion', url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0' }] }, { title: 'Audio Models', description: 'Generate audio, music, or speech from data inputs with AI models like Whisper.', demos: [{ name: 'Whisper', url: 'https://huggingface.co/spaces/Xenova/whisper-web' }] }, { title: 'Other Models', description: 'Generate diverse outputs like code, video, or 3D designs.', demos: [{ name: 'Request a Model', url: 'https://github.com/microsoft/onnxruntime-genai/discussions/categories/model-support' }] }] as model}
 				<div class="mx-auto flex flex-col gap-4 h-full">
 					<div class="flex-1">
 						<h3 class="text-2xl">{model.title}</h3>
