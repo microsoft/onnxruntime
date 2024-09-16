@@ -112,7 +112,7 @@ const bucketArr: number[] = [];
 /**
  * normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
  */
-const calcNormalizedBufferSize = (size: number) => Math.ceil(size / 16) * 16;
+const calcNormalizedBufferSize = (size: number) => Math.ceil(Number(size) / 16) * 16;
 
 /**
  * calculate the buffer size so that it fits into buckets.
@@ -295,9 +295,7 @@ class GpuDataManagerImpl implements GpuDataManager {
         LOG_DEBUG(
           'verbose',
           () =>
-            `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
-              id
-            }, buffer is the same, skip.`,
+            `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${id}, buffer is the same, skip.`,
         );
         return id;
       } else if (this.backend.capturedCommandList.has(this.backend.currentSessionId!)) {
@@ -358,7 +356,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     }
 
     const gpuData = { id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer };
-    this.storageCache.set(gpuData.id, { gpuData, originalSize: size });
+    this.storageCache.set(gpuData.id, { gpuData, originalSize: Number(size) });
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
     return gpuData;
@@ -368,7 +366,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     return this.storageCache.get(id)?.gpuData;
   }
 
-  release(id: GpuDataId): number {
+  release(idInput: GpuDataId): number {
+    const id = typeof idInput === 'bigint' ? Number(idInput) : idInput;
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
       throw new Error('releasing data does not exist');
@@ -384,7 +383,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   async download(id: GpuDataId, getTargetBuffer: () => Uint8Array): Promise<void> {
-    const cachedData = this.storageCache.get(id);
+    const cachedData = this.storageCache.get(Number(id));
     if (!cachedData) {
       throw new Error('data does not exist');
     }

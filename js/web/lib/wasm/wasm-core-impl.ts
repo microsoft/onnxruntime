@@ -207,12 +207,14 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
-    const dataOffset = wasm.stackAlloc(8);
-    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
+    const ptrSize = wasm.PTR_SIZE;
+    const dataOffset = wasm.stackAlloc(2 * ptrSize);
+    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + ptrSize);
     if (errorCode !== 0) {
       checkLastError("Can't get session input/output count.");
     }
-    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
+    const type = ptrSize === 4 ? 'i32' : 'i64';
+    return [Number(wasm.getValue(dataOffset, type)), Number(wasm.getValue(dataOffset + ptrSize, type))];
   } finally {
     wasm.stackRestore(stack);
   }
@@ -396,17 +398,23 @@ export const createSession = async (
     outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
 
     if (ioBindingHandle !== 0) {
-      wasm._OrtReleaseBinding(ioBindingHandle);
+      if (wasm._OrtReleaseBinding(ioBindingHandle) !== 0) {
+        checkLastError("Can't release IO binding.");
+      }
     }
 
     if (sessionHandle !== 0) {
-      wasm._OrtReleaseSession(sessionHandle);
+      if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
+        checkLastError("Can't release session.");
+      }
     }
     throw e;
   } finally {
     wasm._free(modelDataOffset);
     if (sessionOptionsHandle !== 0) {
-      wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+      if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
+        checkLastError("Can't release session options.");
+      }
     }
     allocs.forEach((alloc) => wasm._free(alloc));
 
@@ -425,16 +433,22 @@ export const releaseSession = (sessionId: number): void => {
 
   if (ioBindingState) {
     if (enableGraphCapture) {
-      wasm._OrtClearBoundOutputs(ioBindingState.handle);
+      if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
+        checkLastError("Can't clear bound outputs.");
+      }
     }
-    wasm._OrtReleaseBinding(ioBindingState.handle);
+    if (wasm._OrtReleaseBinding(ioBindingState.handle) !== 0) {
+      checkLastError("Can't release IO binding.");
+    }
   }
 
   wasm.jsepOnReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
   outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
-  wasm._OrtReleaseSession(sessionHandle);
+  if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
+    checkLastError("Can't release session.");
+  }
   activeSessions.delete(sessionId);
 };
 
@@ -452,6 +466,7 @@ export const prepareInputOutputTensor = (
   }
 
   const wasm = getInstance();
+  const ptrSize = wasm.PTR_SIZE;
 
   const dataType = tensor[0];
   const dims = tensor[1];
@@ -484,15 +499,14 @@ export const prepareInputOutputTensor = (
 
     if (Array.isArray(data)) {
       // string tensor
-      dataByteLength = 4 * data.length;
+      dataByteLength = ptrSize * data.length;
       rawData = wasm._malloc(dataByteLength);
       allocs.push(rawData);
-      let dataIndex = rawData / 4;
       for (let i = 0; i < data.length; i++) {
         if (typeof data[i] !== 'string') {
           throw new TypeError(`tensor data at index ${i} is not a string`);
         }
-        wasm.HEAPU32[dataIndex++] = allocWasmString(data[i], allocs);
+        wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
       }
     } else {
       dataByteLength = data.byteLength;
@@ -505,8 +519,7 @@ export const prepareInputOutputTensor = (
   const stack = wasm.stackSave();
   const dimsOffset = wasm.stackAlloc(4 * dims.length);
   try {
-    let dimIndex = dimsOffset / 4;
-    dims.forEach((d) => (wasm.HEAP32[dimIndex++] = d));
+    dims.forEach((d, index) => wasm.setValue(dimsOffset + index * ptrSize, d, ptrSize === 4 ? 'i32' : 'i64'));
     const tensor = wasm._OrtCreateTensor(
       tensorDataTypeStringToEnum(dataType),
       rawData,
@@ -536,6 +549,7 @@ export const run = async (
   options: InferenceSession.RunOptions,
 ): Promise<TensorMetadata[]> => {
   const wasm = getInstance();
+  const ptrSize = wasm.PTR_SIZE;
   const session = activeSessions.get(sessionId);
   if (!session) {
     throw new Error(`cannot run inference. invalid session id: ${sessionId}`);
@@ -558,10 +572,10 @@ export const run = async (
   const inputOutputAllocs: number[] = [];
 
   const beforeRunStack = wasm.stackSave();
-  const inputValuesOffset = wasm.stackAlloc(inputCount * 4);
-  const inputNamesOffset = wasm.stackAlloc(inputCount * 4);
-  const outputValuesOffset = wasm.stackAlloc(outputCount * 4);
-  const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
+  const inputValuesOffset = wasm.stackAlloc(inputCount * ptrSize);
+  const inputNamesOffset = wasm.stackAlloc(inputCount * ptrSize);
+  const outputValuesOffset = wasm.stackAlloc(outputCount * ptrSize);
+  const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
   try {
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
@@ -590,17 +604,13 @@ export const run = async (
       );
     }
 
-    let inputValuesIndex = inputValuesOffset / 4;
-    let inputNamesIndex = inputNamesOffset / 4;
-    let outputValuesIndex = outputValuesOffset / 4;
-    let outputNamesIndex = outputNamesOffset / 4;
     for (let i = 0; i < inputCount; i++) {
-      wasm.HEAPU32[inputValuesIndex++] = inputTensorHandles[i];
-      wasm.HEAPU32[inputNamesIndex++] = inputNamesUTF8Encoded[inputIndices[i]];
+      wasm.setValue(inputValuesOffset + i * ptrSize, inputTensorHandles[i], '*');
+      wasm.setValue(inputNamesOffset + i * ptrSize, inputNamesUTF8Encoded[inputIndices[i]], '*');
     }
     for (let i = 0; i < outputCount; i++) {
-      wasm.HEAPU32[outputValuesIndex++] = outputTensorHandles[i];
-      wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
+      wasm.setValue(outputValuesOffset + i * ptrSize, outputTensorHandles[i], '*');
+      wasm.setValue(outputNamesOffset + i * ptrSize, outputNamesUTF8Encoded[outputIndices[i]], '*');
     }
 
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState && !inputOutputBound) {
@@ -685,7 +695,7 @@ export const run = async (
     const output: TensorMetadata[] = [];
 
     for (let i = 0; i < outputCount; i++) {
-      const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+      const tensor = Number(wasm.getValue(outputValuesOffset + i * ptrSize, '*'));
       if (tensor === outputTensorHandles[i]) {
         // output tensor is pre-allocated. no need to copy data.
         output.push(outputTensors[i]!);
@@ -694,7 +704,7 @@ export const run = async (
 
       const beforeGetTensorDataStack = wasm.stackSave();
       // stack allocate 4 pointer value
-      const tensorDataOffset = wasm.stackAlloc(4 * 4);
+      const tensorDataOffset = wasm.stackAlloc(4 * ptrSize);
 
       let keepOutputTensor = false;
       let type: Tensor.Type | undefined,
@@ -703,24 +713,26 @@ export const run = async (
         const errorCode = wasm._OrtGetTensorData(
           tensor,
           tensorDataOffset,
-          tensorDataOffset + 4,
-          tensorDataOffset + 8,
-          tensorDataOffset + 12,
+          tensorDataOffset + ptrSize,
+          tensorDataOffset + 2 * ptrSize,
+
+          tensorDataOffset + 3 * ptrSize,
         );
         if (errorCode !== 0) {
           checkLastError(`Can't access output tensor data on index ${i}.`);
         }
-        let tensorDataIndex = tensorDataOffset / 4;
-        const dataType = wasm.HEAPU32[tensorDataIndex++];
-        dataOffset = wasm.HEAPU32[tensorDataIndex++];
-        const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-        const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+        const valueType = ptrSize === 4 ? 'i32' : 'i64';
+        const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
+        dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
+        const dimsOffset = wasm.getValue(tensorDataOffset + ptrSize * 2, '*');
+        const dimsLength = Number(wasm.getValue(tensorDataOffset + ptrSize * 3, valueType));
         const dims = [];
         for (let i = 0; i < dimsLength; i++) {
-          dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+          dims.push(Number(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
         }
-        wasm._OrtFree(dimsOffset);
-
+        if (wasm._OrtFree(dimsOffset) !== 0) {
+          checkLastError("Can't free memory for tensor dims.");
+        }
         const size = dims.reduce((a, b) => a * b, 1);
         type = tensorDataTypeEnumToString(dataType);
 
@@ -731,10 +743,10 @@ export const run = async (
             throw new Error('String tensor is not supported on GPU.');
           }
           const stringData: string[] = [];
-          let dataIndex = dataOffset / 4;
           for (let i = 0; i < size; i++) {
-            const offset = wasm.HEAPU32[dataIndex++];
-            const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+            const offset = wasm.getValue(dataOffset + i * ptrSize, '*');
+            const nextOffset = wasm.getValue(dataOffset + (i + 1) * ptrSize, '*');
+            const maxBytesToRead = i === size - 1 ? undefined : nextOffset - offset;
             stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
           }
           output.push([type, dims, stringData, 'cpu']);
@@ -762,7 +774,9 @@ export const run = async (
                 gpuBuffer,
                 download: wasm.jsepCreateDownloader!(gpuBuffer, bufferSize, type),
                 dispose: () => {
-                  wasm._OrtReleaseTensor(tensor);
+                  if (wasm._OrtReleaseTensor(tensor) !== 0) {
+                    checkLastError("Can't release tensor.");
+                  }
                 },
               },
               'gpu-buffer',
@@ -788,7 +802,9 @@ export const run = async (
     }
 
     if (ioBindingState && !enableGraphCapture) {
-      wasm._OrtClearBoundOutputs(ioBindingState.handle);
+      if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
+        checkLastError("Can't clear bound outputs.");
+      }
       activeSessions.set(sessionId, [
         sessionHandle,
         inputNamesUTF8Encoded,

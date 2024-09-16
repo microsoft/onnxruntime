@@ -140,15 +140,15 @@ export declare namespace JSEP {
 export interface OrtInferenceAPIs {
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
-  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
+  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): number;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
-  _OrtReleaseSession(sessionHandle: number): void;
+  _OrtReleaseSession(sessionHandle: number): number;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
   _OrtGetOutputName(sessionHandle: number, index: number): number;
 
-  _OrtFree(stringHandle: number): void;
+  _OrtFree(stringHandle: number): number;
 
   _OrtCreateTensor(
     dataType: number,
@@ -165,12 +165,12 @@ export interface OrtInferenceAPIs {
     dimsOffset: number,
     dimsLength: number,
   ): number;
-  _OrtReleaseTensor(tensorHandle: number): void;
+  _OrtReleaseTensor(tensorHandle: number): number;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
   _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
-  _OrtClearBoundOutputs(ioBindingHandle: number): void;
-  _OrtReleaseBinding(ioBindingHandle: number): void;
+  _OrtClearBoundOutputs(ioBindingHandle: number): number;
+  _OrtReleaseBinding(ioBindingHandle: number): number;
   _OrtRunWithBinding(
     sessionHandle: number,
     ioBindingHandle: number,
@@ -204,11 +204,11 @@ export interface OrtInferenceAPIs {
   _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;
 
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseRunOptions(runOptionsHandle: number): void;
+  _OrtReleaseRunOptions(runOptionsHandle: number): number;
 
   _OrtEndProfiling(sessionHandle: number): number;
 }
@@ -216,7 +216,7 @@ export interface OrtInferenceAPIs {
 export interface OrtTrainingAPIs {
   _OrtTrainingLoadCheckpoint(dataOffset: number, dataLength: number): number;
 
-  _OrtTrainingReleaseCheckpoint(checkpointHandle: number): void;
+  _OrtTrainingReleaseCheckpoint(checkpointHandle: number): number;
 
   _OrtTrainingCreateSession(
     sessionOptionsHandle: number,
@@ -280,7 +280,7 @@ export interface OrtTrainingAPIs {
     isEvalModel: boolean,
   ): number;
 
-  _OrtTrainingReleaseSession(trainingHandle: number): void;
+  _OrtTrainingReleaseSession(trainingHandle: number): number;
 }
 
 /**
@@ -291,10 +291,13 @@ export interface OrtWasmModule
     OrtInferenceAPIs,
     Partial<OrtTrainingAPIs>,
     Partial<JSEP.Module> {
+  PTR_SIZE: number;
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;

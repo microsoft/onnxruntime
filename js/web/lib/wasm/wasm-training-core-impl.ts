@@ -59,7 +59,9 @@ export const createCheckpointHandle = (checkpointData: SerializableInternalBuffe
     throw e;
   } finally {
     // free buffer from wasm heap
-    wasm._OrtFree(checkpointData[0]);
+    if (wasm._OrtFree(checkpointData[0]) !== 0) {
+      checkLastError('Error occurred when trying to free the checkpoint buffer');
+    }
   }
 };
 
@@ -67,16 +69,18 @@ const getModelInputOutputCount = (trainingSessionId: number, isEvalModel: boolea
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
-    const dataOffset = wasm.stackAlloc(8);
+    const ptrSize = wasm.PTR_SIZE;
+    const dataOffset = wasm.stackAlloc(2 * ptrSize);
     if (wasm._OrtTrainingGetModelInputOutputCount) {
       const errorCode = wasm._OrtTrainingGetModelInputOutputCount(
         trainingSessionId,
         dataOffset,
-        dataOffset + 4,
+        dataOffset + ptrSize,
         isEvalModel,
       );
       ifErrCodeCheckLastError(errorCode, "Can't get session input/output count.");
-      return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
+      const valueType = ptrSize === 4 ? 'i32' : 'i64';
+      return [Number(wasm.getValue(dataOffset, valueType)), Number(wasm.getValue(dataOffset + ptrSize, valueType))];
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
@@ -163,7 +167,9 @@ export const createTrainingSessionHandle = (
     wasm._free(optimizerModelData[0]);
 
     if (sessionOptionsHandle !== 0) {
-      wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+      if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
+        checkLastError('Error occurred when trying to release the session options');
+      }
     }
     allocs.forEach((alloc) => wasm._free(alloc));
   }
@@ -198,10 +204,10 @@ const createAndAllocateTensors = (
 
   // moves to heap
   const wasm = getInstance();
-  const valuesOffset = wasm.stackAlloc(count * 4);
-  let valuesIndex = valuesOffset / 4;
+  const ptrSize = wasm.PTR_SIZE;
+  const valuesOffset = wasm.stackAlloc(count * ptrSize);
   for (let i = 0; i < count; i++) {
-    wasm.HEAPU32[valuesIndex++] = tensorHandles[i];
+    wasm.setValue(valuesOffset + i * ptrSize, tensorHandles[i], '*');
   }
 
   return valuesOffset;
@@ -222,10 +228,11 @@ const moveOutputToTensorMetadataArr = (
   outputTensors: Array<TensorMetadata | null>,
 ) => {
   const wasm = getInstance();
+  const ptrSize = wasm.PTR_SIZE;
   const output: TensorMetadata[] = [];
 
   for (let i = 0; i < outputCount; i++) {
-    const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+    const tensor = wasm.getValue(outputValuesOffset + i * ptrSize, '*');
     if (tensor === outputTensorHandles[i]) {
       // output tensor is pre-allocated. no need to copy data.
       output.push(outputTensors[i]!);
@@ -247,27 +254,27 @@ const moveOutputToTensorMetadataArr = (
         tensorDataOffset + 12,
       );
       ifErrCodeCheckLastError(errorCode, `Can't access output tensor data on index ${i}.`);
-
-      let tensorDataIndex = tensorDataOffset / 4;
-      const dataType = wasm.HEAPU32[tensorDataIndex++];
-      dataOffset = wasm.HEAPU32[tensorDataIndex++];
-      const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-      const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+      const valueType = ptrSize === 4 ? 'i32' : 'i64';
+      const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
+      dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
+      const dimsOffset = wasm.getValue(tensorDataOffset + 2 * ptrSize, '*');
+      const dimsLength = Number(wasm.getValue(tensorDataOffset + 3 * ptrSize, valueType));
       const dims = [];
       for (let i = 0; i < dimsLength; i++) {
-        dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+        Number(dims.push(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
       }
-      wasm._OrtFree(dimsOffset);
-
+      if (wasm._OrtFree(dimsOffset) !== 0) {
+        checkLastError('Error occurred when trying to free the dims buffer');
+      }
       const size = dims.reduce((a, b) => a * b, 1);
       type = tensorDataTypeEnumToString(dataType);
 
       if (type === 'string') {
         const stringData: string[] = [];
-        let dataIndex = dataOffset / 4;
         for (let i = 0; i < size; i++) {
-          const offset = wasm.HEAPU32[dataIndex++];
-          const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+          const offset = wasm.getValue(dataOffset + i * ptrSize, '*');
+          const nextOffset = wasm.getValue(dataOffset + (i + 1) * ptrSize, '*');
+          const maxBytesToRead = i === size - 1 ? undefined : nextOffset - offset;
           stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
         }
         output.push([type, dims, stringData, 'cpu']);
@@ -284,7 +291,9 @@ const moveOutputToTensorMetadataArr = (
       if (type === 'string' && dataOffset) {
         wasm._free(dataOffset);
       }
-      wasm._OrtReleaseTensor(tensor);
+      if (wasm._OrtReleaseTensor(tensor) !== 0) {
+        checkLastError('Error occurred when trying to release the tensor');
+      }
     }
   }
 
@@ -482,14 +491,14 @@ export const runEvalStep = async (
 export const getParametersSize = (trainingSessionId: number, trainableOnly: boolean): number => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
-
+  const ptrSize = wasm.PTR_SIZE;
   try {
-    const sizeOffset = wasm.stackAlloc(4);
+    const sizeOffset = wasm.stackAlloc(ptrSize);
     if (wasm._OrtTrainingGetParametersSize) {
       const errorCode = wasm._OrtTrainingGetParametersSize(trainingSessionId, sizeOffset, trainableOnly);
       ifErrCodeCheckLastError(errorCode, "Can't get parameters size");
 
-      return wasm.HEAP32[sizeOffset / 4];
+      return wasm.getValue(sizeOffset, '*');
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
@@ -520,7 +529,7 @@ export const getContiguousParameters = async (
 
   const dimsOffset = wasm.stackAlloc(4);
   const dimsIndex = dimsOffset / 4;
-  wasm.HEAP32[dimsIndex] = parametersSize;
+  wasm.setValue(dimsIndex, parametersSize, '*');
 
   try {
     // wraps allocated array in a tensor
@@ -561,7 +570,9 @@ export const getContiguousParameters = async (
     }
   } finally {
     if (tensor !== 0) {
-      wasm._OrtReleaseTensor(tensor);
+      if (wasm._OrtReleaseTensor(tensor) !== 0) {
+        checkLastError('Error occurred when trying to release the tensor');
+      }
     }
     wasm._free(paramsOffset);
     wasm._free(dimsOffset);
@@ -587,8 +598,8 @@ export const loadParametersBuffer = async (
   wasm.HEAPU8.set(buffer, bufferOffset);
 
   // allocates and handles moving dimensions information to WASM memory
-  const dimsOffset = wasm.stackAlloc(4);
-  wasm.HEAP32[dimsOffset / 4] = bufferCount;
+  const dimsOffset = wasm.stackAlloc(wasm.PTR_SIZE);
+  wasm.setValue(dimsOffset, bufferCount, '*');
   const dimsLength = 1;
   let tensor = 0;
 
@@ -611,7 +622,9 @@ export const loadParametersBuffer = async (
     }
   } finally {
     if (tensor !== 0) {
-      wasm._OrtReleaseTensor(tensor);
+      if (wasm._OrtReleaseTensor(tensor) !== 0) {
+        checkLastError('Error occurred when trying to release the tensor');
+      }
     }
     wasm.stackRestore(stack);
     wasm._free(bufferOffset);
