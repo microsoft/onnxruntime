@@ -145,7 +145,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
 
 template <typename T>
 Status CumSum<T>::Compute(OpKernelContext* ctx) const {
-  const Tensor* input = ctx->Input<Tensor>(0);                       // input tensor
+  const Tensor* input = ctx->Input<Tensor>(0);   // input tensor
   size_t rank = input->Shape().NumDimensions();  // the rank of the input/output
   if (rank == 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot apply CumSum operator on a scalar");
@@ -172,7 +172,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   const auto input_shape = input->Shape().GetDims();
   const size_t axis = onnxruntime::narrow<size_t>(axis_input);
   const int64_t dim = input->Shape()[axis];  // dimension size for the axis
-  const int64_t upper_dim_count =  // number of slices we can walk through iteratively
+  const int64_t upper_dim_count =            // number of slices we can walk through iteratively
       std::accumulate(input_shape.begin(), input_shape.begin() + axis, static_cast<int64_t>(1), std::multiplies<int64_t>());
   const int64_t lower_dim_size =  // sizes of the slices we can treat as 1D arrays
       std::accumulate(input_shape.begin() + axis + 1, input_shape.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
