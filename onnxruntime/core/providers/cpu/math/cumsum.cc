@@ -146,7 +146,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
 template <typename T>
 Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);                       // input tensor
-  auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
+  size_t rank = input->Shape().NumDimensions();  // the rank of the input/output
   if (rank == 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot apply CumSum operator on a scalar");
 
@@ -159,8 +159,8 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   if (output_shape.Size() == 0)
     return Status::OK();
 
-  int64_t axis = 0;
-  ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
+  int64_t axis_input = 0;
+  ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis_input));
 
   // we solve the problem by using the identity that(in the case of exclusive)
   // 1) out[upper_dims...][0][lower_dims...] = 0
@@ -169,12 +169,13 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   // we loop through the [upper_dims...] and start applying the identity in each slice
   // since the [lower_dims...] are adjecent in memory, so we can add them like vectors
 
-  const auto dim = input->Shape()[onnxruntime::narrow<size_t>(axis)];  // dimension size for the axis
   const auto input_shape = input->Shape().GetDims();
-  const auto upper_dim_count =  // number of slices we can walk through iteratively
+  const size_t axis = onnxruntime::narrow<size_t>(axis_input);
+  const int64_t dim = input->Shape()[axis];  // dimension size for the axis
+  const int64_t upper_dim_count =  // number of slices we can walk through iteratively
       std::accumulate(input_shape.begin(), input_shape.begin() + axis, static_cast<int64_t>(1), std::multiplies<int64_t>());
-  const auto lower_dim_size =  // sizes of the slices we can treat as 1D arrays
-      std::accumulate(input_shape.begin() + axis + 1, input_shape.begin() + rank, static_cast<int64_t>(1), std::multiplies<int64_t>());
+  const int64_t lower_dim_size =  // sizes of the slices we can treat as 1D arrays
+      std::accumulate(input_shape.begin() + axis + 1, input_shape.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
   if (!reverse_) {
     const auto* input_iter = input->Data<T>();
