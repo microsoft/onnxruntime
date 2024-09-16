@@ -169,7 +169,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   // we loop through the [upper_dims...] and start applying the identity in each slice
   // since the [lower_dims...] are adjecent in memory, so we can add them like vectors
 
-  const auto dim = input->Shape()[axis];  // dimension size for the axis
+  const auto dim = input->Shape()[onnxruntime::narrow<size_t>(axis)];  // dimension size for the axis
   const auto input_shape = input->Shape().GetDims();
   const auto upper_dim_count =  // number of slices we can walk through iteratively
       std::accumulate(input_shape.begin(), input_shape.begin() + axis, 1, std::multiplies<int64_t>());
@@ -208,13 +208,13 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
       }
     }
   } else {
+    // in this case the logic is mostly the same, but we start from the end
     const auto* input_iter = input->Data<T>() + input->Shape().Size();
     auto* output_iter = output_tensor.MutableData<T>() + output_shape.Size();
     const auto* prev_output_iter = output_iter;
 
     if (exclusive_) {
       for (int outer = upper_dim_count - 1; outer >= 0; outer--) {
-        // move input to the end of the range
         prev_output_iter = output_iter;
         for (int inner = lower_dim_size - 1; inner >= 0; inner--) {
           *(--output_iter) = 0;
