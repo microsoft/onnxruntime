@@ -182,26 +182,26 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
     const auto* prev_output_iter = output_iter;
 
     if (exclusive_) {
-      for (int outer = 0; outer < upper_dim_count; outer++) {
+      for (int64_t outer = 0; outer < upper_dim_count; outer++) {
         prev_output_iter = output_iter;
-        for (int inner = 0; inner < lower_dim_size; inner++) {
+        for (int64_t inner = 0; inner < lower_dim_size; inner++) {
           *(output_iter++) = 0;
         }
-        for (int cum_axis = 1; cum_axis < dim; cum_axis++) {
-          for (int inner = 0; inner < lower_dim_size; inner++) {
+        for (int64_t cum_axis = 1; cum_axis < dim; cum_axis++) {
+          for (int64_t inner = 0; inner < lower_dim_size; inner++) {
             *(output_iter++) = *(prev_output_iter++) + *(input_iter++);
           }
         }
         input_iter += lower_dim_size;
       }
     } else {
-      for (int outer = 0; outer < upper_dim_count; outer++) {
+      for (int64_t outer = 0; outer < upper_dim_count; outer++) {
         prev_output_iter = output_iter;
-        for (int inner = 0; inner < lower_dim_size; inner++) {
+        for (int64_t inner = 0; inner < lower_dim_size; inner++) {
           *(output_iter++) = *(input_iter++);
         }
-        for (int cum_axis = 1; cum_axis < dim; cum_axis++) {
-          for (int inner = 0; inner < lower_dim_size; inner++) {
+        for (int64_t cum_axis = 1; cum_axis < dim; cum_axis++) {
+          for (int64_t inner = 0; inner < lower_dim_size; inner++) {
             *(output_iter++) = *(prev_output_iter++) + *(input_iter++);
           }
         }
@@ -214,26 +214,26 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
     const auto* prev_output_iter = output_iter;
 
     if (exclusive_) {
-      for (int outer = upper_dim_count - 1; outer >= 0; outer--) {
+      for (int64_t outer = upper_dim_count - 1; outer >= 0; outer--) {
         prev_output_iter = output_iter;
-        for (int inner = lower_dim_size - 1; inner >= 0; inner--) {
+        for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
           *(--output_iter) = 0;
         }
         for (int64_t cum_axis = dim - 1; cum_axis > 0; cum_axis--) {
-          for (int inner = lower_dim_size - 1; inner >= 0; inner--) {
+          for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
             *(--output_iter) = *(--prev_output_iter) + *(--input_iter);
           }
         }
         input_iter -= lower_dim_size;
       }
     } else {
-      for (int outer = upper_dim_count - 1; outer >= 0; outer--) {
+      for (int64_t outer = upper_dim_count - 1; outer >= 0; outer--) {
         prev_output_iter = output_iter;
-        for (int inner = lower_dim_size - 1; inner >= 0; inner--) {
+        for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
           *(--output_iter) = *(--input_iter);
         }
         for (int64_t cum_axis = dim - 1; cum_axis > 0; cum_axis--) {
-          for (int inner = lower_dim_size - 1; inner >= 0; inner--) {
+          for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
             *(--output_iter) = *(--prev_output_iter) + *(--input_iter);
           }
         }
