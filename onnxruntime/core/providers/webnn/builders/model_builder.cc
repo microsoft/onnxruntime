@@ -21,12 +21,13 @@ namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            const emscripten::val& context, const DataLayout preferred_layout,
-                           const WebnnDeviceType wnn_device_type)
+                           const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
       preferred_layout_(preferred_layout),
-      wnn_device_type_(wnn_device_type) {
+      wnn_device_type_(wnn_device_type),
+      wnn_limits_(wnn_limits) {
   // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
   // is only allowed to be called once.
   wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(context);
@@ -102,7 +103,7 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("dimensions", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (IsSupportedDataType(data_type, webnn_supported_data_types)) {
+    if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
       auto num_elements = SafeInt<size_t>(Product(shape));
       emscripten::val view = emscripten::val::undefined();
