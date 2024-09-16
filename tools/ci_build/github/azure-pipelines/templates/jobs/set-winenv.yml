@@ -27,8 +27,8 @@ steps:
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" $(Agent.TempDirectory)
         displayName: 'Download TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8'
       - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.5" $(Agent.TempDirectory)
-        displayName: 'Download TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.5'
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6" $(Agent.TempDirectory)
+        displayName: 'Download TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6'
 
   - task: BatchScript@1
     displayName: 'setup env'
