@@ -23,8 +23,18 @@ endfunction()
 #      before: existing_dependencies = [libB]
 #      after: output_var = [libA, libC, libB]
 function(add_dependencies_to_external_libs new_lib output_var)
-  set(existing_deps ${ARGN})
+  set(existing_deps_in ${ARGN})
   set(new_deps)
+
+  # need to de-alias existing_deps
+  foreach(existing_dep IN LISTS existing_deps_in)
+    get_target_property(alias ${existing_dep} ALIASED_TARGET)
+    if(TARGET ${alias})
+      list(APPEND existing_deps ${alias})
+    else()
+      list(APPEND existing_deps ${existing_dep})
+    endif()
+  endforeach()
 
   function(get_dependencies input_target)
     get_target_property(alias ${input_target} ALIASED_TARGET)
@@ -68,7 +78,7 @@ function(add_dependencies_to_external_libs new_lib output_var)
     endif()
   endforeach()
 
-  list(APPEND combined_deps ${existing_deps})
+  list(APPEND combined_deps ${existing_deps_in})
   message(STATUS "Combined: ${combined_deps}")
   set(${output_var} ${combined_deps} PARENT_SCOPE)
 endfunction()

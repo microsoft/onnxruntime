@@ -684,7 +684,7 @@ if (onnxruntime_USE_WEBGPU)
 
   # Add with dependencies in reverse order as new values are added at the front in each call
   add_dependencies_to_external_libs(dawn::dawn_proc onnxruntime_EXTERNAL_LIBRARIES "${onnxruntime_EXTERNAL_LIBRARIES}")
-  add_dependencies_to_external_libs(dawn::native onnxruntime_EXTERNAL_LIBRARIES "${onnxruntime_EXTERNAL_LIBRARIES}")
+  add_dependencies_to_external_libs(dawn::dawn_native onnxruntime_EXTERNAL_LIBRARIES "${onnxruntime_EXTERNAL_LIBRARIES}")
 endif()
 
 set(onnxruntime_LINK_DIRS)
