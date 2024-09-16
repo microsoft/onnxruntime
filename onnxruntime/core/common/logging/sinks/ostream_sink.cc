@@ -45,7 +45,8 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
   }
 #endif
 
-  msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
+  timestamp_ns::operator<<(msg, timestamp); // handle ambiguity with C++20 where date and std::chrono have operator<<
+  msg << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
       << message.Location().ToString() << "] " << message.Message();
 
 #ifndef ORT_MINIMAL_BUILD

@@ -58,10 +58,11 @@ namespace logging {
 
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 
-// TODO: When other compilers support std::chrono::operator<<, update this.
-// TODO: Check support for other compilers' version before enable C++20 for other compilers.
-// Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4.
-#if __cplusplus >= 202002L && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L
+// Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4, but the target macOS version must be
+// >= 13.3 for it to be used.
+#if __cplusplus >= 202002L && \
+  (!defined(__MAC_OS_X_VERSION_MAX_ALLOWED) || __MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L) && \
+  (!defined(__MAC_OS_X_VERSION_MIN_REQUIRED) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 130300L)
 namespace timestamp_ns = std::chrono;
 #else
 namespace timestamp_ns = ::date;
