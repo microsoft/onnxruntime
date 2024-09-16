@@ -172,9 +172,9 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   const auto dim = input->Shape()[onnxruntime::narrow<size_t>(axis)];  // dimension size for the axis
   const auto input_shape = input->Shape().GetDims();
   const auto upper_dim_count =  // number of slices we can walk through iteratively
-      std::accumulate(input_shape.begin(), input_shape.begin() + axis, 1, std::multiplies<int64_t>());
+      std::accumulate(input_shape.begin(), input_shape.begin() + axis, static_cast<int64_t>(1), std::multiplies<int64_t>());
   const auto lower_dim_size =  // sizes of the slices we can treat as 1D arrays
-      std::accumulate(input_shape.begin() + axis + 1, input_shape.begin() + rank, 1, std::multiplies<int64_t>());
+      std::accumulate(input_shape.begin() + axis + 1, input_shape.begin() + rank, static_cast<int64_t>(1), std::multiplies<int64_t>());
 
   if (!reverse_) {
     const auto* input_iter = input->Data<T>();
