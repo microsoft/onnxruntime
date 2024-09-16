@@ -435,11 +435,11 @@ options.add_session_config_entry("ep.context_embed_mode", "0")
 
 ### Weight sharing in Onnx domain
 Weight sharing in Onnx means multiple Onnx models with external weights point to the same external weight file. The Onnx models share same tensor names so that they reference to the same tensor data.
-<p align="center"><img width="100%" src="../../images/Onnx_weight_sharing.png" alt="Weight sharing across Onnx models"/></p>
+<p align="center"><img width="60%" src="../../images/Onnx_weight_sharing.png" alt="Weight sharing across Onnx models"/></p>
 
 ### Weight sharing in QNN domain
 QNN weight sharing is enabled with QNN pre-generated QNN context binary. It requires users to generate context binary offline on Linux x86_64 or Windows x86_64 machine (Windows support since QNN 2.26). The QNN context binary contains multiple graphs which share the same tensors.
-<p align="center"><img width="100%" src="../../images/Qnn_weight_sharing.png" alt="Weight sharing in QNN context binary"/></p>
+<p align="center"><img width="60%" src="../../images/Qnn_weight_sharing.png" alt="Weight sharing in QNN context binary"/></p>
 
 ### Weight sharing in QNN domain
 The way OnnxRuntime to convert Onnx model with weight sharing to QNN context binary with weight sharing.
