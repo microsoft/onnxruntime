@@ -14,6 +14,65 @@ function(set_folder_for_subdir_targets srcDir folderName)
   endforeach()
 endfunction()
 
+# Add a new library and it's dependencies to an existing list.
+# The new library and any dependencies it has that are not already in the list will be prepended to the existing list.
+# output_var will be set to the combined list.
+#
+# e.g. libA is new, and depends on libB and libC. libB is already in extended_list.
+#      add_dependencies_to_external_lib(libA output_var "${existing_dependencies}") # need to quote existing list values
+#      before: existing_dependencies = [libB]
+#      after: output_var = [libA, libC, libB]
+function(add_dependencies_to_external_libs new_lib output_var)
+  set(existing_deps ${ARGN})
+  set(new_deps)
+
+  function(get_dependencies input_target)
+    get_target_property(alias ${input_target} ALIASED_TARGET)
+    if(TARGET ${alias})
+      set(input_target ${alias})
+    endif()
+
+    # if this already exists we don't need to recurse any more
+    if(${input_target} IN_LIST existing_deps OR ${input_target} IN_LIST new_deps)
+      return()
+    endif()
+
+    list(APPEND new_deps ${input_target})
+
+    get_target_property(link_libraries ${input_target} LINK_LIBRARIES)
+    foreach(dependency IN LISTS link_libraries)
+      if(TARGET ${dependency})
+        get_dependencies(${dependency})
+      endif()
+    endforeach()
+
+    # Add if needed. As this is to primarily update the items to link against, interface libraries shouldn't be relevant
+    # get_target_property(link_libraries ${input_target} INTERFACE_LINK_LIBRARIES)
+    # foreach(dependency IN LISTS link_libraries)
+    #   if(TARGET ${dependency})
+    #     get_dependencies(${dependency})
+    #   endif()
+    # endforeach()
+
+    set(new_deps ${new_deps} PARENT_SCOPE)
+  endfunction()
+
+  message(STATUS "### Getting dependencies for ${new_lib}")
+  get_dependencies(${new_lib})
+
+  set(combined_deps)
+  foreach(dependency IN LISTS new_deps)
+    get_target_property(type ${dependency} TYPE)
+    if(${type} STREQUAL "STATIC_LIBRARY" OR ${type} STREQUAL "OBJECT_LIBRARY")
+      list(APPEND combined_deps ${dependency})
+    endif()
+  endforeach()
+
+  list(APPEND combined_deps ${existing_deps})
+  message(STATUS "Combined: ${combined_deps}")
+  set(${output_var} ${combined_deps} PARENT_SCOPE)
+endfunction()
+
 # This file was copied from cmake source with modifications:
 # 1. Add the EXCLUDE_FROM_ALL keyword when this function calls add_subdirectory. It will also resolve the
 #    'make install' issue.
