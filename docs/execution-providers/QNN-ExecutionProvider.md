@@ -439,7 +439,7 @@ Weight sharing in Onnx means multiple Onnx models with external weights point to
 
 ### Weight sharing in QNN domain
 QNN weight sharing is enabled with QNN pre-generated QNN context binary. It requires users to generate context binary offline on Linux x86_64 or Windows x86_64 machine (Windows support since QNN 2.26). The QNN context binary contains multiple graphs which share the same tensors.
-<p align="center"><img width="40%" src="../../images/Qnn_weight_sharing.png" alt="Weight sharing in QNN context binary"/></p>
+<p align="center"><img width="30%" src="../../images/Qnn_weight_sharing.png" alt="Weight sharing in QNN context binary"/></p>
 
 ### Weight sharing in QNN domain
 The way OnnxRuntime to convert Onnx model with weight sharing to QNN context binary with weight sharing.
