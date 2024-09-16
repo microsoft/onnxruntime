@@ -178,7 +178,7 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
         &p);
   }
 
-  ORT_ENFORCE(xstatus == xnn_status_success && p != nullptr, "xnn_create_softmax_nc_",
+  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_",
               OpTypeToString(op_type_), " failed. Status:", xstatus);
   channel_dim_ = channels;
   op0_.reset(p);
