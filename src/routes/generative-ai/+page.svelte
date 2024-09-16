@@ -1,86 +1,157 @@
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
-	const title = 'Generative AI + ONNX Runtime';
+	import { fade } from 'svelte/transition';
+	import coffee from './coffee.png';
+	import whisper from './whisper.png';
+	import vision_ui from './vision_UI.png';
+	import mobile from './mobile.png';
+	import desktop from './desktop.png';
+	import cloud from './browser.png';
+	import aibrain from './aibrain.webp';
+	const title = 'Generative AI';
 	const description =
-		'Integrate the power of generative AI in your apps and services with ONNX Runtime. Broad platform support and deep optimizations empower usage of state-of-the-art models for image synthesis, text generation, and more.';
+		'Learn about integrating the power of generative AI in your apps and services. Use state-of-the-art models for text generation, audio synthesis, and more to create innovative experiences.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
-	import stablediffusion1 from '../../images/StableDiffusion1.webp';
-	import stablediffusion2 from '../../images/StableDiffusion2.webp';
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnxruntime, onnx runtime generative ai, onnx runtime generative ai models, onnx runtime generative ai deployment, onnx runtime generative ai performance, onnx runtime generative ai time to market, onnx runtime generative ai deploy anywhere, onnx runtime generative ai boost performance, onnx runtime generative ai improve time to market, onnx runtime generative ai production ready, onnx runtime generative ai lower latency, onnx runtime generative ai higher throughput, onnx runtime generative ai get innovations into production faster, onnx runtime generative ai testimonials, onnx runtime generative ai performance enhancements, onnx runtime generative ai production ready, onnx runtime generative ai lower latency, onnx runtime generative ai higher throughput, onnx runtime generative ai get innovations into production faster, onnx runtime generative ai testimonials, onnx runtime generative ai performance enhancements'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = ['']; // Ensure to populate with valid author names if needed
+	const keywords =
+		'onnxruntime, onnx runtime generative ai, onnx runtime generative ai models, onnx runtime generative ai deployment, onnx runtime generative ai performance, onnx runtime generative ai time to market, onnx runtime generative ai production ready, onnx runtime generative ai lower latency, onnx runtime generative ai higher throughput, onnx runtime generative ai testimonials, onnx runtime generative ai performance enhancements';
+	const cycleWords = ['Desktop', 'Mobile', 'Cloud'];
+	let cycleIndex = 0;
+
+	// Set interval for cycling platform display
+	const interval = setInterval(() => {
+		cycleIndex = (cycleIndex + 1) % cycleWords.length;
+	}, 3000);
+
+	// Cleanup interval on component destruction
+	import { onDestroy } from 'svelte';
+	onDestroy(() => {
+		clearInterval(interval);
+	});
 </script>
+
 <svelte:head>
-	<!-- Dynamic meta tags -->
+	<!-- Meta tags -->
 	<meta name="description" content={description} />
-	<meta name="image" content={image} />
+	<meta name="image" content={aibrain} />
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
+
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
-	<meta property="og:image" content={image} />
-	
+	<meta property="og:description" content={description} />
+	<meta property="og:image" content={aibrain} />
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
-	<meta property="twitter:image" content={image} />
-	<meta property="twitter:card" content={imageSquare} />
+	<meta property="twitter:image" content={aibrain} />
+	<meta property="twitter:card" content="summary_large_image" />
 </svelte:head>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
+
 <div class="container mx-auto px-10 my-10">
-	<h1 class="text-4xl">Stable Diffusion + ONNX Runtime</h1>
-	<p class="pb-4">Use ONNX Runtime to accelerate this popular image generation model.</p>
-	<h2 class="text-3xl pb-4">Benefits</h2>
-	<div class="grid gap-10 grid-cols-1 lg:grid-cols-2 pb-4">
-		<div class="card bg-base-300">
-			<div class="card-body">
-				<h2 class="card-title pb-4">Run Stable Diffusion outside of a Python environment</h2>
-				<div class="card-actions">
-					<a
-						href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html"
-						class="btn-primary btn">Inference Stable Diffusion →</a
-					>
-				</div>
-			</div>
+	<div class=" grid grid-cols-1 md:grid-cols-4">
+		<div class="m-2 lg:m-8">
+			<img class="rounded-xl" src={aibrain} alt="Representing generative AI" />
 		</div>
-		<div class="card bg-base-300">
-			<div class="card-body">
-				<h2 class="card-title pb-4">
-					Speed up inference of Stable Diffusion on NVIDIA and AMD GPUs
+		<div class="col-span-3 my-auto">
+			<h2 class="text-3xl pb-4">What is Generative AI?</h2>
+			<p>
+				Generative AI refers to artificial intelligence that creates new content—such as text,
+				images, audio, or code—based on patterns learned from existing data. Generative AI leverages
+				transformer models for text and diffusion models for images. These innovations are
+				transforming industries, enabling personalized experiences, automating creative processes,
+				and opening new possibilities for content generation!
+			</p>
+		</div>
+	</div>
+
+	<div class="divider" />
+
+	<div>
+		<h2 class="text-3xl">Generative AI Models</h2>
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 my-8 gap-4">
+			<!-- Model cards -->
+			{#each [{ title: 'Text Generation Models', description: 'Generate human-like text for chatbots, content creation, summarization, and more.', demos: [{ name: 'Llama', url: 'https://huggingface.co/meta-llama/Meta-Llama-3.1-8B' }, { name: 'Mistral', url: 'https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3' }, { name: 'Phi', url: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct' }] }, { title: 'Image Generation Models', description: 'Create artwork or realistic images from descriptions using AI models like Stable Diffusion.', demos: [{ name: 'Stable Diffusion', url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0' }] }, { title: 'Audio Models', description: 'Generate audio, music, or speech from data inputs with AI models like Whisper.', demos: [{ name: 'Whisper', url: 'https://huggingface.co/spaces/Xenova/whisper-web' }] }, { title: 'Other Models', description: 'Generate diverse outputs like code, video, or 3D designs.', demos: [{ name: 'Request a Model', url: 'https://github.com/microsoft/onnxruntime-genai/discussions/categories/model-support' }] }] as model}
+				<div class="mx-auto flex flex-col gap-4 h-full">
+					<div class="flex-1">
+						<h3 class="text-2xl">{model.title}</h3>
+						<p>{model.description}</p>
+					</div>
+					<div class="grid gap-4 grid-cols-{model.demos.length} mt-auto">
+						{#each model.demos as demo}
+							<a href={demo.url} class="btn btn-primary btn-block">{demo.name}</a>
+						{/each}
+					</div>
+				</div>
+			{/each}
+		</div>
+	</div>
+
+	<div class="divider" />
+
+	<div>
+		<h2 class="text-3xl">ONNX Runtime ❤️ Generative AI</h2>
+		<p>
+			Use ONNX Runtime for high performance, scalability, and flexibility when deploying generative
+			AI models. With support for diverse frameworks and hardware acceleration, ONNX Runtime ensures
+			efficient, cost-effective model inference across platforms.
+		</p>
+
+		<div class="grid grid-cols-1 lg:grid-cols-2 my-8">
+			<div>
+				<h2 class="text-2xl text-center">Run ONNX Runtime on:</h2>
+				<h2 class="text-center text-4xl">
+					{#key cycleIndex}
+						<strong in:fade={{ duration: 1000 }}>{cycleWords[cycleIndex]}</strong>
+						<img
+							class="mx-auto mt-4"
+							height="512px"
+							width="512px"
+							in:fade={{ duration: 1000 }}
+							src={cycleIndex === 0 ? desktop : cycleIndex === 1 ? mobile : cloud}
+							alt="Platform for desktop, mobile, and cloud usage"
+						/>
+					{/key}
 				</h2>
-				<div class="card-actions">
-					<a
-						href="https://medium.com/microsoftazure/accelerating-stable-diffusion-inference-with-onnx-runtime-203bd7728540"
-						class="btn btn-primary">Accelerate Stable Diffusion →</a
-					>
-				</div>
+			</div>
+
+			<!-- Feature Cards -->
+			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2 my-8">
+				{#each [{ title: 'Multiplatform', description: 'Run ONNX Runtime on Desktop 🖥️, Mobile 📱, Browser 💻, or Cloud ☁️.' }, { title: 'On Device', description: 'Inference privately 🔐 and save costs ⚙️ with on-device models.' }, { title: 'Multimodal Compatibility', description: 'Use ONNX Runtime with vision or omni models. We work to quickly enable all new model scenarios 🚀.' }, { title: 'Easy to Use', description: 'Get started quickly ⏩ with our examples and tutorials.' }] as feature}
+					<div class="card bg-primary dark:text-black text-neutral-content">
+						<div class="card-body items-center text-center">
+							<h2 class="card-title">{feature.title}</h2>
+							<p class="my-auto pt-10">{feature.description}</p>
+						</div>
+					</div>
+				{/each}
 			</div>
 		</div>
 	</div>
-	<h2 class="text-3xl">Performance</h2>
-	<p class="pb-4">The average latency in seconds on Stable Diffusion v1.5 and v2.1 models:</p>
-	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 pb-10">
-		<div class="">
-			<img src={stablediffusion1} alt="Stable Diffusion v1.5 latency graphs" />
+
+	<div>
+		<h3 class="text-2xl">Tutorials & Demos</h3>
+		<p>Get started with any of these tutorials and demos:</p>
+		<div class="grid grid-cols-1 gap-4 lg:grid-cols-3 my-8">
+			<!-- Tutorial cards -->
+			{#each [{ title: 'Phi-3 Vision', img: coffee, description: 'A Desktop app demo to interact with text and images simultaneously.', url: 'https://onnxruntime.ai/docs/genai/tutorials/phi3-v.html' }, { title: 'LLM Chat App', img: vision_ui, description: 'Pick your favorite model and start chatting!', url: 'https://github.com/microsoft/onnxruntime-genai/tree/main/examples/chat_app' }, { title: 'Whisper in Browser', img: whisper, description: 'Run whisper to transcribe user audio in your browser!', url: 'https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper' }] as tutorial}
+				<div class="card bg-base-100 image-full sm:w-80 mx-auto">
+					<figure><img class="brightness-50" src={tutorial.img} alt={tutorial.title} /></figure>
+					<div class="card-body items-center text-center">
+						<h2 class="card-title text-white">{tutorial.title}</h2>
+						<p class="text-white">{tutorial.description}</p>
+						<a href={tutorial.url} class="btn btn-primary">Try it out!</a>
+					</div>
+				</div>
+			{/each}
+			<!-- More tutorials -->
 		</div>
-		<div class="">
-			<img src={stablediffusion2} alt="Stable Diffusion v2.1 latency graphs" />
-		</div>
-	</div>
-	<h2 class="text-3xl">Large Language Models + ONNX Runtime</h2>
-	<p class="pb-4">
-		ONNX Runtime supports many popular large language model (LLM) families in the Hugging Face Model
-		Hub. These, along with thousands of other models, are easily convertible to ONNX using the
-		Optimum API.
-	</p>
-	<div class="">
-		<a href="https://huggingface.co/models?other=llama" class="btn btn-primary">LLaMA →</a>
-		<a href="https://huggingface.co/models?other=gpt_neo" class="btn btn-primary">GPT Neo →</a>
-		<a href="https://huggingface.co/models?other=bloom" class="btn btn-primary">BLOOM →</a>
-		<a href="https://huggingface.co/models?other=opt" class="btn btn-primary">OPT →</a>
-		<a href="https://huggingface.co/models?other=gpt-j" class="btn btn-primary">GPT-J →</a>
-		<a href="https://huggingface.co/models?other=flan-t5" class="btn btn-primary">FLAN-T5 →</a>
+		<a
+			href="https://github.com/microsoft/onnxruntime-inference-examples"
+			class="btn btn-secondary btn-block mt-auto">See more demos!</a
+		>
 	</div>
 </div>
