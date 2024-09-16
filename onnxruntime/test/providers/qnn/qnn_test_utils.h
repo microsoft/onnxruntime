@@ -1033,12 +1033,16 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  * \param log_severity The logger's minimum severity level.
+ * \param verify_outputs True to verify that the outputs match (within tolerance).
+ * \param ep_graph_checker Function called on the Graph generated for the EP's session. Used to check node
+ *                         EP assignment.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f,
                      logging::Severity log_severity = logging::Severity::kERROR,
-                     bool verify_outputs = true);
+                     bool verify_outputs = true,
+                     std::function<void(const Graph&)>* ep_graph_checker = nullptr);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,
