@@ -89,6 +89,9 @@ class ShaderHelper final {
   const ShaderVariableHelper& AddOutput(const std::string& name,
                                         ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
+  // Add an indices variable to the shader.
+  const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform);
+
   // Append additional implementation code to the shader.
   //
   // can be called multiple times.
@@ -146,7 +149,9 @@ class ShaderHelper final {
   Status ValidateVariable(const ProgramOutput& output, const ShaderVariableHelper& var) const;
 #endif
 
-  Status ValidateShapeForInputsAndOutputs() const;
+  Status ValidateShapeForInputs() const;
+  Status ValidateShapeForOutputs() const;
+  Status ValidateIndices() const;
 
   // Generate source code.
   //

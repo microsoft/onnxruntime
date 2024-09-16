@@ -9,46 +9,66 @@
 namespace onnxruntime {
 namespace webgpu {
 Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("input_a", ShaderVariable::UseUniform | ShaderVariable::UseValueTypeAlias);
-  const auto& b = shader.AddInput("input_b", ShaderVariable::UseUniform | ShaderVariable::UseValueTypeAlias);
-  const auto& c = shader.AddOutput("output", ShaderVariable::UseUniform | ShaderVariable::UseValueTypeAlias);
-  std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n" :
-                                            "let a = " + a.GetByOffset("global_idx") + ";\n";
-  std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n" :
-                                            "let b = " + b.GetByOffset("global_idx") + ";\n";
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n" : "let a = " + a.GetByOffset("global_idx") + ";\n";
+  std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n" : "let b = " + b.GetByOffset("global_idx") + ";\n";
   if (!is_lhs_scalar_ && !is_rhs_scalar_ && is_broadcast_) {
     if (vectorize_) {
-      std::string common = "let outputIndices = " + c.OffsetToIndices("global_idx * 4") + ";\n"
-                           "let offset_a = " + a.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "let offset_b = " + b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n";
-      const std::string a_data = a.Num_Components() == 4 ?
-          "let a = " + a.GetByOffset("offset_a / 4") + ";\n" :
-          "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
+      std::string common = "let outputIndices = " + c.OffsetToIndices("global_idx * 4") +
+                           ";\n"
+                           "let offset_a = " +
+                           a.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "let offset_b = " +
+                           b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n";
+      const std::string a_data = a.NumComponents() == 4 ? "let a = " + a.GetByOffset("offset_a / 4") + ";\n" : "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
       get_a_data = common + a_data;
-      get_b_data = b.Num_Components() == 4 ?
-          "let b = " + b.GetByOffset("offset_b / 4") + ";\n" :
-          "let b = input_a_value_t(" + b.GetByOffset("offset_b") + ");\n";
+      get_b_data = b.NumComponents() == 4 ? "let b = " + b.GetByOffset("offset_b / 4") + ";\n" : "let b = input_a_value_t(" + b.GetByOffset("offset_b") + ");\n";
     } else {
-      std::string common = "var outputIndices = " + c.OffsetToIndices("global_idx * 4") + ";\n"
-                           "let offset_a0 = " + a.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "let offset_b0 = " + b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "outputIndices = " + c.OffsetToIndices("global_idx * 4 + 1") + ";\n"
-                           "let offset_a1 = " + a.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "let offset_b1 = " + b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "outputIndices = " + c.OffsetToIndices("global_idx * 4 + 2") + ";\n"
-                           "let offset_a2 = " + a.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "let offset_b2 = " + b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "outputIndices = " + c.OffsetToIndices("global_idx * 4 + 3") + ";\n"
-                           "let offset_a3 = " + a.BroadcastedIndicesToOffset("outputIndices", c) + ";\n"
-                           "let offset_b3 = " + b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n";
-       get_a_data = common + "let a = vec4<input_a_value_t>(" + a.GetByOffset("offset_a0") + ", " +
-                                                                a.GetByOffset("offset_a1") + ", " +
-                                                                a.GetByOffset("offset_a2") + ", " +
-                                                                a.GetByOffset("offset_a3") + ");\n";
-       get_b_data = "let b = vec4<input_b_value_t>(" + b.GetByOffset("offset_b0") + ", " +
-                                                       b.GetByOffset("offset_b1") + ", " +
-                                                       b.GetByOffset("offset_b2") + ", " +
-                                                       b.GetByOffset("offset_b3") + ");\n";
+      std::string common = "var outputIndices = " + c.OffsetToIndices("global_idx * 4") +
+                           ";\n"
+                           "let offset_a0 = " +
+                           a.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "let offset_b0 = " +
+                           b.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "outputIndices = " +
+                           c.OffsetToIndices("global_idx * 4 + 1") +
+                           ";\n"
+                           "let offset_a1 = " +
+                           a.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "let offset_b1 = " +
+                           b.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "outputIndices = " +
+                           c.OffsetToIndices("global_idx * 4 + 2") +
+                           ";\n"
+                           "let offset_a2 = " +
+                           a.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "let offset_b2 = " +
+                           b.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "outputIndices = " +
+                           c.OffsetToIndices("global_idx * 4 + 3") +
+                           ";\n"
+                           "let offset_a3 = " +
+                           a.BroadcastedIndicesToOffset("outputIndices", c) +
+                           ";\n"
+                           "let offset_b3 = " +
+                           b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n";
+      get_a_data = common + "let a = vec4<input_a_value_t>(" + a.GetByOffset("offset_a0") + ", " +
+                   a.GetByOffset("offset_a1") + ", " +
+                   a.GetByOffset("offset_a2") + ", " +
+                   a.GetByOffset("offset_a3") + ");\n";
+      get_b_data = "let b = vec4<input_b_value_t>(" + b.GetByOffset("offset_b0") + ", " +
+                   b.GetByOffset("offset_b1") + ", " +
+                   b.GetByOffset("offset_b2") + ", " +
+                   b.GetByOffset("offset_b3") + ");\n";
     }
   }
 
@@ -105,8 +125,9 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   }
 
   SafeInt<uint32_t> vec_size = (size + 3) / 4;
-  const std::string expression = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ?
-      "output_value_t(pow(vec4<f16>(a), vec4<f16>(b)))" : "output_value_t(pow(vec4<f32>(a), vec4<f32>(b)))";
+  const std::string expression = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
+                                     ? "output_value_t(pow(vec4<f16>(a), vec4<f16>(b)))"
+                                     : "output_value_t(pow(vec4<f32>(a), vec4<f32>(b)))";
   BinaryElementwiseProgram program{kernel_name_, kernel_name_ == "Pow" ? expression : expression_, is_broadcast, is_lhs_scalar, is_rhs_scalar, vectorize};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
@@ -124,7 +145,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     program
         .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4 ? 4 : 1},
                     {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4 ? 4 : 1}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, 4}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
+        .AddIndices(output_tensor->Shape())
         .CacheHint(std::to_string(vectorize));
   }
 
@@ -163,7 +185,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       kWebGpuExecutionProvider,                                             \
       KernelDefBuilder()                                                    \
           .TypeConstraint("T", TYPE)                                        \
-      .TypeConstraint("T1", TYPE1),                                         \
+          .TypeConstraint("T1", TYPE1),                                     \
       KERNEL_CLASS);
 
 #define WEBGPU_BINARY_VERSIONED_KERNEL_2(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE, TYPE1) \

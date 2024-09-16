@@ -98,6 +98,15 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
   return AddVariableImpl(false, name, usage, dims);
 }
 
+const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, bool use_uniform) {
+  const size_t indices_index = indices_vars_.size();
+  return *indices_vars_.emplace_back(
+      std::make_unique<ShaderIndicesHelper>(name,
+                                            ProgramVariableDataType::InvalidType,
+                                            use_uniform ? ShaderUsage::UseUniform : ShaderUsage::None,
+                                            program_.Indices()[indices_index]));
+}
+
 #ifndef NDEBUG  // if debug build
 namespace {
 // Validate if the tensor element type matches the program variable data type
@@ -237,13 +246,10 @@ const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
   return *var;
 }
 
-Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
-  // Validate input/output as dependencies of shape_uniforms
+Status ShaderHelper::ValidateShapeForInputs() const {
+  // Validate input as dependencies of shape_uniforms
   ORT_RETURN_IF_NOT(input_vars_.size() == program_.Inputs().size(),
                     "Mismatched input variable count. Shader: ", input_vars_.size(), ", Program: ", program_.Inputs().size());
-  ORT_RETURN_IF_NOT(output_vars_.size() == program_.Outputs().size(),
-                    "Mismatched output variable count. Shader: ", output_vars_.size(), ", Program: ", program_.Outputs().size());
-
   for (size_t i = 0; i < input_vars_.size(); i++) {
 #ifndef NDEBUG  // if debug build
     // Validate input shape
@@ -266,6 +272,13 @@ Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
       // This will not generate any shape variables in the shader, can you can only use offset to set/get values.
     }
   }
+  return Status::OK();
+}
+
+Status ShaderHelper::ValidateShapeForOutputs() const {
+  // Validate output as dependencies of shape_uniforms
+  ORT_RETURN_IF_NOT(output_vars_.size() == program_.Outputs().size(),
+                    "Mismatched output variable count. Shader: ", output_vars_.size(), ", Program: ", program_.Outputs().size());
 
   for (size_t i = 0; i < output_vars_.size(); i++) {
 #ifndef NDEBUG  // if debug build
@@ -288,6 +301,13 @@ Status ShaderHelper::ValidateShapeForInputsAndOutputs() const {
                         "When UseUniform is not set in variable usage, the corresponding program output should depend on shape.");
     }
   }
+  return Status::OK();
+}
+
+Status ShaderHelper::ValidateIndices() const {
+  ORT_RETURN_IF_NOT(indices_vars_.size() == program_.Indices().size(),
+                    "Mismatched indices variable count. Shader: ", indices_vars_.size(), ", Program: ", program_.Indices().size());
+
   return Status::OK();
 }
 

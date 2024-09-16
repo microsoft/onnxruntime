@@ -253,6 +253,10 @@ class ProgramBase {
   ProgramBase& AddOutput(ProgramOutput&& output);
   // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
+  // add a program variable for indices
+  ProgramBase& AddIndices(const TensorShape& shape);
+  // add a program variable for indices
+  ProgramBase& AddIndices(TensorShape&& shape);
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
   ProgramBase& SetDispatchGroupSize(uint32_t x);
@@ -318,6 +322,7 @@ class ProgramBase {
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
+  inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
   inline uint32_t DispatchGroupSizeZ() const { return dispatch_group_size_z_; }
@@ -339,6 +344,7 @@ class ProgramBase {
   std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
   std::vector<ProgramOutput> outputs_;
+  std::vector<TensorShape> indices_;
 
   uint32_t dispatch_group_size_x_;
   uint32_t dispatch_group_size_y_;
