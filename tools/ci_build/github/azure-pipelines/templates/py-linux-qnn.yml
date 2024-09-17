@@ -43,7 +43,7 @@ jobs:
     - name: TODAY
       value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     - name: extra_build_args
-      value: "-x \"--use_qnn --qnn_home /qnn_sdk\""
+      value: "-x \\\"--use_qnn --qnn_home /qnn_sdk\\\""
 
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
