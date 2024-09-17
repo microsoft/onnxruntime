@@ -71,6 +71,7 @@ jobs:
       cd tools/python
       pip install requests
       python upload_and_run_browserstack_tests.py \
+        --test_platform espresso \
         --id $(browserstack_username) \
         --token $(browserstack_access_key) \
         --app_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/debug/app-debug.apk" \

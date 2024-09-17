@@ -11,10 +11,16 @@ parser.add_argument("--token", type=str, help="BrowserStack token")
 parser.add_argument("--test_platform", type=str, help="Testing platform, i.e., XCUITest or Espresso")
 parser.add_argument("--app_apk_path", type=str, help="Path to the app APK")
 parser.add_argument("--test_apk_path", type=str, help="Path to the test suite APK")
-parser.add_argument("--devices", type=str, nargs="+", help="List of devices to run the tests on. For more info, " +
-                    "see https://www.browserstack.com/docs/app-automate/espresso/specify-devices")
+parser.add_argument(
+    "--devices",
+    type=str,
+    nargs="+",
+    help="List of devices to run the tests on. For more info, "
+    "see https://www.browserstack.com/docs/app-automate/espresso/specify-devices",
+)
 
 args = parser.parse_args()
+
 
 def post_response_to_json(response):
     if len(response) == 0:
@@ -37,10 +43,10 @@ def upload_apk_parse_json(post_url, apk_path):
 
 
 upload_app_json = upload_apk_parse_json(
-    "https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/app".format(test_platform = args.test_platform), args.app_apk_path
+    f"https://api-cloud.browserstack.com/app-automate/{args.test_platform}/v2/app", args.app_apk_path
 )
 upload_test_json = upload_apk_parse_json(
-    "https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/test-suite".format(test_platform = args.test_platform), args.test_apk_path
+    f"https://api-cloud.browserstack.com/app-automate/{args.test_platform}/v2/test-suite", args.test_apk_path
 )
 
 headers = {}
@@ -68,8 +74,7 @@ while tests_status == "running":
     time.sleep(30)
     test_response = requests.get(
         "https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/builds/{build_id}".format(
-            test_platform = args.test_platform,
-            build_id=build_response_json["build_id"]
+            test_platform=args.test_platform, build_id=build_response_json["build_id"]
         ),
         auth=(args.id, args.token),
     )
