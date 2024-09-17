@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <set>
@@ -655,7 +656,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
     if (enable_acl) {
 #ifdef USE_ACL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena ? 1 : 0));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, false));
 #else
       fprintf(stderr, "ACL is not supported in this build");
       return -1;

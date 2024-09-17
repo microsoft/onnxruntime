@@ -172,7 +172,6 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                                pooling_height, pooling_width,
                                                stride_height, stride_width,
                                                dilation_height, dilation_width,
-                                               C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                foutput_min, foutput_max, flags, &p);
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qu8;
@@ -183,7 +182,6 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               pooling_height, pooling_width,
                                               stride_height, stride_width,
                                               dilation_height, dilation_width,
-                                              C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                               output_min, output_max, flags, &p);
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qs8;
@@ -194,7 +192,6 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               pooling_height, pooling_width,
                                               stride_height, stride_width,
                                               dilation_height, dilation_width,
-                                              C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                               output_min, output_max, flags, &p);
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
@@ -213,6 +210,7 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   int64_t N = X_shape[0];
   int64_t H = X_shape[1];
   int64_t W = X_shape[2];
+  int64_t C = X_shape[3];
 
   // set the N dim to the correct value
   TensorShapeVector output_dims{output_dims_};
@@ -234,6 +232,7 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   }
 
   auto status = reshape_fn(op0_.get(), N, H, W,
+                           C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);
   if (status != xnn_status_success) {

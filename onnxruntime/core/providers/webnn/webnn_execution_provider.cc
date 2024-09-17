@@ -29,16 +29,20 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
               OrtDevice::MemType::DEFAULT,
               0)},
       wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
-  // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
-  if (wnn_device_type_ == webnn::WebnnDeviceType::CPU) {
-    preferred_layout_ = DataLayout::NHWC;
-  } else {
-    preferred_layout_ = DataLayout::NCHW;
-  }
-
   wnn_context_ = emscripten::val::module_property("currentContext");
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
+  }
+
+  // Retrieve the level of support for different WebNN operators.
+  // This varies across implementations and is obtained via the WebNN's opSupportLimits() function.
+  // https://www.w3.org/TR/webnn/#api-mlcontext-opsupportlimits
+  wnn_limits_ = wnn_context_.call<emscripten::val>("opSupportLimits");
+
+  if (wnn_limits_["preferredInputLayout"].as<std::string>().compare("nhwc") == 0) {
+    preferred_layout_ = DataLayout::NHWC;
+  } else {
+    preferred_layout_ = DataLayout::NCHW;
   }
 }
 
@@ -84,7 +88,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     ORT_THROW("Failed to create WebNN builder.");
   }
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, logger);
+  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, wnn_limits_, logger);
   wnn_builder = emscripten::val::undefined();
 
   if (node_groups.empty()) {
@@ -215,7 +219,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
     webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                preferred_layout_, wnn_device_type_);
+                                preferred_layout_, wnn_device_type_, wnn_limits_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
 
@@ -297,11 +301,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           auto output_type = output_info.data_type;
           auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
-
-          if (!webnn::IsSupportedDataType(output_type, webnn::webnn_supported_data_types)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Unsupported type: ", output_type, " for output: ", output_name);
-          }
           void* output_buffer = output_tensor.GetTensorMutableRawData();
           outputs.emplace(output_name,
                           webnn::OnnxTensorData{

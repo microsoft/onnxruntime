@@ -55,13 +55,16 @@ export class Tensor implements TensorInterface {
    */
   constructor(
     type: TensorType,
-    data: TensorDataType | readonly string[] | readonly number[] | readonly boolean[],
+    data: TensorDataType | Uint8ClampedArray | readonly string[] | readonly number[] | readonly boolean[],
     dims?: readonly number[],
   );
   /**
    * Construct a new CPU tensor object from the given data and dims. Type is inferred from data.
    */
-  constructor(data: TensorDataType | readonly string[] | readonly boolean[], dims?: readonly number[]);
+  constructor(
+    data: TensorDataType | Uint8ClampedArray | readonly string[] | readonly boolean[],
+    dims?: readonly number[],
+  );
   /**
    * Construct a new tensor object from the pinned CPU data with the given type and dims.
    *
@@ -103,13 +106,14 @@ export class Tensor implements TensorInterface {
     arg0:
       | TensorType
       | TensorDataType
+      | Uint8ClampedArray
       | readonly string[]
       | readonly boolean[]
       | CpuPinnedConstructorParameters
       | TextureConstructorParameters
       | GpuBufferConstructorParameters
       | MLTensorConstructorParameters,
-    arg1?: TensorDataType | readonly number[] | readonly string[] | readonly boolean[],
+    arg1?: TensorDataType | Uint8ClampedArray | readonly number[] | readonly string[] | readonly boolean[],
     arg2?: readonly number[],
   ) {
     // perform one-time check for BigInt/Float16Array support
@@ -249,6 +253,12 @@ export class Tensor implements TensorInterface {
             }
           } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
+          } else if (arg1 instanceof Uint8ClampedArray) {
+            if (arg0 === 'uint8') {
+              data = Uint8Array.from(arg1);
+            } else {
+              throw new TypeError(`A Uint8ClampedArray tensor's data must be type of uint8`);
+            }
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }
@@ -276,6 +286,9 @@ export class Tensor implements TensorInterface {
           } else {
             throw new TypeError(`Invalid element type of data array: ${firstElementType}.`);
           }
+        } else if (arg0 instanceof Uint8ClampedArray) {
+          type = 'uint8';
+          data = Uint8Array.from(arg0);
         } else {
           // get tensor type from TypedArray
           const mappedType = NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.get(
