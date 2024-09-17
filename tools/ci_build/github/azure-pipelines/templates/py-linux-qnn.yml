@@ -82,10 +82,9 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
-            ${{ if eq(parameters.with_cache, 'true') }}:
-              env:
-                ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
+              arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} -x --use_qnn --qnn_home /qnn_sdk
+            env:
+              ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
