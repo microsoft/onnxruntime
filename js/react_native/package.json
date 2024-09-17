@@ -91,6 +91,7 @@
     "unpack-libs": "cd e2e && npm install --no-save ../react_native/e2e/onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && pod-install --quiet",
+    "e2e": "npm --prefix e2e install",
     "e2e:android": "npm --prefix e2e run android",
     "e2e:ios": "npm --prefix e2e run ios"
   },
