@@ -13,7 +13,7 @@ parameters:
 
 - name: device
   type: string
-  default: 'CPU'
+  default: 'NPU'
 
 - name: with_cache
   type: boolean
@@ -43,8 +43,10 @@ jobs:
     - name: TODAY
       value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     - name: extra_build_args
-      value: "-x \\\"--use_qnn --qnn_home /qnn_sdk\\\""
-
+      ${{ if ne(parameters.extra_build_arg, '') }}:
+        value: -x ${{ parameters.extra_build_arg }}
+      ${{ if eq(parameters.extra_build_arg, '') }}:
+        value: ''
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
