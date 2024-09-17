@@ -642,7 +642,7 @@ if (onnxruntime_USE_WEBGPU)
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
   )
 
-  # use dawn::native_objects and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
+  # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
   set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
   set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
   set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
@@ -682,9 +682,7 @@ if (onnxruntime_USE_WEBGPU)
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
-  # Add with dependencies in reverse order as new values are added at the front in each call
-  add_dependencies_to_external_libs(dawn::dawn_proc onnxruntime_EXTERNAL_LIBRARIES "${onnxruntime_EXTERNAL_LIBRARIES}")
-  add_dependencies_to_external_libs(dawn::dawn_native onnxruntime_EXTERNAL_LIBRARIES "${onnxruntime_EXTERNAL_LIBRARIES}")
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native dawn::dawn_proc)
 endif()
 
 set(onnxruntime_LINK_DIRS)
@@ -704,7 +702,7 @@ if (onnxruntime_USE_CUDA)
   include(cuDNN)
 endif()
 
-FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
-FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
+FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)
+FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR} ORT_SOURCE_DIR)
 
 message(STATUS "Finished fetching external dependencies")
