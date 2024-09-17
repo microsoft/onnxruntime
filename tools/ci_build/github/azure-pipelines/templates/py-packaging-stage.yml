@@ -68,7 +68,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.25.0.240728
+  default: 2.26.0.240828
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -398,9 +398,9 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-latest'
+        vmImage: 'macOS-13'
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '11.0'
+        MACOSX_DEPLOYMENT_TARGET: '13.3'
       strategy:
         matrix:
           Python38:
@@ -424,8 +424,6 @@ stages:
           versionSpec: $(PythonVersion)
 
       - template: use-xcode-version.yml
-        parameters:
-          xcodeVersion: 14.2
 
       - template: download-deps.yml
 

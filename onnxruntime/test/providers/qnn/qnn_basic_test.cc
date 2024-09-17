@@ -948,6 +948,63 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
                   0.008f);
 }
 
+// Test that QNN EP only handles nodes with static shapes and rejects nodes with dynamic shape I/O.
+TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
+  // Local function that builds a model in which the last two nodes use dynamic shapes.
+  auto model_build_fn = [](ModelTestBuilder& builder) {
+    NodeArg* input1 = builder.MakeInput<float>(std::vector<int64_t>{1, 2, 8, 8},
+                                               GetFloatDataInRange(0.0f, 1.0f, 128));
+    NodeArg* input2 = builder.MakeInput<int64_t>(std::vector<int64_t>{3}, std::vector<int64_t>{1, 2, 49});
+
+    // Add a Conv with known shapes. QNN EP should support it.
+    NodeArg* weight = builder.MakeInitializer<float>(std::vector<int64_t>{2, 2, 2, 2},
+                                                     GetFloatDataInRange(-0.3f, 0.3f, 16));
+    NodeArg* bias = builder.MakeInitializer<float>(std::vector<int64_t>{2}, {0.0f, 1.0f});
+
+    auto* conv_output = builder.MakeIntermediate();
+    builder.AddNode("Conv", {input1, weight, bias}, {conv_output});
+
+    // Add a Reshape to a dynamic shape. QNN EP should reject this node.
+    auto* reshape_output = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {conv_output, input2}, {reshape_output});
+
+    // Add a Softmax. QNN EP should reject this node because its input has a dynamic shape.
+    NodeArg* output = builder.MakeOutput();
+    builder.AddNode("Softmax", {reshape_output}, {output});
+  };
+
+  // Local function that checks that the nodes with dynamic shape I/O were assigned to CPU EP.
+  std::function<void(const Graph&)> ep_graph_checker = [](const Graph& graph) {
+    for (const Node& node : graph.Nodes()) {
+      const std::string& ep_name = node.GetExecutionProviderType();
+      const std::string& op_type = node.OpType();
+      if (op_type == "Reshape" || op_type == "Softmax") {
+        EXPECT_EQ(ep_name, kCpuExecutionProvider);
+      } else {
+        EXPECT_EQ(ep_name, kQnnExecutionProvider);
+      }
+    }
+  };
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
+                                                        // CPU EP will use fp32, so we can relax accuracy requirements.
+
+  RunQnnModelTest(model_build_fn,
+                  provider_options,
+                  /*opset*/ 19,
+                  ExpectedEPNodeAssignment::Some,
+                  /*abs_err*/ 1e-4f,
+                  logging::Severity::kERROR,
+                  /*verify_output*/ true,
+                  &ep_graph_checker);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

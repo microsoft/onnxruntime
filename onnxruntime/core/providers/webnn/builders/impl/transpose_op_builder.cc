@@ -18,8 +18,6 @@ class TransposeOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -48,31 +46,6 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-bool TransposeOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                                                const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
-  // WebNN CPU backend doesn't support uint32, uint64 input data types for transpose.
-  if (device_type == WebnnDeviceType::CPU) {
-    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-  }
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
 }
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
