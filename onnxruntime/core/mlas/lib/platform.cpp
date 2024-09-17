@@ -245,6 +245,7 @@ Return Value:
     this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
     this->CastF16ToF32Kernel = nullptr;
+    this->CastF32ToF16Kernel = nullptr;
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
@@ -387,6 +388,9 @@ Return Value:
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
                 this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
+                this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
+                this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
+
 
                 //
                 // Check if the processor supports Hybrid core architecture.

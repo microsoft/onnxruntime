@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -7,6 +7,7 @@ package ai.onnxruntime;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.logging.Logger;
@@ -234,6 +235,52 @@ public final class OrtEnvironment implements AutoCloseable {
       throws OrtException {
     Objects.requireNonNull(modelPath, "model path must not be null");
     return new OrtSession(this, modelPath, allocator, options);
+  }
+
+  /**
+   * Create a session using the specified {@link SessionOptions}, model and the default memory
+   * allocator.
+   *
+   * @param modelBuffer Byte buffer representing an ONNX model. Must be a direct byte buffer.
+   * @param options The session options.
+   * @return An {@link OrtSession} with the specified model.
+   * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+   */
+  public OrtSession createSession(ByteBuffer modelBuffer, SessionOptions options)
+      throws OrtException {
+    return createSession(modelBuffer, defaultAllocator, options);
+  }
+
+  /**
+   * Create a session using the default {@link SessionOptions}, model and the default memory
+   * allocator.
+   *
+   * @param modelBuffer Byte buffer representing an ONNX model. Must be a direct byte buffer.
+   * @return An {@link OrtSession} with the specified model.
+   * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+   */
+  public OrtSession createSession(ByteBuffer modelBuffer) throws OrtException {
+    return createSession(modelBuffer, new OrtSession.SessionOptions());
+  }
+
+  /**
+   * Create a session using the specified {@link SessionOptions} and model buffer.
+   *
+   * @param modelBuffer Byte buffer representing an ONNX model. Must be a direct byte buffer.
+   * @param allocator The memory allocator to use.
+   * @param options The session options.
+   * @return An {@link OrtSession} with the specified model.
+   * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+   */
+  OrtSession createSession(ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
+      throws OrtException {
+    Objects.requireNonNull(modelBuffer, "model array must not be null");
+    if (modelBuffer.remaining() == 0) {
+      throw new OrtException("Invalid model buffer, no elements remaining.");
+    } else if (!modelBuffer.isDirect()) {
+      throw new OrtException("ByteBuffer is not direct.");
+    }
+    return new OrtSession(this, modelBuffer, allocator, options);
   }
 
   /**

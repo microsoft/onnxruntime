@@ -21,8 +21,8 @@ class CastOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -80,26 +80,22 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
+bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                           const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input_type;
 
-bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                      const Node& node,
-                                      const WebnnDeviceType device_type,
-                                      const logging::Logger& logger) const {
+  if (!GetType(*input_defs[0], input_type, logger))
+    return false;
+
+  if (!IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "input", logger))
+    return false;
+
   NodeAttrHelper helper(node);
-  // Check cast output type.
+  // Check cast to type.
   const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED);
-
-  // WebNN CPU backend doesn't support casting to uint64 data type.
-  if (device_type == WebnnDeviceType::CPU && to_type == ONNX_NAMESPACE::TensorProto_DataType_UINT64) {
-    LOGS(logger, VERBOSE) << "Cast to uint64 is not supported for WebNN CPU backend.";
-    return false;
-  }
-  if (!IsSupportedDataType(to_type, webnn_supported_data_types)) {
-    LOGS(logger, VERBOSE) << "WebNN doesn't support casting to type " << to_type << ".";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, to_type, wnn_limits, "output", "to", logger);
 }
 
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
