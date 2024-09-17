@@ -15,10 +15,10 @@ stages:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
 
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     variables:
-      xcodeVersion: "14.2"
+      xcodeVersion: "14.3.1"
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
@@ -62,8 +62,6 @@ stages:
         architecture: "x64"
 
     - template: ../use-xcode-version.yml
-      parameters:
-        xcodeVersion: ${{ variables.xcodeVersion }}
 
     - template: ../install-appcenter.yml
 

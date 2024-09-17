@@ -3,6 +3,15 @@ require_relative '../node_modules/@react-native-community/cli-platform-ios/nativ
 
 platform :ios, '13.0'
 
+pre_install do |installer|
+  # Custom pre-install script or commands
+  puts "Running pre-install script..."
+
+  # Recommended fix for https://github.com/facebook/react-native/issues/32483
+  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
+  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
+end
+
 def shared
   config = use_native_modules!
 
@@ -28,4 +37,14 @@ end
 
 target 'OnnxruntimeModuleTest' do
   shared
+end
+
+post_install do |installer|
+    installer.generated_projects.each do |project|
+        project.targets.each do |target|
+            target.build_configurations.each do |config|
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+            end
+        end
+    end
 end

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -107,12 +108,15 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
+      std::string exception_str = ex.what();
+      bool eligible_for_cpu_fallback = device_type.find("NPU") != std::string::npos &&
+                                       !GetGlobalContext().disable_cpu_fallback &&
+                                       !ep_ctx_handle_.IsValidOVEPCtxGraph();
 #if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-      ORT_THROW(ex.what());
+      eligible_for_cpu_fallback = false;
 #else
-      if (device_type.find("NPU") != std::string::npos &&
-          !GetGlobalContext().disable_cpu_fallback) {
-        LOGS_DEFAULT(WARNING) << ex.what();
+      if (eligible_for_cpu_fallback) {
+        LOGS_DEFAULT(VERBOSE) << exception_str;
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
         GetGlobalContext().device_type = "CPU";
@@ -125,10 +129,32 @@ BackendManager::BackendManager(const GlobalContext& global_context,
         } catch (std::string const& msg) {
           ORT_THROW(msg);
         }
-      } else {
-        ORT_THROW(ex.what());
       }
 #endif
+      if (!eligible_for_cpu_fallback) {
+        if (device_type.find("NPU") != std::string::npos &&
+            exception_str.find("intel_npu") != std::string::npos) {
+          // Handle NPU device related errors
+#ifndef NDEBUG
+          ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
+#else
+          std::string error_message = "UNKNOWN NPU ERROR";
+          std::string error_code = "code 0x0";
+          std::regex error_message_pattern(R"(\bZE_\w*\b)");
+          std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
+          std::smatch matches;
+          if (std::regex_search(exception_str, matches, error_message_pattern)) {
+            error_message = matches[0];
+          }
+          if (std::regex_search(exception_str, matches, error_code_pattern)) {
+            error_code = matches[0];
+          }
+          throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
+#endif
+        } else {
+          ORT_THROW(exception_str);
+        }
+      }
     }
   }
   if (global_context_.export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
