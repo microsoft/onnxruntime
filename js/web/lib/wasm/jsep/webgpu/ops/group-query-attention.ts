@@ -80,6 +80,9 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   const headSize = !packedQKV
     ? Math.floor(hiddenSize / attributes.numHeads)
     : Math.floor(hiddenSize / (attributes.numHeads + 2 * attributes.kvNumHeads!));
+  if (headSize % 8 !== 0) {
+    throw new Error('Head size must be a multiple of 8. Got head_size % 8 = ' + (headSize % 8));
+  }
   if (packedQKV) {
     hiddenSize = headSize * attributes.numHeads;
   }
