@@ -907,6 +907,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Sinh",
                                                     "Slice",
                                                     "Softmax",
+                                                    "SoftmaxCrossEntropyLoss",
                                                     "Softplus",
                                                     "Softsign",
                                                     "SpaceToDepth",
@@ -1015,15 +1016,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
 
     if (unsupported_nodes.size() > 10) {
-      return result;
-    }
-
-    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
-    // so if a model contain any of these operators, fall back to CPU
-    std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
-    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-          return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-        })) {
       return result;
     }
 
