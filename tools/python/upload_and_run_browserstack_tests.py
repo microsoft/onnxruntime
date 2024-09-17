@@ -8,6 +8,7 @@ parser = argparse.ArgumentParser("Upload and run BrowserStack tests")
 
 parser.add_argument("--id", type=str, help="BrowserStack user ID")
 parser.add_argument("--token", type=str, help="BrowserStack token")
+parser.add_argument("--test_platform", type=str, help="Testing platform, i.e., XCUITest or Espresso")
 parser.add_argument("--app_apk_path", type=str, help="Path to the app APK")
 parser.add_argument("--test_apk_path", type=str, help="Path to the test suite APK")
 parser.add_argument("--devices", type=str, nargs="+", help="List of devices to run the tests on. For more info, " +
@@ -36,10 +37,10 @@ def upload_apk_parse_json(post_url, apk_path):
 
 
 upload_app_json = upload_apk_parse_json(
-    "https://api-cloud.browserstack.com/app-automate/espresso/v2/app", args.app_apk_path
+    "https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/app".format(test_platform = args.test_platform), args.app_apk_path
 )
 upload_test_json = upload_apk_parse_json(
-    "https://api-cloud.browserstack.com/app-automate/espresso/v2/test-suite", args.test_apk_path
+    "https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/test-suite".format(test_platform = args.test_platform), args.test_apk_path
 )
 
 headers = {}
@@ -51,7 +52,7 @@ json_data = {
 }
 
 build_response = requests.post(
-    "https://api-cloud.browserstack.com/app-automate/espresso/v2/build",
+    "https://api-cloud.browserstack.com/app-automate/" + args.test_platform + "/v2/build",
     headers=headers,
     json=json_data,
     auth=(args.id, args.token),
@@ -66,7 +67,8 @@ tests_status = "running"
 while tests_status == "running":
     time.sleep(30)
     test_response = requests.get(
-        "https://api-cloud.browserstack.com/app-automate/espresso/v2/builds/{build_id}".format(
+        "https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/builds/{build_id}".format(
+            test_platform = args.test_platform,
             build_id=build_response_json["build_id"]
         ),
         auth=(args.id, args.token),
@@ -82,5 +84,5 @@ print(
     "https://app-automate.browserstack.com/dashboard/v2/builds/" + build_response_json["build_id"],
 )
 print("=" * 30)
-if tests_status == "failed":
+if tests_status != "passed":
     raise Exception("Tests failed. Go to the link above for more details.")
