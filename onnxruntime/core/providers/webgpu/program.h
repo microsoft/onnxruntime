@@ -230,7 +230,11 @@ namespace detail {
 class ProgramWrapper;
 }
 
-struct ProgramMetadata;
+struct ProgramMetadata {
+  gsl::span<const ProgramConstant> constants;
+  gsl::span<const ProgramOverridableConstantDefinition> overridable_constants;
+  gsl::span<const ProgramUniformVariableDefinition> uniform_variables;
+};
 
 class ProgramBase {
  public:
@@ -296,29 +300,11 @@ class ProgramBase {
   virtual Status GenerateShaderCode(ShaderHelper& shader) const = 0;
 
   //
-  // abstract methods for getting metadata
-  //
-  // A derived class may contain any of the following static members:
-  //
-  // \code{.cpp}
-  //   // define a list of constant that used in the shader program
-  //   static constexpr const ProgramConstant constants[] = { ... };
-  //
-  //   // define a list of overridable constant that used in the shader program
-  //   static constexpr const ProgramOverridableConstantDefinition overridable_constants[] = { ... };
-  //
-  //   // define a list of uniform variables that used in the shader program
-  //   static constexpr const ProgramUniformVariableDefinition uniform_variables[] = { ... };
-  // \endcode
-  //
-  // If those static members exist, the value of them will be used to generate the metadata.
-  virtual ProgramMetadata GetMetadata() const = 0;
-
-  //
   // Properties Getters
   //
 
   inline const std::string& Name() const { return name_; }
+  inline const ProgramMetadata& Metadata() const { return metadata_; }
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
@@ -338,9 +324,11 @@ class ProgramBase {
  private:
   // Make the constructor private to prevent direct instantiation or inheritance from this class
   // Use the Program template class as base class to create a new program class
-  explicit ProgramBase(const std::string& name);
+  explicit ProgramBase(const std::string& name, ProgramMetadata&& metadata);
 
   std::string name_;
+  ProgramMetadata metadata_;
+
   std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
   std::vector<ProgramOutput> outputs_;
@@ -500,19 +488,13 @@ static_assert(!TestTypeCheck<TestClass_StdArray_4>::has_a_with_correct_type);
 
 }  // namespace detail
 
-struct ProgramMetadata {
-  gsl::span<const ProgramConstant> constants;
-  gsl::span<const ProgramOverridableConstantDefinition> overridable_constants;
-  gsl::span<const ProgramUniformVariableDefinition> uniform_variables;
-};
-
 template <typename T>
 class Program : public detail::ProgramWrapper {
  public:
   template <typename... Args>
-  Program(Args&&... args) : detail::ProgramWrapper{std::forward<Args>(args)...} {}
+  Program(Args&&... args) : detail::ProgramWrapper{std::forward<Args>(args)..., GetMetadata()} {}
 
-  virtual ProgramMetadata GetMetadata() const final {
+  static ProgramMetadata GetMetadata() {
     ProgramMetadata metadata;
     if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_constants) {
       constexpr const ProgramConstant* ptr = T::constants.data();

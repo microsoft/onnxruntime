@@ -145,7 +145,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                 "All outputs must be tensors on WebGPU buffers.");
   }
 
-  const ProgramMetadata metadata = program.GetMetadata();
+  const ProgramMetadata& metadata = program.Metadata();
 
   // validate program metadata
   if (ValidationMode() >= ValidationMode::Basic) {
