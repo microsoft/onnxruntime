@@ -33,9 +33,9 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: 'macOS-13'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '11.0'
+    MACOSX_DEPLOYMENT_TARGET: '13.3'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     CCACHE_DIR: '$(Pipeline.Workspace)/ccache'
   timeoutInMinutes: 120
@@ -44,8 +44,6 @@ jobs:
     displayName: Install coreutils and ninja
 
   - template: templates/use-xcode-version.yml
-    parameters:
-      xcodeVersion: 14.2
 
   - template: templates/mac-build-step-with-cache.yml
     parameters:
