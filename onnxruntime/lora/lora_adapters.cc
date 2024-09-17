@@ -5,6 +5,7 @@
 #include "adapter_format_utils.h"
 
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 
@@ -51,8 +52,13 @@ void LoraAdapter::InitializeParamsValues() {
   params_values.reserve(params->size());
   for (const auto* param : *params) {
     auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
-    Param lora_param(std::move(ort_value));
-    params_values.emplace(std::move(name), std::move(lora_param));
+    if (device_allocator_) {
+      auto ort_value_ondevice = adapters::utils::CreateOrtValueOnDevice(ort_value, device_allocator_);
+      Param lora_param(std::move(ort_value), std::move(ort_value_ondevice));
+      params_values.emplace(std::move(name), std::move(lora_param));
+    } else {
+      Param lora_param(std::move(ort_value));
+    }
   }
   params_values_.swap(params_values);
 }
@@ -69,10 +75,17 @@ size_t LoraAdapter::GetBufferSize() const {
 }  // namespace lora
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* /* allocator */,
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
                     _Outptr_ OrtLoraAdapter** adapter) {
   API_IMPL_BEGIN
-  auto lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
+
+  std::unique_ptr<onnxruntime::lora::LoraAdapter> lora_adapter;
+  if (allocator != nullptr) {
+    auto alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
+    lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>(std::move(alloc_ptr));
+  } else {
+    lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
+  }
   // For platforms that do not support Memmap, we can #ifdef it to ->Load(adapter_file_path)
   lora_adapter->MemoryMap(adapter_file_path);
   *adapter = reinterpret_cast<OrtLoraAdapter*>(lora_adapter.release());

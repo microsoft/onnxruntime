@@ -144,7 +144,7 @@ class LoraAdapter {
     for (const auto& [name, param] : params_values_) {
       *names_out = name.c_str();
       ++names_out;
-      *tensor_out = &param.GetMapped();
+      *tensor_out = &param.GetDeviceOrMapped();
       ++tensor_out;
     }
   }

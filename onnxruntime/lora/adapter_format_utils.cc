@@ -4,12 +4,17 @@
 #include "adapter_format_utils.h"
 #include "adapter_format_version.h"
 
+#include "core/framework/allocator.h"
 #include "core/common/common.h"
 #include "core/common/span_utils.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
+
+#ifdef USE_CUDA
+#include "cuda_runtime.h"
+#endif
 
 #include <fstream>
 
@@ -115,12 +120,30 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   return std::make_pair(std::move(name), std::move(result));
 }
 
+// XXX: Figure out how to implement DML copy.
+static void CopyOnDevice(const Tensor& src, Tensor& dst) {
+  const auto& mem_info = dst.Location();
+
+  if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
+#ifdef USE_CUDA
+    auto ret = cudaMemcpy(dst.MutableDataRaw(), src.DataRaw(), src.SizeInBytes(), cudaMemcpyHostToDevice);
+    if (ret != cudaSuccess) {
+      ORT_THROW("cudaMemcpy failed. Return code: ", ret);
+    }
+#else
+    ORT_NOT_IMPLEMENTED("Destination provider not available, copy failed");
+#endif
+  } else {
+    ORT_NOT_IMPLEMENTED("Destination device is currently not supported");
+  }
+}
+
 OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const AllocatorPtr& device_allocator) {
   OrtValue result;
-
-  const auto& tensor = ort_value_mapped.Get<Tensor>();
-  Tensor on_device(tensor.DataType(), tensor.Shape(), device_allocator);
-
+  const auto& src = ort_value_mapped.Get<Tensor>();
+  Tensor on_device(src.DataType(), src.Shape(), device_allocator);
+  CopyOnDevice(src, on_device);
+  Tensor::InitOrtValue(std::move(on_device), result);
   return result;
 }
 

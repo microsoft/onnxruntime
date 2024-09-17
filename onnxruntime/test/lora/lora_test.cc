@@ -5,12 +5,16 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 
+#include "test/util/include/default_providers.h"
+
 #include "lora/lora_adapters.h"
 #include "lora/adapter_format_version.h"
 #include "lora/adapter_format_utils.h"
-#include "gtest/gtest.h"
 
+#include "gtest/gtest.h"
 #include <cmath>
+
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -187,6 +191,41 @@ TEST(LoraAdapterTest, Load) {
     disp.Invoke<TestDataType>();
   }
 }
+
+#ifdef USE_CUDA
+TEST(LoraAdapterTest, VerifyDeviceCopy) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  auto cuda_allocator = cuda_ep->CreatePreferredAllocators()[0];
+
+  auto gpu_transfer = cuda_ep->GetDataTransfer();
+
+  auto test_params = GenerateTestParameters<float>()();
+  lora::LoraAdapter adapter(std::move(cuda_allocator));
+  adapter.Load(std::move(test_params));
+
+  auto [begin, end] = adapter.GetParamIterators();
+  for (; begin != end; ++begin) {
+    const auto& [_, param] = *begin;
+    const auto& tensor_device = param.GetDeviceOrMapped().Get<Tensor>();
+    ASSERT_EQ(0, strcmp(tensor_device.Location().name, onnxruntime::CUDA));
+
+    const auto& tensor_cpu = param.GetMapped().Get<Tensor>();
+    ASSERT_EQ(tensor_cpu.Shape().Size(), tensor_device.Shape().Size());
+
+    Tensor copy(tensor_cpu.DataType(), tensor_cpu.Shape(), cpu_allocator);
+    ASSERT_TRUE(gpu_transfer->CanCopy(tensor_device.Location().device,
+                                      copy.Location().device));
+    ASSERT_STATUS_OK(gpu_transfer->CopyTensor(tensor_device, copy));
+
+    auto expected_span = tensor_cpu.DataAsSpan<float>();
+    auto copy_span = copy.DataAsSpan<float>();
+
+    ASSERT_EQ(expected_span, copy_span);
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
