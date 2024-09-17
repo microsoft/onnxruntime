@@ -26,14 +26,12 @@ const getOutputShape = (inputShape: readonly number[], perm: number[]): readonly
   ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape.length, perm));
 
 const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, output: IndicesHelper): string => {
-  const reverseFunc = [];
-  reverseFunc.push(`fn perm(i: ${output.type.indices}) -> ${input.type.indices} {
-    var a: ${input.type.indices};`);
+  let reverseFunc = `fn perm(i: ${output.type.indices}) -> ${input.type.indices} {
+    var a: ${input.type.indices};`;
   for (let i = 0; i < rank; ++i) {
-    reverseFunc.push(input.indicesSet('a', perm[i], `i[${i}]`));
+    reverseFunc += input.indicesSet('a', perm[i], `i[${i}]`);
   }
-  reverseFunc.push('return a;}');
-  return reverseFunc.join('\n');
+  return (reverseFunc += 'return a;}');
 };
 
 const squeezeShape = (shape: readonly number[], adjustedPerm: number[]): { newShape: number[]; newPerm: number[] } => {
