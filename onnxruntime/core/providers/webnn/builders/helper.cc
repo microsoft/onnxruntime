@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace webnn {
 
-WebnnDeviceType DeviceTypeFromString(const std::string& device_type) {
+WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type) {
   if (device_type == "gpu") {
     return WebnnDeviceType::GPU;
   }

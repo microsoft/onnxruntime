@@ -31,7 +31,7 @@ enum class WebnnDeviceType {
   NPU,
 };
 
-WebnnDeviceType DeviceTypeFromString(const std::string& device_type);
+WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);

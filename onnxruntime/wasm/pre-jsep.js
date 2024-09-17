@@ -202,7 +202,7 @@ Module['jsepInit'] = (name, params) => {
     Module.jsepUploadExternalBuffer = (dataId, buffer) => {
       backend['upload'](dataId, buffer);
     };
-  } else if(name === 'webnn') {
+  } else if (name === 'webnn') {
     // Functions called from EM_ASM need to be assigned in a way that can be minified.
     // Functions called via emscripten::val::module_property need to be assigned by name so that the minifier doesn't
     // change the name.

@@ -28,7 +28,6 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                       const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
   if (use_dispatch_) {
     return Dispatch(inputs, outputs);
-
   } else {
     return Compute(inputs, outputs);
   }
