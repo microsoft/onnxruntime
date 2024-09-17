@@ -13,10 +13,20 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   std::string common;
-  std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n" : "let a = " + a.GetByOffset("global_idx") + ";\n";
-  std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n" : "let b = " + b.GetByOffset("global_idx") + ";\n";
+  std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n"
+                                          : "let a = " + a.GetByOffset("global_idx") + ";\n";
+  std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n"
+                                          : "let b = " + b.GetByOffset("global_idx") + ";\n";
+  // check whether can use element-wise mode.
+  // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
+  // In element-wise mode, no indices calculation is needed.
   if (!is_lhs_scalar_ && !is_rhs_scalar_ && is_broadcast_) {
     const auto& c_indices = shader.AddIndices("bcast_indices");
+    // check whether can use vectorize mode.
+    // If either last dimension of A or B is divisible by 4, or the shared dimension is divisible by 4, vectorize mode
+    // can be enabled.
+    // In vectorize mode, the source data of A and B will be loaded only once to calculate 4 output values.
+    // Use indices helpers to calculate the offset of A and B.
     if (vectorize_) {
       const auto& a_indices = shader.AddIndices("a_indices");
       const auto& b_indices = shader.AddIndices("b_indices");
@@ -27,9 +37,12 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
                ";\n"
                "let offset_b = " +
                b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) + ";\n";
-      get_a_data = a.NumComponents() == 4 ? "let a = " + a.GetByOffset("offset_a / 4") + ";\n" : "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
-      get_b_data = b.NumComponents() == 4 ? "let b = " + b.GetByOffset("offset_b / 4") + ";\n" : "let b = input_a_value_t(" + b.GetByOffset("offset_b") + ");\n";
+      get_a_data = a.NumComponents() == 4 ? "let a = " + a.GetByOffset("offset_a / 4") + ";\n"
+                                          : "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
+      get_b_data = b.NumComponents() == 4 ? "let b = " + b.GetByOffset("offset_b / 4") + ";\n"
+                                          : "let b = input_a_value_t(" + b.GetByOffset("offset_b") + ");\n";
     } else {
+      // In broadcast mode, each element of the vec4 value of A and B will be loaded separately to calculate the output value.
       common = "var outputIndices = " + c_indices.OffsetToIndices("global_idx * 4") +
                ";\n"
                "let offset_a0 = " +
@@ -130,11 +143,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   }
 
   SafeInt<uint32_t> vec_size = (size + 3) / 4;
-  const std::string expression = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
-                                     ? "output_value_t(pow(vec4<f16>(a), vec4<f16>(b)))"
-                                     : "output_value_t(pow(vec4<f32>(a), vec4<f32>(b)))";
   BinaryElementwiseProgram program{kernel_name_,
-                                   kernel_name_ == "Pow" ? expression : expression_,
+                                   expression_,
                                    is_broadcast,
                                    is_lhs_scalar,
                                    is_rhs_scalar,
@@ -181,9 +191,9 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Vectorize broadcast
     // cache hint: "V{a_rank};{b_rank};{output_rank}"
     program
+        .AddIndices(reshaped_output_shape)
         .AddIndices(reshaped_lhs_shape)
         .AddIndices(reshaped_rhs_shape)
-        .AddIndices(reshaped_output_shape)
         .CacheHint("V" + absl::StrJoin({reshaped_lhs_shape.NumDimensions(),
                                         reshaped_rhs_shape.NumDimensions(),
                                         reshaped_output_shape.NumDimensions()},
@@ -267,7 +277,7 @@ WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 7, 12, Sub, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 13, 13, Sub, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Sub, 14, Sub, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Pow, "pow(a, b)")
+WEBGPU_BINARY_IMPL(Pow, "output_value_t(pow(output_value_t(a), output_value_t(b)))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Pow, 7, 11, Pow, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 12, 12, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 13, 14, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())

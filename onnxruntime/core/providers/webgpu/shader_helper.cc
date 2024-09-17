@@ -262,14 +262,16 @@ Status ShaderHelper::ValidateShapeForInputs() const {
     bool use_rank = (dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank;
     bool use_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
 
-    if (usage & ShaderUsage::UseUniform) {
-      ORT_RETURN_IF_NOT((use_rank || input_vars_[i]->rank_ < 2) && !use_shape,
-                        "When UseUniform is set in variable usage, the corresponding program input should depend on rank but not shape.");
-    } else {
-      ORT_RETURN_IF_NOT(use_shape,
-                        "When UseUniform is not set in variable usage, the corresponding program input should depend on shape.");
-      // If you want neither hard-coded shape nor shape uniform, set UseUniform with a flattened shape (rank=1).
-      // This will not generate any shape variables in the shader, can you can only use offset to set/get values.
+    if (usage & ShaderUsage::UseShapeAndStride) {
+      if (usage & ShaderUsage::UseUniform) {
+        ORT_RETURN_IF_NOT((use_rank || input_vars_[i]->rank_ < 2) && !use_shape,
+                          "When UseUniform is set in variable usage, the corresponding program input should depend on rank but not shape.");
+      } else {
+        ORT_RETURN_IF_NOT(use_shape,
+                          "When UseUniform is not set in variable usage, the corresponding program input should depend on shape.");
+        // If you want neither hard-coded shape nor shape uniform, use a flattened shape (rank=1).
+        // This will not generate any shape variables in the shader, can you can only use offset to set/get values.
+      }
     }
   }
   return Status::OK();
@@ -291,14 +293,16 @@ Status ShaderHelper::ValidateShapeForOutputs() const {
     auto dependency = program_.Outputs()[i].dependency;
     bool use_shape = (dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape;
 
-    if (usage & ShaderUsage::UseUniform) {
-      // output tensor shape check is looser than input tensor shape check, because output shape is always calculated so it is not
-      // necessarily a part of the cache key.
-      ORT_RETURN_IF_NOT(!use_shape,
-                        "When UseUniform is set in variable usage, the corresponding program output should not depend on shape.");
-    } else {
-      ORT_RETURN_IF_NOT(use_shape,
-                        "When UseUniform is not set in variable usage, the corresponding program output should depend on shape.");
+    if (usage & ShaderUsage::UseShapeAndStride) {
+      if (usage & ShaderUsage::UseUniform) {
+        // output tensor shape check is looser than input tensor shape check, because output shape is always calculated so it is not
+        // necessarily a part of the cache key.
+        ORT_RETURN_IF_NOT(!use_shape,
+                          "When UseUniform is set in variable usage, the corresponding program output should not depend on shape.");
+      } else {
+        ORT_RETURN_IF_NOT(use_shape,
+                          "When UseUniform is not set in variable usage, the corresponding program output should depend on shape.");
+      }
     }
   }
   return Status::OK();
