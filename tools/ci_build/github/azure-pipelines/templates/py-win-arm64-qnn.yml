@@ -29,9 +29,11 @@ jobs:
   strategy:
     matrix:
       Python311_arm64:
-        PythonVersion: '3.11'
+        PythonVersion: '3.11.0'
+        LocalPythonDir: 'C:\Python\Python311'
       Python312_arm64:
-        PythonVersion: '3.12'
+        PythonVersion: '3.12.6'
+        LocalPythonDir: 'C:\Python\Python312'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -41,6 +43,15 @@ jobs:
         submodules: recursive
 
       - template: telemetry-steps.yml
+
+      - script: |
+          MKDIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64
+          XCOPY /s /y /h /e /c /q "$(LocalPythonDir)\*.*" $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64\
+          COPY NUL $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64.complete
+          DIR $(Agent.ToolsDirectory)\Python
+          DIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)
+          DIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64
+        displayName: Copy python $(PythonVersion) version to agent tools directory
 
       - task: UsePythonVersion@0
         inputs:
