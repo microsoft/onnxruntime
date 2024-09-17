@@ -743,13 +743,19 @@ typedef struct OrtNodeComputeInfo {
   void(ORT_API_CALL* DestroyFunctionStateFunc)(void*);
 } OrtNodeComputeInfo;
 
-typedef struct OrtTensorRef {
+typedef struct OrtTensorRef {   // TODO(leca): OrtValueInfoRef inside OrtTensorRef?
   int64_t* shape;
   size_t shape_len;
   ONNXTensorElementDataType data_type;
   const char* data;
   size_t data_len;
 } OrtTensorRef;
+
+typedef struct OrtValueInfoRef {
+  int64_t* shape;
+  size_t shape_len;
+  ONNXTensorElementDataType data_type;
+} OrtValueInfoRef;
 
 typedef struct OrtExecutionProvider {
 #ifdef __cplusplus
@@ -4800,6 +4806,8 @@ struct OrtApi {
   int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   bool(ORT_API_CALL* OrtGraph_GetInitializerTensor)(const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
+
+  bool(ORT_API_CALL* OrtGraph_GetValueInfo)(const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef**);
 
   size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;  // TODO(leca): review and discuss
 

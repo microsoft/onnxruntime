@@ -2543,6 +2543,27 @@ ORT_API(bool, OrtApis::OrtGraph_GetInitializerTensor, const OrtGraphViewer* grap
   return true;
 }
 
+static ONNXTensorElementDataType GetDataTypeFromTypeProto(const onnx::TypeProto* type) {  // onnxruntime\core\optimizer\transpose_optimization\ort_optimizer_api_impl.cc
+  if (!type || !utils::HasTensorType(*type) || !utils::HasElementType(*type)) return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+
+  return static_cast<ONNXTensorElementDataType>(type->tensor_type().elem_type());
+}
+
+ORT_API(bool, OrtApis::OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const NodeArg* node_arg = graph_viewer->GetNodeArg(name);
+
+  *out = new OrtValueInfoRef(); // TODO(leca): release
+  const onnx::TypeProto* type = node_arg->TypeAsProto();
+  (*out)->data_type = GetDataTypeFromTypeProto(type);
+  const auto& dims = utils::TryGetShape(*type)->dim();
+  (*out)->shape_len = dims.size();
+  (*out)->shape = new int64_t [(*out)->shape_len];
+  for (size_t i = 0; i < (*out)->shape_len; i++) ((*out)->shape)[i] = utils::HasDimValue(dims[i]) ? dims[i].dim_value() : -1;
+
+  return true;
+}
+
 ORT_API(size_t, OrtApis::OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   Model model(graph_viewer->Name(), true, ModelMetaData(), PathString(),
@@ -3151,6 +3172,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetIthOutputName,
     &OrtApis::OrtGraph_GetIthOutputElemType,
     &OrtApis::OrtGraph_GetInitializerTensor,
+    &OrtApis::OrtGraph_GetValueInfo,
     &OrtApis::OrtGraph_SerializeToArray,
     &OrtApis::OrtGraph_DeserializeFromArray,
     &OrtApis::OrtNode_GetName,

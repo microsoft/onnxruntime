@@ -3575,12 +3575,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
     return nodes_list_output;
   }
 
-  std::unordered_set<std::string> graph_output_names;
-  size_t output_size = api_->OrtGraph_GetOutputSize(graph);
-  for (size_t i = 0; i < output_size; i++) {
-    graph_output_names.insert(api_->OrtGraph_GetIthOutputName(graph, i));
-  }
-
   iterations++;
   size_t nodes_count = 0;
   const size_t* node_index = nullptr;
@@ -3591,7 +3585,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-        std::unordered_set<const std::string> initializers;
+        std::unordered_set<const char*> initializers;
+        std::unordered_set<std::string> subgraph_output_names, subgraph_input_names;
         onnx::ModelProto m;
         m.set_ir_version(3);
         onnx::OperatorSetIdProto* p = m.add_opset_import();
@@ -3610,20 +3605,22 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           api_->OrtNode_GetName(node, &name);
           n->set_name(name);
 
-          // TODO(leca): Implicit input? & attributes
           size_t input_size = 0;
           api_->OrtNode_GetInputSize(node, &input_size);
           for (size_t j = 0; j < input_size; j++) {
             const char* jth_input_name = nullptr;
             api_->OrtNode_GetIthInputName(node, j, &jth_input_name);
-            n->add_input(jth_input_name, strlen(jth_input_name));
+            subgraph_input_names.insert(jth_input_name);
+            n->add_input(jth_input_name);
 
             OrtTensorRef* tensor_ref = nullptr;
             if (api_->OrtGraph_GetInitializerTensor(graph, jth_input_name, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
+              initializers.insert(jth_input_name);
               onnx::TensorProto* t = g->add_initializer();
               for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
               t->set_data_type(tensor_ref->data_type);
               t->set_raw_data(tensor_ref->data, tensor_ref->data_len);  // TODO(leca): correct? need to set other data type?
+              t->set_name(jth_input_name);
             }
           }
 
@@ -3632,14 +3629,15 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (size_t j = 0; j < implicit_input_size; j++) {
             const char* jth_input_name = nullptr;
             api_->OrtNode_GetIthImplicitInputName(node, j, &jth_input_name);
-            n->add_input(jth_input_name, strlen(jth_input_name));
 
             OrtTensorRef* tensor_ref = nullptr;
             if (api_->OrtGraph_GetInitializerTensor(graph, jth_input_name, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
+              initializers.insert(jth_input_name);
               onnx::TensorProto* t = g->add_initializer();
               for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
               t->set_data_type(tensor_ref->data_type);
               t->set_raw_data(tensor_ref->data, tensor_ref->data_len);  // correct? need to set other data type?
+              t->set_name(jth_input_name);
             }
           }
 
@@ -3648,24 +3646,48 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (size_t j = 0; j < output_size; j++) {
             const char* jth_output_name = nullptr;
             api_->OrtNode_GetIthOutputName(node, j, &jth_output_name);
-            n->add_output(jth_output_name, strlen(jth_output_name));
+            subgraph_output_names.insert(jth_output_name);
+            n->add_output(jth_output_name);
+          }
+
+          size_t attr_size = 0;
+          api_->OrtNode_GetAttributeSize(node, &attr_size);
+          for (size_t j = 0; j < attr_size; j++) {
+            onnx::AttributeProto* a = n->add_attribute();
+            // TODO(leca)
+          }
+
+        }
+
+        for (auto it = subgraph_input_names.begin(); it != subgraph_input_names.end();) {
+          if (subgraph_output_names.find(*it) != subgraph_output_names.end()) {
+            subgraph_output_names.erase(*it);
+            it = subgraph_input_names.erase(it);
+          } else {
+            it++;
           }
         }
-
-        // TODO(leca): set_elem_type, set_dim_value for graph input and output
-        size_t graph_inputs = 0;
-        const char** graph_input_names = nullptr;
-        api_->OrtGraph_GetInputsIncludingInitializers(graph, &graph_inputs, &graph_input_names);
-        for (size_t i = 0; i < graph_inputs; i++) {
-          onnx::ValueInfoProto* input = g->add_input();
-          input->set_name(graph_input_names[i]);
+        for (const auto& elem : subgraph_input_names) {
+          OrtValueInfoRef* value_info = nullptr;
+          if (api_->OrtGraph_GetValueInfo(graph, elem.c_str(), &value_info)) {
+            onnx::ValueInfoProto* v = g->add_input();
+            v->set_name(elem.c_str());
+            v->mutable_type()->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(value_info->data_type));
+            for (size_t i = 0; i < value_info->shape_len; i++) {
+              v->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(value_info->shape[i]);
+            }
+          }
         }
-
-        size_t graph_outputs = api_->OrtGraph_GetOutputSize(graph);
-        for (size_t i = 0; i < graph_outputs; i++) {
-          onnx::ValueInfoProto* output = g->add_output();
-          output->set_name(api_->OrtGraph_GetIthOutputName(graph, i));
-          output->mutable_type()->mutable_tensor_type()->set_elem_type(api_->OrtGraph_GetIthOutputElemType(graph, i));
+        for (const auto& elem : subgraph_output_names) {
+          OrtValueInfoRef* value_info = nullptr;
+          if (api_->OrtGraph_GetValueInfo(graph, elem.c_str(), &value_info)) {
+            onnx::ValueInfoProto* v = g->add_output();
+            v->set_name(elem.c_str());
+            v->mutable_type()->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(value_info->data_type));
+            for (size_t i = 0; i < value_info->shape_len; i++) {
+              v->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(value_info->shape[i]);
+            }
+          }
         }
 
         size_t buf_size = m.ByteSizeLong();
