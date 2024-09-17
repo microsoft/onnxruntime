@@ -23,10 +23,6 @@ set(dml_EXTERNAL_PROJECT OFF CACHE BOOL "Build DirectML as a source dependency."
 set(DML_SHARED_LIB DirectML.dll)
 
 if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-  if (NOT(MSVC) OR NOT(WIN32))
-    message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
-  endif()
-
   # Retrieve the latest version of nuget
   include(ExternalProject)
   ExternalProject_Add(nuget
@@ -53,7 +49,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     DEPENDS
       ${PACKAGES_CONFIG}
       ${NUGET_CONFIG}
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
+    COMMAND $<$<BOOL:${UNIX}>:mono> ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget.exe restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     VERBATIM
   )
 
@@ -107,6 +103,12 @@ FetchContent_Declare(
 )
 
 FetchContent_Populate(directx_headers)
-set(directx_headers_INCLUDE_DIRS  "${directx_headers_SOURCE_DIR}/include")
+
+set(
+  directx_headers_INCLUDE_DIRS
+  "${directx_headers_SOURCE_DIR}/include"
+  "${directx_headers_SOURCE_DIR}/include/directx"
+  "${directx_headers_SOURCE_DIR}/include/wsl/stubs"
+)
 
 include_directories(BEFORE ${directx_headers_INCLUDE_DIRS})

@@ -123,6 +123,11 @@ if (WIN32)
   target_compile_definitions(onnxruntime_framework PRIVATE _SCL_SECURE_NO_WARNINGS)
 endif()
 
+if(NOT MSVC)
+  # Some DirectX WSL headers define SAL annotations, and onnxruntime_c_api.h does as well
+  target_compile_options(onnxruntime_framework PUBLIC "-Wno-unknown-pragmas")
+endif()
+
 if (onnxruntime_BUILD_SHARED_LIB)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework/provider_options.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 else()

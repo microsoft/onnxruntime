@@ -19,16 +19,13 @@ function(package_version id out packages_config)
     set(${out} ${version} PARENT_SCOPE)
 endfunction()
 
-# Downloads the nuget packages based on packages.config 
+# Downloads the nuget packages based on packages.config
 function(
     add_fetch_nuget_target
     nuget_target # Target to be written to
     target_dependency # The file in the nuget package that is needed
 )
     # Pull down the nuget packages
-    if (NOT(MSVC) OR NOT(WIN32))
-    message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
-    endif()
 
     # Retrieve the latest version of nuget
     include(ExternalProject)
@@ -49,7 +46,7 @@ function(
     add_custom_command(
     OUTPUT ${target_dependency}
     DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget_exe/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
+    COMMAND $<$<BOOL:${UNIX}>:mono> ${CMAKE_CURRENT_BINARY_DIR}/nuget_exe/src/nuget.exe restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     VERBATIM)
 
     add_custom_target(${nuget_target} DEPENDS ${target_dependency})

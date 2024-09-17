@@ -81,6 +81,11 @@
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
+  # ignore the warning unknown-pragmas on "pragma region"
+  if(NOT MSVC)
+    # Some D3D12 headers have "#pragma region"
+    target_compile_options(onnxruntime_providers_dml PUBLIC "-Wno-unknown-pragmas")
+  endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS onnxruntime_providers_dml

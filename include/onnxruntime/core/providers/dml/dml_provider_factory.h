@@ -10,6 +10,7 @@
 #elif defined(_GAMING_XBOX_XBOXONE)
 #include <d3d12_x.h>
 #else
+#include "wrl/client.h"
 #include <d3d12.h>
 #endif
 #pragma warning(pop)

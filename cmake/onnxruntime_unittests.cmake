@@ -1327,6 +1327,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     if (onnxruntime_USE_DML)
       list(APPEND onnxruntime_shared_lib_test_LIBS d3d12.lib)
+
+      if(NOT MSVC)
+        # Some D3D12 headers have "#pragma region"
+        target_compile_options(onnxruntime_providers_dml PUBLIC "-Wno-unknown-pragmas")
+      endif()
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
