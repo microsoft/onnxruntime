@@ -166,24 +166,21 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
     OpQuantParam quant_param = ParseQuantParamForOp(info, x_dtype, 1);
-    xstatus = xnn_create_softmax_nc_qu8(channels,
-                                        channels,
-                                        channels,
-                                        quant_param[0].first[0],  // x_scale
-                                        quant_param[1].second,    // y_zp
-                                        quant_param[1].first[0],  // y_scale
-                                        0,                        // flags,
-                                        &p);
+    xstatus = xnn_create_softmax_nc_qu8(
+        quant_param[0].first[0],  // x_scale, input scale
+        quant_param[1].second,    // y_zp,  output zero point
+        quant_param[1].first[0],  // y_scale, output scale
+        0,                        // flags,
+        &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    xstatus = xnn_create_softmax_nc_f32(channels,
-                                        channels,
-                                        channels,
-                                        0,  // flags,
-                                        &p);
+    xstatus = xnn_create_softmax_nc_f32(
+        0,  // flags,
+        &p);
   }
 
   ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_",
               OpTypeToString(op_type_), " failed. Status:", xstatus);
+  channel_dim_ = channels;
   op0_.reset(p);
 }
 
@@ -205,7 +202,7 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
 
   auto reshape_fn = op_type_ == OpComputeType::op_compute_type_qu8 ? xnn_reshape_softmax_nc_qu8
                                                                    : xnn_reshape_softmax_nc_f32;
-  status = reshape_fn(op0_.get(), N, threadpool);
+  status = reshape_fn(op0_.get(), channel_dim_, channel_dim_, channel_dim_, N, threadpool);
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_softmax_nc_", OpTypeToString(op_type_),

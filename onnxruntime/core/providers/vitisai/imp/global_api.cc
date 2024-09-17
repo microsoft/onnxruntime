@@ -14,8 +14,6 @@
 #include "core/framework/error_code_helper.h"
 #include "core/providers/shared/common.h"
 
-#include <nlohmann/json.hpp>
-
 #include "vaip/dll_safe.h"
 #include "vaip/vaip_ort_api.h"
 #include "vaip/graph.h"
@@ -30,8 +28,6 @@
 #include "version_info.h"  // version_info.hpp.in
 
 using namespace onnxruntime;
-using json = nlohmann::json;
-
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
 #define LIBRARY_PREFIX

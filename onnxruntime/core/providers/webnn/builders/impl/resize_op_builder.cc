@@ -35,8 +35,6 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
   // We only support Resize opset 11+ here.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
 };
 
 // Helper functions
@@ -120,10 +118,18 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   std::vector<float> scales;
   std::vector<int32_t> sizes;
+  std::vector<float> scales_hw;
+  std::vector<int32_t> sizes_hw;
+  std::vector<int32_t> axes;
   std::string scales_name = GetTensorName(input_defs, 2);
+  const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
   if (!scales_name.empty()) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
-    std::vector<float> scales_hw = {scales[2], scales[3]};
+    if (is_nhwc) {
+      scales_hw = {scales[1], scales[2]};
+    } else {
+      scales_hw = {scales[2], scales[3]};
+    }
     options.set("scales", emscripten::val::array(scales_hw));
   } else {  // Use sizes, we already checked inputs in IsOpSupportedImpl.
     std::vector<int64_t> output_sizes;
@@ -132,11 +138,19 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::transform(output_sizes.cbegin(), output_sizes.cend(),
                    std::back_inserter(sizes),
                    [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
-    std::vector<int32_t> sizes_hw = {sizes[2], sizes[3]};
+    if (is_nhwc) {
+      sizes_hw = {sizes[1], sizes[2]};
+    } else {
+      sizes_hw = {sizes[2], sizes[3]};
+    }
     options.set("sizes", emscripten::val::array(sizes_hw));
   }
 
-  std::vector<int32_t> axes = {2, 3};
+  if (is_nhwc) {
+    axes = {1, 2};
+  } else {
+    axes = {2, 3};
+  }
   options.set("axes", emscripten::val::array(axes));
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
@@ -205,6 +219,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       return false;
     }
 
+    const bool is_nhwc = node.Domain() == kMSInternalNHWCDomain;
     // We want to check if the scales or sizes are not trying to resize on N/C channels here.
     if (has_scales) {  // We are using scales.
       std::vector<float> scales;
@@ -212,7 +227,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
 
       float scale_n = scales[0];
-      float scale_c = scales[1];
+      float scale_c = is_nhwc ? scales[3] : scales[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS(logger, VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -222,8 +237,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
 
       // For now we only support upscale, so the scale_h and scale_w should be an integer >= 1.
       // TODO support ResizeBilinear.
-      float scale_h = scales[2];
-      float scale_w = scales[3];
+      float scale_h = is_nhwc ? scales[1] : scales[2];
+      float scale_w = is_nhwc ? scales[2] : scales[3];
 
       // Onnx spec requires scale to be a positive float, so we are not checking that here.
       if (roundf(scale_h) != scale_h) {
@@ -244,38 +259,15 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
 
       auto output_size_n = output_sizes[0];
-      if (output_size_n != input_shape[0] || output_sizes[1] != input_shape[1]) {
+      const int c_idx = is_nhwc ? 3 : 1;
+      if (output_size_n != input_shape[0] || output_sizes[c_idx] != input_shape[c_idx]) {
         LOGS(logger, VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
                               << "Resize of N/C channels are not supported"
                               << ", input_size_n, " << input_shape[0] << ", output_size_n, " << output_size_n
-                              << ". input_size_c, " << input_shape[1] << ", output_size_c, " << output_sizes[1];
+                              << ". input_size_c, " << input_shape[c_idx] << ", output_size_c, " << output_sizes[c_idx];
         return false;
       }
     }
-  }
-
-  return true;
-}
-
-bool ResizeOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                             const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  // WebNN resample2d op only supports float32 and float16 input data types.
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-  };
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
   }
 
   return true;

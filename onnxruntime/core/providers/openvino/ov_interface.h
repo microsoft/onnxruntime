@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "openvino/openvino.hpp"
+#include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
 

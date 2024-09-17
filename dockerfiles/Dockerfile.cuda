@@ -2,23 +2,40 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------
-# Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
+# Build onnxruntime-gpu python package with CUDA 12.5 & CUDNN 9 for Nvidia GPU compute capability 6.1, 7.x, 8.x, 9.x.
+# If memory is less than 64GB, you may change "--parallel" to "--parallel 4" to avoid out-of-memory error.
 
-# nVidia cuda 11.4 Base Image
-FROM nvcr.io/nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
-ENV	    DEBIAN_FRONTEND=noninteractive
+FROM nvcr.io/nvidia/cuda:12.5.1-cudnn-devel-ubuntu22.04
+
+ARG CMAKE_CUDA_ARCHITECTURES=61;70;75;80;86;90
+
+ENV	 DEBIAN_FRONTEND=noninteractive
 MAINTAINER Changming Sun "chasun@microsoft.com"
 ADD . /code
 
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
-RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-packaging python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.27.3-linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.27.3-linux-x86_64.tar.gz --strip=1 -C /usr
+RUN apt-get update \
+&& apt-get install -y --no-install-recommends ca-certificates g++ gcc make git python3-dev python3-pip
 
-RUN cd /code && python3 -m pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requireme\
-nts.txt && /bin/bash ./build.sh --allow_running_as_root --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) 'CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;86'
+RUN cd /code \
+&& python3 -m pip install --upgrade pip cmake psutil setuptools wheel packaging ninja \
+&& python3 -m pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt \
+&& /bin/bash ./build.sh --allow_running_as_root --skip_submodule_sync \
+--use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+--build_shared_lib --skip_tests \
+--config Release --build_wheel --update --build --parallel \
+--cmake_generator Ninja \
+--enable_cuda_nhwc_ops \
+--cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) \
+onnxruntime_BUILD_UNIT_TESTS=OFF \
+`CMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}`
 
-FROM nvcr.io/nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-ENV	    DEBIAN_FRONTEND=noninteractive
+FROM nvcr.io/nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
+ENV	 DEBIAN_FRONTEND=noninteractive
 COPY --from=0 /code/build/Linux/Release/dist /root
 COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates python3-setuptools python3-wheel python3-pip unattended-upgrades && unattended-upgrade && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
+RUN apt-get update \
+&& apt-get install -y --no-install-recommends libstdc++6 ca-certificates python3-setuptools python3-wheel python3-pip unattended-upgrades \
+&& unattended-upgrade \
+&& python3 -m pip install /root/*.whl \
+&& rm -rf /root/*.whl
