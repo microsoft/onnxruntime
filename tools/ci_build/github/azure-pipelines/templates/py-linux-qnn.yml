@@ -43,10 +43,8 @@ jobs:
     - name: TODAY
       value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     - name: extra_build_args
-      ${{ if ne(parameters.extra_build_arg, '') }}:
-        value: -x ${{ parameters.extra_build_arg }}
-      ${{ if eq(parameters.extra_build_arg, '') }}:
-        value: ''
+      value: "-x '--use_qnn --qnn_home /qnn_sdk'"
+
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -82,7 +80,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} -x --use_qnn --qnn_home /qnn_sdk
+              arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
             env:
               ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
 
