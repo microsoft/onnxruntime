@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <memory>
@@ -381,9 +382,9 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
           CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level,
                                        intra_op_thread_pool, p_buffered_tensors),
           apply_context,
-          // this transformer is compatible with CPU, DML and CUDA EP.
+          // this transformer is compatible with CPU, DML, ACL and CUDA EP.
           // There is further EP control on the rule level.
-          {kCpuExecutionProvider, kDmlExecutionProvider, kCudaExecutionProvider}} {
+          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider}} {
 }
 
 }  // namespace onnxruntime
