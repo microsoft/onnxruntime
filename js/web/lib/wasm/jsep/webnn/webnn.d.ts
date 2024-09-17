@@ -393,8 +393,8 @@ type MLTensorUsageFlags = number;
 
 declare const MLTensorUsage: {
   readonly WEBGPU_INTEROP: MLTensorUsageFlags;
-  readonly READ_FROM: MLTensorUsageFlags;
-  readonly WRITE_TO: MLTensorUsageFlags;
+  readonly READ: MLTensorUsageFlags;
+  readonly WRITE: MLTensorUsageFlags;
 };
 
 interface MLTensorDescriptor extends MLOperandDescriptor {

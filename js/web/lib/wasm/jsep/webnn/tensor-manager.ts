@@ -147,7 +147,7 @@ class TensorTracker {
     }
     LOG_DEBUG('verbose', () => `[WebNN] MLContext.createTensor {dataType: ${dataType}, dimensions: ${dimensions}}`);
     // eslint-disable-next-line no-bitwise
-    const usage = MLTensorUsage.READ_FROM | MLTensorUsage.WRITE_TO;
+    const usage = MLTensorUsage.READ | MLTensorUsage.WRITE;
     const tensor = await this.context.createTensor({ dataType, dimensions, usage });
     this.tensorEntry = [tensor, dataType, dimensions];
     this.tensorCache.push(this.tensorEntry);
