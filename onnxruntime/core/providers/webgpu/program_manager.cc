@@ -60,7 +60,9 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   ORT_RETURN_IF_ERROR(program.GenerateShaderCode(shader_helper));
 
-  ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForInputsAndOutputs());
+  ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForInputs());
+  ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForOutputs());
+  ORT_RETURN_IF_ERROR(shader_helper.ValidateIndices());
 
   // code is a large std::string that contains the final shader code
   std::string code;

@@ -20,12 +20,12 @@ ONNX_OPERATOR_KERNEL_EX(
     FastGelu);
 
 Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderVariable::UseUniform | ShaderVariable::UseValueTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderVariable::UseUniform);
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   std::string add_bias = "";
   if (Inputs().size() > 1) {
-    const auto& bias = shader.AddInput("bias", ShaderVariable::UseUniform | ShaderVariable::UseShapeAndStride);
+    const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
     add_bias = bias_components_ == 1 ? "  let bias_offset = global_idx * 4;\n"
                                        "  x += input_value_t(" +
                                            bias.GetByOffset("bias_offset % uniforms.bias_shape") + ", " +

@@ -12,7 +12,7 @@ namespace webgpu {
 
 class UnaryElementwiseProgram final : public Program<UnaryElementwiseProgram> {
  public:
-  UnaryElementwiseProgram(const std::string& kernel_name, std::string_view expression, std::string_view additional_impl, ShaderVariable::Usage usage)
+  UnaryElementwiseProgram(const std::string& kernel_name, std::string_view expression, std::string_view additional_impl, ShaderUsage usage)
       : Program{kernel_name}, expression_{expression}, additional_impl_{additional_impl}, additional_usage_{usage} {
   }
 
@@ -26,7 +26,7 @@ class UnaryElementwiseProgram final : public Program<UnaryElementwiseProgram> {
  private:
   std::string_view expression_;
   std::string_view additional_impl_;
-  ShaderVariable::Usage additional_usage_;
+  ShaderUsage additional_usage_;
 };
 
 // TODO: after upgrading to C++20, use consteval to make a compile-time constructor so that it will be safe to switch
@@ -38,11 +38,11 @@ class UnaryElementwise : public WebGpuKernel {
                    const std::string& kernel_name,
                    const std::string& expression,
                    const std::string& additional_impl = "",
-                   ShaderVariable::Usage usage = ShaderVariable::None) : WebGpuKernel{info},
-                                                                         kernel_name_{kernel_name},
-                                                                         expression_{expression},
-                                                                         additional_impl_{additional_impl},
-                                                                         additional_usage_{usage} {}
+                   ShaderUsage usage = ShaderUsage::None) : WebGpuKernel{info},
+                                                            kernel_name_{kernel_name},
+                                                            expression_{expression},
+                                                            additional_impl_{additional_impl},
+                                                            additional_usage_{usage} {}
 
  protected:
   std::string cache_hint;
@@ -57,7 +57,7 @@ class UnaryElementwise : public WebGpuKernel {
   std::string kernel_name_;
   std::string expression_;
   std::string additional_impl_;
-  ShaderVariable::Usage additional_usage_;
+  ShaderUsage additional_usage_;
 };
 
 constexpr const char ErfImpl[] = R"(
