@@ -193,6 +193,15 @@ export interface TensorConstructor extends TensorFactory {
   ): TypedTensor<'bool'>;
 
   /**
+   * Construct a new uint8 tensor object from a Uint8ClampedArray, data and dims.
+   *
+   * @param type - Specify the element type.
+   * @param data - Specify the CPU tensor data.
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new (type: 'uint8', data: Uint8ClampedArray, dims?: readonly number[]): TypedTensor<'uint8'>;
+
+  /**
    * Construct a new 64-bit integer typed tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
@@ -244,6 +253,14 @@ export interface TensorConstructor extends TensorFactory {
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new (data: Uint8Array, dims?: readonly number[]): TypedTensor<'uint8'>;
+
+  /**
+   * Construct a new uint8 tensor object from the given data and dims.
+   *
+   * @param data - Specify the CPU tensor data.
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new (data: Uint8ClampedArray, dims?: readonly number[]): TypedTensor<'uint8'>;
 
   /**
    * Construct a new uint16 tensor object from the given data and dims.
