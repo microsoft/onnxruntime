@@ -90,10 +90,9 @@ def update_version():
             args = ["cmd", "/c", *args]
         run(*args, cwd=cwd)
 
-    # check if node, npm and yarn are installed
+    # check if node and npm
     run(["node", "--version"], cwd=js_root)
     run(["npm", "--version"], cwd=js_root)
-    run(["yarn", "--version"], cwd=js_root)
 
     # upgrade version for onnxruntime-common
     run(["npm", "version", version], cwd=os.path.join(js_root, "common"))
