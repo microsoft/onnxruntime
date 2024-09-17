@@ -75,6 +75,7 @@ jobs:
         --token $(browserstack_access_key) \
         --app_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/debug/app-debug.apk" \
         --test_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" \
+        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
     displayName: Run E2E tests using Browserstack
     workingDirectory: $(Build.SourcesDirectory)
 

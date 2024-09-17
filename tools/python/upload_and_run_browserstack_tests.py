@@ -10,15 +10,13 @@ parser.add_argument("--id", type=str, help="BrowserStack user ID")
 parser.add_argument("--token", type=str, help="BrowserStack token")
 parser.add_argument("--app_apk_path", type=str, help="Path to the app APK")
 parser.add_argument("--test_apk_path", type=str, help="Path to the test suite APK")
-# TODO: add link to browserstack documentation of available device strings you can pass in
-parser.add_argument("--devices", type=str, nargs="+", help="List of devices to run the tests on")
+parser.add_argument("--devices", type=str, nargs="+", help="List of devices to run the tests on. For more info, " +
+                    "see https://www.browserstack.com/docs/app-automate/espresso/specify-devices")
 
 args = parser.parse_args()
 
-
 def post_response_to_json(response):
     if len(response) == 0:
-        print("response received: ", response)
         raise Exception("No response from BrowserStack")
     try:
         json_response = json.loads(response)
@@ -47,9 +45,7 @@ upload_test_json = upload_apk_parse_json(
 headers = {}
 
 json_data = {
-    "devices": [
-        "Samsung Galaxy S22-12.0",
-    ],
+    "devices": args.devices,
     "app": upload_app_json["app_url"],
     "testSuite": upload_test_json["test_suite_url"],
 }
