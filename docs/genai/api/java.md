@@ -206,6 +206,97 @@ The GeneratorParams instance.
 GeneratorParams params = generator.createGeneratorParams("What's 6 times 7?");
 ```
 
+## Multimodal Processor Class
+The MultiModalProcessor class is responsible for converting text/images into a NamedTensors list that can be fed into a Generator class instance.
+
+### processImages Method
+
+Processes text and image (optional) into a NamedTensors object.
+
+```java
+public NamedTensors processImages(String prompt, Images images) throws GenAIException
+```
+
+#### Parameters
+
+- `prompt`: text input formatted according to model specifications.
+- `images`: optional image input. Pass `null` if no image input.
+
+#### Throws
+
+`GenAIException`- if the call to the GenAI native API fails.
+
+#### Returns
+
+A NamedTensors object.
+
+#### Example
+Example using the [Phi-3 Vision](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu/tree/main/cpu-int4-rtn-block-32-acc-level-4) model.
+```java
+Images images = null;
+if (inputImage != null) {
+  images = inputImage.getImages();
+}
+
+NamedTensors inputTensors = multiModalProcessor.processImages(promptQuestion_formatted, images);
+```
+
+### Decode Method
+
+Decodes a sequence of token ids into text.
+
+```java
+public String decode(int[] sequence) throws GenAIException
+```
+
+#### Parameters
+
+- `sequence`: collection of token ids to decode to text.
+
+#### Throws
+
+`GenAIException`- if the call to the GenAI native API fails.
+
+#### Returns
+
+The text representation of the sequence.
+
+#### Example
+
+```java
+String result = multiModalProcessor.decode(output_ids);
+```
+
+### createStream Method
+
+Creates a TokenizerStream object for streaming tokenization. This is used with Generator class to provide each token as it is generated.
+
+```java
+public TokenizerStream createStream() throws GenAIException
+```
+
+#### Throws
+
+`GenAIException`- if the call to the GenAI native API fails.
+
+#### Returns
+
+The new TokenizerStream instance.
+
+## Images Class
+The Images class loads images from files to be used in the MultiModalProcessor class.
+### Constructor
+
+```java
+public Images(String imagesPath) throws GenAIException
+```
+
+#### Parameters
+- `imagesPath`: path for inputed image.
+
+#### Throws
+`GenAIException`- if the call to the GenAI native API fails.
+
 ## Tokenizer class
 
 ### Encode Method
@@ -244,7 +335,7 @@ public String decode(int[] sequence) throws GenAIException
 
 #### Parameters
 
-- `sequence`: collection of token ids to decode to text
+- `sequence`: collection of token ids to decode to text.
 
 #### Throws
 
@@ -344,7 +435,7 @@ public String decode(int token) throws GenAIException
 
 #### Throws
 
-`GenAIException`
+`GenAIException`- if the call to the GenAI native API fails.
 
 ## Tensor Class
 
@@ -362,7 +453,7 @@ public Tensor(ByteBuffer data, long[] shape, ElementType elementType) throws Gen
 
 #### Throws
 
-`GenAIException`
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Example
 
@@ -377,6 +468,18 @@ floatBuffer.put(new float[] {1.0f, 2.0f, 3.0f, 4.0f});
 Tensor tensor = new Tensor(data, shape, Tensor.ElementType.float32);
 ```
 
+## NamedTensors Class
+The NamedTensors class holds input from the MultiModalProcessor class.
+### Constructor
+
+```java
+public NamedTensors(long handle)
+```
+
+#### Parameters
+
+- `handle`: handle of NamedTensors.
+
 ## GeneratorParams class
 
 The `GeneratorParams` class represents the parameters used for generating sequences with a model. Set the prompt using setInput, and any other search options using setSearchOption.
@@ -387,7 +490,7 @@ The `GeneratorParams` class represents the parameters used for generating sequen
 GeneratorParams params = new GeneratorParams(model);
 ```
 
-### setSearchOption Method
+### setSearchOption Method (double)
 
 ```java
 public void setSearchOption(String optionName, double value) throws GenAIException
@@ -395,7 +498,7 @@ public void setSearchOption(String optionName, double value) throws GenAIExcepti
 
 #### Throws
 
-`GenAIException`
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Example
 
@@ -405,7 +508,7 @@ Set search option to limit the model generation length.
 generatorParams.setSearchOption("max_length", 10);
 ```
 
-### setSearchOption Method
+### setSearchOption Method (boolean)
 
 ```java
 public void setSearchOption(String optionName, boolean value) throws GenAIException
@@ -413,7 +516,7 @@ public void setSearchOption(String optionName, boolean value) throws GenAIExcept
 
 #### Throws
 
-`GenAIException`
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Example
 
@@ -440,18 +543,17 @@ public void setInput(Sequences sequences) throws GenAIException
 generatorParams.setInput(encodedPrompt);
 ```
 
-### setInput Method
+### setInput Method (Token IDs)
 
 Sets the prompt/s token ids for model execution. The `tokenIds` are the encoded parameters.
 
 ```java
-public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
- throws GenAIException
+public void setInput(int[] tokenIds, int sequenceLength, int batchSize) throws GenAIException
 ```
 
 #### Parameters
 
-- `tokenIds`: the token ids of the encoded prompt/s
+- `tokenIds`: the token ids of the encoded prompt/s.
 - `sequenceLength`: the length of each sequence.
 - `batchSize`: size of the batch. 
 
@@ -467,21 +569,64 @@ NOTE: all sequences in the batch must be the same length.
 generatorParams.setInput(tokenIds, sequenceLength, batchSize);
 ```
 
+### setInput Method (Tensor)
+Add a Tensor as a model input.
+
+```java
+public void setInput(String name, Tensor tensor) throws GenAIException
+```
+#### Parameters
+
+- `name`: name of the model input the tensor will provide.
+- `tensor`: tensor to add.
+
+#### Throws
+
+`GenAIException`- if the call to the GenAI native API fails. 
+
+#### Example
+
+```java
+generatorParams.setInput(name, tensor);
+```
+
+### setInput Method (NamedTensors)
+Add a NamedTensors as a model input.
+
+```java
+public void setInput(NamedTensors namedTensors) throws GenAIException {
+```
+#### Parameters
+
+- `namedTensors`: NamedTensors to add.
+
+#### Throws
+
+`GenAIException`- if the call to the GenAI native API fails. 
+
+#### Example
+
+```java
+NamedTensors inputTensors = multiModalProcessor.processImages(promptQuestion_formatted, images);
+generatorParams.setInput(inputTensors);
+```
+
 ## Generator class
 
 The Generator class generates output using a model and generator parameters.
-The expected usage is to loop until isDone returns false. Within the loop, call computeLogits followed by generateNextToken.
 
-The newly generated token can be retrieved with getLastTokenInSequence and decoded with TokenizerStream.Decode.
+The expected usage is to loop until isDone() returns false. Within the loop, call computeLogits() followed by generateNextToken().
 
-After the generation process is done, GetSequence can be used to retrieve the complete generated sequence if needed.
+The newly generated token can be retrieved with getLastTokenInSequence() and decoded with TokenizerStream.Decode.
+
+After the generation process is done, getSequence() can be used to retrieve the complete generated sequence if needed.
 
 ### Create a Generator
 
 Constructs a Generator object with the given model and generator parameters.
 
 ```java
-Generator(Model model, GeneratorParams generatorParams)
+public Generator(Model model, GeneratorParams generatorParams) throws GenAIException
 ```
 
 #### Parameters
