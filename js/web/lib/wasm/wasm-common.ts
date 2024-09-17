@@ -236,7 +236,9 @@ export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuB
   type === 'int64' ||
   type === 'uint32' ||
   type === 'uint8' ||
-  type === 'bool';
+  type === 'bool' ||
+  type === 'uint4' ||
+  type === 'int4';
 
 /**
  * Map string data location to integer value

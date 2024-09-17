@@ -40,6 +40,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_arm64ec_qnn
+  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
+  type: boolean
+  default: true
+
 - name: enable_windows_x64_qnn
   displayName: 'Whether Windows x86_64 package with QNN EP is built.'
   type: boolean
@@ -63,7 +68,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.25.0.240728
+  default: 2.26.0.240828
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -393,9 +398,9 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-latest'
+        vmImage: 'macOS-13'
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '11.0'
+        MACOSX_DEPLOYMENT_TARGET: '13.3'
       strategy:
         matrix:
           Python38:
@@ -419,8 +424,6 @@ stages:
           versionSpec: $(PythonVersion)
 
       - template: use-xcode-version.yml
-        parameters:
-          xcodeVersion: 14.2
 
       - template: download-deps.yml
 
@@ -512,11 +515,21 @@ stages:
           PYTHON_VERSION: '3.11'
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
 
+  - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
+    - stage: Python_Packaging_Windows_arm64ec_QNN
+      dependsOn: []
+      jobs:
+        - template: py-win-arm64ec-qnn.yml
+          parameters:
+            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}
+            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+
   - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
     - stage: Python_Packaging_Windows_x64_QNN
       dependsOn: []
       jobs:
-        - template: py-win-arm64ec-qnn.yml
+        - template: py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}

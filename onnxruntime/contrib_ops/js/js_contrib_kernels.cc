@@ -24,6 +24,11 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, SkipLa
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, SimplifiedLayerNormalization);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, SkipSimplifiedLayerNormalization);
 
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int32_t, GatherBlockQuantized);
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int64_t, GatherBlockQuantized);
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int32_t, GatherBlockQuantized);
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int64_t, GatherBlockQuantized);
+
 template <>
 
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -51,8 +56,12 @@ Status RegisterJsContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1,
                                                             SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1,
-                                                            SkipSimplifiedLayerNormalization)>};
-
+                                                            SkipSimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int64_t, GatherBlockQuantized)>,
+  };
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void

@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "command_args_parser.h"
@@ -66,6 +67,7 @@ namespace perftest {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
+      "\t    [ACL only] [enable_fast_math]: Options: 'true', 'false', default: 'false', \n"
       "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
@@ -144,6 +146,7 @@ namespace perftest {
       "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-l Provide file as binary in memory by using fopen before session creation.\n"
+      "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -206,7 +209,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznl"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -392,6 +395,9 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         break;
       case 'l':
         test_config.model_info.load_via_path = true;
+        break;
+      case 'R':
+        test_config.run_config.register_custom_op_path = optarg;
         break;
       case '?':
       case 'h':
