@@ -385,7 +385,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   // store shape uniform ranks in shape_uniform_ranks
   bool use_any_shape_uniform = false;
   ORT_ENFORCE(shape_uniform_ranks.size() == 0);
-  shape_uniform_ranks.reserve(input_vars_.size() + output_vars_.size());
+  shape_uniform_ranks.reserve(input_vars_.size() + output_vars_.size() + indices_vars_.size());
 
   for (const auto& input : input_vars_) {
     bool use_uniform = (input->usage_ & ShaderUsage::UseUniform) &&
@@ -400,6 +400,13 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                        output->rank_ > 0;
     use_any_shape_uniform |= use_uniform;
     shape_uniform_ranks.push_back(use_uniform ? output->rank_ : 0);
+  }
+  for (const auto& indices : indices_vars_) {
+    bool use_uniform = (indices->usage_ & ShaderUsage::UseUniform) &&
+                       (indices->usage_ & ShaderUsage::UseShapeAndStride) &&
+                       indices->rank_ > 0;
+    use_any_shape_uniform |= use_uniform;
+    shape_uniform_ranks.push_back(use_uniform ? indices->rank_ : 0);
   }
 
   if (use_any_shape_uniform || std::any_of(program_.UniformVariables().cbegin(),
@@ -452,6 +459,16 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
       if (rank > 0 && (output->usage_ & ShaderUsage::UseUniform) && (output->usage_ & ShaderUsage::UseShapeAndStride)) {
         std::string shape = output->name_ + "_shape";
         std::string stride = output->name_ + "_stride";
+        append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+      }
+    }
+
+    for (const auto& indices : indices_vars_) {
+      const size_t rank = indices->rank_;
+      if (rank > 0 && (indices->usage_ & ShaderUsage::UseUniform) && (indices->usage_ & ShaderUsage::UseShapeAndStride)) {
+        std::string shape = indices->name_ + "_shape";
+        std::string stride = indices->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
         append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
       }

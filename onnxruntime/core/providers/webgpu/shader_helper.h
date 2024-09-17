@@ -90,7 +90,7 @@ class ShaderHelper final {
                                         ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an indices variable to the shader.
-  const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform);
+  const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform = true);
 
   // Append additional implementation code to the shader.
   //

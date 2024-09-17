@@ -16,12 +16,13 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
                            const std::string& expression,
                            const bool is_broadcast,
                            const bool is_lhs_scalar,
-                           const bool is_rhs_scalar, const bool vectorize) : Program{kernel_name},
-                                                                             expression_{expression},
-                                                                             is_broadcast_{is_broadcast},
-                                                                             is_lhs_scalar_{is_lhs_scalar},
-                                                                             is_rhs_scalar_{is_rhs_scalar},
-                                                                             vectorize_{vectorize} {}
+                           const bool is_rhs_scalar,
+                           const bool vectorize) : Program{kernel_name},
+                                                   expression_{expression},
+                                                   is_broadcast_{is_broadcast},
+                                                   is_lhs_scalar_{is_lhs_scalar},
+                                                   is_rhs_scalar_{is_rhs_scalar},
+                                                   vectorize_{vectorize} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 

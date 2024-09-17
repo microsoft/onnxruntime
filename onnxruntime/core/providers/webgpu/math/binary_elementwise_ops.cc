@@ -12,56 +12,59 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  std::string common;
   std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n" : "let a = " + a.GetByOffset("global_idx") + ";\n";
   std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n" : "let b = " + b.GetByOffset("global_idx") + ";\n";
   if (!is_lhs_scalar_ && !is_rhs_scalar_ && is_broadcast_) {
+    const auto& c_indices = shader.AddIndices("bcast_indices");
     if (vectorize_) {
-      std::string common = "let outputIndices = " + c.OffsetToIndices("global_idx * 4") +
-                           ";\n"
-                           "let offset_a = " +
-                           a.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "let offset_b = " +
-                           b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n";
-      const std::string a_data = a.NumComponents() == 4 ? "let a = " + a.GetByOffset("offset_a / 4") + ";\n" : "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
-      get_a_data = common + a_data;
+      const auto& a_indices = shader.AddIndices("a_indices");
+      const auto& b_indices = shader.AddIndices("b_indices");
+      common = "let outputIndices = " + c_indices.OffsetToIndices("global_idx * 4") +
+               ";\n"
+               "let offset_a = " +
+               a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "let offset_b = " +
+               b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) + ";\n";
+      get_a_data = a.NumComponents() == 4 ? "let a = " + a.GetByOffset("offset_a / 4") + ";\n" : "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
       get_b_data = b.NumComponents() == 4 ? "let b = " + b.GetByOffset("offset_b / 4") + ";\n" : "let b = input_a_value_t(" + b.GetByOffset("offset_b") + ");\n";
     } else {
-      std::string common = "var outputIndices = " + c.OffsetToIndices("global_idx * 4") +
-                           ";\n"
-                           "let offset_a0 = " +
-                           a.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "let offset_b0 = " +
-                           b.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "outputIndices = " +
-                           c.OffsetToIndices("global_idx * 4 + 1") +
-                           ";\n"
-                           "let offset_a1 = " +
-                           a.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "let offset_b1 = " +
-                           b.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "outputIndices = " +
-                           c.OffsetToIndices("global_idx * 4 + 2") +
-                           ";\n"
-                           "let offset_a2 = " +
-                           a.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "let offset_b2 = " +
-                           b.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "outputIndices = " +
-                           c.OffsetToIndices("global_idx * 4 + 3") +
-                           ";\n"
-                           "let offset_a3 = " +
-                           a.BroadcastedIndicesToOffset("outputIndices", c) +
-                           ";\n"
-                           "let offset_b3 = " +
-                           b.BroadcastedIndicesToOffset("outputIndices", c) + ";\n";
-      get_a_data = common + "let a = vec4<input_a_value_t>(" + a.GetByOffset("offset_a0") + ", " +
+      common = "var outputIndices = " + c_indices.OffsetToIndices("global_idx * 4") +
+               ";\n"
+               "let offset_a0 = " +
+               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "let offset_b0 = " +
+               b.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "outputIndices = " +
+               c_indices.OffsetToIndices("global_idx * 4 + 1") +
+               ";\n"
+               "let offset_a1 = " +
+               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "let offset_b1 = " +
+               b.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "outputIndices = " +
+               c_indices.OffsetToIndices("global_idx * 4 + 2") +
+               ";\n"
+               "let offset_a2 = " +
+               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "let offset_b2 = " +
+               b.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "outputIndices = " +
+               c_indices.OffsetToIndices("global_idx * 4 + 3") +
+               ";\n"
+               "let offset_a3 = " +
+               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
+               ";\n"
+               "let offset_b3 = " +
+               b.BroadcastedIndicesToOffset("outputIndices", c_indices) + ";\n";
+      get_a_data = "let a = vec4<input_a_value_t>(" + a.GetByOffset("offset_a0") + ", " +
                    a.GetByOffset("offset_a1") + ", " +
                    a.GetByOffset("offset_a2") + ", " +
                    a.GetByOffset("offset_a3") + ");\n";
@@ -73,7 +76,7 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   }
 
   shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             get_a_data, get_b_data,
+                             common, get_a_data, get_b_data,
                              c.SetByOffset("global_idx", expression_));
   return Status::OK();
 }
@@ -100,6 +103,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   bool a_last_dim_divisible_by_4 = false;
   bool b_last_dim_divisible_by_4 = false;
   bool shared_dimension_divisible_by_4 = false;
+  size_t num_shared_dimension = 0;
   if (!vectorize) {
     // check whether vectorize can be enabled
     a_last_dim_divisible_by_4 = lhs_shape.NumDimensions() > 0 && lhs_shape[lhs_shape.NumDimensions() - 1] % 4 == 0;
@@ -113,6 +117,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
         size_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
         if (dimA == dimB) {
           shared_dimension *= dimA;
+          num_shared_dimension++;
         } else {
           break;
         }
@@ -128,26 +133,69 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   const std::string expression = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
                                      ? "output_value_t(pow(vec4<f16>(a), vec4<f16>(b)))"
                                      : "output_value_t(pow(vec4<f32>(a), vec4<f32>(b)))";
-  BinaryElementwiseProgram program{kernel_name_, kernel_name_ == "Pow" ? expression : expression_, is_broadcast, is_lhs_scalar, is_rhs_scalar, vectorize};
+  BinaryElementwiseProgram program{kernel_name_,
+                                   kernel_name_ == "Pow" ? expression : expression_,
+                                   is_broadcast,
+                                   is_lhs_scalar,
+                                   is_rhs_scalar,
+                                   vectorize};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
-      });
+      })
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4});
 
   if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
+    // Mode Element-wise
+    // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
         .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, {is_lhs_scalar ? 1 : vec_size}, 4},
                     {rhs_tensor, ProgramTensorMetadataDependency::Type, {is_rhs_scalar ? 1 : vec_size}, 4}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
-        .CacheHint(std::to_string(is_broadcast) + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
-  } else {
+        .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
+  } else if (vectorize) {
+    // reshape the dims to merge the shared dimension if available
+    bool need_reshape = shared_dimension_divisible_by_4 && num_shared_dimension > 1;
+    TensorShape reshaped_lhs_shape = need_reshape ? lhs_shape.Slice(0, lhs_shape.NumDimensions() - num_shared_dimension + 1)
+                                                  : lhs_shape;
+    TensorShape reshaped_rhs_shape = need_reshape ? rhs_shape.Slice(0, rhs_shape.NumDimensions() - num_shared_dimension + 1)
+                                                  : rhs_shape;
+    TensorShape reshaped_output_shape = need_reshape ? output_shape.Slice(0, output_shape.NumDimensions() - num_shared_dimension + 1)
+                                                     : output_shape;
+    if (need_reshape) {
+      reshaped_lhs_shape[reshaped_lhs_shape.NumDimensions() - 1] = lhs_shape.SizeFromDimension(lhs_shape.NumDimensions() - num_shared_dimension);
+      reshaped_rhs_shape[reshaped_rhs_shape.NumDimensions() - 1] = rhs_shape.SizeFromDimension(rhs_shape.NumDimensions() - num_shared_dimension);
+      reshaped_output_shape[reshaped_output_shape.NumDimensions() - 1] = output_shape.SizeFromDimension(output_shape.NumDimensions() - num_shared_dimension);
+    }
+
+    if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4) {
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type, {(lhs_shape.Size() + 3) / 4}, 4});
+    } else {
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type});
+    }
+    if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4) {
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type, {(rhs_shape.Size() + 3) / 4}, 4});
+    } else {
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
+    }
+    // Mode Vectorize broadcast
+    // cache hint: "V{a_rank};{b_rank};{output_rank}"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4 ? 4 : 1},
-                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4 ? 4 : 1}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
+        .AddIndices(reshaped_lhs_shape)
+        .AddIndices(reshaped_rhs_shape)
+        .AddIndices(reshaped_output_shape)
+        .CacheHint("V" + absl::StrJoin({reshaped_lhs_shape.NumDimensions(),
+                                        reshaped_rhs_shape.NumDimensions(),
+                                        reshaped_output_shape.NumDimensions()},
+                                       ";"));
+  } else {
+    // Mode Broadcast
+    // cache hint: "B"
+    program
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank},
+                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddIndices(output_tensor->Shape())
-        .CacheHint(std::to_string(vectorize));
+        .CacheHint("B");
   }
 
   return context.RunProgram(program);
