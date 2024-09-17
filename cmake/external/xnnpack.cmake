@@ -40,8 +40,8 @@ onnxruntime_fetchcontent_makeavailable(pthreadpool)
 IF(CMAKE_OSX_ARCHITECTURES)
   LIST(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_COUNT)
   IF(CMAKE_OSX_ARCHITECTURES_COUNT GREATER 1)
-    MESSAGE(STATUS "Unsupported Onnxruntime with XNNPACK build with multiple OSX architectures (${CMAKE_OSX_ARCHITECTURES}). "
-      "Specify a single architecture in CMAKE_OSX_ARCHITECTURES and re-configure. ")
+    MESSAGE(STATUS "Building ONNX Runtime with XNNPACK and multiple OSX architectures is not supported. Got:(${CMAKE_OSX_ARCHITECTURES}). "
+      "Please specify a single architecture in CMAKE_OSX_ARCHITECTURES and re-configure. ")
   ENDIF()
   IF(NOT CMAKE_OSX_ARCHITECTURES MATCHES "^(x86_64|arm64|arm64e|arm64_32)$")
     MESSAGE(FATAL_ERROR "Unrecognized CMAKE_OSX_ARCHITECTURES value \"${CMAKE_OSX_ARCHITECTURES}\"")
