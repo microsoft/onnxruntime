@@ -681,7 +681,6 @@ TYPED_TEST(GemmOpTypedTests, ZeroKWithNoBias) {
       .RunWithConfig();
 }
 
-
 TYPED_TEST(GemmOpTypedTests, MissingBias) {
   OpTester test("Gemm", 11);
 
