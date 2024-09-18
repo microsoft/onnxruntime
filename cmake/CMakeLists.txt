@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 # Minimum CMake required
@@ -38,6 +39,7 @@ include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -69,6 +71,7 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
 endif()
 
 # Options
+option(onnxruntime_USE_VCPKG "Build with the vcpkg package manager" OFF)
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
@@ -130,11 +133,6 @@ option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
-option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
-option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
-option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
-option(onnxruntime_USE_ACL_2002 "Build with ACL version 2002 support" OFF)
-option(onnxruntime_USE_ACL_2308 "Build with ACL version 2308 support" OFF)
 option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
 option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
 option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
@@ -595,6 +593,7 @@ get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 include(external/onnxruntime_external_deps.cmake)
 
 set(ORT_WARNING_FLAGS)
@@ -1204,25 +1203,8 @@ function(onnxruntime_add_include_to_target dst_target)
 endfunction()
 
 # ACL
-if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 OR onnxruntime_USE_ACL_1908 OR onnxruntime_USE_ACL_2002 OR onnxruntime_USE_ACL_2308)
+if (onnxruntime_USE_ACL)
   set(onnxruntime_USE_ACL ON)
-  if (onnxruntime_USE_ACL_1902)
-    add_definitions(-DACL_1902=1)
-  else()
-    if (onnxruntime_USE_ACL_1908)
-      add_definitions(-DACL_1908=1)
-    else()
-      if (onnxruntime_USE_ACL_2002)
-        add_definitions(-DACL_2002=1)
-      else()
-    if (onnxruntime_USE_ACL_2308)
-      add_definitions(-DACL_2308=1)
-    else()
-          add_definitions(-DACL_1905=1)
-    endif()
-      endif()
-    endif()
-  endif()
 
   if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
     add_library(arm_compute SHARED IMPORTED)
@@ -1230,18 +1212,13 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
 
-    add_library(arm_compute_core SHARED IMPORTED)
-    set_target_properties(arm_compute_core PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
-
     add_library(arm_compute_graph SHARED IMPORTED)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_core arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph)
 
 endif()
 
@@ -1260,11 +1237,6 @@ if (onnxruntime_USE_ARMNN)
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
 
-    add_library(arm_compute_core SHARED IMPORTED)
-    set_target_properties(arm_compute_core PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_core.so")
-
     add_library(arm_compute_graph SHARED IMPORTED)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -1278,7 +1250,7 @@ if (onnxruntime_USE_ARMNN)
         IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_core arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)
