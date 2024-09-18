@@ -146,7 +146,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         DoubleOrFloat mean_square(0.0f);
 
         std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(hidden_size);
-        for (int64_t h = 0; h < hidden_size; h++) {
+        for (size_t h = 0; h < hidden_size; h++) {
           DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
           DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
 
@@ -173,7 +173,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
         }
 
-        for (int64_t h = 0; h < hidden_size; h++) {
+        for (size_t h = 0; h < hidden_size; h++) {
           DoubleOrFloat gamma_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(gamma_data[h]);
           if (simplified) {
             p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
