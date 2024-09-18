@@ -116,6 +116,7 @@ manylinux_tags = [
     "manylinux2014_s390x",
     "manylinux_2_28_x86_64",
     "manylinux_2_28_aarch64",
+    "manylinux_2_34_x86_64",
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
@@ -260,6 +261,8 @@ try:
 
                 cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
+                #qnn_dependencies = ["libQnnCpu.so", "libQnnHtp.so", "libQnnSaver.so", "libQnnSystem.so", "libHtpPrepare.so", "onnxruntime_qnn_ctx_gen"]
+
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -283,6 +286,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
+                #for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies + qnn_dependencies:
                 for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
