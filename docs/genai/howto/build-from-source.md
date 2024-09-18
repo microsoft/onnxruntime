@@ -118,58 +118,10 @@ Copy `build/Android/Release/src/java/build/android/outputs/aar/onnxruntime-genai
 
 #### Windows
 
-Use the header in `src\ort_genai.h` and the libraries in `build\Windows\Release`
+Use the header in `src\ort_genai.h` and the libraries in `build\Windows\Release\Release`
 
 #### Linux
 
 Use the header in `src/ort_genai.h` and the libraries in `build/Linux/Release`
-
-
-
-TODO
-
-## Download ONNX Runtime binaries
-
-By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build via the `--ort_home` command line argument.
-
-
-These instructions assume you are in the `onnxruntime-genai` folder.
-
-#### Windows
-
-These instruction use `win-x64`. Replace this if you are using a different architecture.
-
-```bash
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-win-x64-1.19.2.zip -o onnxruntime-win-x64-1.19.2.zip
-tar xvf onnxruntime-win-x64-1.19.2.zip
-move onnxruntime-win-x64-1.19.2 ort 
-```
-
-#### Linux and Mac
-
-These instruction use `linux-x64-gpu`. Replace this if you are using a different architecture.
-
-```bash
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-linux-x64-gpu-1.19.2.tgz -o onnxruntime-linux-x64-gpu-1.19.2.tgz
-tar xvzf onnxruntime-linux-x64-gpu-1.19.2.tgz
-mv onnxruntime-linux-x64-gpu-1.19.2 ort 
-```
-
-#### Android
-
-If you do not already have an `ort` folder, create one.
-
-```bash
-mkdir ort
-```
-
-```bash
-curl -L https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.19.2/onnxruntime-android-1.19.2.aar -o ort/onnxruntime-android-1.19.2.aar
-cd ort
-tar xvf onnxruntime-android-1.19.2.aar
-cd ..
-```
-
-
 
 
