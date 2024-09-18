@@ -26,8 +26,6 @@ namespace Dml
             bool cpuSyncSpinningEnabled,
             bool keepOpen);
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
-
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close();

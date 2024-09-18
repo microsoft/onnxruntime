@@ -22,11 +22,6 @@ DmlCommandRecorder::DmlCommandRecorder(
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
 }
 
-void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
-{
-    m_bufferAllocator = allocator;
-}
-
 void DmlCommandRecorder::InitializeOperator(
     onnxruntime::IAllocator* allocator,
     IDMLCompiledOperator* op,

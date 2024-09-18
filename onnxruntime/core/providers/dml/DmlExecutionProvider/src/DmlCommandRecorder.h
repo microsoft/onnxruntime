@@ -58,8 +58,6 @@ namespace Dml
         void Open() final;
         void CloseAndExecute() final;
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
-
         bool HasUnsubmittedWork() override
         {
             return m_operationsRecordedInCurrentCommandList;
@@ -84,9 +82,6 @@ namespace Dml
         // setting the same heap; it does not have ownership of the heap object.
         DescriptorPool m_descriptorPool;
         ID3D12DescriptorHeap* m_currentDescriptorHeap = nullptr;
-
-        // The weak pointer avoids a circular reference from context->recorder->allocator->context
-        std::weak_ptr<BucketizedBufferAllocator> m_bufferAllocator;
 
         CommandAllocatorRing<2> m_commandAllocatorRing;
 

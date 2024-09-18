@@ -236,7 +236,7 @@ namespace Dml
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-            m_context->SetAllocator(m_allocator);
+
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator);
             memoryInfo.mem_type = ::OrtMemType::OrtMemTypeCPUInput;

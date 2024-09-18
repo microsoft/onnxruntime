@@ -22,11 +22,6 @@ namespace Dml
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
 
-    void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
-    {
-        m_dmlRecorder.SetAllocator(allocator);
-    }
-
     void ExecutionContext::CopyBufferRegion(
         ID3D12Resource* dstBuffer,
         uint64_t dstOffset,

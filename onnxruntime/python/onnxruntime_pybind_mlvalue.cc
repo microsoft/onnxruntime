@@ -243,7 +243,6 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         std::make_unique<Dml::DmlCommittedResourceAllocator>(d3d12_device.Get()));
     dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
-    context->SetAllocator(dml_allocator);
 
     ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_readback_heap_guid, sizeof(readback_heap), &readback_heap));
     ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));
