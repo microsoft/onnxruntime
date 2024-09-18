@@ -3585,175 +3585,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-        std::unordered_set<const char*> initializers;
-        std::unordered_set<std::string> subgraph_output_names, subgraph_input_names;
-        onnx::ModelProto m;
-        m.set_ir_version(3);
-        onnx::OperatorSetIdProto* p = m.add_opset_import();
-        p->set_domain("");
-        p->set_version(10);
-        onnx::GraphProto* g = m.mutable_graph();
-        for (const auto& index : group.first) {
-          onnx::NodeProto* n = g->add_node();
-          const OrtNode* node = nullptr;
-          api_->OrtGraph_GetOrtNode(graph, node_index[index], &node);
-          const char* op_type = nullptr;
-          api_->OrtNode_GetOpType(node, &op_type);
-          n->set_op_type(op_type);
 
-          const char* name = nullptr;
-          api_->OrtNode_GetName(node, &name);
-          n->set_name(name);
+        OrtGraphViewer* sub_graph_viewer = nullptr;
+        api_->OrtGraph_GetSubGraph(graph, group.first.size(), group.first.data(), &sub_graph_viewer);
 
-          size_t input_size = 0;
-          api_->OrtNode_GetInputSize(node, &input_size);
-          for (size_t j = 0; j < input_size; j++) {
-            const char* jth_input_name = nullptr;
-            api_->OrtNode_GetIthInputName(node, j, &jth_input_name);
-            subgraph_input_names.insert(jth_input_name);
-            n->add_input(jth_input_name);
-
-            OrtTensorRef* tensor_ref = nullptr;
-            if (api_->OrtGraph_GetInitializerTensor(graph, jth_input_name, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
-              initializers.insert(jth_input_name);
-              onnx::TensorProto* t = g->add_initializer();
-              for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
-              t->set_data_type(tensor_ref->data_type);
-              t->set_raw_data(tensor_ref->data, tensor_ref->data_len);  // TODO(leca): correct? need to set other data type?
-              t->set_name(jth_input_name);
-            }
-          }
-
-          size_t implicit_input_size = 0;
-          api_->OrtNode_GetImplicitInputSize(node, &implicit_input_size);
-          for (size_t j = 0; j < implicit_input_size; j++) {
-            const char* jth_input_name = nullptr;
-            api_->OrtNode_GetIthImplicitInputName(node, j, &jth_input_name);
-
-            OrtTensorRef* tensor_ref = nullptr;
-            if (api_->OrtGraph_GetInitializerTensor(graph, jth_input_name, &tensor_ref) && initializers.find(jth_input_name) == initializers.end()) {
-              initializers.insert(jth_input_name);
-              onnx::TensorProto* t = g->add_initializer();
-              for (int i = 0; i < tensor_ref->shape_len; i++) t->add_dims(tensor_ref->shape[i]);
-              t->set_data_type(tensor_ref->data_type);
-              t->set_raw_data(tensor_ref->data, tensor_ref->data_len);  // correct? need to set other data type?
-              t->set_name(jth_input_name);
-            }
-          }
-
-          size_t output_size = 0;
-          api_->OrtNode_GetOutputSize(node, &output_size);
-          for (size_t j = 0; j < output_size; j++) {
-            const char* jth_output_name = nullptr;
-            api_->OrtNode_GetIthOutputName(node, j, &jth_output_name);
-            subgraph_output_names.insert(jth_output_name);
-            n->add_output(jth_output_name);
-          }
-
-          const char** attr_names = nullptr;
-          size_t attr_size = api_->OrtNode_GetAttributeNames(node, &attr_names);
-          for (size_t j = 0; j < attr_size; j++) {
-            onnx::AttributeProto* a = n->add_attribute();
-            a->set_name(attr_names[j]);
-            onnx::AttributeProto_AttributeType attribute_type = static_cast<onnx::AttributeProto_AttributeType>(api_->OrtNode_GetAttributeType(node, attr_names[j]));
-            a->set_type(attribute_type);
-
-            switch (attribute_type) {
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT:
-                a->set_f(api_->OrtNode_GetAttributeFloat(node, attr_names[j]));
-              break;
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INT:
-                a->set_i(api_->OrtNode_GetAttributeInt(node, attr_names[j]));
-              break;
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING:
-                a->set_s(api_->OrtNode_GetAttributeStr(node, attr_names[j]));
-              break;
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS:
-              {
-                int float_size = 0;
-                api_->OrtNode_GetAttributeFloatSize(node, attr_names[j], &float_size);
-                for (int i = 0; i < float_size; i++) {
-                  float f = 0.0;
-                  api_->OrtNode_GetAttributeIthFloat(node, attr_names[j], i, &f);
-                  a->add_floats(f);
-                }
-                break;
-              }
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS:
-              {
-                int int_size = 0;
-                api_->OrtNode_GetAttributeIntSize(node, attr_names[j], &int_size);
-                for (int i = 0; i < int_size; i++) {
-                  int64_t i64 = 0;
-                  api_->OrtNode_GetAttributeIthInt(node, attr_names[j], i, &i64);
-                  a->add_ints(i64);
-                }
-                break;
-              }
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS:
-              {
-                int str_size = 0;
-                api_->OrtNode_GetAttributeStringSize(node, attr_names[j], &str_size);
-                for (int i = 0; i < str_size; i++) {
-                  const char* str = nullptr;
-                  api_->OrtNode_GetAttributeIthStr(node, attr_names[j], i, &str);
-                  a->add_strings(str);
-                }
-                break;
-              }
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS:
-              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS:
-                // TODO(leca)
-                std::cout<<"Node: "<<name<<" type:"<<op_type<<" has the attribute:"<<attr_names[j]<<" with the type:"<<attribute_type<<" that hasn't serialized yet\n";
-              break;
-            }
-          }
-
-        }
-
-        for (auto it = subgraph_input_names.begin(); it != subgraph_input_names.end();) {
-          if (subgraph_output_names.find(*it) != subgraph_output_names.end()) {
-            subgraph_output_names.erase(*it);
-            it = subgraph_input_names.erase(it);
-          } else {
-            it++;
-          }
-        }
-        for (const auto& elem : subgraph_input_names) {
-          OrtValueInfoRef* value_info = nullptr;
-          if (api_->OrtGraph_GetValueInfo(graph, elem.c_str(), &value_info)) {
-            onnx::ValueInfoProto* v = g->add_input();
-            v->set_name(elem.c_str());
-            v->mutable_type()->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(value_info->data_type));
-            for (size_t i = 0; i < value_info->shape_len; i++) {
-              v->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(value_info->shape[i]);
-            }
-          }
-        }
-        for (const auto& elem : subgraph_output_names) {
-          OrtValueInfoRef* value_info = nullptr;
-          if (api_->OrtGraph_GetValueInfo(graph, elem.c_str(), &value_info)) {
-            onnx::ValueInfoProto* v = g->add_output();
-            v->set_name(elem.c_str());
-            v->mutable_type()->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(value_info->data_type));
-            for (size_t i = 0; i < value_info->shape_len; i++) {
-              v->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(value_info->shape[i]);
-            }
-          }
-        }
-
-        size_t buf_size = m.ByteSizeLong();
-        void* buf_data = malloc(buf_size);
-        m.SerializeToArray(buf_data, buf_size);
-        std::string string_buf(reinterpret_cast<const char*>(buf_data), buf_size);
-        OrtGraphViewer* graph_viewer = nullptr;
-        api_->OrtGraph_DeserializeFromArray(buf_data, buf_size, &graph_viewer);
+        void* buf_data = nullptr;
+        size_t buf_size = api_->OrtGraph_SerializeToArray(sub_graph_viewer, &buf_data);
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
@@ -3771,7 +3608,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
+        trt_parser->supportsModel(buf_data, buf_size, parser_nodes_list, model_path_);
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
