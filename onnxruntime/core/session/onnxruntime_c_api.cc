@@ -2599,12 +2599,21 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
   for (const auto* output_arg : graph_viewer->GetOutputs()) {
     graph_output_names.insert(output_arg->Name());
   }
-  auto model_build = graph_viewer->CreateModel(graph_viewer->GetGraph().GetLogger());
+  // TODO(leca): cannot use unique_ptr here, otherwise when this function exits, sub_graph_viewer->graph_->graph_proto_, which is from model_build->model_proto_, will be nullptr.
+  // Pay special attention when Graph object is releasing. We need to release model_build seperately then.
+  Model* model_build = new Model (graph_viewer->Name(), true, ModelMetaData(), PathString(),
+#if !defined(ORT_MINIMAL_BUILD)
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
+#else
+                                   IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
+#endif  // ORT_MINIMAL_BUILD
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
+
   auto& graph_build = model_build->MainGraph();
   // bool has_control_flow_op = false;
 
   std::vector<std::string> subgraph_output_names;
-  const std::vector<NodeIndex>& node_index = graph_viewer->GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  const std::vector<NodeIndex>& node_index = graph_viewer->GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   for(int i = 0; i < node_num; i++) {
     const auto& node = graph_viewer->GetNode(node_index[node_indices[i]]);
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
@@ -2645,21 +2654,21 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
     // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
     // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
     if (node->GetAttributes().size() > 0) {
-      auto node_proto = ONNX_NAMESPACE::NodeProto::Create();
+      auto node_proto = std::make_unique<ONNX_NAMESPACE::NodeProto>();
       // we need to update any GraphProto attributes for subgraphs so that any changes made by things
       // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
       node->ToProto(*node_proto, /* update_subgraphs */ true);
       const int num_attributes = node_proto->attribute_size();
-      auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-      node_attributes->reserve(num_attributes);
+      NodeAttributes node_attributes;
+      node_attributes.reserve(num_attributes);
 
       for (int i = 0; i < num_attributes; ++i) {
         auto& attr = node_proto->attribute(i);
-        node_attributes->emplace(attr.name(), attr);
+        node_attributes.emplace(attr.name(), attr);
       }
 
       // The GraphProto attributes are the updated ones.
-      graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, node_attributes.get(), node->Domain());
+      graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node_attributes, node->Domain());
     } else {
       // The GraphProto attributes are the original ones.
       graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
@@ -2676,7 +2685,8 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
   //   SetAllGraphInputs(graph_build);
   // }
 
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
+  common::Status status = graph_build.Resolve();
+  if (status != Status::OK()) return ToOrtStatus(status);
 
   // Add parent graph output to the subgraph
   int i = 0;
@@ -2691,10 +2701,12 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
   auto& graph_build_outputs = graph_build.GetOutputs();
   subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
   graph_build.SetOutputs(graph_build_outputs);
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
+  status = graph_build.Resolve();
+  if (status != Status::OK()) return ToOrtStatus(status);
 
-  auto graph_viewer = graph_build.CreateGraphViewer();
-  subgraph = reinterpret_cast<const OrtGraphViewer*>(graph_viewer.release());
+  auto sub_graph_viewer = std::make_unique<GraphViewer>(graph_build);
+  *subgraph = reinterpret_cast<const OrtGraphViewer*>(sub_graph_viewer.release());
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetName, const OrtNode* node, _Out_ const char** name) {

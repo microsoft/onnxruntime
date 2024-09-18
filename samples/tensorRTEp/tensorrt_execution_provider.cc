@@ -3586,7 +3586,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         nodes_list_output.push_back(group);
       } else {
 
-        OrtGraphViewer* sub_graph_viewer = nullptr;
+        const OrtGraphViewer* sub_graph_viewer = nullptr;
         api_->OrtGraph_GetSubGraph(graph, group.first.size(), group.first.data(), &sub_graph_viewer);
 
         void* buf_data = nullptr;
@@ -3616,8 +3616,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t next_nodes_list;
         size_t subgraph_node_count = 0;
         const size_t* subgraph_node_index = nullptr;
-        api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 1, &subgraph_node_count, &subgraph_node_index);
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph_viewer, early_termination);
+        api_->OrtGraph_GetNodesIndexInTopologicalOrder(sub_graph_viewer, 1, &subgraph_node_count, &subgraph_node_index);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, sub_graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
