@@ -123,8 +123,7 @@ template <typename T>
 std::conditional_t<sizeof(T) == sizeof(uint32_t), uint32_t, uint64_t> bit_cast_int(T val) {
   if constexpr (sizeof(T) == sizeof(uint32_t)) {
     return bit_cast<uint32_t>(val);
-  }
-  else if constexpr (sizeof(T) == sizeof(uint64_t)) {
+  } else if constexpr (sizeof(T) == sizeof(uint64_t)) {
     return bit_cast<uint64_t>(val);
   }
   static_assert(sizeof(T) == sizeof(uint32_t) || sizeof(T) == sizeof(uint64_t));
@@ -791,15 +790,12 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
     }                                                                                                  \
   }
 
-
-
 // Check whether the feature value is set true in the mask
 template <typename T1, typename T2>
 inline bool SetMembershipCheck(T1 val, T2 mask) {
   const int64_t val_as_int = static_cast<int64_t>(val);
   return CANMASK(val, T2) && (((1ll << (val_as_int - 1)) & bit_cast_int(mask)) != 0);
 }
-
 
 inline bool _isnan_(float x) { return std::isnan(x); }
 inline bool _isnan_(double x) { return std::isnan(x); }
