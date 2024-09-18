@@ -28,21 +28,25 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: 8.0.x
+    - name: Install DocFX
+      run: |
+        dotnet tool update -g docfx
+    # NOTE: We need to restore Microsoft.ML.OnnxRuntime.csproj manually to set IncludeMobileTargets=false
+    # docfx doesn't seem to be able to do that properly resulting in build errors
     - name: Restore dependencies
-      run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
-    - name: Download DocFX
       run: |
-        mkdir -p build/docfx
-        wget https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-linux-x64-v${DOCFXVERSION}.zip -O build/docfx/docfx.zip
-        unzip build/docfx/docfx.zip -d build/docfx
-    - name: Install NuGet
-      uses: nuget/setup-nuget@v2
-    - name: Build Documentation
+        dotnet restore csharp/ApiDocs/ApiDocs.csproj
+        dotnet restore /p:IncludeMobileTargets=false csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
+    - name: docfx metadata
       run: |
-        build/docfx/docfx metadata csharp/ApiDocs/docfx.json
+        docfx metadata csharp/ApiDocs/docfx.json
+    - name: Build ApiDocs project
+      run: |
         dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
-        build/docfx/docfx build csharp/ApiDocs/docfx.json
+    - name: docfx build
+      run: |
+        docfx build csharp/ApiDocs/docfx.json
     - name: Log source commit
       run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
     - name: Move C# docs into site
@@ -55,4 +59,4 @@ jobs:
       with:
         name: onnxruntime-csharp-apidocs
         path: _site
-        retention-days: 60
+        retention-days: 30

@@ -1600,7 +1600,12 @@ class TestInferenceSession(unittest.TestCase):
             )
 
     def test_memory_arena_shrinkage(self):
-        if platform.architecture()[0] == "32bit" or "ppc" in platform.machine() or "powerpc" in platform.machine():
+        if (
+            platform.architecture()[0] == "32bit"
+            or "ppc" in platform.machine()
+            or "powerpc" in platform.machine()
+            or "powerpc" in platform.processor()
+        ):
             # on x86 or ppc builds, the CPU allocator does not use an arena
             print("Skipping testMemoryArenaShrinkage in 32bit or powerpc platform.")
         else:
@@ -1689,8 +1694,9 @@ class TestInferenceSession(unittest.TestCase):
 
         available_eps = C.get_available_providers()
         # skip amd gpu build
-        if "kRocmExecutionProvider" in available_eps:
+        if "ROCMExecutionProvider" in available_eps:
             return
+
         if sys.platform.startswith("win"):
             shared_library = "test_execution_provider.dll"
 

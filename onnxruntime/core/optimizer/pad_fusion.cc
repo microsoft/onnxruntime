@@ -31,15 +31,15 @@ bool VerifyNotCastChild(const Node& child_node) {
     return false;
   }
 
-  // This pass currently assumed that this attribute already exists on the child node
-  if (child_node.GetAttributes().find("pads") == child_node.GetAttributes().end()) {
-    return false;
-  }
-
   return true;
 }
 
 void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_values, const uint32_t pads_size) {
+  if (child_node.GetAttributes().find("pads") == child_node.GetAttributes().end()) {
+    std::vector<int64_t> pads(pads_size - 4, 0);
+    child_node.AddAttribute("pads", pads);
+  }
+
   auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
   uint32_t child_pads_size = static_cast<uint32_t>(child_pads->size());
 

@@ -146,7 +146,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
+          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -360,6 +360,16 @@
           "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
         },
         "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]

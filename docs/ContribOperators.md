@@ -2521,6 +2521,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   Only supports causal and local attention.
   Supports rotary position embedding for CPU and CUDA.
   Supports packed input for CPU and CUDA.
+  Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+  
 
 #### Version
 
@@ -2543,6 +2545,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
 #### Inputs (7 - 9)
@@ -2559,9 +2563,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>past_value</tt> (optional) : T</dt>
 <dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
 <dt><tt>seqlens_k</tt> : M</dt>
-<dd>1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.</dd>
+<dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
-<dd>Scalar tensor of total sequence length (past + new).</dd>
+<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>

@@ -192,6 +192,15 @@ std::vector<int64_t> NodeAttrHelper::Get(const std::string& key, const std::vect
   return def_val;
 }
 
+std::vector<std::string> NodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
+  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
+    const auto& values = entry->second.strings();
+    return std::vector<std::string>{values.cbegin(), values.cend()};
+  }
+
+  return def_val;
+}
+
 std::vector<float> NodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
     const auto& values = entry->second.floats();

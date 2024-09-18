@@ -226,7 +226,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        // Native allocation (UTF8-8 string length with terminating zero)
+        /// Native allocation (UTF8-8 string length with terminating zero)
         /// </summary>
         internal int Length { get; private set; }
 

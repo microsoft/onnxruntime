@@ -18,8 +18,6 @@ class UnaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -51,8 +49,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     output = model_builder.GetBuilder().call<emscripten::val>("log", input, options);
   } else if (op_type == "Neg") {
     output = model_builder.GetBuilder().call<emscripten::val>("neg", input, options);
-  } else if (op_type == "Not") {
-    output = model_builder.GetBuilder().call<emscripten::val>("logicalNot", input, options);
   } else if (op_type == "Reciprocal") {
     output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input, options);
   } else if (op_type == "Sin") {
@@ -70,44 +66,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-bool UnaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                            const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  if (op_type == "Identity") {
-    supported_data_types = webnn_supported_data_types;
-  } else if (op_type == "Abs" || op_type == "Neg") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-    };
-  } else if (op_type == "Not") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-    };
-  } else {  // Others only support float32, float16 input data types.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
-  }
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
-}
-
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
@@ -123,7 +81,6 @@ void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
           "Identity",
           "Log",
           "Neg",
-          "Not",
           "Reciprocal",
           "Sin",
           "Sqrt",
