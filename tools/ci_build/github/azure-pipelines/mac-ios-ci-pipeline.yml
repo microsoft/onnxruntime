@@ -71,3 +71,11 @@ jobs:
               CCACHE_DEPEND: 1
               CCACHE_SLOPPINESS: modules
               CCACHE_DIR: $(ORT_CACHE_DIR)
+              CCACHE_DEBUG: 1
+              CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'publish cache log'
+      inputs:
+        artifactName: 'cache-log'
+        targetPath: $(Agent.TempDirectory)/cache_debug
