@@ -188,11 +188,15 @@ stages:
       displayName: Pack NPM packages
 
     - script: |
+        set -e -x
         mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
         npm install --no-save ./onnxruntime-common.tgz
         mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
+        ls .
         npm install --no-save ./onnxruntime-react-native.tgz
+        ls node_modules
         npm install
+        ls node_modules
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Bootstrap Android and iOS e2e tests
 
