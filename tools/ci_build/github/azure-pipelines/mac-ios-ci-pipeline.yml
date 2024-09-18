@@ -70,6 +70,7 @@ jobs:
               CCACHE_CPP2: 1
               CCACHE_DEPEND: 1
               CCACHE_SLOPPINESS: modules
+              CCACHE_COMPILERCHECK: content
               CCACHE_DIR: $(ORT_CACHE_DIR)
               CCACHE_DEBUG: 1
               CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
