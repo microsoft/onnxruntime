@@ -348,6 +348,16 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
+    # QNN
+    qnn_deps = [
+        "libQnnCpu.so",
+        "libQnnHtp.so",
+        "libQnnSaver.so",
+        "libQnnSystem.so",
+        "libHtpPrepare.so",
+        "onnxruntime_qnn_ctx_gen"
+    ]
+    libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":

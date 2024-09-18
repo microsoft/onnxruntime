@@ -1031,7 +1031,7 @@ if (onnxruntime_USE_QNN)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_qnn_ctx_gen>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
     add_custom_command(
