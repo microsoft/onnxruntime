@@ -4813,6 +4813,8 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtGraph_DeserializeFromArray, const void* data, size_t len, _Outptr_ OrtGraphViewer**);  // TODO(leca): review and discuss
 
+  ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
+
   ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 
   ORT_API2_STATUS(OrtNode_GetDescription, const OrtNode* node, _Out_ const char** description);
