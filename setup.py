@@ -59,6 +59,7 @@ rocm_version = None
 is_migraphx = False
 is_rocm = False
 is_openvino = False
+is_qnn = False
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -87,6 +88,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
+    is_qnn = True
     package_name = "onnxruntime-qnn"
 
 if is_rocm or is_migraphx:
@@ -260,8 +262,6 @@ try:
 
                 cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
-                qnn_dependencies = ["libQnnCpu.so", "libQnnHtp.so", "libQnnSaver.so", "libQnnSystem.so", "libHtpPrepare.so", "onnxruntime_qnn_ctx_gen"]
-
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -280,12 +280,12 @@ try:
                 pass
 
             _bdist_wheel.run(self)
-            if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+            if is_manylinux and not disable_auditwheel_repair and not is_openvino and not is_qnn:
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies + qnn_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
