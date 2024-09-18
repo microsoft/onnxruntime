@@ -259,16 +259,15 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
             input_masks = mask_input[img_idx].unsqueeze(0).repeat(num_labels, 1, 1, 1)
             has_input_masks = torch.ones(num_labels, dtype=torch.float, device=self.device)
 
-        device = "cpu"
         feed_dict = {
-            "image_embeddings": image_embeddings.contiguous().to(dtype=torch.float32).to(device),
-            "image_features_0": image_features_0.contiguous().to(dtype=torch.float32).to(device),
-            "image_features_1": image_features_1.contiguous().to(dtype=torch.float32).to(device),
-            "point_coords": concat_points[0].to(dtype=torch.float32).to(device),
-            "point_labels": concat_points[1].to(dtype=torch.int32).to(device),
-            "input_masks": input_masks.to(dtype=torch.float32).to(device),
-            "has_input_masks": has_input_masks.to(dtype=torch.float32).to(device),
-            "original_image_size": torch.tensor(self._orig_hw[img_idx], dtype=torch.int32, device=device),
+            "image_embeddings": image_embeddings.contiguous().to(dtype=torch.float32).to(self.device),
+            "image_features_0": image_features_0.contiguous().to(dtype=torch.float32).to(self.device),
+            "image_features_1": image_features_1.contiguous().to(dtype=torch.float32).to(self.device),
+            "point_coords": concat_points[0].to(dtype=torch.float32).to(self.device),
+            "point_labels": concat_points[1].to(dtype=torch.int32).to(self.device),
+            "input_masks": input_masks.to(dtype=torch.float32).to(self.device),
+            "has_input_masks": has_input_masks.to(dtype=torch.float32).to(self.device),
+            "original_image_size": torch.tensor(self._orig_hw[img_idx], dtype=torch.int32, device=self.device),
         }
 
         for key, value in feed_dict.items():

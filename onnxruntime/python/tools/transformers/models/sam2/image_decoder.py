@@ -52,8 +52,7 @@ class SAM2ImageDecoder(nn.Module):
             image_features_1 (torch.Tensor): [1, 64, H/8, W/8]. high resolution features of level 1 from image encoder.
             image_embeddings (torch.Tensor): [1, 256, H/16, W/16]. image embedding from image encoder.
             point_coords (torch.Tensor): [L, P, 2] shape and float32 dtype and contains the absolute pixel
-                                         coordinate in (x, y) format of the P input points.
-                                         Note that the coordinates are normalized with H=W=1024.
+                                         coordinate in (x, y) format of the P input points in image of size 1024x1024.
             point_labels (torch.Tensor): shape [L, P] and int32 dtype, where 1 means
                                          positive (foreground), 0 means negative (background), -1 means padding,
                                          2 (box left upper corner), 3 (box right bottom corner).

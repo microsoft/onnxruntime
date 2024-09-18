@@ -1,13 +1,26 @@
 # SAM2 ONNX Model Export
 
 ## Setup Environment
-It is recommend to setup a machine with python 3.10, 3.11 or 3.12. Then install [PyTorch 2.4.1](https://pytorch.org/) and [Onnx Runtime 1.19.2](https://onnxruntime.ai/docs/install/#python-installs).
+It is recommend to setup a machine with python 3.10, 3.11 or 3.12. Then install [PyTorch 2.4.1](https://pytorch.org/) and [Onnx Runtime 1.19.2].
 
-Example commands to prepare environment for CUDA 12.x and cuDNN 9.x (CUDA and cuDNN need installation):
+### CPU Only
+We can install cpu-only version of PyTorch and Onnx Runtime for exporting and running onnx models:
+```
+python3 -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+python3 -m pip install onnxruntime onnx opencv-python matplotlib
+```
+
+### GPU
+If your machine have NVidia GPU, you have another option: install cuda version of PyTorch and Onnx Runtime for exporting and running onnx models:
+
 ```
 python3 -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-python3 -m pip install onnxruntime-gpu opencv-python matplotlib
+python3 -m pip install onnxruntime-gpu onnx opencv-python matplotlib
 ```
+
+onnxruntime-gpu has dependency on CUDA 12.x and cuDNN 9.x and other dependencies (like MSVC Runtime in Windows). See the [installation guide](https://onnxruntime.ai/docs/install/#python-installs) for more information.
+
+## Download Checkpoints
 
 Clone the SAM 2 git repository, and download checkpoints:
 ```
@@ -18,7 +31,7 @@ cd checkpoints
 sh ./download_ckpts.sh
 ```
 
-In Windows, you can run the following to replace `sh ./download_ckpts.sh`:
+In Windows, you can run the following to replace `sh ./download_ckpts.sh` by the following instead:
 ```
 curl https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_tiny.pt > sam2_hiera_tiny.pt
 curl https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_small.pt > sam2_hiera_small.pt
@@ -31,6 +44,7 @@ Run convert_to_onnx.py, and specify the segment-anything-2 directory created by 
 ```
 python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2
 ```
+
 The exported onnx models can be found in sam2_onnx_models sub-directory. You can change the output directory using `--output_dir` option.
 
 If you want the model outputs multiple masks, append the `--multimask_output` option.
@@ -41,7 +55,7 @@ python3 convert_to_onnx.py  -h
 ```
 
 ## Run Demo
-The exported onnx model can run in CPU. The demo currently requires Nvidia GPU.
+The exported onnx models can run in CPU. The demo will output sam2_demo.png.
 ```
 curl https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/notebooks/images/truck.jpg > truck.jpg
 python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --demo

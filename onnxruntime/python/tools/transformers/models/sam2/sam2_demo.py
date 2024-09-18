@@ -109,16 +109,19 @@ def run_demo(
     onnx_directory="sam2_onnx_models",
     enable_batch=False,
 ):
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
+    use_gpu = torch.cuda.is_available()
+    device = torch.device("cuda" if use_gpu else "cpu")
 
-    if device.type == "cuda":
-        # Turn on tfloat32 for Ampere GPUs.
-        if torch.cuda.get_device_properties(0).major >= 8:
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
+    if use_gpu:
+        if engine == "torch":
+            # Turn on tfloat32 for Ampere GPUs.
+            if torch.cuda.get_device_properties(0).major >= 8:
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+        elif engine == "ort":
+            import onnxruntime
+
+            assert use_gpu == ("CUDAExecutionProvider" in onnxruntime.get_available_providers())
 
     np.random.seed(3)
     image = Image.open("truck.jpg")

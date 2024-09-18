@@ -30,7 +30,7 @@ class SAM2PromptEncoder(nn.Module):
 
            Args:
             point_coords (torch.Tensor): [L, P, 2] shape and float32 dtype and contains the absolute pixel
-                                         coordinate in (x, y) format of the P input points.
+                                         coordinate in (x, y) format of the P input points in image of size 1024x1024.
             point_labels (torch.Tensor): shape [L, P] and int32 dtype, where 1 means
                                          positive (foreground), 0 means negative (background), -1 means padding,
                                          2 (box left upper corner), 3 (box right bottom corner).

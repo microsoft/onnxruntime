@@ -90,7 +90,7 @@ def parse_arguments():
         required=False,
         default=False,
         action="store_true",
-        help="Run demo with the exported ONNX models. Requires GPU.",
+        help="Run demo with the exported ONNX models.",
     )
 
     parser.add_argument(
@@ -114,14 +114,14 @@ def main():
         raise FileNotFoundError(f"{args.sam2_dir} does not exist. Please specify --sam2_dir correctly.")
 
     if not os.path.exists(checkpoints_dir):
-        raise FileNotFoundError(f"{checkpoints_dir}/checkpoints does not exist. Please specify --sam2_dir correctly.")
+        raise FileNotFoundError(f"{checkpoints_dir} does not exist. Please specify --sam2_dir correctly.")
 
     if not os.path.exists(sam2_config_dir):
-        raise FileNotFoundError(f"{sam2_config_dir}/checkpoints does not exist. Please specify --sam2_dir correctly.")
+        raise FileNotFoundError(f"{sam2_config_dir} does not exist. Please specify --sam2_dir correctly.")
 
     if not os.path.exists(os.path.join(checkpoints_dir, f"{args.model_type}.pt")):
         raise FileNotFoundError(
-            f"{checkpoints_dir}/{args.model_type}.pt does not exist. Please run download_ckpts.sh under the checkpoints directory."
+            f"{checkpoints_dir}/{args.model_type}.pt does not exist. Please download checkpoints under the directory."
         )
 
     if args.sam2_dir not in sys.path:
