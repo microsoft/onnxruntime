@@ -29,3 +29,5 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Sigmoid||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
+|ai.onnx:Sqrt||
+|ai.onnx:Reciprocal|this ask for a `epislon` (default 1e-4) where onnx don't provide|

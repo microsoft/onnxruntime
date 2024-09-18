@@ -131,6 +131,15 @@ void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParam
                  [](T v) { return narrow<float>(v); });
   *weight.mutable_floatvalue() = std::move(weight_floats);
 }
+
+template <typename T>
+void CreateCoreMLWeightConvertingDataToFloat16s(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
+  std::vector<MLFloat16> weight_float16s{};
+  weight_float16s.reserve(data.size());
+  std::transform(data.begin(), data.end(), std::back_inserter(weight_float16s),
+                 [](T v) { return MLFloat16(narrow<float>(v)); });
+  CreateCoreMLWeight(weight, weight_float16s);
+}
 }  // namespace
 
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int32_t> data) {
@@ -201,6 +210,13 @@ void CopyDataToTensorValue(MILSpec::TensorValue& tensor_value, gsl::span<const T
 template <>
 void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, gsl::span<const float> data) {
   tensor_value.mutable_floats()->mutable_values()->Add(data.begin(), data.end());
+}
+
+template <>
+void CopyDataToTensorValue<MLFloat16>(MILSpec::TensorValue& tensor_value, gsl::span<const MLFloat16> data) {
+  const char* begin = (const char*)(data.data());
+  const char* end = (const char*)(data.data()) + data.size() * sizeof(MLFloat16);
+  tensor_value.mutable_bytes()->mutable_values()->assign(begin, end);
 }
 
 template <>
@@ -300,6 +316,8 @@ template MILSpec::Value CreateTensorValue<int64_t, int32_t>(gsl::span<const int6
                                                             std::optional<gsl::span<const int64_t>> shape);
 template MILSpec::Value CreateTensorValue<float, float>(gsl::span<const float> data,
                                                         std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<MLFloat16, MLFloat16>(gsl::span<const MLFloat16> data,
+                                                                std::optional<gsl::span<const int64_t>> shape);
 template MILSpec::Value CreateTensorValue<bool, bool>(gsl::span<const bool> data,
                                                       std::optional<gsl::span<const int64_t>> shape);
 template MILSpec::Value CreateTensorValue<std::string, std::string>(gsl::span<const std::string> data,

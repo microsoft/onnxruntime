@@ -22,26 +22,38 @@ std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) 
   return output;
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
-                 const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
-                 const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
-                 const std::initializer_list<float>& out_values) {
+void TestBinaryFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
+                       const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
+                       const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
+                       const std::initializer_list<float>& out_values, bool enable_bf16 = true) {
+  ORT_UNUSED_PARAMETER(op_name);
+  ORT_UNUSED_PARAMETER(lhs_dim);
+  ORT_UNUSED_PARAMETER(lhs_values);
+  ORT_UNUSED_PARAMETER(rhs_dim);
+  ORT_UNUSED_PARAMETER(rhs_values);
+  ORT_UNUSED_PARAMETER(out_dim);
+  ORT_UNUSED_PARAMETER(out_values);
+  ORT_UNUSED_PARAMETER(enable_bf16);
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
   {
     OpTester tester(op_name, 14);
     tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
     tester.AddInput<MLFloat16>("B", rhs_dim, MakeMLFloat16(rhs_values));
     tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
+#ifdef COREML_ENABLE_MLPROGRAM
+    execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+#elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
+#endif
 
-  {
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  if (enable_bf16) {
     OpTester tester(op_name, 14);
     tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
     tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
@@ -54,8 +66,51 @@ void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
 #endif
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-}
 #endif
+}
+
+void TestUnaryFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
+                      const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& out_dim,
+                      const std::initializer_list<float>& out_values, int opset = 14) {
+  ORT_UNUSED_PARAMETER(op_name);
+  ORT_UNUSED_PARAMETER(lhs_dim);
+  ORT_UNUSED_PARAMETER(lhs_values);
+  ORT_UNUSED_PARAMETER(rhs_dim);
+  ORT_UNUSED_PARAMETER(out_dim);
+  ORT_UNUSED_PARAMETER(out_values);
+  ORT_UNUSED_PARAMETER(opset);
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+  {
+    OpTester tester(op_name, opset);
+    tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
+    tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef COREML_ENABLE_MLPROGRAM
+    execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+#elif USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  {
+    OpTester tester(op_name, opset);
+    tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
+    tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+#endif
+}
 
 void TestBFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
                   const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
@@ -163,9 +218,7 @@ TEST(MathOpTest, Add_float) {
   test.Run();
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
-#endif
+  TestBinaryFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
@@ -202,9 +255,7 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
-#endif
+  TestBinaryFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
@@ -228,9 +279,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
            {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
-#endif
+  TestBinaryFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
@@ -254,9 +303,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
            {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
-#endif
+  TestBinaryFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
@@ -527,9 +574,7 @@ TEST(MathOpTest, Sub) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run();
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
-#endif
+  TestBinaryFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
@@ -584,9 +629,7 @@ TEST(MathOpTest, Mul) {
 
   test.Run();
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
-#endif
+  TestBinaryFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
@@ -622,9 +665,7 @@ TEST(MathOpTest, Div) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run();
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-  TestFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
-#endif
+  TestBinaryFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
 
 #if defined(USE_DNNL)
   TestBFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
@@ -772,13 +813,12 @@ TEST(MathOpTest, Ceil_double) {
 TEST(MathOpTest, Reciprocal) {
   OpTester test("Reciprocal");
   std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("X", dims,
-                       {1.0f, 2.0f,
-                        -1.0f, -2.0f});
-  test.AddOutput<float>("Y", dims,
-                        {1.0f, 0.5f,
-                         -1.0f, -0.5f});
+  std::initializer_list<float> inputs = {1.0f, 2.0f, -1.0f, -2.0f};
+  std::initializer_list<float> outputs = {1.0f, 0.5f, -1.0f, -0.5f};
+  test.AddInput<float>("X", dims, inputs);
+  test.AddOutput<float>("Y", dims, outputs);
   test.Run();
+  TestUnaryFloat16("Reciprocal", dims, inputs, dims, outputs, 12);
 }
 
 TEST(MathOpTest, Reciprocal_double) {
@@ -795,14 +835,13 @@ TEST(MathOpTest, Reciprocal_double) {
 
 TEST(MathOpTest, Sqrt_Float) {
   OpTester test("Sqrt");
+  std::initializer_list<float> inputs = {1.0f, 4.0f, 0.0f, 9.0f};
+  std::initializer_list<float> outputs = {1.0f, 2.0f, 0.0f, 3.0f};
   std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("X", dims,
-                       {1.0f, 4.0f,
-                        0.0f, 9.0f});
-  test.AddOutput<float>("Y", dims,
-                        {1.0f, 2.0f,
-                         0.0f, 3.0f});
+  test.AddInput<float>("X", dims, inputs);
+  test.AddOutput<float>("Y", dims, outputs);
   test.Run();
+  TestUnaryFloat16("Sqrt", dims, inputs, dims, outputs);
 }
 
 #if defined(USE_DNNL) || defined(USE_CUDA)
@@ -1056,24 +1095,13 @@ TEST(MathOpTest, Pow_double_int64) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(MathOpTest, Pow_float16_float16) {
-  OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
-
-  test.AddInput<MLFloat16>("X", dims, MakeMLFloat16({2.0f, 2.0f, std::sqrt(2.0f), 1.0f}));
-  test.AddInput<MLFloat16>("Y", dims, MakeMLFloat16({0.0f, 8.0f, 2.0f, 9.0f}));
-  test.AddOutput<MLFloat16>("Z", dims, MakeMLFloat16({1.0f, 256.0f, 2.0f, 1.0f}));
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  TestBinaryFloat16("Pow", dims, {2.0f, 2.0f, std::sqrt(2.0f), 1.0f}, dims, {0.0f, 8.0f, 2.0f, 9.0f},
+                    dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(MathOpTest, Pow_float_float16) {
   OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
@@ -3660,5 +3688,6 @@ TEST(MathOpTest, BitwiseNot_uint8) {
   test.AddOutput<uint8_t>("Y", dims, {254, 251, 250, 252});
   test.Run();
 }
+
 }  // namespace test
 }  // namespace onnxruntime

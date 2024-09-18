@@ -15,9 +15,9 @@ namespace coreml {
 
 // Once all ops are supportted FP16, we can remove it. Before that, we keep a set of ops to
 // filter suppported ones.
-static std::set<const std::string> Float16Ops = {
+static std::set<std::string> Float16Ops = {
     "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
-    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
+    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool", "Clip", "DepthToSpace", "Resize", "Slice",
     "GlobalMaxPool", "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
 
 namespace {
@@ -91,7 +91,8 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputPar
 }
 
 /* static */
-bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
+bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
+                                        [[maybe_unused]] const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) {
   if (idx >= node.InputDefs().size()) {
     LOGS(logger, VERBOSE) << "Input index [" << idx << "] is out of range";
