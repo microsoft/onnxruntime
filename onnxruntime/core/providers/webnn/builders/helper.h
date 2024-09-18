@@ -195,7 +195,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"LessOrEqual", "lesserOrEqual"},
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
-    {"Lstm", "lstm"},
+    {"LSTM", "lstm"},
     {"MatMul", "matmul"},
     {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
