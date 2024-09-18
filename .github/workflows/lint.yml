@@ -72,8 +72,8 @@ jobs:
           category: lintrunner
           checkout_path: ${{ github.workspace }}
 
-  auto-apply-lint:
-    name: Suggest lintrunner changes
+  auto-apply-fixes:
+    name: Suggest fixes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +94,9 @@ jobs:
           lintrunner init
       - name: Run lintrunner on all files
         run: |
+          set +e
           lintrunner f --all-files -v
+          exit 0
       - uses: parkerbxyz/suggest-changes@v1
         with:
           comment: 'You can commit the suggested changes from lintrunner.'
