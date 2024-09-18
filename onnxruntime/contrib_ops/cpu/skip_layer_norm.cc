@@ -134,8 +134,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         const T* p_input = input_data + offset;
         const T* p_skip = skip_data + (offset % skip_size);
         T* p_output = output_data + offset;
-        T* p_skip_input_bias_add_output_data =
-          skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
+        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
         using DoubleOrFloat = typename std::conditional<
             std::is_same<T, double>::value,  // If T is double
@@ -179,12 +178,10 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           if (simplified) {
             p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
           } else if (nullptr == beta_data) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
-              (output_buffer[h] - mean) / mean_square * gamma_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value);
           } else {
             DoubleOrFloat beta_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(beta_data[h]);
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
-              (output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
           }
         }
       },
