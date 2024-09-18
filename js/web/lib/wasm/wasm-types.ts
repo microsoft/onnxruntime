@@ -187,12 +187,7 @@ export declare namespace JSEP {
      * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
      * @returns the MLTensor associated with the tensor ID.
      */
-    jsepEnsureTensor: (
-      tensorId: number,
-      dataType: DataType,
-      shape: number[],
-      copyOld: boolean,
-    ) => Promise<MLTensor>;
+    jsepEnsureTensor: (tensorId: number, dataType: DataType, shape: number[], copyOld: boolean) => Promise<MLTensor>;
     /**
      * [exported from pre-jsep.js] Upload data to an MLTensor.
      * @param tensorId - specify the MLTensor ID.

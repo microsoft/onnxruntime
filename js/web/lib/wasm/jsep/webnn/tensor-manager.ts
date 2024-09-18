@@ -133,10 +133,7 @@ class TensorTracker {
           // WebNN does not support copyTensorToTensor, so we need to read and write the tensors.
           LOG_DEBUG(
             'verbose',
-            () =>
-              `[WebNN] Slowdown may occur, having to copy existing tensor {dataType: ${
-                dataType
-              }, shape: ${shape}}`,
+            () => `[WebNN] Slowdown may occur, having to copy existing tensor {dataType: ${dataType}, shape: ${shape}}`,
           );
           const data = await this.context.readTensor(this.tensorEntry[0]);
           this.context.writeTensor(mlTensor, data);
