@@ -335,12 +335,20 @@ class InferenceSession {
                                    std::vector<OrtValue>* p_fetches,
                                    const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
 
+  /*
+   * Caller of this Run function must ensure the proper release of fetches after inference complete.
+   * Each OrtValue* hosted in the fetch array must be manually recycled.
+   */
   [[nodiscard]] common::Status Run(const RunOptions& run_options,
                                    gsl::span<const char* const> feed_names,
                                    gsl::span<const OrtValue* const> feeds,
                                    gsl::span<const char* const> fetch_names,
                                    gsl::span<OrtValue*> fetches);
 
+  /*
+   * Caller of this RunAsync function must ensure the proper release of fetches after inference complete.
+   * Each OrtValue* hosted in the fetch array must be manually recycled.
+   */
   [[nodiscard]] common::Status RunAsync(const RunOptions* run_options,
                                         gsl::span<const char* const> feed_names,
                                         gsl::span<const OrtValue* const> feeds,
