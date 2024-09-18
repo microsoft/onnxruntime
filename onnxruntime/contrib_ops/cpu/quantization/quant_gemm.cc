@@ -22,19 +22,19 @@ void GemmBroadcastBiasScaleBackWithCast(int64_t M, int64_t N, const S* c_data, c
     output_mat.setConstant(constant);
   } else if (bias_shape.NumDimensions() == 1 || bias_shape[0] == 1) {
     // C is (N,) or (1, N)
-    output_mat.rowwise() = (ConstEigenVectorMap<S>(c_data, N).transpose().cast<float>() *
+    output_mat.rowwise() = (ConstEigenVectorMap<S>(c_data, N).transpose().template cast<float>() *
                             a_scale * b_scale)
-                               .cast<T>();
+                               .template cast<T>();
   } else if (bias_shape[1] == 1) {
     // C is (M, 1)
-    output_mat.colwise() = (ConstEigenVectorMap<S>(c_data, M).cast<float>() *
+    output_mat.colwise() = (ConstEigenVectorMap<S>(c_data, M).template cast<float>() *
                             a_scale * b_scale)
-                               .cast<T>();
+                               .template cast<T>();
   } else {
     // C is (M, N), no broadcast needed.
-    output_mat = (ConstEigenMatrixMapRowMajor<S>(c_data, M, N).cast<float>() *
+    output_mat = (ConstEigenMatrixMapRowMajor<S>(c_data, M, N).template cast<float>() *
                   a_scale * b_scale)
-                     .cast<T>();
+                     .template cast<T>();
   }
 }
 
