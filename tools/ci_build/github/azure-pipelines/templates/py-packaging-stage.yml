@@ -512,7 +512,6 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
-          PYTHON_VERSION: '3.11'
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
 
   - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
