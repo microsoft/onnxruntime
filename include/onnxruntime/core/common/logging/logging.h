@@ -81,10 +81,20 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
   #endif
 #endif
 
-#if defined(_USE_CXX20_STD_CHRONO)
-  namespace timestamp_ns = std::chrono;
+#define STRINGIFY(x) STRINGIFY2(x)
+#define STRINGIFY2(x) #x
+
+#pragma message("_USE_CXX20_STD_CHRONO is " STRINGIFY(_USE_CXX20_STD_CHRONO))
+#pragma message("TARGET_OS_MAC is " STRINGIFY(TARGET_OS_MAC))
+#pragma message("TARGET_OS_MACCATALYST is " STRINGIFY(TARGET_OS_MACCATALYST))
+#pragma message("__IPHONE_OS_VERSION_MIN_REQUIRED is " STRINGIFY(__IPHONE_OS_VERSION_MIN_REQUIRED))
+
+#if _USE_CXX20_STD_CHRONO
+namespace timestamp_ns = std::chrono;
+#pragma message("Using std::chrono")
 #else
-  namespace timestamp_ns = ::date;
+namespace timestamp_ns = ::date;
+#pragma message("Using ::date")
 #endif
 
 #undef _USE_CXX20_STD_CHRONO
