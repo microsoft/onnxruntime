@@ -232,8 +232,8 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateMLTensorDownloader'] = (tensorId, type) => {
       return backend['createMLTensorDownloader'](tensorId, type);
     }
-    Module['jsepRegisterMLTensor'] = (tensor, dataType, dimensions) => {
-      return backend['registerMLTensor'](tensor, dataType, dimensions);
+    Module['jsepRegisterMLTensor'] = (tensor, dataType, shape) => {
+      return backend['registerMLTensor'](tensor, dataType, shape);
     }
   }
 };

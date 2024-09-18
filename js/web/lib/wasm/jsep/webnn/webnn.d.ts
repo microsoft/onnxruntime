@@ -32,7 +32,7 @@ type MLInputOperandLayout = 'nchw'|'nhwc';
 type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8';
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
-  dimensions?: readonly number[];
+  shape?: readonly number[];
 }
 interface MLOperand {
   dataType(): MLOperandDataType;
@@ -405,7 +405,7 @@ interface MLContext {
   createTensor(descriptor: MLTensorDescriptor): Promise<MLTensor>;
   writeTensor(
       destinationTensor: MLTensor, sourceData: ArrayBufferView|ArrayBuffer, sourceElementOffset?: number,
-      srcElementSize?: number): void;
+      sourceElementSize?: number): void;
   readTensor(sourceTensor: MLTensor): Promise<ArrayBuffer>;
   readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView|ArrayBuffer): Promise<undefined>;
   dispatch(graph: MLGraph, inputs: MLNamedTensor, outputs: MLNamedTensor): void;

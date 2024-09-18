@@ -33,7 +33,7 @@ export declare namespace JSEP {
   type EnsureTensorFunction = (
     tensorId: number,
     dataType: DataType,
-    dimensions: readonly number[],
+    shape: readonly number[],
     copyOld: boolean,
   ) => Promise<MLTensor>;
   type UploadTensorFunction = (tensorId: number, data: Uint8Array) => void;
@@ -183,21 +183,20 @@ export declare namespace JSEP {
      * [exported from pre-jsep.js] Ensure that an MLTensor of a given type and shape exists for a MLTensor ID.
      * @param tensorId - specify the MLTensor ID.
      * @param onnxDataType - specify the data type.
-     * @param dimensions - specify the dimensions.
+     * @param shape - specify the dimensions (WebNN shape) of the tensor.
      * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
      * @returns the MLTensor associated with the tensor ID.
      */
     jsepEnsureTensor: (
       tensorId: number,
       dataType: DataType,
-      dimensions: number[],
+      shape: number[],
       copyOld: boolean,
     ) => Promise<MLTensor>;
     /**
      * [exported from pre-jsep.js] Upload data to an MLTensor.
      * @param tensorId - specify the MLTensor ID.
      * @param data - specify the data to upload. It can be a TensorProto::data_type or a WebNN MLOperandDataType.
-     * @param dimensions - specify the dimensions.
      * @returns
      */
     jsepUploadTensor: (tensorId: number, data: Uint8Array) => void;

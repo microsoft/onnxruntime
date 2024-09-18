@@ -29,7 +29,7 @@ export interface TensorManager {
   ensureTensor(
     tensorId: TensorId,
     dataType: MLOperandDataType,
-    dimensions: readonly number[],
+    shape: readonly number[],
     copyOld: boolean,
   ): Promise<MLTensor>;
   /**
@@ -48,7 +48,7 @@ export interface TensorManager {
   /**
    * Register an externally created MLTensor with a given MLContext and return a TensorId.
    */
-  registerTensor(mlContext: MLContext, mlTensor: MLTensor, dataType: MLOperandDataType, dimensions: number[]): TensorId;
+  registerTensor(mlContext: MLContext, mlTensor: MLTensor, dataType: MLOperandDataType, shape: number[]): TensorId;
 }
 
 let tensorGuid = 1;
@@ -60,8 +60,8 @@ export type MLTensorEntry = [MLTensor, MLOperandDataType, readonly number[]];
  * TensorTracker tracks the MLTensor and pending upload data.
  *
  * We need to track the MLTensor and pending upload data because we delay the creation of MLTensor until
- * we know the data type and dimensions. This is because future implementations of WebNN will only support creating
- * MLTensors with dataTypes and dimensions.
+ * we know the data type and shape. This is because future implementations of WebNN will only support creating
+ * MLTensors with dataTypes and shape.
  */
 class TensorTracker {
   private tensorEntry?: MLTensorEntry;
@@ -103,12 +103,12 @@ class TensorTracker {
   }
 
   public trySelectTensor(context: MLContext, tryMLTensor: MLTensor): boolean {
-    for (const [mlTensor, dataType, dimensions] of this.tensorCache) {
+    for (const [mlTensor, dataType, shape] of this.tensorCache) {
       if (tryMLTensor === mlTensor) {
         if (this.context !== context) {
           throw new Error('MLTensor cannot be registered with a different MLContext.');
         }
-        this.tensorEntry = [mlTensor, dataType, dimensions];
+        this.tensorEntry = [mlTensor, dataType, shape];
         return true;
       }
     }
@@ -117,18 +117,18 @@ class TensorTracker {
 
   public async ensureTensor(
     dataType: MLOperandDataType,
-    dimensions: readonly number[],
+    shape: readonly number[],
     copyOld: boolean,
   ): Promise<MLTensor> {
     if (this.tensorEntry) {
-      const [mlTensor, existingDataType, existingDimensions] = this.tensorEntry;
-      if (existingDataType === dataType && existingDimensions.every((v, i) => v === dimensions[i])) {
+      const [mlTensor, existingDataType, existingShape] = this.tensorEntry;
+      if (existingDataType === dataType && existingShape.every((v, i) => v === shape[i])) {
         return mlTensor;
       }
     }
 
-    for (const [mlTensor, existingDataType, existingDimensions] of this.tensorCache) {
-      if (existingDataType === dataType && existingDimensions.every((v, i) => v === dimensions[i])) {
+    for (const [mlTensor, existingDataType, existingShape] of this.tensorCache) {
+      if (existingDataType === dataType && existingShape.every((v, i) => v === shape[i])) {
         if (copyOld && this.tensorEntry) {
           // WebNN does not support copyTensorToTensor, so we need to read and write the tensors.
           LOG_DEBUG(
@@ -136,20 +136,20 @@ class TensorTracker {
             () =>
               `[WebNN] Slowdown may occur, having to copy existing tensor {dataType: ${
                 dataType
-              }, dimensions: ${dimensions}}`,
+              }, shape: ${shape}}`,
           );
           const data = await this.context.readTensor(this.tensorEntry[0]);
           this.context.writeTensor(mlTensor, data);
         }
-        this.tensorEntry = [mlTensor, existingDataType, existingDimensions];
+        this.tensorEntry = [mlTensor, existingDataType, existingShape];
         return mlTensor;
       }
     }
-    LOG_DEBUG('verbose', () => `[WebNN] MLContext.createTensor {dataType: ${dataType}, dimensions: ${dimensions}}`);
+    LOG_DEBUG('verbose', () => `[WebNN] MLContext.createTensor {dataType: ${dataType}, shape: ${shape}}`);
     // eslint-disable-next-line no-bitwise
     const usage = MLTensorUsage.READ | MLTensorUsage.WRITE;
-    const tensor = await this.context.createTensor({ dataType, dimensions, usage });
-    this.tensorEntry = [tensor, dataType, dimensions];
+    const tensor = await this.context.createTensor({ dataType, shape, usage });
+    this.tensorEntry = [tensor, dataType, shape];
     this.tensorCache.push(this.tensorEntry);
 
     if (this.activeUpload) {
@@ -225,7 +225,7 @@ class TensorManagerImpl implements TensorManager {
   public async ensureTensor(
     tensorId: TensorId,
     dataType: MLOperandDataType,
-    dimensions: number[],
+    shape: number[],
     copyOld: boolean,
   ): Promise<MLTensor> {
     LOG_DEBUG(
@@ -233,7 +233,7 @@ class TensorManagerImpl implements TensorManager {
       () =>
         `[WebNN] TensorManager.ensureTensor {tensorId: ${tensorId}, dataType: ${
           dataType
-        }, dimensions: ${dimensions}, copyOld: ${copyOld}}`,
+        }, shape: ${shape}, copyOld: ${copyOld}}`,
     );
     const tensor = this.tensorsById.get(tensorId);
     if (!tensor) {
@@ -244,7 +244,7 @@ class TensorManagerImpl implements TensorManager {
       this.tensorIdsByContext.set(this.backend.currentContext, new Set());
     }
     this.tensorIdsByContext.get(this.backend.currentContext)?.add(tensorId);
-    return tensor.ensureTensor(dataType, dimensions, copyOld);
+    return tensor.ensureTensor(dataType, shape, copyOld);
   }
 
   public upload(tensorId: TensorId, data: Uint8Array): void {
@@ -277,7 +277,7 @@ class TensorManagerImpl implements TensorManager {
     mlContext: MLContext,
     mlTensor: MLTensor,
     dataType: MLOperandDataType,
-    dimensions: readonly number[],
+    shape: readonly number[],
   ): TensorId {
     for (const [tensorId, tensorTracker] of this.tensorsById) {
       if (tensorTracker.trySelectTensor(mlContext, mlTensor)) {
@@ -285,7 +285,7 @@ class TensorManagerImpl implements TensorManager {
       }
     }
     const tensorId = createNewTensorId();
-    this.tensorsById.set(tensorId, new TensorTracker(mlContext, [mlTensor, dataType, dimensions]));
+    this.tensorsById.set(tensorId, new TensorTracker(mlContext, [mlTensor, dataType, shape]));
     let tensors = this.tensorIdsByContext.get(mlContext);
     if (!tensors) {
       tensors = new Set();

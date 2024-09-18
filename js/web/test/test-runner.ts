@@ -663,7 +663,7 @@ async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Ty
 
   const mlTensor = await mlContext.createTensor({
     dataType,
-    dimensions: dims as number[],
+    shape: dims as number[],
     usage: MLTensorUsage.READ,
   });
 
@@ -685,7 +685,7 @@ async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tenso
   const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
   const mlTensor = await mlContext.createTensor({
     dataType,
-    dimensions: cpuTensor.dims as number[],
+    shape: cpuTensor.dims as number[],
     usage: MLTensorUsage.WRITE,
   });
   mlContext.writeTensor(mlTensor, cpuTensor.data);
