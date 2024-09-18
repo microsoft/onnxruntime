@@ -145,6 +145,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
 
+        DoubleOrFloat* output_buffer = new DoubleOrFloat[hidden_size];
         for (int64_t h = 0; h < hidden_size; h++) {
           DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
           DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
@@ -155,12 +156,12 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
             value += ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
           }
 
+          output_buffer[h] = value;
           T converted_value = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(value);
           if (nullptr != p_skip_input_bias_add_output_data) {
             p_skip_input_bias_add_output_data[h] = converted_value;
           }
 
-          p_output[h] = converted_value;
           mean += value;
           mean_square += value * value;
         }
@@ -173,17 +174,17 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         }
 
         for (int64_t h = 0; h < hidden_size; h++) {
-          DoubleOrFloat output_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_output[h]);
           DoubleOrFloat gamma_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(gamma_data[h]);
           if (simplified) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_value / mean_square * gamma_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
           } else if (nullptr == beta_data) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_value - mean) / mean_square * gamma_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value);
           } else {
             DoubleOrFloat beta_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(beta_data[h]);
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_value - mean) / mean_square * gamma_value + beta_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
           }
         }
+        delete[] output_buffer;
       },
       0);
 
