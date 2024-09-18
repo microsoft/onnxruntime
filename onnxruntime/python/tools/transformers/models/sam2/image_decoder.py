@@ -77,9 +77,9 @@ class SAM2ImageDecoder(nn.Module):
         # Interpolate the low resolution masks back to the original image size.
         masks = F.interpolate(
             low_res_masks,
-            (original_image_size[0], original_image_size[1]),  # H, W
+            (original_image_size[0], original_image_size[1]),
             mode="bilinear",
-            align_corners=False,  # Note that align_corners=True has less mismatch comparing ORT and PyTorch.
+            align_corners=False,  # Note that align_corners=True has less mismatches during comparing ORT and PyTorch.
         )
 
         low_res_masks = torch.clamp(low_res_masks, -32.0, 32.0)
