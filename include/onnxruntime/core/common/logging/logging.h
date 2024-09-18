@@ -58,15 +58,36 @@ namespace logging {
 
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 
-// Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4, but the target macOS version must be
-// >= 13.3 for it to be used.
-#if __cplusplus >= 202002L && \
-  (!defined(__MAC_OS_X_VERSION_MAX_ALLOWED) || __MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L) && \
-  (!defined(__MAC_OS_X_VERSION_MIN_REQUIRED) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 130300L)
-namespace timestamp_ns = std::chrono;
-#else
-namespace timestamp_ns = ::date;
+// C++20 has operator<< in std::chrono for Timestamp type but some mac builds have additional checks on the
+// target deployment.
+#define _USE_CXX20_STD_CHRONO __cplusplus >= 202002L
+
+// Apply constraints for mac builds
+#if __APPLE__
+  #include <TargetConditionals.h>
+  // Catalyst check must be first as it has both TARGET_OS_MACCATALYST and TARGET_OS_MAC set
+  #if TARGET_OS_MACCATALYST
+    // maccatalyst requires version 16.3
+    #if (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED < 160300)
+      #undef _USE_CXX20_STD_CHRONO
+    #endif
+  #elif TARGET_OS_MAC
+    // Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4,
+    // but the target macOS version must be >= 13.3 for it to be used.
+    #if (defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED < 140400) || \
+        (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED < 130300)
+      #undef _USE_CXX20_STD_CHRONO
+    #endif
+  #endif
 #endif
+
+#if defined(_USE_CXX20_STD_CHRONO)
+  namespace timestamp_ns = std::chrono;
+#else
+  namespace timestamp_ns = ::date;
+#endif
+
+#undef _USE_CXX20_STD_CHRONO
 
 #ifndef NDEBUG
 ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
