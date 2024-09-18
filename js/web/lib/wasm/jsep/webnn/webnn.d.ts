@@ -33,6 +33,8 @@ type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
   shape?: readonly number[];
+  /** @deprecated Use shape instead of dimensions */
+  dimensions?: readonly number[];
 }
 interface MLOperand {
   dataType(): MLOperandDataType;
