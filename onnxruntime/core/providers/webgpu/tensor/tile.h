@@ -13,7 +13,7 @@ class TileProgram final : public Program<TileProgram> {
  public:
   TileProgram() : Program{"Tile"} {}
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;  
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 };

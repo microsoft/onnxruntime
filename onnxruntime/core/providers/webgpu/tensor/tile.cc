@@ -22,8 +22,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     Tile,
     kOnnxDomain,
-    13
-    kWebGpuExecutionProvider,
+    13 kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Tile);
