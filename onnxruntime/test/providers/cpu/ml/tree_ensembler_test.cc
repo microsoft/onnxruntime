@@ -19,18 +19,6 @@ static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<double> array, std::s
   return array_as_tensor;
 }
 
-static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<uint8_t> array, std::string name) {
-  ONNX_NAMESPACE::TensorProto array_as_tensor;
-  array_as_tensor.set_name(name);
-  array_as_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-  array_as_tensor.add_dims(array.size());
-  for (const auto v : array) {
-    array_as_tensor.add_int32_data(v);
-  }
-
-  return array_as_tensor;
-}
-
 static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<float> array, std::string name) {
   ONNX_NAMESPACE::TensorProto array_as_tensor;
   array_as_tensor.set_name(name);
@@ -38,6 +26,18 @@ static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<float> array, std::st
   array_as_tensor.add_dims(array.size());
   for (auto v : array) {
     array_as_tensor.add_float_data(v);
+  }
+
+  return array_as_tensor;
+}
+
+static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<uint8_t> array, std::string name) {
+  ONNX_NAMESPACE::TensorProto array_as_tensor;
+  array_as_tensor.set_name(name);
+  array_as_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  array_as_tensor.add_dims(array.size());
+  for (const auto v : array) {
+    array_as_tensor.add_int32_data(v);
   }
 
   return array_as_tensor;
@@ -102,14 +102,14 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const i
   std::vector<int64_t> tree_roots = {0};
   std::vector<int64_t> nodes_featureids = {0, 0, 0};
   std::vector<uint8_t> nodes_modes = {0, 0, 0};
-  std::vector<T> nodes_splits = {3.14, 1.2, 4.2};
+  std::vector<T> nodes_splits = {3.14f, 1.2f, 4.2f};
   std::vector<int64_t> nodes_truenodeids = {1, 0, 1};
   std::vector<int64_t> nodes_trueleafs = {0, 1, 1};
   std::vector<int64_t> nodes_falsenodeids = {2, 2, 3};
   std::vector<int64_t> nodes_falseleafs = {0, 1, 1};
 
   std::vector<int64_t> leaf_targetids = {0, 1, 0, 1};
-  std::vector<T> leaf_weights = {5.23, 12.12, -12.23, 7.21};
+  std::vector<T> leaf_weights = {5.23f, 12.12f, -12.23f, 7.21f};
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
@@ -165,9 +165,9 @@ void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vect
   std::vector<int64_t> leaf_targetids = {0, 1, 2, 3};
 
   std::vector<uint8_t> nodes_modes = {0, 6, 6};
-  std::vector<T> nodes_splits = {11, 232344.0, NAN};
-  std::vector<T> membership_values = {1.2, 3.7, 8, 9, NAN, 12, 7, NAN};
-  std::vector<T> leaf_weights = {1, 10, 1000, 100};
+  std::vector<T> nodes_splits = {11.f, 232344.f, NAN};
+  std::vector<T> membership_values = {1.2f, 3.7f, 8.f, 9.f, NAN, 12.f, 7.f, NAN};
+  std::vector<T> leaf_weights = {1.f, 10.f, 1000.f, 100.f};
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
@@ -212,17 +212,17 @@ void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vect
 }
 
 TEST(MLOpTest, TreeEnsembleFloat) {
-  std::vector<float> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
-  std::vector<float> Y = {5.23, 0, 5.23, 0, 0, 12.12};
+  std::vector<float> X = {1.2f, 3.4f, -0.12f, 1.66f, 4.14f, 1.77f};
+  std::vector<float> Y = {5.23f, 0.f, 5.23f, 0.f, 0.f, 12.12f};
   GenTreeAndRunTest<float>(X, Y, 1, 1);
 
-  Y = {15.69, 0, 15.69, 0, 0, 36.36};
+  Y = {15.69f, 0.f, 15.69f, 0.f, 0.f, 36.36f};
   GenTreeAndRunTest<float>(X, Y, 1, 3);
 }
 
 TEST(MLOpTest, TreeEnsembleDouble) {
-  std::vector<double> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
-  std::vector<double> Y = {5.23, 0, 5.23, 0, 0, 12.12};
+  std::vector<double> X = {1.2f, 3.4f, -0.12f, 1.66f, 4.14f, 1.77f};
+  std::vector<double> Y = {5.23f, 0.f, 5.23f, 0.f, 0.f, 12.12f};
   GenTreeAndRunTest<double>(X, Y, 1, 1);
 
   _multiply_arrays_values(Y, 3);
@@ -230,14 +230,14 @@ TEST(MLOpTest, TreeEnsembleDouble) {
 }
 
 TEST(MLOpTest, TreeEnsembleSetMembership) {
-  std::vector<double> X = {1.2, 3.4, -0.12, NAN, 12.0, 7.0};
+  std::vector<double> X = {1.2f, 3.4f, -0.12f, NAN, 12.0f, 7.0f};
   std::vector<double> Y = {
-      1, 0, 0, 0,
-      0, 0, 0, 100,
-      0, 0, 0, 100,
-      0, 0, 1000, 0,
-      0, 0, 1000, 0,
-      0, 10, 0, 0};
+      1.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 100.f,
+      0.f, 0.f, 0.f, 100.f,
+      0.f, 0.f, 1000.f, 0.f,
+      0.f, 0.f, 1000.f, 0.f,
+      0.f, 10.f, 0.f, 0.f};
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 1);
 
   _multiply_arrays_values(Y, 5);
@@ -253,14 +253,14 @@ TEST(MLOpTest, TreeEnsembleLeafOnly) {
   std::vector<int64_t> tree_roots = {0};
   std::vector<uint8_t> nodes_modes = {0};
   std::vector<int64_t> nodes_featureids = {0};
-  std::vector<double> nodes_splits = {0};
+  std::vector<double> nodes_splits = {0.f};
   std::vector<int64_t> nodes_truenodeids = {0};
   std::vector<int64_t> nodes_trueleafs = {1};
   std::vector<int64_t> nodes_falsenodeids = {0};
   std::vector<int64_t> nodes_falseleafs = {1};
 
   std::vector<int64_t> leaf_targetids = {0};
-  std::vector<double> leaf_weights = {6.23};
+  std::vector<double> leaf_weights = {6.23f};
 
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
   auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
@@ -282,8 +282,8 @@ TEST(MLOpTest, TreeEnsembleLeafOnly) {
   test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
 
   // fill input data
-  std::vector<double> X = {1, 4};
-  std::vector<double> Y = {6.23, 6.23};
+  std::vector<double> X = {1.f, 4.f};
+  std::vector<double> Y = {6.23f, 6.23f};
 
   test.AddInput<double>("X", {2, 1}, X);
   test.AddOutput<double>("Y", {2, 1}, Y);

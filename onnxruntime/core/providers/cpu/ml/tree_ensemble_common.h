@@ -1115,7 +1115,7 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::getMembershipValuesById(
       continue;
     }
 
-    while (curr_id < membership_values.size() && !std::isnan(membership_values[curr_id])) {
+    while (curr_id < membership_values.size() && !_isnan_(membership_values[curr_id])) {
       membership_values_by_id.back().push_back(membership_values[curr_id++]);
     }
     curr_id++;
