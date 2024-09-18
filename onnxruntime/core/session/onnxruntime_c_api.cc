@@ -2677,10 +2677,26 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIndex, const OrtNode* node, _Out_ size_t
   return nullptr;
 }
 
+ORT_API(size_t, OrtApis::OrtNode_GetAttributeNames, const OrtNode* node, _Out_ const char*** names) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  size_t ret = n->GetAttributes().size();
+  *names = new const char* [ret];
+  int i = 0;
+  for (const auto& [k, v] : n->GetAttributes()) {
+    (*names)[i++] = k.c_str();
+  }
+  return ret;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* attr_size) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *attr_size = n->GetAttributes().size();
   return nullptr;
+}
+
+ORT_API(int, OrtApis::OrtNode_GetAttributeType, const OrtNode* node, const char* attribute) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  return static_cast<int>(n->GetAttributes().at(attribute).type());
 }
 
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* count) {
@@ -2733,6 +2749,11 @@ ORT_API(const char*, OrtApis::OrtNode_GetAttributeStr, const OrtNode* node, cons
 ORT_API(int64_t, OrtApis::OrtNode_GetAttributeInt, const OrtNode* node, const char* key) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   return n->GetAttributes().at(key).i();
+}
+
+ORT_API(float, OrtApis::OrtNode_GetAttributeFloat, const OrtNode* node, const char* key) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  return n->GetAttributes().at(key).f();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetSubgraphs, const OrtNode* node, _Out_ size_t* len, _Outptr_ const OrtGraphViewer*** subgraphs) {
@@ -3188,7 +3209,9 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtNode_GetOutputSize,
     &OrtApis::OrtNode_GetIthOutputName,
     &OrtApis::OrtNode_GetIndex,
+    &OrtApis::OrtNode_GetAttributeNames,
     &OrtApis::OrtNode_GetAttributeSize,
+    &OrtApis::OrtNode_GetAttributeType,
     &OrtApis::OrtNode_GetAttributeKeyCount,
     &OrtApis::OrtNode_GetAttributeIntSize,
     &OrtApis::OrtNode_GetAttributeFloatSize,
@@ -3198,6 +3221,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtNode_GetAttributeIthStr,
     &OrtApis::OrtNode_GetAttributeStr,
     &OrtApis::OrtNode_GetAttributeInt,
+    &OrtApis::OrtNode_GetAttributeFloat,
     &OrtApis::OrtNode_GetSubgraphs,
     &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::CreateOrtTypeConstraints,

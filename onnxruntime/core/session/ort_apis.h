@@ -607,7 +607,11 @@ ORT_API_STATUS_IMPL(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Ou
 
 ORT_API_STATUS_IMPL(OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* index);
 
+ORT_API(size_t, OrtNode_GetAttributeNames, const OrtNode* node, const char*** names);
+
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* attr_size);
+
+ORT_API(int, OrtNode_GetAttributeType, const OrtNode* node, const char* attribute) ORT_ALL_ARGS_NONNULL;
 
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* count);
 
@@ -626,6 +630,8 @@ ORT_API_STATUS_IMPL(OrtNode_GetAttributeIthStr, const OrtNode* node, const char*
 ORT_API(const char*, OrtNode_GetAttributeStr, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
 
 ORT_API(int64_t, OrtNode_GetAttributeInt, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
+
+ORT_API(float, OrtNode_GetAttributeFloat, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
 
 ORT_API_STATUS_IMPL(OrtNode_GetSubgraphs, const OrtNode* node, _Out_ size_t* len, _Outptr_ const OrtGraphViewer*** subgraphs);
 

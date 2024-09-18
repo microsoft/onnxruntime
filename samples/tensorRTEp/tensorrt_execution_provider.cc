@@ -3650,11 +3650,69 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             n->add_output(jth_output_name);
           }
 
-          size_t attr_size = 0;
-          api_->OrtNode_GetAttributeSize(node, &attr_size);
+          const char** attr_names = nullptr;
+          size_t attr_size = api_->OrtNode_GetAttributeNames(node, &attr_names);
           for (size_t j = 0; j < attr_size; j++) {
             onnx::AttributeProto* a = n->add_attribute();
-            // TODO(leca)
+            a->set_name(attr_names[j]);
+            onnx::AttributeProto_AttributeType attribute_type = static_cast<onnx::AttributeProto_AttributeType>(api_->OrtNode_GetAttributeType(node, attr_names[j]));
+            a->set_type(attribute_type);
+
+            switch (attribute_type) {
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT:
+                a->set_f(api_->OrtNode_GetAttributeFloat(node, attr_names[j]));
+              break;
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INT:
+                a->set_i(api_->OrtNode_GetAttributeInt(node, attr_names[j]));
+              break;
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING:
+                a->set_s(api_->OrtNode_GetAttributeStr(node, attr_names[j]));
+              break;
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS:
+              {
+                int float_size = 0;
+                api_->OrtNode_GetAttributeFloatSize(node, attr_names[j], &float_size);
+                for (int i = 0; i < float_size; i++) {
+                  float f = 0.0;
+                  api_->OrtNode_GetAttributeIthFloat(node, attr_names[j], i, &f);
+                  a->add_floats(f);
+                }
+                break;
+              }
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS:
+              {
+                int int_size = 0;
+                api_->OrtNode_GetAttributeIntSize(node, attr_names[j], &int_size);
+                for (int i = 0; i < int_size; i++) {
+                  int64_t i64 = 0;
+                  api_->OrtNode_GetAttributeIthInt(node, attr_names[j], i, &i64);
+                  a->add_ints(i64);
+                }
+                break;
+              }
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS:
+              {
+                int str_size = 0;
+                api_->OrtNode_GetAttributeStringSize(node, attr_names[j], &str_size);
+                for (int i = 0; i < str_size; i++) {
+                  const char* str = nullptr;
+                  api_->OrtNode_GetAttributeIthStr(node, attr_names[j], i, &str);
+                  a->add_strings(str);
+                }
+                break;
+              }
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS:
+              case onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS:
+                // TODO(leca)
+                std::cout<<"Node: "<<name<<" type:"<<op_type<<" has the attribute:"<<attr_names[j]<<" with the type:"<<attribute_type<<" that hasn't serialized yet\n";
+              break;
+            }
           }
 
         }
