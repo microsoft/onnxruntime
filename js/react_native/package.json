@@ -93,7 +93,8 @@
     "pods": "cd e2e && pod-install --quiet",
     "e2e": "npm --prefix e2e install",
     "e2e:android": "npm --prefix e2e run android",
-    "e2e:ios": "npm --prefix e2e run ios"
+    "e2e:ios": "npm --prefix e2e run ios",
+    "e2e:start": "npm --prefix e2e run start"
   },
   "types": "dist/typescript/index.d.ts",
   "name": "onnxruntime-react-native",
