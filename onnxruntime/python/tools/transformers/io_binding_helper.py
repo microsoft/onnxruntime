@@ -1,14 +1,15 @@
 import copy
 import logging
 from collections import OrderedDict
-from typing import Any, Dict, List, Mapping, Optional, Tuple, TypeAlias, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy
 import torch
 
 from onnxruntime import InferenceSession, RunOptions
 
-ShapeDict: TypeAlias = Mapping[str, Union[Tuple, List[int]]]
+# Type alias
+ShapeDict = Mapping[str, Union[Tuple, List[int]]]
 
 logger = logging.getLogger(__name__)
 
