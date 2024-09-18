@@ -1461,5 +1461,6 @@ struct onnxruntime::SessionOptions final {
   const std::unordered_map<std::string, std::string> GetConfigOptions() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
   }
-  PROVIDER_DISALLOW_ALL(onnxruntime::SessionOptions)
+  using SessionOptionsType = onnxruntime::SessionOptions;
+  PROVIDER_DISALLOW_ALL(SessionOptionsType)
 };
