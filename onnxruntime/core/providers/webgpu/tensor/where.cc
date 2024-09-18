@@ -4,7 +4,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -78,13 +77,13 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto c_name{"c_data"};
   const auto output_name{"output_data"};
   const auto& c_input = shader.AddInput(c_name,
-                                        ShaderVariable::UseUniform);
+                                        ShaderUsage::UseUniform);
   const auto& a_input = shader.AddInput(a_name,
-                                        ShaderVariable::UseUniform);
+                                        ShaderUsage::UseUniform);
   const auto& b_input = shader.AddInput(b_name,
-                                        ShaderVariable::UseUniform);
+                                        ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput(output_name,
-                                        ShaderVariable::UseUniform);
+                                        ShaderUsage::UseUniform);
   auto expression = [](const std::string& a, const std::string& b, const std::string& c) -> const auto {
     return "select(" + b + ", " + a + ", " + c + ")";
   };
