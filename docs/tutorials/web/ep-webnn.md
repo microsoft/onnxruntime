@@ -99,7 +99,7 @@ const mlContext = await navigator.ml.createContext({deviceType, ...});
 const inputMLTensor = await mlContext.createTensor({
   dataType: 'float32',
   dimensions: [1, 3, 224, 224],
-  usage: MLTensorUsage.WRITE_TO,
+  usage: MLTensorUsage.WRITE,
 });
 
 mlContext.writeTensor(inputMLTensor, inputArrayBuffer);
@@ -123,7 +123,7 @@ const mlContext = await navigator.ml.createContext({deviceType, ...});
 const myPreAllocatedMLTensor = await mlContext.createTensor({
   dataType: 'float32',
   dimensions: [10, 1000],
-  usage: MLTensorUsage.READ_FROM,
+  usage: MLTensorUsage.READ,
 });
 
 const myPreAllocatedOutputTensor = ort.Tensor.fromMLTensor(myPreAllocatedMLTensor, {
