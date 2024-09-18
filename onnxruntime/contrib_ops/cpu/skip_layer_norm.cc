@@ -47,7 +47,7 @@ ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(
 
 template <>
 ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val) {
-  return double(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
+  return static_cast<double>(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
 }
 
 template <>
@@ -76,7 +76,7 @@ ConvertDoubleOrFloatToMLFloat16IfNeeded(float val) {
 template <typename T>
 ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
 ConvertDoubleOrFloatToMLFloat16IfNeeded(double val) {
-  return MLFloat16(float(val));
+  return MLFloat16(static_cast<float>(val));
 }
 
 template <typename T, bool simplified>
@@ -134,7 +134,8 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         const T* p_input = input_data + offset;
         const T* p_skip = skip_data + (offset % skip_size);
         T* p_output = output_data + offset;
-        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
+        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ?
+          skip_input_bias_add_output_data + offset : nullptr;
 
         using DoubleOrFloat = typename std::conditional<
             std::is_same<T, double>::value,  // If T is double
@@ -145,7 +146,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
 
-        DoubleOrFloat* output_buffer = new DoubleOrFloat[hidden_size];
+        std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(hidden_size);
         for (int64_t h = 0; h < hidden_size; h++) {
           DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
           DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
@@ -178,13 +179,14 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           if (simplified) {
             p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
           } else if (nullptr == beta_data) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
+              (output_buffer[h] - mean) / mean_square * gamma_value);
           } else {
             DoubleOrFloat beta_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(beta_data[h]);
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
+              (output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
           }
         }
-        delete[] output_buffer;
       },
       0);
 
