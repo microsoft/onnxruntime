@@ -3539,14 +3539,14 @@ TEST(ReductionOpTest, ArgMin_int8) {
   test.AddAttribute("axis", (int64_t)0);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<int8_t>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
+                        {1, 2,
+                         3, 4,
 
-                          5, 6,
-                          7, 8,
+                         5, 6,
+                         7, 8,
 
-                          9, 10,
-                          11, 12});
+                         9, 10,
+                         11, 12});
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
