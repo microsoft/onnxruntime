@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace contrib {
 
 template <class S, class T>
-void GemmBroadcastBiasScaleBackWithCast(int64_t M, int64_t N, const S* c_data, const TensorShape& bias_shape,
+void GemmBroadcastBiasScaleBackWithCast(Eigen::Index M, Eigen::Index N, const S* c_data, const TensorShape& bias_shape,
                                         T* output, float a_scale, float b_scale) {
   auto output_mat = EigenMatrixMapRowMajor<T>(output, M, N);
   if (bias_shape.Size() == 1) {
@@ -52,8 +52,8 @@ void GemmBroadcastBiasScaleBackWithCast(int64_t M, int64_t N, const S* c_data, c
 static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor& y, const AllocatorPtr& allocator,
                             const Tensor* y_scale, const Tensor* y_zp, const Tensor* bias) {
   const auto output_dims = y.Shape().GetDims();
-  const int64_t M = output_dims[0];
-  const int64_t N = output_dims[1];
+  const auto M = narrow<Eigen::Index>(output_dims[0]);
+  const auto N = narrow<Eigen::Index>(output_dims[1]);
   const float a_scale_value = a_scale.Data<float>()[0];
   const float b_scale_value = b_scale.Data<float>()[0];
 
@@ -80,17 +80,24 @@ static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor
         auto q_params = quantization::GetTensorQuantizationParams<int8_t>(y_scale, y_zp);
         quantization::Quantize<int8_t>(scaled_back.Data<float>(),
                                        reinterpret_cast<int8_t*>(y.MutableDataRaw()), q_params,
-                                       scaled_back.Shape().Size());
+                                       narrow<size_t>(scaled_back.Shape().Size()));
       } else {
         auto q_params = quantization::GetTensorQuantizationParams<uint8_t>(y_scale, y_zp);
         quantization::Quantize<uint8_t>(scaled_back.Data<float>(),
                                         reinterpret_cast<uint8_t*>(y.MutableDataRaw()), q_params,
-                                        scaled_back.Shape().Size());
+                                        narrow<size_t>(scaled_back.Shape().Size()));
       }
     } else {
       // Fill with y_zp
-      int32_t y_zp_value = y_zp->IsDataType<int8_t>() ? *(y_zp->Data<int8_t>()) : *(y_zp->Data<uint8_t>());
-      memset(y.MutableDataRaw(), y_zp_value, M * N);
+      if (y_zp->IsDataType<int8_t>()) {
+        int8_t* output = reinterpret_cast<int8_t*>(y.MutableDataRaw());
+        EigenMatrixMapRowMajor<int8_t> output_mat(output, M, N);
+        output_mat.setConstant(*(y_zp->Data<int8_t>()));
+      } else {
+        uint8_t* output = reinterpret_cast<uint8_t*>(y.MutableDataRaw());
+        EigenMatrixMapRowMajor<uint8_t> output_mat(output, M, N);
+        output_mat.setConstant(*(y_zp->Data<uint8_t>()));
+      }
     }
   }
 }
