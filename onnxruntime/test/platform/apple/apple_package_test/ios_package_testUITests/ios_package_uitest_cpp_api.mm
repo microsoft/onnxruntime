@@ -45,7 +45,7 @@ void testSigmoid(const char* modelPath, bool useCoreML = false, bool useWebGPU =
   if (useWebGPU) {
     std::unordered_map<std::string, std::string> provider_options;
     // set provider options if needed. e.g. deviceId
-    session_options.OrtSessionOptionsAppendExecutionProvider("WebGPU", provider_options);
+    session_options.AppendExecutionProvider("WebGPU", provider_options);
   }
 
   Ort::Session session(env, modelPath, session_options);
