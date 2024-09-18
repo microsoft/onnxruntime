@@ -14,6 +14,8 @@ class CastProgram final : public Program<CastProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+
  private:
   int32_t to_;
 };

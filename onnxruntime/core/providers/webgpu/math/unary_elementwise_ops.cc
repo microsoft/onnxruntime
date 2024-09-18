@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <utility>
+#include <limits>
 
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -185,8 +186,11 @@ class Clip final : public UnaryElementwise {
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
     const auto* clip_min_tensor = context.Input<Tensor>(1);
     const auto* clip_max_tensor = context.Input<Tensor>(2);
-    const T attr[] = {clip_min_tensor->Data<T>()[0],
-                      clip_max_tensor->Data<T>()[0]};
+
+    const T attr[] = {clip_min_tensor ? clip_min_tensor->Data<T>()[0]
+                                      : std::numeric_limits<T>::lowest(),
+                      clip_max_tensor ? clip_max_tensor->Data<T>()[0]
+                                      : std::numeric_limits<T>::max()};
     if constexpr (std::is_same_v<T, MLFloat16>) {
       // F16: stores span<f16, 2> as a single float
       float encoded_value = *reinterpret_cast<const float*>(attr);
