@@ -357,7 +357,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
         "onnxruntime_qnn_ctx_gen"
     ]
-    libs.extend(qnn_deps)
+    dl_libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
