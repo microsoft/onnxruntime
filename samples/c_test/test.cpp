@@ -2,8 +2,13 @@
 #include <vector>
 #include <iostream>
 
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
 inline void THROW_ON_ERROR(OrtStatus* status) {
-    if (status != nullptr) abort();
+    if (status != nullptr) {
+        std::cout<<"ErrorMessage:"<<g_ort->GetErrorMessage(status)<<"\n";
+        abort();
+    }
 }
 
 void TestCompileBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
@@ -190,7 +195,6 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 }
 
 int main() {
-    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtEnv* p_env = nullptr;
     OrtLoggingLevel log_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR;//OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
     THROW_ON_ERROR(g_ort->CreateEnv(log_level, "", &p_env));

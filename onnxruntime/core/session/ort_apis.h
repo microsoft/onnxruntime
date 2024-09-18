@@ -573,7 +573,15 @@ ORT_API(const char*, OrtGraph_GetIthOutputName, const OrtGraphViewer*, size_t i)
 
 ORT_API(int32_t, OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i) ORT_ALL_ARGS_NONNULL;
 
+ORT_API(bool, OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
+
+ORT_API(bool, OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef**);
+
 ORT_API(size_t, OrtGraph_SerializeToArray, const OrtGraphViewer*, _Out_ void** data);
+
+ORT_API_STATUS_IMPL(OrtGraph_DeserializeFromArray, const void* data, size_t len, _Outptr_ OrtGraphViewer**);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph);
 
 ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 
@@ -601,7 +609,11 @@ ORT_API_STATUS_IMPL(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Ou
 
 ORT_API_STATUS_IMPL(OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* index);
 
+ORT_API(size_t, OrtNode_GetAttributeNames, const OrtNode* node, const char*** names);
+
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* attr_size);
+
+ORT_API(int, OrtNode_GetAttributeType, const OrtNode* node, const char* attribute) ORT_ALL_ARGS_NONNULL;
 
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* count);
 
@@ -620,6 +632,8 @@ ORT_API_STATUS_IMPL(OrtNode_GetAttributeIthStr, const OrtNode* node, const char*
 ORT_API(const char*, OrtNode_GetAttributeStr, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
 
 ORT_API(int64_t, OrtNode_GetAttributeInt, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
+
+ORT_API(float, OrtNode_GetAttributeFloat, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
 
 ORT_API_STATUS_IMPL(OrtNode_GetSubgraphs, const OrtNode* node, _Out_ size_t* len, _Outptr_ const OrtGraphViewer*** subgraphs);
 
