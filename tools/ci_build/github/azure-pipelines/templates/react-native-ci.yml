@@ -173,9 +173,9 @@ stages:
       displayName: npm ci js/common
 
     - script: |
-        npm ci
+        npm install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-      displayName: npm ci js/react_native
+      displayName: npm install js/react_native
 
     - task: PowerShell@2
       inputs:
