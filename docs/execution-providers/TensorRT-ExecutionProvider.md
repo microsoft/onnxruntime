@@ -565,7 +565,7 @@ export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 </details>
 
 ## TensorRT EP Caches
-There are three major TRT EP cahces:
+There are three major TRT EP caches:
 * TRT timing cache
 * TRT engine cache
 * Embedded engine model / EPContext model
