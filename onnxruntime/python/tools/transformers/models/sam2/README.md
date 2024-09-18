@@ -43,7 +43,7 @@ python3 convert_to_onnx.py  -h
 ## Run Demo
 The exported onnx model can run in CPU. The demo currently requires Nvidia GPU.
 ```
-wget https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/notebooks/images/truck.jpg
+curl https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/notebooks/images/truck.jpg > truck.jpg
 python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --demo
 ```
 

@@ -12,7 +12,7 @@ from image_decoder import export_decoder_onnx, test_decoder_onnx
 from image_encoder import export_image_encoder_onnx, test_image_encoder_onnx
 from mask_decoder import export_mask_decoder_onnx, test_mask_decoder_onnx
 from prompt_encoder import export_prompt_encoder_onnx, test_prompt_encoder_onnx
-from sam2_demo import run_demo
+from sam2_demo import run_demo, show_all_images
 from sam2_utils import build_sam2_model, get_decoder_onnx_path, get_image_encoder_onnx_path, setup_logger
 
 
@@ -165,7 +165,7 @@ def main():
                 export_decoder_onnx(sam2_model, onnx_model_path, args.multimask_output)
                 test_decoder_onnx(sam2_model, onnx_model_path, args.multimask_output)
 
-    if args.demo and torch.cuda.is_available():
+    if args.demo:
         # Export required ONNX models for demo if not already exported.
         onnx_model_path = get_image_encoder_onnx_path(args.output_dir, args.model_type)
         if not os.path.exists(onnx_model_path):
@@ -179,13 +179,14 @@ def main():
         if not os.path.exists(onnx_model_path):
             export_decoder_onnx(sam2_model, onnx_model_path, False)
 
-        image_files = run_demo(checkpoints_dir, args.model_type, engine="ort", onnx_directory=args.output_dir)
-        print("demo output files for ONNX Runtime:", image_files)
+        ort_image_files = run_demo(checkpoints_dir, args.model_type, engine="ort", onnx_directory=args.output_dir)
+        print("demo output files for ONNX Runtime:", ort_image_files)
 
         # Get results from torch engine to compare.
-        with torch.autocast("cuda", dtype=torch.bfloat16):
-            image_files = run_demo(checkpoints_dir, args.model_type, engine="torch", onnx_directory=args.output_dir)
-            print("demo output files for PyTorch:", image_files)
+        torch_image_files = run_demo(checkpoints_dir, args.model_type, engine="torch", onnx_directory=args.output_dir)
+        print("demo output files for PyTorch:", torch_image_files)
+
+        show_all_images(ort_image_files, torch_image_files)
 
 
 if __name__ == "__main__":

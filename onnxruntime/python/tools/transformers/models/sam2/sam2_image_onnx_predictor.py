@@ -265,7 +265,7 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
             "image_features_0": image_features_0.contiguous().to(dtype=torch.float32).to(device),
             "image_features_1": image_features_1.contiguous().to(dtype=torch.float32).to(device),
             "point_coords": concat_points[0].to(dtype=torch.float32).to(device),
-            "point_labels": concat_points[1].to(dtype=torch.float32).to(device),
+            "point_labels": concat_points[1].to(dtype=torch.int32).to(device),
             "input_masks": input_masks.to(dtype=torch.float32).to(device),
             "has_input_masks": has_input_masks.to(dtype=torch.float32).to(device),
             "original_image_size": torch.tensor(self._orig_hw[img_idx], dtype=torch.int32, device=device),

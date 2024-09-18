@@ -2,6 +2,9 @@
 # Copyright (R) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+import os
+
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -65,18 +68,23 @@ def show_masks(
         if point_coords is not None:
             assert input_labels is not None
             show_points(point_coords, input_labels, plt.gca())
+
         if box_coords is not None:
-            # boxes
             show_box(box_coords, plt.gca())
+
         if len(scores) > 1:
             plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
+
         plt.axis("off")
-        plt.show()
         if output_image_file_prefix:
             filename = f"{output_image_file_prefix}_{i}.png"
-            plt.savefig(filename)
+            if os.path.exists(filename):
+                os.remove(filename)
+            plt.savefig(filename, format="png", bbox_inches="tight", pad_inches=0)
             if isinstance(image_files, list):
                 image_files.append(filename)
+        plt.show(block=False)
+        plt.close()
 
 
 def get_predictor(
@@ -258,3 +266,25 @@ def run_demo(
         plt.savefig(prefix + "batch_prompt.png")
         image_files.append(prefix + "batch_prompt.png")
     return image_files
+
+
+def show_all_images(left_images, right_images):
+    # Show images in two rows since display screen is horizontal in most cases.
+    fig, axes = plt.subplots(nrows=2, ncols=len(left_images), figsize=(19.20, 10.80))
+    for i, (left_img_path, right_img_path) in enumerate(zip(left_images, right_images)):
+        left_img = mpimg.imread(left_img_path)
+        right_img = mpimg.imread(right_img_path)
+
+        axes[0, i].imshow(left_img)
+        axes[0, i].set_title(left_img_path.replace("sam2_demo_", "").replace(".png", ""), fontsize=10)
+        axes[0, i].axis("off")
+        axes[0, i].set_aspect(left_img.shape[1] / left_img.shape[0])
+
+        axes[1, i].imshow(right_img)
+        axes[1, i].set_title(right_img_path.replace("sam2_demo_", "").replace(".png", ""), fontsize=10)
+        axes[1, i].axis("off")
+        axes[1, i].set_aspect(right_img.shape[1] / right_img.shape[0])
+
+    plt.tight_layout()
+    plt.savefig("sam2_demo.png", format="png", bbox_inches="tight", dpi=1000)
+    plt.show()

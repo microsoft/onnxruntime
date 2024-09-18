@@ -113,7 +113,7 @@ def export_decoder_onnx(
     num_labels = 2
     num_points = 3
     point_coords = torch.randint(low=0, high=1024, size=(num_labels, num_points, 2), dtype=torch.float)
-    point_labels = torch.randint(low=0, high=1, size=(num_labels, num_points), dtype=torch.float)
+    point_labels = torch.randint(low=0, high=1, size=(num_labels, num_points), dtype=torch.int32)
     input_masks = torch.zeros(num_labels, 1, 256, 256, dtype=torch.float)
     has_input_masks = torch.ones(1, dtype=torch.float)
     original_image_size = torch.tensor([1200, 1800], dtype=torch.int32)
@@ -204,7 +204,7 @@ def test_decoder_onnx(
     num_labels = 1
     num_points = 5
     point_coords = torch.randint(low=0, high=1024, size=(num_labels, num_points, 2), dtype=torch.float)
-    point_labels = torch.randint(low=0, high=1, size=(num_labels, num_points), dtype=torch.float)
+    point_labels = torch.randint(low=0, high=1, size=(num_labels, num_points), dtype=torch.int32)
     input_masks = torch.zeros(num_labels, 1, 256, 256, dtype=torch.float)
     has_input_masks = torch.zeros(1, dtype=torch.float)
     original_image_size = torch.tensor([1500, 1500], dtype=torch.int32)
