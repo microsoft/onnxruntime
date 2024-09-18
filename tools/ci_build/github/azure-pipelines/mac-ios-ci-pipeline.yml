@@ -46,7 +46,6 @@ jobs:
         Today: $(TODAY)
         AdditionalKey: onnxruntime
         CacheDir: $(ORT_CACHE_DIR)
-        ChangeEveryCommit: true
         BuildStep:
           - script: |
               python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
