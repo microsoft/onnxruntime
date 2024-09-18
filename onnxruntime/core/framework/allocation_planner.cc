@@ -2205,6 +2205,51 @@ Status PlannerImpl::CreatePlan(
   // TODO: enable verification
   // VerifyMemoryTimeSchedule();
 
+  // dump Graph topology
+  const std::vector<const NodeArg*>& graph_inputs = graph_viewer_.GetInputs();
+  std::cout<<"\n\ngraph inputs:\n";
+  for (size_t i = 0; i < graph_inputs.size(); i++) {
+    std::cout<<graph_inputs[i]->Name()<<"\n";
+  }
+  const std::vector<const NodeArg*>& graph_inputs_initializers = graph_viewer_.GetInputsIncludingInitializers();
+  std::cout<<"\n\ngraph inputs including initializers:\n";
+  for (size_t i = 0; i < graph_inputs_initializers.size(); i++) {
+    std::cout<<graph_inputs_initializers[i]->Name()<<"\n";
+  }
+  const std::vector<const NodeArg*>& graph_outputs = graph_viewer_.GetOutputs();
+  std::cout<<"\n\ngraph outputs:\n";
+  for (size_t i = 0; i < graph_outputs.size(); i++) {
+    std::cout<<graph_outputs[i]->Name()<<"\n";
+  }
+  const std::unordered_set<const NodeArg*>& graph_value_info = graph_viewer_.GetValueInfo();
+  std::cout<<"\n\ngraph value infos:\n";
+  for (const auto& elem : graph_value_info) {
+    std::cout<<elem->Name()<<"\n";
+  }
+  const InitializedTensorSet& initialized_set = graph_viewer_.GetAllInitializedTensors();
+  std::cout<<"\n\ngraph initialized tensors:\n";
+  for (const auto& elem : initialized_set) {
+    std::cout<<elem.first<<"\n";
+  }
+  std::cout<<"\n=========================\n";
+  const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < topo_sort.size(); i++) {
+    const Node* node = graph_viewer_.GetNode(topo_sort[i]);
+    std::cout<<"Node:"<<node->Name()<<", type:"<<node->OpType()<<"\n";
+    std::cout<<"    Inputs:\n";
+    for (size_t j = 0; j < node->InputDefs().size(); j++) {
+      std::cout<<"    "<<node->InputDefs()[j]->Name()<<"\n";
+    }
+    std::cout<<"    Implicit Inputs:\n";
+    for (size_t j = 0; j < node->ImplicitInputDefs().size(); j++) {
+      std::cout<<"    "<<node->ImplicitInputDefs()[j]->Name()<<"\n";
+    }
+    std::cout<<"    Outputs:\n";
+    for (size_t j = 0; j < node->OutputDefs().size(); j++) {
+      std::cout<<"    "<<node->OutputDefs()[j]->Name()<<"\n";
+    }
+  }
+
   return Status::OK();
 }
 
