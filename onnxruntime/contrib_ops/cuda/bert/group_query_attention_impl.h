@@ -27,7 +27,7 @@ struct GroupQueryAttentionData {
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
-  int* seqlens_k_total = nullptr;
+  int* seqlens_k_buff = nullptr;
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
   T* unpacked_qkv_buffer = nullptr;
@@ -61,7 +61,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                              int kv_num_heads,
                              int head_size,
                              int max_sequence_length,     // max sequence length of present_key or present_value.
-                             const int* past_seqlens_k,   // it is not used when total_seqlens_k is available.
+                             const int* seqlens_k,        // it is not used when total_seqlens_k is available.
                              const int* total_seqlens_k,  // optional, nullptr means it is not available.
                              int new_seq_len,
                              const T* new_key,

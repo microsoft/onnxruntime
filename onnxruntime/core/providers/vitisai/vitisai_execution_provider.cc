@@ -99,7 +99,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
       }
     };
     compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      reinterpret_cast<vaip_core::CustomOp*>(state)->Compute(api, context);
+      reinterpret_cast<vaip_core::CustomOp*>(state)->Compute_base(api, context);
       return Status::OK();
     };
     node_compute_funcs.push_back(compute_info);

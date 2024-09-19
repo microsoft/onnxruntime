@@ -19,6 +19,10 @@ class ConcatOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  // Operator support related.
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -50,6 +54,30 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
+}
+
+bool ConcatOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                             const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;
+
+  if (!GetType(*input_defs[0], input0_type, logger))
+    return false;
+
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    int32_t input_type;
+    if (!GetType(*input_defs[i], input_type, logger)) {
+      return false;
+    }
+
+    std::array<int32_t, 2> input_types{input0_type, input_type};
+    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+      return false;
+    }
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "inputs", "inputs", logger);
 }
 
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
