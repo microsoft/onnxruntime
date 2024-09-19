@@ -17,6 +17,17 @@ public:
     {
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 1, "MemcpyFromHost/ToHost expects 1 input tensor.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "MemcpyFromHost/ToHost expects 1 output tensor.");
+
+        Initialize(kernelCreationContext);
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelCreationContext);
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext)
