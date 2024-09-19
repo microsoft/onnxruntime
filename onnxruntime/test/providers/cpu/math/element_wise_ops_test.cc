@@ -1815,14 +1815,14 @@ TEST(MathOpTest, Min_12_MLFloat16_VectorMatrix) {
   OpTester test("Min", 12);
   test.AddInput<MLFloat16>("data_0", {3, 1},
                            MakeMLFloat16({0.0f, -1.0f, 1.0f}));
-  test.AddInput<MLFloat16>("data_1", {3, 3},
-                           MakeMLFloat16({1.0f, 1.0f, 1.0f,
-                                          -0.5f, 0.0f, -2.0f,
-                                          0.5f, 0.0f, 2.0f}));
-  test.AddOutput<MLFloat16>("min", {3, 3},
-                            MakeMLFloat16({0.0f, 0.0f, 0.0f,
-                                           -1.0f, -1.0f, -2.0f,
-                                           0.5f, 0.0f, 1.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 4},
+                           MakeMLFloat16({1.0f, 1.0f, 1.0f, -1.0f,
+                                          -0.5f, 0.0f, -2.0f, -1.25f,
+                                          0.5f, 0.0f, 2.0f, 1.5f}));
+  test.AddOutput<MLFloat16>("min", {3, 4},
+                            MakeMLFloat16({0.0f, 0.0f, 0.0f, -1.0f,
+                                           -1.0f, -1.0f, -2.0f, -1.25f,
+                                           0.5f, 0.0f, 1.0f, 1.0f}));
   if (nullptr != DefaultCpuExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -2187,15 +2187,17 @@ TEST(MathOpTest, Max_12_MLFloat16_Scalar1) {
 
 TEST(MathOpTest, Max_12_MLFloat16_MatrixVector) {
   OpTester test("Max", 12);
-  test.AddInput<MLFloat16>("data_0", {3, 3},
+  test.AddInput<MLFloat16>("data_0", {4, 3},
                            MakeMLFloat16({1.0f, 1.0f, 1.0f,
                                           -0.5f, 0.0f, -2.0f,
+                                          0.0f, 0.5f, 0.75f,
                                           0.5f, 0.0f, 2.0f}));
-  test.AddInput<MLFloat16>("data_1", {3, 1},
-                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
-  test.AddOutput<MLFloat16>("max", {3, 3},
+  test.AddInput<MLFloat16>("data_1", {4, 1},
+                           MakeMLFloat16({0.0f, -1.0f, 0.5f, 1.0f}));
+  test.AddOutput<MLFloat16>("max", {4, 3},
                             MakeMLFloat16({1.0f, 1.0f, 1.0f,
                                            -0.5f, 0.0f, -1.0f,
+                                           0.5f, 0.5f, 0.75f,
                                            1.0f, 1.0f, 2.0f}));
   if (nullptr != DefaultCpuExecutionProvider()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
