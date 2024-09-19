@@ -83,6 +83,8 @@ Return Value:
 
 #endif
 
+    int countb = 0;
+
     do {
 
         float BElements00;
@@ -298,6 +300,10 @@ Return Value:
         C += 4;
         CountN -= 4;
 
+        countb = (countb + 1) % 4;
+        if (countb == 0) {
+            B += CountK * 16 - 16;
+        }
     } while (CountN > 0);
 
     return ProcessTwoRows ? 2 : 1;
