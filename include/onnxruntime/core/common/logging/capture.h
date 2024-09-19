@@ -4,7 +4,7 @@
 #pragma once
 
 #include <cstdarg>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/code_location.h"
 #include "core/common/logging/severity.h"
@@ -77,7 +77,7 @@ class Capture {
 
   char SeverityPrefix() const noexcept {
     // Carefully setup so severity_ is a valid index
-    GSL_SUPPRESS(bounds .2) {
+    GSL_SUPPRESS(bounds.2) {
       return logging::SEVERITY_PREFIX[static_cast<int>(severity_)];
     }
   }

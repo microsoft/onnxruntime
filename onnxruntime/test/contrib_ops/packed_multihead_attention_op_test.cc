@@ -32,8 +32,8 @@ namespace test {
       token_count,                                                 \
       use_float16,                                                 \
       use_scale,                                                   \
-      relative_position_bias_data,                                 \
-      broadcast_relative_position_bias);
+      attention_bias_data,                                         \
+      broadcast_attention_bias);
 
 static void RunPackedMultiHeadAttentionTest(
     const std::vector<float>& query_data,                    // query:      [token_count, num_heads, 3, head_size]
@@ -52,8 +52,8 @@ static void RunPackedMultiHeadAttentionTest(
     int token_count,
     bool use_float16,
     bool use_scale,
-    const std::vector<float>& relative_position_bias_data,
-    bool broadcast_relative_position_bias) {
+    const std::vector<float>& attention_bias_data,
+    bool broadcast_attention_bias) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
@@ -73,9 +73,9 @@ static void RunPackedMultiHeadAttentionTest(
     std::vector<int64_t> bias_dims = {hidden_size + hidden_size + v_hidden_size};
     std::vector<int64_t> token_offset_dims = {batch_size, sequence_length};
     std::vector<int64_t> cum_seq_len_dims = {batch_size + 1};
-    std::vector<int64_t> relative_position_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
-    std::vector<int64_t> broadcast_relative_position_bias_data_dims = {1, number_of_heads, sequence_length, sequence_length};
-    auto& rel_pos_bias_dims = (broadcast_relative_position_bias ? broadcast_relative_position_bias_data_dims : relative_position_bias_data_dims);
+    std::vector<int64_t> attention_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
+    std::vector<int64_t> broadcast_attention_bias_data_dims = {1, number_of_heads, sequence_length, sequence_length};
+    auto& rel_pos_bias_dims = (broadcast_attention_bias ? broadcast_attention_bias_data_dims : attention_bias_data_dims);
 
     std::vector<int64_t> output_dims = {token_count, v_hidden_size};
 
@@ -100,13 +100,14 @@ static void RunPackedMultiHeadAttentionTest(
 
       tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
       tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cumulative_sequence_length);
-      if (relative_position_bias_data.size() > 0) {
-        tester.AddInput<MLFloat16>("relative_position_bias",
+      if (attention_bias_data.size() > 0) {
+        tester.AddInput<MLFloat16>("attention_bias",
                                    rel_pos_bias_dims,
-                                   ToFloat16(relative_position_bias_data));
+                                   ToFloat16(attention_bias_data));
       }
 
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+      tester.SetOutputTolerance(0.005f);
     } else {
       if (is_packed_qkv) {
         tester.AddInput<float>("query", packed_qkv_dims, query_data);
@@ -126,11 +127,12 @@ static void RunPackedMultiHeadAttentionTest(
 
       tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
       tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cumulative_sequence_length);
-      if (relative_position_bias_data.size() > 0) {
-        tester.AddInput<float>("relative_position_bias", rel_pos_bias_dims, relative_position_bias_data);
+      if (attention_bias_data.size() > 0) {
+        tester.AddInput<float>("attention_bias", rel_pos_bias_dims, attention_bias_data);
       }
 
       tester.AddOutput<float>("output", output_dims, output_data);
+      tester.SetOutputTolerance(0.001f, 0.001f);
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -155,11 +157,12 @@ static void RunPackedMultiHeadAttentionTest(
     int number_of_heads,
     int token_count,
     AttentionKernelType kernel_type,
-    const std::vector<float>& relative_position_bias_data = {},
-    bool broadcast_relative_position_bias = false) {
+    const std::vector<float>& attention_bias_data = {},
+    bool broadcast_attention_bias = false) {
   if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
@@ -168,10 +171,11 @@ static void RunPackedMultiHeadAttentionTest(
     InvokePackedMultiHeadAttentionTest(true, false);
   }
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
@@ -182,9 +186,20 @@ static void RunPackedMultiHeadAttentionTest(
   }
 #endif
 
+#if USE_FLASH_ATTENTION
+  if (kernel_type == AttentionKernelType::AttentionKernel_FlashAttention) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "0"}}};
+    InvokePackedMultiHeadAttentionTest(true, true);
+  }
+#endif
+
   if (kernel_type == AttentionKernelType::AttentionKernel_Unfused) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
@@ -295,9 +310,9 @@ TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_NoBias_trt) {
       AttentionKernelType::AttentionKernel_TrtFusedAttention);
 }
 
-TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_Bias_RelPosBias_cutlass) {
+TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_Bias_AttnBias_cutlass) {
   AttentionTestData data;
-  GetAttentionDataCutlassRelPosBias(data);
+  GetAttentionDataCutlassAttnBias(data);
   std::vector<int32_t> token_offset{0, 1, 2, 3, 4, 5, 6, 7};
   std::vector<int32_t> cum_seq_len{0, 8};
 
@@ -316,13 +331,13 @@ TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_Bias_RelPosBias_cutlass) {
       data.num_heads,
       data.batch_size * data.sequence_length,
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
-      data.rel_pos_bias_data,
-      data.broadcast_rel_pos_bias);
+      data.attention_bias_data,
+      data.broadcast_attention_bias);
 }
 
-TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_Bias_RelPosBias_unfused) {
+TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_Bias_AttnBias_unfused) {
   AttentionTestData data;
-  GetAttentionDataCutlassRelPosBias(data);
+  GetAttentionDataCutlassAttnBias(data);
   std::vector<int32_t> token_offset{0, 1, 2, 3, 4, 5, 6, 7};
   std::vector<int32_t> cum_seq_len{0, 8};
 
@@ -341,13 +356,13 @@ TEST(PackedMultiHeadAttentionTest, Q_K_V_NoPadding_Bias_RelPosBias_unfused) {
       data.num_heads,
       data.batch_size * data.sequence_length,
       AttentionKernelType::AttentionKernel_Unfused,
-      data.rel_pos_bias_data,
-      data.broadcast_rel_pos_bias);
+      data.attention_bias_data,
+      data.broadcast_attention_bias);
 }
 
 TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_trt) {
   PackedAttentionTestData data;
-  GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(data);
+  GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias(data);
   std::vector<float> empty_data = {};
 
   RunPackedMultiHeadAttentionTest(
@@ -369,7 +384,7 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_trt) {
 
 TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_cutlass) {
   PackedAttentionTestData data;
-  GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(data);
+  GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias(data);
   std::vector<float> empty_data = {};
 
   RunPackedMultiHeadAttentionTest(
@@ -389,9 +404,35 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_cutlass) {
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention);
 }
 
+#if USE_FLASH_ATTENTION
+TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_FlashAttention) {
+  if (HasCudaEnvironment(800)) {
+    PackedAttentionTestData data;
+    GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias(data);
+    std::vector<float> empty_data = {};
+
+    RunPackedMultiHeadAttentionTest(
+        data.qkv_data,
+        empty_data,
+        empty_data,
+        empty_data,
+        data.token_offset,
+        data.cumulative_sequence_length,
+        data.fp16_output_data,
+        data.batch_size,
+        data.sequence_length,
+        data.hidden_size,
+        data.v_hidden_size,
+        data.num_heads,
+        data.token_count,
+        AttentionKernelType::AttentionKernel_FlashAttention);
+  }
+}
+#endif
+
 TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_unfused) {
   PackedAttentionTestData data;
-  GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(data);
+  GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoAttnBias(data);
   std::vector<float> empty_data = {};
 
   RunPackedMultiHeadAttentionTest(
@@ -411,9 +452,9 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_unfused) {
       AttentionKernelType::AttentionKernel_Unfused);
 }
 
-TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_RelPosBias) {
+TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_AttnBias) {
   PackedAttentionTestData data;
-  GetPackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias(data);
+  GetPackedMultiHeadAttentionData_Batch2_HeadSize8_AttnBias(data);
   std::vector<float> empty_data = {};
 
   RunPackedMultiHeadAttentionTest(
@@ -431,13 +472,13 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_RelPosBias) {
       data.num_heads,
       data.token_count,
       AttentionKernelType::AttentionKernel_Default,
-      data.rel_pos_bias_data,
-      data.broadcast_rel_pos_bias);
+      data.attention_bias_data,
+      data.broadcast_attention_bias);
 }
 
-TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastRelPosBias_cutlass) {
+TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastAttnBias_cutlass) {
   PackedAttentionTestData data;
-  GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias(data);
+  GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias(data);
   std::vector<float> empty_data = {};
 
   RunPackedMultiHeadAttentionTest(
@@ -455,13 +496,13 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastRelPosBias_
       data.num_heads,
       data.token_count,
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
-      data.rel_pos_bias_data,
-      data.broadcast_rel_pos_bias);
+      data.attention_bias_data,
+      data.broadcast_attention_bias);
 }
 
-TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastRelPosBias_unfused) {
+TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastAttnBias_unfused) {
   PackedAttentionTestData data;
-  GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias(data);
+  GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastAttnBias(data);
   std::vector<float> empty_data = {};
 
   RunPackedMultiHeadAttentionTest(
@@ -479,8 +520,8 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastRelPosBias_
       data.num_heads,
       data.token_count,
       AttentionKernelType::AttentionKernel_Unfused,
-      data.rel_pos_bias_data,
-      data.broadcast_rel_pos_bias);
+      data.attention_bias_data,
+      data.broadcast_attention_bias);
 }
 
 }  // namespace test

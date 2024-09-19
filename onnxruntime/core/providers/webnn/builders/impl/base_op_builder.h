@@ -28,7 +28,8 @@ class BaseOpBuilder : public IOpBuilder {
   // Operator support related.
  public:
   bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                     const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+                     const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
+                     const logging::Logger& logger) const override;
 
  protected:
   virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
@@ -36,8 +37,10 @@ class BaseOpBuilder : public IOpBuilder {
     return true;
   }
 
-  virtual bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  virtual bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                       const logging::Logger& logger) const;
+  virtual bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                       const logging::Logger& logger) const;
 
   // ONNX Runtime only *guarantees* support for models stamped
   // with opset version 7 or above for opset domain 'ai.onnx'.
@@ -46,11 +49,11 @@ class BaseOpBuilder : public IOpBuilder {
   // We still set the mininal supported opset to 1 as we couldn't
   // get the model opset version at this stage.
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 19; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 21; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
-  bool HasSupportedInputs(const Node& node, const WebnnDeviceType device_type, const logging::Logger& logger) const;
+  bool HasSupportedInputs(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) const;
 };
 
 }  // namespace webnn

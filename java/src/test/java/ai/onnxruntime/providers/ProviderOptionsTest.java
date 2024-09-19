@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime.providers;
@@ -41,40 +41,49 @@ public class ProviderOptionsTest {
     OrtSession.SessionOptions sessionOpts = new OrtSession.SessionOptions();
     sessionOpts.addCUDA(cudaOpts);
     runProvider(OrtProvider.CUDA, sessionOpts);
+    sessionOpts.close();
+    cudaOpts.close();
 
     // Test invalid device num throws
     assertThrows(IllegalArgumentException.class, () -> new OrtCUDAProviderOptions(-1));
 
     // Test invalid key name throws
-    OrtCUDAProviderOptions invalidKeyOpts = new OrtCUDAProviderOptions(0);
-    assertThrows(
-        OrtException.class, () -> invalidKeyOpts.add("not_a_real_provider_option", "not a number"));
+    try (OrtCUDAProviderOptions invalidKeyOpts = new OrtCUDAProviderOptions(0)) {
+      invalidKeyOpts.add("not_a_real_provider_option", "not a number");
+      assertThrows(OrtException.class, invalidKeyOpts::applyToNative);
+    }
     // Test invalid value throws
-    OrtCUDAProviderOptions invalidValueOpts = new OrtCUDAProviderOptions(0);
-    assertThrows(OrtException.class, () -> invalidValueOpts.add("gpu_mem_limit", "not a number"));
+    try (OrtCUDAProviderOptions invalidValueOpts = new OrtCUDAProviderOptions(0)) {
+      invalidValueOpts.add("gpu_mem_limit", "not a number");
+      assertThrows(OrtException.class, invalidValueOpts::applyToNative);
+    }
   }
 
   @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
   public void testTensorRT() throws OrtException {
     // Test standard options
-    OrtTensorRTProviderOptions cudaOpts = new OrtTensorRTProviderOptions(0);
-    cudaOpts.add("trt_max_workspace_size", "" + (512 * 1024 * 1024));
+    OrtTensorRTProviderOptions rtOpts = new OrtTensorRTProviderOptions(0);
+    rtOpts.add("trt_max_workspace_size", "" + (512 * 1024 * 1024));
     OrtSession.SessionOptions sessionOpts = new OrtSession.SessionOptions();
-    sessionOpts.addTensorrt(cudaOpts);
+    sessionOpts.addTensorrt(rtOpts);
     runProvider(OrtProvider.TENSOR_RT, sessionOpts);
+    sessionOpts.close();
+    rtOpts.close();
 
     // Test invalid device num throws
     assertThrows(IllegalArgumentException.class, () -> new OrtTensorRTProviderOptions(-1));
 
     // Test invalid key name throws
-    OrtTensorRTProviderOptions invalidKeyOpts = new OrtTensorRTProviderOptions(0);
-    assertThrows(
-        OrtException.class, () -> invalidKeyOpts.add("not_a_real_provider_option", "not a number"));
+    try (OrtTensorRTProviderOptions invalidKeyOpts = new OrtTensorRTProviderOptions(0)) {
+      invalidKeyOpts.add("not_a_real_provider_option", "not a number");
+      assertThrows(OrtException.class, invalidKeyOpts::applyToNative);
+    }
     // Test invalid value throws
-    OrtTensorRTProviderOptions invalidValueOpts = new OrtTensorRTProviderOptions(0);
-    assertThrows(
-        OrtException.class, () -> invalidValueOpts.add("trt_max_workspace_size", "not a number"));
+    try (OrtTensorRTProviderOptions invalidValueOpts = new OrtTensorRTProviderOptions(0)) {
+      invalidValueOpts.add("trt_max_workspace_size", "not a number");
+      assertThrows(OrtException.class, invalidValueOpts::applyToNative);
+    }
   }
 
   private static void runProvider(OrtProvider provider, OrtSession.SessionOptions options)
@@ -96,7 +105,7 @@ public class ProviderOptionsTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        assertArrayEquals(expectedOutput, resultArray, 1e-3f);
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }

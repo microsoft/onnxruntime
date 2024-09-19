@@ -88,7 +88,13 @@ namespace Dml
 
             if (reuseCommandList)
             {
-                BuildReusableCommandList();
+                auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
+                    m_provider.Get(),
+                    m_compiledExecutionPlanOperator.Get(),
+                    m_persistentResource.Get(),
+                    m_persistentResourceBinding);
+
+                m_reusedCommandLists.push_back(std::move(reusableCommandList));
             }
         }
 
@@ -96,8 +102,7 @@ namespace Dml
         {
             // Only re-use the cached command list if its prior execution is complete on the GPU.
             // This requirement can be avoided by mantaining ring buffers.
-            if (!m_graphicsCommandList ||
-                (m_fence != nullptr && m_fence->GetCompletedValue() < m_completionValue))
+            if (m_reusedCommandLists.empty())
             {
                 // Wrap tensors as required by Dml::IExecutionProvider::ExecuteOperator
                 OpKernelContextWrapper contextWrapper(
@@ -150,7 +155,37 @@ namespace Dml
             }
             else
             {
-                ExecuteReusableCommandList(kernelContext);
+                if (m_reusedCommandLists.front()->fence &&
+                    m_reusedCommandLists.front()->fence->GetCompletedValue() < m_reusedCommandLists.front()->completionValue)
+                {
+                    auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
+                        m_provider.Get(),
+                        m_compiledExecutionPlanOperator.Get(),
+                        m_persistentResource.Get(),
+                        m_persistentResourceBinding);
+
+                    m_reusedCommandLists.push_front(std::move(reusableCommandList));
+                }
+
+                // We don't need to keep a reference on the temporary resource once we have recorded into the command list, so the
+                // memory can be reused by the allocator
+                constexpr bool keepTemporaryResourceAlive = false;
+
+                DmlGraphFusionHelper::ExecuteReusableCommandList(
+                    kernelContext,
+                    *m_reusedCommandLists.front(),
+                    m_compiledExecutionPlanOperator.Get(),
+                    Info(),
+                    m_isInputsUploadedByDmlEP,
+                    m_inputsUsed,
+                    m_nonOwnedGraphInputsFromInitializers,
+                    m_outputShapes,
+                    m_winmlProvider.Get(),
+                    m_provider.Get(),
+                    keepTemporaryResourceAlive);
+
+                m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
+                m_reusedCommandLists.pop_front();
             }
 
             return onnxruntime::Status::OK();
@@ -216,179 +251,9 @@ namespace Dml
                 persistentResourceBinding,
                 inputBindings,
                 outputBindings));
-            }
+        }
 
     private:
-        void BuildReusableCommandList()
-        {
-            ComPtr<IDMLDevice> device;
-            ORT_THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
-
-            DML_BINDING_PROPERTIES execBindingProps = m_compiledExecutionPlanOperator->GetBindingProperties();
-
-            D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-            desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-            desc.NumDescriptors = execBindingProps.RequiredDescriptorCount;
-            desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-
-            ComPtr<ID3D12Device> d3dDevice;
-            ORT_THROW_IF_FAILED(m_provider->GetD3DDevice(d3dDevice.GetAddressOf()));
-
-            ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_GRAPHICS_PPV_ARGS(m_heap.ReleaseAndGetAddressOf())));
-
-            // Create a binding table for execution.
-            DML_BINDING_TABLE_DESC bindingTableDesc = {};
-            bindingTableDesc.Dispatchable = m_compiledExecutionPlanOperator.Get();
-            bindingTableDesc.CPUDescriptorHandle = m_heap->GetCPUDescriptorHandleForHeapStart();
-            bindingTableDesc.GPUDescriptorHandle = m_heap->GetGPUDescriptorHandleForHeapStart();
-            bindingTableDesc.SizeInDescriptors = execBindingProps.RequiredDescriptorCount;
-
-            ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&m_bindingTable)));
-
-            ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
-                m_provider->GetCommandListTypeForQueue(),
-                IID_GRAPHICS_PPV_ARGS(m_commandAllocator.ReleaseAndGetAddressOf())));
-
-            ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
-                0,
-                m_provider->GetCommandListTypeForQueue(),
-                m_commandAllocator.Get(),
-                nullptr,
-                IID_GRAPHICS_PPV_ARGS(m_graphicsCommandList.ReleaseAndGetAddressOf())));
-
-            if (m_persistentResource)
-            {
-                DML_BINDING_DESC persistentResourceBindingDesc =
-                    { DML_BINDING_TYPE_BUFFER, m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr };
-                m_bindingTable->BindPersistentResource(&persistentResourceBindingDesc);
-            }
-
-            ID3D12DescriptorHeap* descriptorHeaps[] = { m_heap.Get() };
-            m_graphicsCommandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
-
-            ComPtr<IDMLCommandRecorder> recorder;
-            ORT_THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
-
-            recorder->RecordDispatch(m_graphicsCommandList.Get(), m_compiledExecutionPlanOperator.Get(), m_bindingTable.Get());
-
-            ORT_THROW_IF_FAILED(m_graphicsCommandList->Close());
-        }
-
-        void ExecuteReusableCommandList(onnxruntime::OpKernelContext* kernelContext) const
-        {
-            DML_BINDING_PROPERTIES execBindingProps = m_compiledExecutionPlanOperator->GetBindingProperties();
-
-            std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
-            std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
-
-            OpKernelContextWrapper contextWrapper(
-                kernelContext,
-                Info().GetExecutionProvider(),
-                true,
-                nullptr);
-
-            // Populate input bindings, excluding those which were specified as owned by DML and provided
-            // at initialization instead.
-            m_inputBindingAllocIds.resize(inputBindings.size());
-            bool inputBindingsChanged = false;
-
-            for (uint32_t i = 0; i < inputBindings.size(); ++i)
-            {
-                if (!m_isInputsUploadedByDmlEP[i] && m_inputsUsed[i])
-                {
-                    if (m_nonOwnedGraphInputsFromInitializers[i])
-                    {
-                        inputBindings[i].Buffer = m_nonOwnedGraphInputsFromInitializers[i].Get();
-                        inputBindings[i].SizeInBytes = m_nonOwnedGraphInputsFromInitializers[i]->GetDesc().Width;
-                        inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
-                    }
-                    else
-                    {
-                        assert(kernelContext->InputType(gsl::narrow_cast<int>(i))->IsTensorType());
-                        const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(i));
-
-                        uint64_t allocId;
-                        auto bufferRegion = DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &allocId);
-
-                        inputBindings[i] = bufferRegion.GetBufferBinding();
-                        inputBindingsChanged = inputBindingsChanged || (!allocId || m_inputBindingAllocIds[i] != allocId);
-                        inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
-                        m_inputBindingAllocIds[i] = allocId;
-                    }
-                }
-            }
-
-            if (inputBindingsChanged)
-            {
-                m_bindingTable->BindInputs(gsl::narrow_cast<uint32_t>(inputBindingDescs.size()), inputBindingDescs.data());
-            }
-
-            // Populate Output bindings
-            std::vector<DML_BUFFER_BINDING> outputBindings(kernelContext->OutputCount());
-            std::vector<DML_BINDING_DESC> outputBindingDescs(kernelContext->OutputCount());
-
-            m_outputBindingAllocIds.resize(outputBindings.size());
-            bool outputBindingsChanged = false;
-
-            for (uint32_t i = 0; i < outputBindings.size(); ++i)
-            {
-                std::vector<int64_t> outputDims;
-                outputDims.reserve(m_outputShapes.GetShape(i).size());
-                for (uint32_t dimSize : m_outputShapes.GetShape(i))
-                {
-                    outputDims.push_back(dimSize);
-                }
-
-                onnxruntime::Tensor* tensor = kernelContext->Output(
-                    static_cast<int>(i),
-                    onnxruntime::TensorShape::FromExistingBuffer(outputDims)
-                    );
-
-                uint64_t allocId;
-                auto bufferRegion = DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &allocId);
-                outputBindings[i] = bufferRegion.GetBufferBinding();
-                outputBindingsChanged = outputBindingsChanged || (!allocId || m_outputBindingAllocIds[i] != allocId);
-                outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
-                m_outputBindingAllocIds[i] = allocId;
-            }
-
-            if (outputBindingsChanged)
-            {
-                m_bindingTable->BindOutputs(gsl::narrow_cast<uint32_t>(outputBindingDescs.size()), outputBindingDescs.data());
-            }
-
-            if (execBindingProps.TemporaryResourceSize > 0)
-            {
-                auto buffer = m_provider->AllocatePooledResource(execBindingProps.TemporaryResourceSize, AllocatorRoundingMode::Enabled);
-                DML_BUFFER_BINDING tempBufferBinding = buffer.GetBufferBinding();
-                DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
-                m_bindingTable->BindTemporaryResource(&tempBindingDesc);
-            }
-
-            // Execute the command list and if it succeeds, update the fence value at which this command may be
-            // re-used.
-            ComPtr<ID3D12Fence> fence;
-            uint64_t completionValue;
-            HRESULT hr = m_provider->ExecuteCommandList(m_graphicsCommandList.Get(), fence.GetAddressOf(), &completionValue);
-
-            if (hr == DXGI_ERROR_DEVICE_REMOVED)
-            {
-                ComPtr<ID3D12Device> device;
-                ORT_THROW_IF_FAILED(m_provider->GetD3DDevice(&device));
-                ORT_THROW_IF_FAILED(device->GetDeviceRemovedReason());
-            }
-
-            ORT_THROW_IF_FAILED(hr);
-            m_fence = fence;
-            m_completionValue = completionValue;
-
-            // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_graphicsCommandList).Get());
-            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_heap).Get());
-            m_winmlProvider->QueueReference(m_bindingTable.Get());
-            m_winmlProvider->QueueReference(m_managedPersistentBuffer.Get());
-        }
-
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         std::vector<bool> m_inputsUsed;
         const void* m_executionHandle = nullptr;
@@ -396,23 +261,11 @@ namespace Dml
         ComPtr<Dml::IExecutionProvider> m_provider;
         Windows::AI::MachineLearning::Adapter::EdgeShapes& m_outputShapes;
 
-        // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
-        ComPtr<ID3D12GraphicsCommandList> m_graphicsCommandList;
-        ComPtr<ID3D12CommandAllocator> m_commandAllocator;
-        ComPtr<ID3D12DescriptorHeap> m_heap;
-        ComPtr<IDMLBindingTable> m_bindingTable;
+        mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;
+
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         ComPtr<ID3D12Resource> m_persistentResource;
         ComPtr<DmlManagedBuffer> m_managedPersistentBuffer;
-
-        // Bindings from previous executions of a re-used command list
-        mutable std::vector<uint64_t> m_inputBindingAllocIds;
-        mutable std::vector<uint64_t> m_outputBindingAllocIds;
-
-        // Fence tracking the status of the command list's last execution, and whether its descriptor heap
-        // can safely be updated.
-        mutable ComPtr<ID3D12Fence> m_fence;
-        mutable uint64_t m_completionValue = 0;
 
         std::vector<uint8_t> m_isInputsUploadedByDmlEP;
         std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;

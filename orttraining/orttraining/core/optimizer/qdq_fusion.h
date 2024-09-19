@@ -14,7 +14,7 @@ This transformer will be used during QAT (Quantization Aware Training). For QAT 
 an onnx graph that has Q->DQ nodes needs to be made ready for training. The output of the
 Q node is a quantized type. Backpropagation on quantized type is not supported in ort.
 So, we replace the occurrences of Q->DQ with FakeQuant which internally will perform the
-Q->DQ opeeration and at the same time can support backpropagation.
+Q->DQ operation and at the same time can support backpropagation.
 
 from:
          x (fp32)

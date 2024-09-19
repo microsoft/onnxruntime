@@ -8,7 +8,6 @@
 
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
-using namespace google::protobuf::util;
 using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {

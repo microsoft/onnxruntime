@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {compareSync} from 'dir-compare';
+import { compareSync } from 'dir-compare';
 import fs from 'fs-extra';
 import jszip from 'jszip';
 import log from 'npmlog';
 import * as path from 'path';
 
-import {downloadZip, extractFile} from './utils';
+import { downloadZip, extractFile } from './utils';
 
 const TEST_DATA_OPSET_VERSIONS = [
   ['opset19', '1.14.0'],
@@ -49,7 +49,7 @@ const main = async () => {
 
     const buffer = await downloadZip(resourceUri);
     const zip = await jszip.loadAsync(buffer);
-    const entries = zip.filter(relativePath => relativePath.startsWith(folderPrefix));
+    const entries = zip.filter((relativePath) => relativePath.startsWith(folderPrefix));
 
     const testCasesFolder = path.join(JS_TEST_DATA_ROOT, 'node', opset);
     log.info('PrepareTestData', `Preparing folders under ${testCasesFolder}`);
@@ -69,7 +69,9 @@ const main = async () => {
     for (const entry of entries) {
       if (!entry.dir) {
         await extractFile(
-            entry, fs.createWriteStream(path.join(testCasesFolder, path.relative(folderPrefix, entry.name))));
+          entry,
+          fs.createWriteStream(path.join(testCasesFolder, path.relative(folderPrefix, entry.name))),
+        );
       }
     }
   }
@@ -83,11 +85,11 @@ const main = async () => {
 
     // compare each subfolder to its previous version. If they are same, remove the one in current version.
     let count = 0;
-    fs.readdirSync(currentFolder, {withFileTypes: true}).forEach(dir => {
+    fs.readdirSync(currentFolder, { withFileTypes: true }).forEach((dir) => {
       const currentDir = path.join(currentFolder, dir.name);
       const previousDir = path.join(previousFolder, dir.name);
       if (dir.isDirectory() && fs.existsSync(previousDir) && fs.statSync(previousDir).isDirectory()) {
-        if (compareSync(currentDir, previousDir, {compareContent: true}).differences === 0) {
+        if (compareSync(currentDir, previousDir, { compareContent: true }).differences === 0) {
           fs.removeSync(currentDir);
           count++;
         }

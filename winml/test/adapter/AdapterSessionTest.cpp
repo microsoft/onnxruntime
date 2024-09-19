@@ -374,7 +374,8 @@ const AdapterSessionTestAPI& getapi() {
     Profiling,
     CopyInputAcrossDevices,
     CopyInputAcrossDevices_DML,
-    GetNumberOfIntraOpThreads};
+    GetNumberOfIntraOpThreads
+  };
 
   if (SkipGpuTests()) {
     api.AppendExecutionProvider_DML = SkipTest;

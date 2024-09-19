@@ -66,7 +66,7 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t key_len = *key_length->Data<int64_t>();
 
   if (query_len != key_len) {
-    ORT_THROW("Relatvie position bias currently only support query length equal to key length in Self Attention.");
+    ORT_THROW("Relative position bias currently only support query length equal to key length in Self Attention.");
   }
 
   Tensor* output = context->Output(0, {1, num_heads, query_len, key_len});
@@ -200,7 +200,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
       D, BNS, head_size, &one,
       reinterpret_cast<const CudaT*>(weight_tensor.template Data<T>()), (int)D,
       reinterpret_cast<const CudaT*>(workspace.get()), (int)head_size,
-      &zero, gemm_output, ld_gemm_output, device_prop));
+      &zero, gemm_output, ld_gemm_output, device_prop, UseTF32()));
 
   auto status = LaunchGatedRelativePositionBiasKernel<CudaT>(
       device_prop, stream,

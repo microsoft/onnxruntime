@@ -29,6 +29,10 @@
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_TRAINING_OPS)
+#define BATCHNORM_INCLUDE_TRAINING_SUPPORT
+#endif
+
 template <typename T>
 class BatchNorm : public OpKernel {
  public:
@@ -47,7 +51,7 @@ class BatchNorm : public OpKernel {
     }
 
     if (is_train_) {
-#ifdef ENABLE_TRAINING_OPS
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
       momentum_ = op_kernel_info.GetAttrOrDefault<float>("momentum", 0.9f);
       ORT_ENFORCE(is_spatial_, "Training mode only supports spatial BN");
 #else
@@ -84,7 +88,7 @@ class BatchNorm : public OpKernel {
     // calculate sample_size (including all channels)
     size_t sample_size_incl_all_channels = sample_size * C;
 
-#ifdef ENABLE_TRAINING_OPS
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(p_op_kernel_context->GetTempSpaceAllocator(&alloc));
 
@@ -111,7 +115,7 @@ class BatchNorm : public OpKernel {
     ConstEigenVectorArrayMap<T> scale_arr(scale->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
     ConstEigenVectorArrayMap<T> bias_arr(B->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
-#ifdef ENABLE_TRAINING_OPS
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
     // Note that we only support spatial BN for training
     if (is_train_) {
       EigenVectorArrayMap<T> saved_mean_arr(saved_mean->MutableData<T>(), C);
@@ -162,7 +166,7 @@ class BatchNorm : public OpKernel {
       ConstEigenVectorArrayMap<T> var_arr(var->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
       inv_std = (var_arr + epsilon_).sqrt().inverse();
     } else {
-#ifdef ENABLE_TRAINING_OPS
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
       EigenVectorArrayMap<T> saved_inv_std_arr(saved_inv_std->MutableData<T>(), C);
       saved_inv_std_arr = (saved_inv_std_arr + epsilon_).inverse().sqrt();
       inv_std = saved_inv_std_arr;
@@ -171,7 +175,7 @@ class BatchNorm : public OpKernel {
 
     // If we're training, do batch normalization based on computation from this batch
     ConstEigenVectorArrayMap<T> mean_arr(
-#ifdef ENABLE_TRAINING_OPS
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
         !is_train_ ? mean->Data<T>() : saved_mean->Data<T>(),
 #else
         mean->Data<T>(),

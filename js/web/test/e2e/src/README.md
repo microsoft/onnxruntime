@@ -1,0 +1,1 @@
+This folder includes source code that uses import/require statements to import onnxruntime-web library. E2E tests are performed to make sure onnxruntime-web package works well with mainstream bundlers like webpack, rollup, and parcel.

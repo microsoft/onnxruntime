@@ -1,4 +1,5 @@
 #include "testPch.h"
+#include <absl/strings/ascii.h>
 #include "test/onnx/TestCase.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
@@ -117,7 +118,7 @@ TEST_P(ModelTest, Run) {
   LearningModelDevice device = nullptr;
   LearningModelSession session = nullptr;
   LearningModelBinding binding = nullptr;
-  WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl()));
+  WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl().native()));
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(m_deviceKind));
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
   for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
@@ -149,7 +150,8 @@ std::string GetTestDataPath() {
   std::string testDataPath(MAX_PATH, '\0');
   auto environmentVariableFetchSuceeded =
     GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath.data(), MAX_PATH);
-  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND || environmentVariableFetchSuceeded > MAX_PATH) {
+  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND ||
+      environmentVariableFetchSuceeded > MAX_PATH) {
     // if the WINML_TEST_DATA_PATH environment variable cannot be found, attempt to find the hardcoded models folder
     std::wstring modulePath = FileHelpers::GetModulePath();
     std::filesystem::path currPath = modulePath.substr(0, modulePath.find_last_of(L"\\"));
@@ -169,7 +171,7 @@ std::string GetTestDataPath() {
     testDataPath.replace(environmentVariableFetchSuceeded, testDataPathFolderName.length(), testDataPathFolderName);
   } else {
     throw std::exception(
-      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n",
+      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accommodate the maximum path size of %d\n",
       MAX_PATH
     );
   }
@@ -231,17 +233,23 @@ static std::vector<ITestCase*> GetAllTestCases() {
     ORT_TSTR("tf_resnet_v2_152"),
     ORT_TSTR("vgg19"),
     ORT_TSTR("yolov3"),
-    ORT_TSTR("zfnet512")};
+    ORT_TSTR("zfnet512")
+  };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
   // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
   allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
+
+  auto broken_tests = GetBrokenTests("dml");
+  auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet("dml");
 
   WINML_EXPECT_NO_THROW(LoadTests(
     dataDirs,
     whitelistedTestCases,
     TestTolerances(1e-3, 1e-3, {}, {}),
     allDisabledTests,
+    std::move(broken_tests),
+    std::move(broken_tests_keyword_set),
     [&tests](std::unique_ptr<ITestCase> l) {
       tests.push_back(l.get());
       ownedTests.push_back(std::move(l));
@@ -350,7 +358,8 @@ bool ModifyNameIfDisabledTest(/*inout*/ std::string& testName, winml::LearningMo
     if (SkipGpuTests()) {
       reason = "GPU tests are not enabled for this build.";
       shouldSkip = true;
-    } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() && ShouldSkipTestOnGpuAdapter(testName)) {
+    } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() &&
+               ShouldSkipTestOnGpuAdapter(testName)) {
       reason = disabledGpuAdapterTests[testName].second;
       shouldSkip = true;
     }
@@ -379,16 +388,7 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
   name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
-  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
-  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
-  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
-  if (source != "models") {
-    name += "_" + source;
-  }
-
-  std::replace_if(
-    name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
-  );
+  std::replace_if(name.begin(), name.end(), [](char c) { return !absl::ascii_isalnum(c); }, '_');
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
   bool isDisabled = ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
@@ -402,6 +402,13 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // Check once more with the full name, lest any GPU-specific/CPU-specific cases exist.
   if (!isDisabled) {
     ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
+  }
+
+  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
+  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
+  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
+  if (source != "models") {
+    name += "_" + source;
   }
 
   return name;

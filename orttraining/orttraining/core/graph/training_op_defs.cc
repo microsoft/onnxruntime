@@ -20,7 +20,7 @@ using namespace ONNX_NAMESPACE;
 namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
-constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
 constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
 
 std::array<TensorShapeProto::Dimension, 6> GetRNNDimensions(InferenceContext& ctx) {
@@ -179,6 +179,64 @@ static void propagateRecvOutputTensorElemTypes(
     }
     updateOutputElemType(ctx, i + 1, elem_type);
   }
+}
+
+void SendShapeInfer(ONNX_NAMESPACE::InferenceContext& ctx) {
+  if (ctx.getNumInputs() < 3) {
+    fail_shape_inference("Send must have at least three inputs.");
+  } else {
+    if (hasInputShape(ctx, 0)) {
+      auto& signal_input_shape = getInputShape(ctx, 0);
+      if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
+        fail_shape_inference("InputSignal of Send must be a scalar.");
+      }
+    }
+    if (hasInputShape(ctx, 1)) {
+      auto& remote_input_shape = getInputShape(ctx, 1);
+      if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+        fail_shape_inference("Remote of Send must be a scalar.");
+      }
+    }
+
+    checkSendInputTensorElemTypes(ctx, "element_types", ctx.getNumInputs() - 2);
+  }
+
+  if (ctx.getNumOutputs() != 1) {
+    fail_shape_inference("Send must have one output.");
+  }
+
+  auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
+  output_element_type->set_elem_type(TensorProto::BOOL);
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  updateOutputShape(ctx, 0, {});
+  updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+}
+
+void RecvShapeInfer(ONNX_NAMESPACE::InferenceContext& ctx) {
+  if (ctx.getNumInputs() != 2) {
+    fail_shape_inference("Recv must have two inputs.");
+  } else {
+    if (hasInputShape(ctx, 0)) {
+      auto& signal_input_shape = getInputShape(ctx, 0);
+      if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
+        fail_shape_inference("InputSignal of Recv must be a scalar.");
+      }
+    }
+    if (hasInputShape(ctx, 1)) {
+      auto& remote_input_shape = getInputShape(ctx, 1);
+      if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+        fail_shape_inference("Remote of Recv must be a scalar.");
+      }
+    }
+  }
+
+  if (ctx.getNumOutputs() < 2) {
+    fail_shape_inference("Recv must have at least two outputs.");
+  }
+
+  updateOutputShape(ctx, 0, {});
+  updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+  propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs() - 1);
 }
 
 TensorProto ToDimensionOneFloatTensor(float value) {
@@ -1218,7 +1276,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Input and output types can be of any tensor type.")
       .TypeConstraint(
           "Tind",
@@ -1537,7 +1595,7 @@ void RegisterTrainingOpSchemas() {
              "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
              " in mixed precision training. ",
              "T_BOOL", OpSchema::Optional)
-      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T_BOOL")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
@@ -1737,7 +1795,7 @@ void RegisterTrainingOpSchemas() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
-  // TODO: Depreacate this schema when training support is udpated to opset-12
+  // TODO: Depreacate this schema when training support is updated to opset-12
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
@@ -1820,7 +1878,7 @@ Example 4:
       .Input(0, "shape", "The shape of source data input of GatherND.", "T1")
       .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
       .Input(2, "update", "The gradient of the output.", "T")
-      .Output(0, "output", "Tensor graident of the input.", "T")
+      .Output(0, "output", "Tensor gradient of the input.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
@@ -2193,7 +2251,7 @@ Example 4:
               OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to all tensor types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); ++i) {
@@ -2270,7 +2328,7 @@ Example 4:
               OpSchema::Optional)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain output types to any tensor type.")
       .TypeConstraint(
           "Tint",
@@ -2493,7 +2551,7 @@ Example 4:
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(
           "Returns the reduction axes for computing gradients of s0 op s1 with broadcast."
-          "The ouput axes are deterministic from last to first. "
+          "The output axes are deterministic from last to first. "
           "Output is an empty vector when no reduction is necessary for the corresponding input.")
       .Input(0, "a_shape", "The 1st input shape as Tensor.", "T")
       .Input(1, "b_shape", "The 2nd input shape as Tensor.", "T")
@@ -2530,7 +2588,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -2568,7 +2626,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Decoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "1 bit compresssed input", "T1")
+      .Input(0, "X", "1 bit compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -2606,7 +2664,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Decoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -2682,7 +2740,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Decoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -3191,7 +3249,7 @@ Return true if all elements are true and false otherwise.
             "Strictly must be one of the types from DataType enum in TensorProto",
             AttributeProto::INT)
       .Attr("fuse_outputs",
-            "If true, fuse all outputs into one continous buffer.",
+            "If true, fuse all outputs into one continuous buffer.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .TypeConstraint(
@@ -3240,18 +3298,18 @@ Return true if all elements are true and false otherwise.
       .Input(1, "scale", "Scale scalar tensor.", "ScaleT")
       .Output(0, "output", "The scaled output tensor.", "T")
       .Attr("scale_down",
-            "If true, the output tensor is input tensor devided by scale, "
+            "If true, the output tensor is input tensor divided by scale, "
             "otherwise, it's input tensor multiplied by scale. "
             "The default value is false.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(bfloat16)", "tensor(float)", "tensor(double)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "ScaleT",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(int64)", "tensor(int32)"},
+          {"tensor(float16)", "tensor(bfloat16)", "tensor(float)", "tensor(double)", "tensor(int64)", "tensor(int32)"},
           "Constrain scale types to float and int64 tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
@@ -3388,30 +3446,7 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() < 3) {
-          fail_shape_inference("Send must have at least three inputs.");
-        } else {
-          auto& signal_input_shape = getInputShape(ctx, 0);
-          if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
-            fail_shape_inference("InputSignal of Send must be a scalar.");
-          }
-          auto& remote_input_shape = getInputShape(ctx, 1);
-          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
-            fail_shape_inference("Remote of Send must be a scalar.");
-          }
-
-          checkSendInputTensorElemTypes(ctx, "element_types", ctx.getNumInputs() - 2);
-        }
-
-        if (ctx.getNumOutputs() != 1) {
-          fail_shape_inference("Send must have one output.");
-        }
-
-        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_element_type->set_elem_type(TensorProto::BOOL);
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        SendShapeInfer(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Recv)
@@ -3437,26 +3472,7 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 2) {
-          fail_shape_inference("Recv must have two inputs.");
-        } else {
-          auto& signal_input_shape = getInputShape(ctx, 0);
-          if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
-            fail_shape_inference("InputSignal of Recv must be a scalar.");
-          }
-          auto& remote_input_shape = getInputShape(ctx, 1);
-          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
-            fail_shape_inference("Remote of Recv must be a scalar.");
-          }
-        }
-
-        if (ctx.getNumOutputs() < 2) {
-          fail_shape_inference("Recv must have at least two outputs.");
-        }
-
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-        propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs() - 1);
+        RecvShapeInfer(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)
@@ -3636,7 +3652,7 @@ Return true if all elements are true and false otherwise.
           fail_shape_inference("RecordEvent must have at least (num_outputs + 1) inputs.");
 
         // note: if num_input > num_output + 1,
-        // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
+        // the additional inputs (idx >= num_output + 1) are regarded as dependencies
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
@@ -3689,7 +3705,7 @@ Return true if all elements are true and false otherwise.
           fail_shape_inference("WaitEvent must have at least 1 output.");
 
         // note: if num_input > num_output + 1,
-        // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
+        // the additional inputs (idx >= num_output + 1) are regarded as dependencies
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
@@ -3908,10 +3924,27 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS)
       // Other attributes.
       .Attr(
-          "inplace",
-          "Indicate if the output should reuse input memory.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+          "tensor_reuse_map",
+          "A int array indicating whether output at each index is reusing specific input or not."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 2 tensor inputs and 3 tensor outputs (including ctx), "
+          "tensor_reuse_map = [-1, 1, 0] means"
+          "- the output 0 (ctx) don't reuse any input buffer."
+          "- the output 1 reuses the input 1."
+          "- the output 2 reuses the input 0.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "bw_tensor_reuse_map",
+          "Used for backward op only."
+          "A int array indicating whether output at each index is reusing specific input or now."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
       .Attr(
           "training_mode",
           "Indicate if the model is exported in training_mode, by default, False.",
@@ -3921,9 +3954,18 @@ Return true if all elements are true and false otherwise.
           "comment",
           "comment only for debugging purposes.",
           AttributeProto::STRING, false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alias map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeConstraint(
           "TInt64",
@@ -4034,11 +4076,6 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "inplace",
-          "Indicate if the output should reuse input memory. Todo(pengwa): do we need it?",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.backward (including only tensor inputs)."
           "This attribute is mostly used for input checks for better robustness.",
@@ -4070,13 +4107,32 @@ Return true if all elements are true and false otherwise.
           "value 'c' - non-tensor output; value 'd' - tensor output.",
           AttributeProto::STRING)
       .Attr(
+          "tensor_reuse_map",
+          "A int array indicating whether output at each index is reusing specific input or not."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
           "comment",
           "comment only for debugging purposes.",
           AttributeProto::STRING,
           false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alias map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeConstraint(
           "TInt64",
@@ -4104,7 +4160,8 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOpGrad's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1),
+                      ", but inferred to be ", inferred_input_type->tensor_type().elem_type());
         }
 
         // Load expected output types.
@@ -4157,6 +4214,7 @@ Return true if all elements are true and false otherwise.
       .Attr("func_name", "Function name of the Python Triton kernel.", AttributeProto::STRING, std::string(""))
       .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .AllowUncheckedAttributes()
       .Input(0, "inputs",
              "Input tensors. If to call an existing Python Triton kernel, "
              "the input count and order should match the arguments of the function. If to compute an ONNX graph, "
@@ -4170,7 +4228,7 @@ Return true if all elements are true and false otherwise.
               "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif  // ENABLE_TRITON
 
@@ -4515,6 +4573,61 @@ Return true if all elements are true and false otherwise.
           updateOutputShape(ctx, 4, {sequence_length, num_directions, batch_size, hidden_size_x4});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ScaledSum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Compute scaled sum of multiple tensors in same shape (no broadcasting)."
+          "Formula: output = (input_0 * scale_0) + (input_1 * scale_1) + (input_2 * scale_2)")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input_0", "input tensor", "T")
+      .Input(1, "input_1", "input tensor", "T")
+      .Input(2, "input_2", "input tensor", "T", OpSchema::Optional)
+      .Output(0, "output", "output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Input count must be equal with scale count.");
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchScale)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Compute scaled input into outputs with different scaling factors (no broadcasting)."
+          "Formula:"
+          "    output_0 = input * scale_0"
+          "    output_1 = input * scale_1"
+          "    output_2 = input * scale_2")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input", "input tensor", "T")
+      .Output(0, "output_0", "output tensor", "T")
+      .Output(1, "output_1", "output tensor", "T")
+      .Output(2, "output_2", "output tensor", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumOutputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Output count must be equal with scale count.");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, i);
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -4662,7 +4775,7 @@ Return true if all elements are true and false otherwise.
           "For other indices,  the corresponding value in output will be padded to zero."
 
           "The indices don't allow duplicated index values, otherwise, though there is no runtime check"
-          "(in case of performance concern), the behaviour of output is undefined."
+          "(in case of performance concern), the behavior of output is undefined."
 
           "An example:"
           "  input: [[1, 2, 3, 4], [5, 6, 7, 8]], shape is [2, 4]"
@@ -4670,14 +4783,12 @@ Return true if all elements are true and false otherwise.
           "  unflatten_dims: [2, 3], shape is [2]"
 
           "  output: [[[1, 2, 3, 4], [0, 0, 0, 0], [0, 0, 0, 0]], [[0, 0, 0, 0], [0, 0, 0, 0], [5, 6, 7, 8]]],"
-          "  shape is [2, 3, 4]"
-          "  flatten_output_shape: [6, 4], shape is [2]")
+          "  shape is [2, 3, 4]")
       .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
       .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
              "T_INDEX")
       .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
-      .Output(1, "flatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
       .TypeConstraint(
           "T_INT",
           {"tensor(int32)", "tensor(int64)"},
@@ -4690,6 +4801,26 @@ Return true if all elements are true and false otherwise.
           "T_INDEX",
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FlattenAndUnpad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "FlattenAndUnpad operator flattens the first two dims of input tensor, and unpad according to given indices."
+          "This is used by padding elimination graph transformer.")
+      .Input(0, "input", "input data of rank N + 1, shape is [M1, M2, d2, ..., dN]", "T")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
+             "T_INT")
+      .Output(0, "output", "output data of rank N, [d1, d2, ..., dN]", "T")
+      .Output(1, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
+      .TypeConstraint(
+          "T_INT",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices and shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(int32)", "tensor(int64)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUTraining)
       .SetDomain(kMSDomain)
@@ -4906,6 +5037,41 @@ Return true if all elements are true and false otherwise.
             // Gradient with respect to the initial hidden state
             updateOutputShape(ctx, 4, {num_directions, batch_size, hidden_size});
           }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Input(2, "W", "Weight tensor", "T")
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
+      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ResizeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y.", "T")
+      .Input(1, "X", "Input tensor to the Resize operator.", "T")
+      .Input(2, "roi", "The roi input to the Resize operator.", "T", OpSchema::Optional)
+      .Input(3, "scales", "The scales input to the Resize operator.", "tensor(float)", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of the input X.", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 0);
         }
       });
 }

@@ -23,6 +23,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:Identity||
+|ai.onnx:LeakyRelu||
 |ai.onnx:Log||
 |ai.onnx:LRN||
 |ai.onnx:MatMul||
@@ -45,6 +46,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Sin||
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
+|ai.onnx:Split|Number of splits must evenly divide split axis size. Input split should be constant if provided.|
 |ai.onnx:Sqrt||
 |ai.onnx:Squeeze|Input axes should be constant.|
 |ai.onnx:Sub||

@@ -287,9 +287,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
     T* k_smem = q_smem + rotary_embedding_dim;
 
     const int half_rotary_dim = rotary_embedding_dim / 2;
-    const int half_idx        = (head_idx) / half_rotary_dim;
-    const int intra_half_idx  = (head_idx) % half_rotary_dim;
-    const int smem_pitch      = half_rotary_dim;
+    const int half_idx = (head_idx) / half_rotary_dim;
+    const int intra_half_idx = (head_idx) % half_rotary_dim;
+    const int smem_pitch = half_rotary_dim;
 
     if (do_rotary) {
       *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
@@ -441,7 +441,6 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
   }
 }
 
-
 template <typename T>
 __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* output, int v_head_size) {
   // Format 3 for cutlass memory efficient attention
@@ -510,6 +509,39 @@ __global__ void AddBiasUnpack(int M, const T* input, const T* biases, T* output)
 
   int in_offset = m * head_size + n * M * H + (s * NH + b * NHS) * M;
   const int out_offset = n * head_size + s * NH + b * NHS + m * NHS * batch_size;
+
+  const int h = threadIdx.x;
+  if (h < head_size) {
+    if (biases != nullptr) {
+      output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    } else {
+      output[out_offset + h] = input[in_offset + h];
+    }
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeUnpack(int M, const T* input, const T* biases, T* output) {
+  // Format 5 to unpack TRT packed input format to BNSH for unfused attention.
+  //     Input:  BxSxNxMxH
+  //     Output: MxBxNxSxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  int in_offset = m * head_size + n * M * H + (s * NH + b * NHS) * M;
+  const int out_offset = (s + n * sequence_length) * head_size + (b + m * batch_size) * NHS;
 
   const int h = threadIdx.x;
   if (h < head_size) {
@@ -641,7 +673,7 @@ void InvokeAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count,
-    bool do_rotary = false, int past_sequence_length = 0) {
+    bool do_rotary = false, int rotary_embedding = 0, int past_sequence_length = 0) {
   assert(num_heads <= max_threads_per_block);
 
   if (do_rotary) {
@@ -651,20 +683,20 @@ void InvokeAddBiasTranspose(
     if (format != 1 && format != 2 && format != 3) {
       ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }
-    if (qk_head_size != 64 && qk_head_size !=128) {
-      ORT_THROW("qk_head_size must be 64 or 128 for rotary attention");
+    if (rotary_embedding != 32 && rotary_embedding != 64 && rotary_embedding != 128) {
+      ORT_THROW("rotary_embedding must be 32, 64 or 128 for rotary attention");
     }
     if (v_head_size != -1 && qk_head_size != v_head_size) {
       ORT_THROW("qk_head_size must be equal to v_head_size for rotary attention");
     }
 
     const int step = past_sequence_length == 0 ? sequence_length : past_sequence_length;
-    size_t smem_size = 2 * qk_head_size * sizeof(T);
+    size_t smem_size = 2 * rotary_embedding * sizeof(T);
 
     const dim3 grid(sequence_length, num_heads, batch_size);
     const dim3 block((qk_head_size / 2 + 31) / 32 * 32, 1, 1);
     AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
-                                                               qkv_add_bias, qk_head_size, qk_head_size,
+                                                               qkv_add_bias, rotary_embedding, qk_head_size,
                                                                step, format);
 #else
     ORT_THROW("Rotary Attention is supported on sm >= 530. Current sm is", __CUDA_ARCH__);
@@ -693,6 +725,8 @@ void InvokeAddBiasTranspose(
       }
     } else if (format == 4) {  // format == 4
       AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+    } else if (format == 5) {  // format == 5
+      AddBiasTransposeUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
     } else {  // format == 0
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
@@ -717,6 +751,8 @@ void InvokeAddBiasTranspose(
       }
     } else if (format == 4) {  // format == 4
       ORT_THROW("AddBiasTranspose (format 4) not implemented for hidden_size > max_threads_per_block");
+    } else if (format == 5) {  // format == 5
+      ORT_THROW("AddBiasTranspose (format 5) not implemented for hidden_size > max_threads_per_block");
     } else {  // format 0
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     }
@@ -728,7 +764,7 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const half* input, const half* biases, half* output, bool enable_half4, const int v_head_size,
-    half* qkv_add_bias, int total_matrix_count, bool do_rotary, int past_sequence_length) {
+    half* qkv_add_bias, int total_matrix_count, bool do_rotary, int rotary_embedding, int past_sequence_length) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
   if (enable_half4 && 0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4)) && !do_rotary) {
     const int H = qk_head_size / 4;
@@ -754,7 +790,7 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<half>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size, input, biases, output,
-        qkv_add_bias, v_head_size, total_matrix_count, do_rotary, past_sequence_length);
+        qkv_add_bias, v_head_size, total_matrix_count, do_rotary, rotary_embedding, past_sequence_length);
   }
 }
 
@@ -764,7 +800,7 @@ void LaunchAddBiasTranspose(
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const float* input, const float* biases, float* output, bool /*enable_half4*/,
     const int v_head_size, float* qkv_add_bias, int total_matrix_count, bool do_rotary,
-    int past_sequence_length) {
+    int rotary_embedding, int past_sequence_length) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
   if (0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4)) && !do_rotary) {
     const int H = qk_head_size / 4;
@@ -790,7 +826,8 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<float>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size, input, biases, output,
-        qkv_add_bias, v_head_size, total_matrix_count, do_rotary, past_sequence_length);
+        qkv_add_bias, v_head_size, total_matrix_count, do_rotary, rotary_embedding,
+        past_sequence_length);
   }
 }
 
@@ -843,11 +880,11 @@ void InvokeAddBiasTransposeTrt(
 
 template <>
 void LaunchAddBiasTransposeTrt(
-    cudaStream_t stream, const int max_threads_per_block,
-    const int batch_size, const int sequence_length,
-    const int num_heads, const int head_size,
-    const float* biases, const float* query, const float* key, const float* value, float* output,
-    bool is_cross_attention, int kv_sequence_length) {
+    cudaStream_t /*stream*/, const int /*max_threads_per_block*/,
+    const int /*batch_size*/, const int /*sequence_length*/,
+    const int /*num_heads*/, const int /*head_size*/,
+    const float* /*biases*/, const float* /*query*/, const float* /*key*/, const float* /*value*/, float* /*output*/,
+    bool /*is_cross_attention*/, int /*kv_sequence_length*/) {
   ORT_ENFORCE(false, "Shall not call this since fused kernel does not support float input.");
 }
 
@@ -904,6 +941,7 @@ void InvokeAddBias(
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, q);
     }
   }
+
   // K
   {
     const dim3 grid(kv_sequence_length, batch_size, num_matrices);
@@ -1008,6 +1046,82 @@ void LaunchAddBias(
     InvokeAddBias<half>(stream, max_threads_per_block,
                         batch_size, sequence_length, kv_sequence_length, num_heads, head_size, v_head_size,
                         biases, query, key, value, q, k, v);
+  }
+}
+
+template <typename T>
+void InvokeAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int head_size,
+    const T* biases, const T* query, T* q) {
+  assert(num_heads <= max_threads_per_block);
+  constexpr int num_matrices = 1;
+  const dim3 grid(sequence_length, batch_size, num_matrices);
+  if (head_size * num_heads <= max_threads_per_block) {
+    const dim3 block(head_size, num_heads, 1);
+    AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, biases, q);
+  } else {
+    const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+    AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, q);
+  }
+}
+
+template <>
+void LaunchAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int head_size,
+    const float* biases, const float* query, float* q) {
+  if (0 == (head_size % 4)) {
+    const int H = head_size / 4;
+    const float4* query2 = reinterpret_cast<const float4*>(query);
+    const float4* biases2 = reinterpret_cast<const float4*>(biases);
+    float4* q2 = reinterpret_cast<float4*>(q);
+    InvokeAddBias<float4>(stream, max_threads_per_block,
+                          batch_size, sequence_length, num_heads, H,
+                          biases2, query2, q2);
+  } else if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    const float2* query2 = reinterpret_cast<const float2*>(query);
+    const float2* biases2 = reinterpret_cast<const float2*>(biases);
+    float2* q2 = reinterpret_cast<float2*>(q);
+    InvokeAddBias<float2>(stream, max_threads_per_block,
+                          batch_size, sequence_length, num_heads, H,
+                          biases2, query2, q2);
+  } else {
+    InvokeAddBias<float>(stream, max_threads_per_block,
+                         batch_size, sequence_length, num_heads, head_size,
+                         biases, query, q);
+  }
+}
+
+template <>
+void LaunchAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int head_size,
+    const half* biases, const half* query, half* q) {
+  if (0 == (head_size % 4)) {
+    const int H = head_size / 4;
+    const Half4* query2 = reinterpret_cast<const Half4*>(query);
+    const Half4* biases2 = reinterpret_cast<const Half4*>(biases);
+    Half4* q2 = reinterpret_cast<Half4*>(q);
+    InvokeAddBias<Half4>(stream, max_threads_per_block,
+                         batch_size, sequence_length, num_heads, H,
+                         biases2, query2, q2);
+  } else if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    const half2* query2 = reinterpret_cast<const half2*>(query);
+    const half2* biases2 = reinterpret_cast<const half2*>(biases);
+    half2* q2 = reinterpret_cast<half2*>(q);
+    InvokeAddBias<half2>(stream, max_threads_per_block,
+                         batch_size, sequence_length, num_heads, H,
+                         biases2, query2, q2);
+  } else {
+    InvokeAddBias<half>(stream, max_threads_per_block,
+                        batch_size, sequence_length, num_heads, head_size,
+                        biases, query, q);
   }
 }
 

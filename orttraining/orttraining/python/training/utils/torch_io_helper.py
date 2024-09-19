@@ -5,10 +5,12 @@
 
 import copy
 import warnings
-from collections import abc
+from collections import OrderedDict, abc
 from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
+
+from onnxruntime.training.utils.torch_profile_utils import nvtx_function_decorator
 
 
 class PrimitiveType:
@@ -122,6 +124,7 @@ def _warn_of_constant_inputs(data):
     )
 
 
+@nvtx_function_decorator
 def extract_data_and_schema(
     data: ORTModelInputOutputType, constant_as_tensor=False, device: Optional[torch.device] = None
 ) -> Tuple[List[torch.Tensor], ORTModelInputOutputSchemaType]:
@@ -218,8 +221,8 @@ def extract_data_and_schema(
             return stubbed_schema
         elif isinstance(data, abc.Mapping):
             dict_type = type(data)
-            stubbed_schema = {}
-            for key, val in sorted(data.items()):
+            stubbed_schema = OrderedDict()
+            for key, val in data.items():
                 stubbed_schema[key] = _flatten_from_data(val, f"{prefix_name}_{key}" if prefix_name else f"{key}")
             stubbed_schema = dict_type(**stubbed_schema)
             return stubbed_schema
@@ -230,6 +233,7 @@ def extract_data_and_schema(
     return flatten_tensor_data, schemas
 
 
+@nvtx_function_decorator
 def unflatten_data_using_schema(
     data: List[torch.Tensor], schema: ORTModelInputOutputSchemaType
 ) -> ORTModelInputOutputType:
@@ -301,7 +305,7 @@ def unflatten_data_using_schema(
             return data_schema
         elif isinstance(data_schema, abc.Mapping):
             new_user_output = copy.copy(data_schema)
-            for key, schema_val in sorted(data_schema.items()):
+            for key, schema_val in data_schema.items():
                 new_user_output[key] = _replace_stub_with_tensor_value(schema_val, data)
             data_schema = new_user_output
 

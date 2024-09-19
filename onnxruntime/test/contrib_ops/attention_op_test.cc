@@ -60,7 +60,7 @@ static void RunAttentionTest(
     const bool disable_rocm = false,
     const bool disable_dml = false,
     std::vector<int32_t> qkv_sizes = {},
-    const std::vector<float>& relative_position_bias_data = {},
+    const std::vector<float>& attention_bias_data = {},
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
     bool use_scale = false,
@@ -205,12 +205,12 @@ static void RunAttentionTest(
       }
     }
 
-    std::vector<int64_t> relative_position_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
-    if (relative_position_bias_data.size() > 0) {
+    std::vector<int64_t> attention_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
+    if (attention_bias_data.size() > 0) {
       if (use_float16) {
-        tester.AddInput<MLFloat16>("relative_position_bias", relative_position_bias_data_dims, ToFloat16(relative_position_bias_data));
+        tester.AddInput<MLFloat16>("attention_bias", attention_bias_data_dims, ToFloat16(attention_bias_data));
       } else {
-        tester.AddInput<float>("relative_position_bias", relative_position_bias_data_dims, relative_position_bias_data);
+        tester.AddInput<float>("attention_bias", attention_bias_data_dims, attention_bias_data);
       }
     } else {
       if (use_float16) {
@@ -225,6 +225,12 @@ static void RunAttentionTest(
       tester.AddInput<int32_t>("past_sequence_length", {1}, arr_past_sequence_len);
     } else {
       tester.AddOptionalInputEdge<int32_t>();
+    }
+
+    if (use_float16) {
+      tester.SetOutputTolerance(0.005f);
+    } else {
+      tester.SetOutputTolerance(0.001f, 0.001f);
     }
 
     if (enable_cuda) {
@@ -254,6 +260,9 @@ static void RunAttentionTest(
     if (enable_dml) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultDmlExecutionProvider());
+      if (use_float16) {
+        tester.SetOutputTolerance(0.02f);
+      }
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
@@ -283,7 +292,7 @@ static void RunAttentionTest(
     const bool disable_rocm = false,
     const bool disable_dml = false,
     const std::vector<int32_t> qkv_sizes = {},
-    const std::vector<float>& relative_position_bias_data = {},
+    const std::vector<float>& attention_bias_data = {},
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
     bool use_scale = false,
@@ -292,13 +301,13 @@ static void RunAttentionTest(
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
-                   disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, relative_position_bias_data,
+                   disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias_data,
                    kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
-                   disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, relative_position_bias_data,
+                   disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias_data,
                    kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
 }
 
@@ -410,7 +419,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr2) {
                    0, false, false, disable_rocm, false, qkv_sizes);
 }
 
-TEST(AttentionTest, AttentionBatch1RelativePositionBias) {
+TEST(AttentionTest, AttentionBatch1AttentionBias) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -434,7 +443,7 @@ TEST(AttentionTest, AttentionBatch1RelativePositionBias) {
 
   std::vector<int32_t> mask_index_data = {2L};
 
-  std::vector<float> relative_position_bias = {
+  std::vector<float> attention_bias = {
       0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f};
 
   std::vector<float> output_data = {
@@ -448,10 +457,10 @@ TEST(AttentionTest, AttentionBatch1RelativePositionBias) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0,
-                   0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, relative_position_bias);
+                   0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
 }
 
-TEST(AttentionTest, AttentionBatch2RelativePositionBias) {
+TEST(AttentionTest, AttentionBatch2AttentionBias) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -477,7 +486,7 @@ TEST(AttentionTest, AttentionBatch2RelativePositionBias) {
 
   std::vector<int32_t> mask_index_data = {2L, 2L};
 
-  std::vector<float> relative_position_bias = {
+  std::vector<float> attention_bias = {
       0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f,
       0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f};
 
@@ -494,7 +503,7 @@ TEST(AttentionTest, AttentionBatch2RelativePositionBias) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0,
-                   0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, relative_position_bias);
+                   0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
 }
 
 TEST(AttentionTest, AttentionBatch1_Float16) {
@@ -1670,7 +1679,7 @@ TEST(AttentionTest, AttentionWithNormFactor) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
                    false /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, false /*disable_dml*/, {} /*qkv_sizes*/,
-                   {} /*relative_position_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
+                   {} /*attention_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
                    true /*use_scale*/);
 }
 
@@ -1704,7 +1713,7 @@ TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
                    true /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, disable_dml, {} /*qkv_sizes*/,
-                   {} /*relative_position_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
+                   {} /*attention_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
                    true /*use_scale*/, true /*use_neox_rotary_embedding*/);
 }
 
@@ -2013,13 +2022,6 @@ TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
 #if !defined(__wasm__)
 // TODO: fix in web assembly
 TEST(AttentionTest, AttentionPastState_dynamic) {
-  // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
-  // Do not run this test unless TF32 is disabled explicitly.
-  if (HasCudaEnvironment(800) && ParseEnvironmentVariableWithDefault<int>("NVIDIA_TF32_OVERRIDE", 1) != 0) {
-    GTEST_SKIP() << "Skipping AttentionPastState_dynamic in A100 since TF32 is enabled";
-    return;
-  }
-
   // create rand inputs
   RandomValueGenerator random{};
 
@@ -2101,20 +2103,15 @@ static void RunModelWithRandomInput(
     std::vector<int32_t>& mask_index_data,
     std::string& onnx_model,
     bool is_float16) {
-  // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
-  // Do not run this test unless TF32 is disabled explicitly.
-  if (HasCudaEnvironment(800) && ParseEnvironmentVariableWithDefault<int>("NVIDIA_TF32_OVERRIDE", 1) != 0) {
-    GTEST_SKIP() << "Skipping RunModelWithRandomInput in A100 since TF32 is enabled";
-    return;
-  }
-
   RandomValueGenerator random{234};
 
   constexpr int hidden_size = 768;
   constexpr int num_heads = 12;
+  const float min_value = is_float16 ? -0.001f : -1.0f;
+  const float max_value = is_float16 ? 0.001f : 1.0f;
 
   std::vector<int64_t> batch_input_dims{1, sequence_length, hidden_size};
-  std::vector<float> batch_input_data = random.Uniform<float>(batch_input_dims, -1.0f, 1.0f);
+  std::vector<float> batch_input_data = random.Uniform<float>(batch_input_dims, min_value, max_value);
 
   std::vector<int64_t> input_dims{batch_size, sequence_length, hidden_size};
   std::vector<float> input_data;
@@ -2123,12 +2120,12 @@ static void RunModelWithRandomInput(
   }
 
   std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
-  std::vector<float> weight_data = random.Uniform<float>(weight_dims, -1.0f, 1.0f);
+  std::vector<float> weight_data = random.Uniform<float>(weight_dims, min_value, max_value);
 
   std::vector<int64_t> bias_dims{3 * hidden_size};
-  std::vector<float> bias_data = random.Uniform<float>(bias_dims, -1.0f, 1.0f);
+  std::vector<float> bias_data = random.Uniform<float>(bias_dims, min_value, max_value);
 
-  float gpu_threshold = is_float16 ? static_cast<float>(sequence_length) / 32.0f : 0.005f;
+  float gpu_threshold = is_float16 ? 0.5f : 0.005f;
   constexpr float cpu_threshold = 0.002f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
@@ -2146,7 +2143,10 @@ static void RunModelWithRandomInput(
       test.AddInput<float>("weight", weight_dims, weight_data);
       test.AddInput<float>("bias", bias_dims, bias_data);
     }
-    test.AddInput<int>("mask_index", mask_index_dims, mask_index_data);
+    if (mask_index_data.size() > 0) {
+      test.AddInput<int>("mask_index", mask_index_dims, mask_index_data);
+    }
+
     test.AddReferenceOutputs(onnx_model, gpu_threshold);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {
@@ -2214,6 +2214,25 @@ TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
       mask_index_data,
       onnx_model,
       false);
+}
+
+// This case can be used to test flash attention using Ampere GPU
+TEST(AttentionTest, Attention_NoMask_Fp16) {
+  constexpr int batch_size = 2;
+  std::vector<int> sequence_lengths{1, 7, 8};
+  for (const auto& sequence_length : sequence_lengths) {
+    std::vector<int64_t> mask_index_dims{};
+    std::vector<int32_t> mask_index_data{};
+    std::string onnx_model = "testdata/attention_no_mask_fp16.onnx";
+
+    RunModelWithRandomInput(
+        batch_size,
+        sequence_length,
+        mask_index_dims,
+        mask_index_data,
+        onnx_model,
+        true);
+  }
 }
 
 // This test is disabled since it is flaky.

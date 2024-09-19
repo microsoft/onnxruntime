@@ -134,11 +134,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Creates float NaN with the given sign and fp16 significand shifted << 54
+        /// Creates float NaN with the given sign and fp16 significand shifted &lt;&lt; 54
         /// </summary>
         /// <param name="sign">true for negative</param>
         /// <param name="significand">should be shifted 54 bits left before calling the function
-        /// so only 8 bits of signidicand remains</param>
+        /// so only 8 bits of significand remains</param>
         /// <returns></returns>
         internal static float CreateSingleNaN(bool sign, ulong significand)
         {
@@ -416,12 +416,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Compares values of two Float16
-        /// 
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
         /// <returns>returns true if left is greater or equal than right according to IEEE</returns>
-        /// <inheritdoc cref="IComparisonOperators{TSelf, TOther, TResult}.op_GreaterThanOrEqual(TSelf, TOther)" />
+        /// <inheritdoc />
         public static bool operator >=(Float16 left, Float16 right)
         {
             return right <= left;
@@ -492,7 +491,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Determines whether the specified value is negative.
         /// </summary>
         /// <param name="value">Float16 instance</param>
-        /// <returns>true if the value is negative</returns></returns>
+        /// <returns>true if the value is negative</returns>
         public static bool IsNegative(Float16 value)
         {
             return (short)(value.value) < 0;
@@ -1115,7 +1114,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Determines whether the specified value is negative.
         /// </summary>
         /// <param name="value">BFloat16 instance</param>
-        /// <returns>true if the value is negative</returns></returns>
+        /// <returns>true if the value is negative</returns>
         public static bool IsNegative(BFloat16 value)
         {
             return (short)(value.value) < 0;

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <memory>
@@ -8,9 +9,14 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#ifdef USE_CUDA
+#include <core/providers/cuda/cuda_provider_options.h>
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
+
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
@@ -69,7 +75,14 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
   OrtMIGraphXProviderOptions params{
       0,
       0,
-      0};
+      0,
+      0,
+      nullptr,
+      1,
+      "./compiled_model.mxr",
+      1,
+      "./compiled_model.mxr",
+      1};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -91,14 +104,15 @@ std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const O
   return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
-#endif
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
   ProviderOptions provider_options_map;
-  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
+  SessionOptions session_options;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map, &session_options)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -106,13 +120,28 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions provider_options{};
+  OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
   return nullptr;
 }
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
+#if defined(USE_CUDA)
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.prefer_nhwc = true;
+  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+#endif
 
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
@@ -163,6 +192,14 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider() {
+#if defined(USE_VSINPU)
+  return VSINPUProviderFactoryCreator::Create()->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #ifdef USE_RKNPU
   return RknpuProviderFactoryCreator::Create()->CreateProvider();
@@ -171,11 +208,11 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
+std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math) {
 #ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_arena)->CreateProvider();
+  return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
 #else
-  ORT_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(enable_fast_math);
   return nullptr;
 #endif
 }
@@ -203,15 +240,21 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-// For any non - macOS system, CoreML will only be used for ort model converter
-// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
+  // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
+  // The test will create a model but execution of it will obviously fail.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+
+  if (use_mlprogram) {
+    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+
   return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
 #endif
 }
@@ -240,11 +283,13 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options) {
+std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options,
+                                                                    const SessionOptions* session_options) {
 #ifdef USE_QNN
-  return QNNProviderFactoryCreator::Create(options, nullptr)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(options, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }
@@ -268,8 +313,10 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  if (auto factory = DMLProviderFactoryCreator::Create(0))
+  ConfigOptions config_options{};
+  if (auto factory = DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, false, false)) {
     return factory->CreateProvider();
+  }
 #endif
   return nullptr;
 }

@@ -39,7 +39,7 @@ NS_ASSUME_NONNULL_BEGIN
  * session which will be moved to the device specified in the session option if needed.
  *
  * @param env The `ORTEnv` instance to use for the training session.
- * @param sessionOptions The `ORTSessionOptions` to use for the training session.
+ * @param sessionOptions The optional `ORTSessionOptions` to use for the training session.
  * @param checkpoint Training states that are used as a starting point for training.
  * @param trainModelPath The path to the training onnx model.
  * @param evalModelPath The path to the evaluation onnx model.
@@ -52,7 +52,7 @@ NS_ASSUME_NONNULL_BEGIN
  * keeps a strong (owning) pointer to the checkpoint state.
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
-                      sessionOptions:(ORTSessionOptions*)sessionOptions
+                      sessionOptions:(nullable ORTSessionOptions*)sessionOptions
                           checkpoint:(ORTCheckpoint*)checkpoint
                       trainModelPath:(NSString*)trainModelPath
                        evalModelPath:(nullable NSString*)evalModelPath

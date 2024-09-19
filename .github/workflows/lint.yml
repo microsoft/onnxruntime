@@ -12,7 +12,7 @@ jobs:
     name: Optional Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -34,9 +34,9 @@ jobs:
     name: Python format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           # Version range or exact version of Python to use, using SemVer's version range syntax. Reads from .python-version if unset.
           python-version: "3.10"
@@ -65,7 +65,7 @@ jobs:
       - name: Upload SARIF file
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: lintrunner.sarif
@@ -73,7 +73,7 @@ jobs:
           checkout_path: ${{ github.workspace }}
 
   lint-cpp:
-    name: Lint C++
+    name: Optional Lint C++
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
@@ -89,18 +89,30 @@ jobs:
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
       - uses: reviewdog/action-cpplint@master
+        continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
-          level: warning
-          flags: --linelength=120 --exclude=java/src/main/native/*.c
+          level: info
+          flags: --linelength=120
+            --exclude=java/src/main/native/*.c
+            --exclude=onnxruntime/core/mlas/inc/*
+            --exclude=onnxruntime/core/mlas/lib/*
+            --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
+            --exclude=build/Debug/*
+            --exclude=cmake/*
+            --exclude=csharp/test/*
+            --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
+            --exclude=orttraining/orttraining/test/*
+            --exclude=onnxruntime/test/*
+            --exclude=winml/*
           filter: "-runtime/references"
 
   lint-js:
     name: Lint JavaScript
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check

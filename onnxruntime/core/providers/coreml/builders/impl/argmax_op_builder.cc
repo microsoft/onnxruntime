@@ -1,37 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared/utils/utils.h"
-#ifdef __APPLE__
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/model_builder.h"
-#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class ArgMaxOpBuilder : public BaseOpBuilder {
-  // Add operator related
- private:
-#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
-// Add operator related
-
-#ifdef __APPLE__
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& /* logger */) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
   const auto& graph_viewer = model_builder.GetGraphViewer();
 
   NodeAttrHelper helper(node);
@@ -49,13 +38,14 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // 2. Otherwise, we add Argmax layer normally
   if (node.GetOutputEdgesCount() == 1) {
     auto it = node.OutputEdgesBegin();
-    const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
+    const auto* next_node_in_partition = graph_viewer.GetNode(it->GetNode().Index());
     // If Argmax's successive node is a Cast from int64 to int32 output
-    // The 'cast to' type is checked in operator supported related, omit the check here
-    if (succ_node->OpType() == "Cast") {
+    // The 'cast to' type is checked when determining operator support (see CastOpBuilder::IsOpSupportedImpl())
+    //   so we omit the check here
+    if (next_node_in_partition != nullptr && next_node_in_partition->OpType() == "Cast") {
       // Skip the cast's input/argmax's output
       *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-      *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
+      *layer->mutable_output()->Add() = next_node_in_partition->OutputDefs()[0]->Name();
       model_builder.AddLayer(std::move(layer));
       return Status::OK();
     }
@@ -67,9 +57,6 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
                                         const logging::Logger& logger) const {

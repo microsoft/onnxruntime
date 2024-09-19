@@ -7,6 +7,7 @@
 #include <D3d11_4.h>
 #include <d3d11on12.h>
 #include "D3DDeviceCache.h"
+#include "HardwareCoreEnumerator.h"
 
 #include "ConverterResourceStore.h"
 
@@ -131,7 +132,7 @@ LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
 
 uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
   if (IsCpuDevice()) {
-    return std::thread::hardware_concurrency();
+    return HardwareCoreEnumerator::DefaultIntraOpNumThreads();
   } else {
     // GPU sessions should not rely on intra op threads.
     // Creating a large thread pool is unnecessary and wasteful, and can cause

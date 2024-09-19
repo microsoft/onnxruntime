@@ -134,7 +134,7 @@ def loop(X_test, fct, n=None):
     nrow = X_test.shape[0]
     if n is None:
         n = nrow
-    for i in range(0, n):
+    for i in range(n):
         im = i % nrow
         fct(X_test[im : im + 1])
 

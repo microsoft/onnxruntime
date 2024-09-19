@@ -1,0 +1,30 @@
+parameters:
+- name: artifact_feed
+  type: string
+  default: 'onnxruntime-cuda-12'
+
+stages:
+- stage: Python_Publishing_GPU
+  jobs:
+  - job: Python_Publishing_GPU
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    steps:
+    - checkout: none
+    - download: build
+      displayName: 'Download Pipeline Artifact - onnxruntime_gpu'
+      artifact: 'onnxruntime_gpu'
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.x'
+    - script: 'pip install twine==3.4.2'
+      displayName: 'Install Twine'
+    - task: TwineAuthenticate@1
+      displayName: 'Twine Authenticate '
+      inputs:
+        artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
+    - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
+      workingDirectory: '$(Pipeline.Workspace)/build/onnxruntime_gpu'
+      displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
+      retryCountOnTaskFailure: 3
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+

@@ -139,10 +139,7 @@ __launch_bounds__(thread_block_size) __global__ void BeamSearchOnlineTopKStage2K
   input_tokens += vector_id * k * parts_per_beam;
 
   TopK<T, max_k> thread_topk;
-  for (int i = 0; i < max_k; ++i) {
-    thread_topk.key[i] = -1;
-    thread_topk.value[i] = NumericLimits<T>::Min();
-  }
+  thread_topk.Init();
 
   for (int idx = thread_id; idx < k * parts_per_beam; idx += thread_block_size) {
     value_shared_buf[idx] = input_values[idx];

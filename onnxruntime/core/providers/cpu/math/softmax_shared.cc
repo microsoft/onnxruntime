@@ -22,7 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -99,7 +99,7 @@ common::Status SoftmaxCPU<float>(size_t N,
                                  float* Ydata,
                                  bool logarithmic,
                                  onnxruntime::concurrency::ThreadPool* thread_pool) {
-  MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, thread_pool);
+  MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, false, thread_pool);
   return Status::OK();
 }
 

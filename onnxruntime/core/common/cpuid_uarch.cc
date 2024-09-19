@@ -3,7 +3,8 @@
 
 #include "core/common/cpuid_uarch.h"
 
-#include "core/common/logging/logging.h"
+#include <iostream>  // For std::cerr.
+                     // Writing to stderr instead of logging because logger may not be initialized yet.
 
 namespace onnxruntime {
 
@@ -137,7 +138,7 @@ void decodeMIDR(
               break;
               // #endif /* ARM */
             default:
-              LOGS_DEFAULT(WARNING) << "unknown ARM CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+              std::cerr << "unknown ARM CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
           }
       }
       break;
@@ -156,7 +157,7 @@ void decodeMIDR(
           break;
           // #endif
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Broadcom CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Broadcom CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
@@ -172,7 +173,7 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_thunderx2;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Cavium CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Cavium CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #endif
@@ -187,7 +188,7 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_cortex_a76;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Huawei CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Huawei CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #if defined(_M_ARM) || defined(__arm__)
@@ -199,7 +200,7 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_xscale;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Intel CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Intel CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #endif /* ARM */
@@ -215,7 +216,7 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_carmel;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Nvidia CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Nvidia CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
 #if !defined(__ANDROID__)
@@ -225,7 +226,7 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_xgene;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Applied Micro CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Applied Micro CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
 #endif
@@ -297,7 +298,7 @@ void decodeMIDR(
           break;
           // #endif /* ARM64 && !defined(__ANDROID__) */
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
     case 'S':
@@ -343,8 +344,9 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_exynos_m5;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Samsung CPU variant 0x"
-                                << std::hex << midr_get_variant(midr) << " part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Samsung CPU variant 0x"
+                    << std::hex << midr_get_variant(midr) << " part 0x" << std::hex << midr_get_part(midr)
+                    << " ignored\n";
       }
       break;
       // #if defined(_M_ARM) || defined(__arm__)
@@ -355,12 +357,12 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_pj4;
           break;
         default:
-          LOGS_DEFAULT(WARNING) << "unknown Marvell CPU part 0x" << std::hex << midr_get_part(midr) << " ignored";
+          std::cerr << "unknown Marvell CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #endif /* ARM */
     default:
-      LOGS_DEFAULT(WARNING) << "unknown CPU uarch from MIDR value: 0x" << std::hex << midr;
+      std::cerr << "unknown CPU uarch from MIDR value: 0x" << std::hex << midr << "\n";
   }
 }
 

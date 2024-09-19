@@ -45,7 +45,6 @@ import argparse
 import logging
 import math
 import os
-import sys
 import time
 from enum import Enum
 from pathlib import Path
@@ -54,9 +53,10 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import onnx
 import torch
-from benchmark_helper import Precision
+from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
 from onnx import GraphProto, ModelProto, TensorProto
+from onnx_model import OnnxModel
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -69,16 +69,10 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
-from benchmark_helper import setup_logger  # noqa: E402
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
+from onnxruntime.transformers.models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from onnxruntime.transformers.models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from onnxruntime.transformers.models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 
 logger = logging.getLogger("")
 
@@ -378,7 +372,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         required=False,
         default=1,
-        help="Minimumber of tokens we keep per batch example in the output.",
+        help="Minimum number of tokens we keep per batch example in the output.",
     )
 
     beam_parameters_group.add_argument(
@@ -472,7 +466,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--save_test_data",
         required=False,
         action="store_true",
-        help="save test data for onnxruntimer_perf_test tool",
+        help="save test data for onnxruntime_perf_test tool",
     )
     test_group.set_defaults(save_test_data=False)
 
@@ -889,7 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    require_raw_data: bool = False,
+    signature_cache1: Optional[dict] = None,
+    signature_cache2: Optional[dict] = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -898,7 +893,8 @@ def remove_shared_initializers(
         graph2 (GraphProto): the second graph to process
         shared_prefix (str): add prefix to the shared initializers among two graphs
         min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
-        require_raw_data (bool, optional): Only remove tensors with raw_data field to speed up method
+        signature_cache1 (dict): Optional dictionary to store data signatures of tensors in graph1 in order to speed up comparison
+        signature_cache2 (dict): Optional dictionary to store data signatures of tensors in graph2 in order to speed up comparison
     """
 
     mapping_initializers_1 = {}
@@ -915,7 +911,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2, require_raw_data=True):
+            if OnnxModel.has_same_value(initializer1, initializer2, signature_cache1, signature_cache2):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -988,14 +984,21 @@ def remove_shared_initializers(
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, require_raw_data: bool = False):
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer(require_raw_data)
-    decoder.remove_duplicated_initializer(require_raw_data)
-    initializers = remove_shared_initializers(decoder.model.graph, encoder.model.graph, "s_", require_raw_data)
+    signature_cache1, signature_cache2 = {}, {}
+    encoder.remove_duplicated_initializer(signature_cache1)
+    decoder.remove_duplicated_initializer(signature_cache2)
+    initializers = remove_shared_initializers(
+        decoder.model.graph,
+        encoder.model.graph,
+        shared_prefix="s_",
+        signature_cache1=signature_cache1,
+        signature_cache2=signature_cache2,
+    )
     return initializers
 
 
@@ -1222,7 +1225,7 @@ def find_past_seq_len_usage(subg: GraphProto):
     tensor_names_to_rename = set()
     nodes_to_remove = []
 
-    graph_intput_names = {inp.name: index for index, inp in enumerate(subg.input)}
+    graph_input_names = {inp.name: index for index, inp in enumerate(subg.input)}
 
     input_name_to_nodes = {}
     output_name_to_node = {}
@@ -1256,7 +1259,7 @@ def find_past_seq_len_usage(subg: GraphProto):
                 if (
                     shape_node.op_type == "Shape"
                     and shape_node.input[0]
-                    and shape_node.input[0] in graph_intput_names
+                    and shape_node.input[0] in graph_input_names
                     and (
                         shape_node.input[0].startswith("past_key_self_")
                         or shape_node.input[0].startswith("past_value_self_")
@@ -1269,7 +1272,273 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphProto):
+def replace_mha_with_gqa(
+    model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = -1
+):
+    # Insert attention_mask subgraph to calculate shared inputs for all GroupQueryAttention nodes
+    #
+    #                attention_mask
+    #               /              \
+    #          ReduceSum          Shape
+    #              |                |
+    #             Sub             Gather
+    #              |                |
+    #          seqlens_k   total_sequence_length
+    #              |                |
+    #        Cast to int32    Cast to int32
+
+    model.add_initializer(
+        onnx.helper.make_tensor(
+            name="one",
+            data_type=TensorProto.INT64,
+            dims=[1],
+            vals=[1],
+        )
+    )
+    reduce_sum_node = onnx.helper.make_node(
+        "ReduceSum",
+        inputs=[attn_mask, "one"],
+        outputs=[attn_mask + "_row_sums"],
+        name=model.create_node_name("ReduceSum"),
+    )
+    sub_node = onnx.helper.make_node(
+        "Sub",
+        inputs=[attn_mask + "_row_sums", "one"],
+        outputs=["seqlens_k_int64"],
+        name=model.create_node_name("Sub"),
+    )
+    seqlen_k_cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=["seqlens_k_int64"],
+        outputs=["seqlens_k"],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT32,
+    )
+    shape_node = onnx.helper.make_node(
+        "Shape",
+        inputs=[attn_mask],
+        outputs=[attn_mask + "_shape"],
+        name=model.create_node_name("Shape"),
+    )
+    gather_node = onnx.helper.make_node(
+        "Gather",
+        inputs=[attn_mask + "_shape", "one"],
+        outputs=["total_seq_len_int64"],
+        name=model.create_node_name("Gather"),
+        axis=0,
+    )
+    total_seqlen_cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=["total_seq_len_int64"],
+        outputs=["total_seq_len"],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT32,
+    )
+    model.model.graph.node.extend(
+        [reduce_sum_node, sub_node, seqlen_k_cast_node, shape_node, gather_node, total_seqlen_cast_node]
+    )
+
+    # Replace MultiHeadAttention with GroupQueryAttention
+    #
+    # When replacing, fuse the following subgraph:
+    #
+    #                 root_input
+    #               /     |      \
+    #         MatMul    MatMul    MatMul
+    #           |         |         |
+    #          Add       Add       Add      (optional Adds)
+    #           |         |         |
+    #         RotEmb    RotEmb      |
+    #            \        |        /
+    #             MultiHeadAttention
+    #
+    # to this new subgraph:
+    #
+    #                 root_input
+    #                     |
+    #                PackedMatMul           (if possible)
+    #                     |
+    #                 PackedAdd             (if possible)
+    #                     |
+    #             GroupQueryAttention
+    #
+
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for idx, node in enumerate(mha_nodes):
+        # Detect Q path to MHA
+        q_path_1 = model.match_parent_path(node, ["RotaryEmbedding", "Add", "MatMul"], [0, 0, 0])
+        q_path_2 = model.match_parent_path(node, ["RotaryEmbedding", "MatMul"], [0, 0])
+
+        q_rotary, q_add, q_matmul = None, None, None
+        if q_path_1 is not None:
+            q_rotary, q_add, q_matmul = q_path_1
+        elif q_path_2 is not None:
+            q_rotary, q_matmul = q_path_2
+
+        # Detect K path to MHA
+        k_path_1 = model.match_parent_path(node, ["RotaryEmbedding", "Add", "MatMul"], [1, 0, 0])
+        k_path_2 = model.match_parent_path(node, ["RotaryEmbedding", "MatMul"], [1, 0])
+
+        k_rotary, k_add, k_matmul = None, None, None
+        if k_path_1 is not None:
+            k_rotary, k_add, k_matmul = k_path_1
+        elif k_path_2 is not None:
+            k_rotary, k_matmul = k_path_2
+
+        # Detect V path to MHA
+        v_path_1 = model.match_parent_path(node, ["Add", "MatMul"], [2, 0])
+        v_path_2 = model.match_parent_path(node, ["MatMul"], [2])
+
+        v_add, v_matmul = None, None
+        if v_path_1 is not None:
+            v_add, v_matmul = v_path_1
+        elif v_path_2 is not None:
+            v_matmul = v_path_2[0]
+
+        # Get `interleaved` attribute from RotaryEmbedding
+        interleaved = 0
+        if q_rotary is not None and k_rotary is not None:
+            for att in q_rotary.attribute:
+                if att.name == "interleaved":
+                    interleaved = att.i
+
+        # Get `num_heads` attribute from MHA
+        num_heads = 0
+        for att in node.attribute:
+            if att.name == "num_heads":
+                num_heads = att.i
+
+        # Check if root_input to Q/K/V paths is the same
+        root_input_is_same = q_matmul.input[0] == k_matmul.input[0] and k_matmul.input[0] == v_matmul.input[0]
+
+        # Check if Q/K/V paths all have bias or all don't have bias
+        all_paths_have_bias = q_add is not None and k_add is not None and v_add is not None
+        all_paths_have_no_bias = q_add is None and k_add is None and v_add is None
+
+        # Make PackedMatMul node if possible
+        q_input_to_attention, k_input_to_attention, v_input_to_attention = "", "", ""
+        if root_input_is_same and (all_paths_have_bias or all_paths_have_no_bias):
+            qw = NumpyHelper.to_array(model.get_initializer(q_matmul.input[1]))
+            kw = NumpyHelper.to_array(model.get_initializer(k_matmul.input[1]))
+            vw = NumpyHelper.to_array(model.get_initializer(v_matmul.input[1]))
+
+            dim = qw.shape[-1]
+            qkv_weight = np.stack((qw, kw, vw), axis=1).reshape(dim, 3 * dim)
+            qkv_weight = onnx.numpy_helper.from_array(qkv_weight, name=f"QKV_Weight_{idx}")
+            model.add_initializer(qkv_weight)
+
+            packed_matmul_node = onnx.helper.make_node(
+                "MatMul",
+                inputs=[q_matmul.input[0], qkv_weight.name],
+                outputs=[f"{qkv_weight.name}_output"],
+                name=model.create_node_name("MatMul"),
+            )
+            model.model.graph.node.extend([packed_matmul_node])
+            model.model.graph.node.remove(q_matmul)
+            model.model.graph.node.remove(k_matmul)
+            model.model.graph.node.remove(v_matmul)
+            q_input_to_attention = packed_matmul_node.output[0]
+
+            # Make PackedAdd node if possible
+            if all_paths_have_bias:
+                qb = NumpyHelper.to_array(model.get_initializer(q_add.input[1]))
+                kb = NumpyHelper.to_array(model.get_initializer(k_add.input[1]))
+                vb = NumpyHelper.to_array(model.get_initializer(v_add.input[1]))
+
+                dim = qb.shape[-1]
+                qkv_bias = np.stack((qb, kb, vb), axis=0).reshape(3 * dim)
+                qkv_bias = onnx.numpy_helper.from_array(qkv_bias, name=f"QKV_Bias_{idx}")
+                model.add_initializer(qkv_bias)
+                packed_add_node = onnx.helper.make_node(
+                    "Add",
+                    inputs=[packed_matmul_node.output[0], qkv_bias.name],
+                    outputs=[f"{qkv_bias.name}_output"],
+                )
+                model.model.graph.node.extend([packed_add_node])
+                model.model.graph.node.remove(q_add)
+                model.model.graph.node.remove(k_add)
+                model.model.graph.node.remove(v_add)
+                q_input_to_attention = packed_add_node.output[0]
+
+        else:
+            q_input_to_attention = q_matmul.output[0]
+            k_input_to_attention = k_matmul.output[0]
+            v_input_to_attention = v_matmul.output[0]
+
+        # Make GQA node
+        gqa_node = onnx.helper.make_node(
+            "GroupQueryAttention",
+            inputs=[
+                q_input_to_attention,  # query
+                k_input_to_attention,  # key
+                v_input_to_attention,  # value
+                node.input[6],  # past_key
+                node.input[7],  # past_value
+                seqlen_k_cast_node.output[0],  # seqlens_k (for attention mask)
+                total_seqlen_cast_node.output[0],  # total_seq_len (for attention mask)
+                q_rotary.input[2] if q_rotary is not None else "",  # cos_cache (for rotary embeddings)
+                q_rotary.input[3] if q_rotary is not None else "",  # sin_cache (for rotary embeddings)
+            ],
+            outputs=node.output,
+            name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
+            domain="com.microsoft",
+            num_heads=num_heads // world_size,
+            kv_num_heads=num_heads // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
+            local_window_size=window_size,
+            do_rotary=int(q_rotary is not None and k_rotary is not None),
+            rotary_interleaved=interleaved,
+        )
+        model.model.graph.node.remove(node)
+        model.model.graph.node.extend([gqa_node])
+
+        if q_rotary is not None:
+            model.model.graph.node.remove(q_rotary)
+        if k_rotary is not None:
+            model.model.graph.node.remove(k_rotary)
+
+    return model
+
+
+def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
+    input_self_past_0 = 1
+    # w/wo attention mask, w/wo hidden_state
+    graph_input_names = [gi.name for gi in subg.input]
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
+        input_self_past_0 += 1
+    output_self_present_0 = 1
+
+    num_layers = (len(subg.output) - output_self_present_0) // 2
+    input_cross_past_0 = 2 * num_layers + input_self_past_0
+    past_key_cross_inputs = {subg.input[layer * 2 + input_cross_past_0].name: layer for layer in range(num_layers)}
+    print(f"    --past_key_cross_inputs={past_key_cross_inputs}")
+
+    input_past_key_cross_0_shape = shape_of(subg.input[input_cross_past_0])
+    print(f"past_key_cross_0_shape is {input_past_key_cross_0_shape}")
+    batch_size_dim = input_past_key_cross_0_shape[0]
+    num_heads_dim = input_past_key_cross_0_shape[1]
+    cross_seq_len_dim = input_past_key_cross_0_shape[2]
+
+    num_layer_output_qk = 0
+    for node in subg.node:
+        if (node.op_type == "DecoderMaskedMultiHeadAttention") and (node.input[1] in past_key_cross_inputs):
+            print(f"    -- add cross QK output from: node: {node.name} with output: {node.output}")
+            num_layer_output_qk += 1
+            layer = past_key_cross_inputs[node.input[1]]
+            cross_attention_out_name = f"output_cross_qk_{layer}"
+            appended_names = [""] * (3 - len(node.output))
+            appended_names.append(cross_attention_out_name)
+            node.output.extend(appended_names)
+            node.attribute.extend([onnx.helper.make_attribute("output_qk", 1)])
+
+            cross_attention = onnx.helper.make_tensor_value_info(
+                cross_attention_out_name, TensorProto.FLOAT, [batch_size_dim, num_heads_dim, 1, cross_seq_len_dim]
+            )
+            subg.output.extend([cross_attention])
+    if num_layer_output_qk != num_layers:
+        raise ValueError(f"Did not add cross QK for all layers{num_layers} vs {num_layer_output_qk}")
+
+
+def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state
     graph_input_names = [gi.name for gi in subg.input]
@@ -1286,7 +1555,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
         if node.op_type == "MultiHeadAttention":
             old_nodes.extend([node])
 
-    # If not all the MultiheadAttention nodes are fused, this optimization is not applicable
+    # If not all the MultiHeadAttention nodes are fused, this optimization is not applicable
     if len(old_nodes) < num_layers:
         return False
 
@@ -1355,7 +1624,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
             ]
 
             nis.extend([node.input[4] if len(node.input) > 4 else ""])  # 2D mask
-            nis.extend([node.input[5] if len(node.input) > 5 else ""])  # relative_position_bias
+            nis.extend([node.input[5] if len(node.input) > 5 else ""])  # attention_bias
             nis.extend([node.input[6] if len(node.input) > 6 else ""])  # past_key
             nis.extend([node.input[7] if len(node.input) > 7 else ""])  # past_value
             nis.extend(["past_sequence_length"])  # past_sequence_length

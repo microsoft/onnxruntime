@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <cmath>
@@ -61,7 +62,9 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
     tpool.out->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(Y->Shape(), PREF_DIM), arm_compute::Format::F32));
 
     if (pool_attrs.global_pooling) {
-      layer->configure(tpool.in.get(), tpool.out.get(), arm_compute::PoolingLayerInfo(pool_type));
+      layer->configure(tpool.in.get(),
+                       tpool.out.get(),
+                       arm_compute::PoolingLayerInfo(pool_type, arm_compute::DataLayout::NCHW));
     } else {
       TensorShapeVector aclStrides(2);
       aclStrides[0] = (strides.size() == 2) ? strides[1] : 1;
@@ -88,8 +91,11 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
         aclPads[3] = pads[2];
       }
 
-      arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(aclStrides[0], aclStrides[1],
-                                                                           aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
+      arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(
+          (unsigned int)aclStrides[0], (unsigned int)aclStrides[1],
+          (unsigned int)aclPads[0], (unsigned int)aclPads[1],
+          (unsigned int)aclPads[2], (unsigned int)aclPads[3],
+          arm_compute::DimensionRoundingType::FLOOR);
 
       TensorShapeVector aclKernelShape(2);
       aclKernelShape[0] = (kernel_shape.size() > 1) ? kernel_shape[1] : 1;
@@ -104,11 +110,15 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
       LOGS_DEFAULT(VERBOSE) << "excludePadding: " << excludePadding;
 
-      arm_compute::PoolingLayerInfo pool_info(pool_type, aclSize, aclPadStride, excludePadding);
+      arm_compute::PoolingLayerInfo pool_info(pool_type,
+                                              aclSize,
+                                              arm_compute::DataLayout::NCHW,
+                                              aclPadStride,
+                                              excludePadding);
       layer->configure(tpool.in.get(), tpool.out.get(), pool_info);
     }
 
-    // allocate space for input tensor to accomodate paddings and strides
+    // allocate space for input tensor to accommodate paddings and strides
     tpool.in->allocator()->allocate();
 
     tpool.layer = std::move(layer);
@@ -120,8 +130,8 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
   aclInpuWindow.use_tensor_dimensions(tpool.in->info()->tensor_shape());
 
   arm_compute::Iterator aclInputIt(tpool.in.get(), aclInpuWindow);
-  const unsigned int aclWidth = tpool.in->info()->dimension(0);
-  const unsigned int aclHeight = tpool.in->info()->dimension(1);
+  const size_t aclWidth = tpool.in->info()->dimension(0);
+  const size_t aclHeight = tpool.in->info()->dimension(1);
 
   // copy input tensor into the larger buffer
   arm_compute::execute_window_loop(

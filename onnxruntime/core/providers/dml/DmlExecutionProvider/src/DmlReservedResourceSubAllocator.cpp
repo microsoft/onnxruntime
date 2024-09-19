@@ -63,7 +63,7 @@ namespace Dml
 
     DmlReservedResourceSubAllocator::DmlReservedResourceSubAllocator(
         ID3D12Device* device,
-        std::shared_ptr<ExecutionContext> context,
+        ExecutionContext* context,
         ID3D12CommandQueue* queue,
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,

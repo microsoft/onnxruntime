@@ -121,7 +121,7 @@ class FusionBartReshape(FusionReshape):
 
 
 class BartOnnxModel(BertOnnxModel):
-    def __init__(self, model, num_heads, hidden_size):
+    def __init__(self, model, num_heads, hidden_size, model_impl="hf"):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)

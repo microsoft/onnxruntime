@@ -64,7 +64,7 @@ struct SGDOptimizerV2Algorithm : public OptimizerAlgorithmBase {
 };
 
 struct OptimizerAlorithmFactory {
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const std::string& optim_path_or_bytes,
+  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const GraphViewer& graph_viewer,
                                                                 int32_t& group_count);
 };
 
@@ -96,7 +96,7 @@ struct Optimizer {
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
-  Optimizer(const std::string& optim_path_or_bytes,
+  Optimizer(const ModelIdentifiers& model_identifiers,
             CheckpointState* state,
             const onnxruntime::SessionOptions& session_options,
             const Environment& env,
@@ -120,8 +120,17 @@ struct Optimizer {
     return Status::OK();
   }
 
+  // Constructs the optimizer state and prepares the model inputs.
+  // This is called once during the construction of the Optimizer if the model state is available.
+  // In case the optimizer was instantiated with a nominal checkpoint, this function must be
+  // called when the model state is available.
+  // The optimizer checks if the optimizer state needs to be constructed in the train step function.
+  // However, this is exposed as a public function in case the user wants to construct the optimizer
+  // state before the train step function is called.
+  Status ConstructOptimizerStateAndInputs();
+
  private:
-  void Initialize(const std::string& optim_path_or_bytes,
+  void Initialize(const ModelIdentifiers& model_identifiers,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                   gsl::span<OrtCustomOpDomain* const> op_domains);
 
@@ -131,8 +140,7 @@ struct Optimizer {
 
   // Generates optimizer momentum states for parameters that require grad.
   Status GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states);
-  // Constructs the ortvalue inputs to be fed to the graph
-  // at each step.
+  // Constructs the ortvalue inputs to be fed to the graph at each step.
   Status ConstructInputs();
 
   /**
@@ -157,6 +165,8 @@ struct Optimizer {
   InlinedVector<OrtValue> inputs_;
 
   int32_t group_count_{0};
+
+  bool delay_optimizer_state_construction_{false};
 };
 
 }  // namespace api

@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,21 +18,26 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class TrtFusedAttention {
+class TrtFusedAttention : public CudaKernel {
  public:
-  TrtFusedAttention();
+  TrtFusedAttention(const OpKernelInfo& info);
 
  protected:
-  MHARunner* GetFusedRunner(const cudaDeviceProp& device_prop, const PackedAttentionParameters& parameters) const;
+  MHARunner* GetFusedRunner(const cudaDeviceProp& device_prop,
+                            bool has_attention_bias,
+                            const PackedAttentionParameters& parameters) const;
 
- private:
+ protected:
+  const AttentionKernelOptions* kernel_options_;
+
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
+  mutable std::once_flag fused_fp16_runner_created_;
 };
 
 template <typename T>
-class PackedAttention final : public TrtFusedAttention<T>, public CudaKernel {
+class PackedAttention final : public TrtFusedAttention<T> {
  public:
   PackedAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -42,7 +48,7 @@ class PackedAttention final : public TrtFusedAttention<T>, public CudaKernel {
                      const TensorShape& bias_shape,
                      const TensorShape& packing_token_offset_shape,
                      const TensorShape& cu_seq_len_shape,
-                     const Tensor* relative_position_bias,
+                     const Tensor* attention_bias,
                      PackedAttentionParameters& parameters) const;
 
   int GetNumHeads() const { return num_heads_; }

@@ -45,7 +45,7 @@ class PadOpBuilder : public BaseOpBuilder {
     return 11;
   }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
@@ -115,7 +115,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
 }
 
-bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool PadOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                      const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
 
@@ -152,14 +152,13 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
 
   // only support if `pads` input is known and does not contain negative values
   {
-    const auto pads_initializer_it = initializers.find(inputs[1].node_arg.Name());
-    if (pads_initializer_it == initializers.end()) {
-      LOGS_DEFAULT(VERBOSE) << "pads must be known";
+    const auto* pads_initializer = graph_viewer.GetConstantInitializer(inputs[1].node_arg.Name());
+    if (!pads_initializer) {
+      LOGS_DEFAULT(VERBOSE) << "pads must be a constant initializer";
       return false;
     }
 
-    const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
-    Initializer unpacked_tensor(pads_initializer);
+    Initializer unpacked_tensor(*pads_initializer);
     auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (size_t i = 0; i < unpacked_tensor.size(); i++) {
       if (tensor_data[i] < 0) {
@@ -173,8 +172,8 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
   // only support if `constant_value` input is known
   // Note: Could add support for non-constant initializer later. Then we need to ensure it is a scalar (with shape []).
   if (inputs.size() > 2) {
-    if (!Contains(initializers, inputs[2].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "constant_value must be known";
+    if (!graph_viewer.GetConstantInitializer(inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "constant_value must be a constant initializer";
       return false;
     }
   }

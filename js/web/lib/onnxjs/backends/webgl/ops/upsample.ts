@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
-import {Graph} from '../../../graph';
-import {OperatorImplementation, OperatorInitialization} from '../../../operators';
-import {Tensor} from '../../../tensor';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../../../attribute-with-cache-key';
+import { Graph } from '../../../graph';
+import { OperatorImplementation, OperatorInitialization } from '../../../operators';
+import { Tensor } from '../../../tensor';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, TextureType } from '../types';
 
 export interface UpsampleAttributes extends AttributeWithCacheKey {
   readonly opset: number;
@@ -33,27 +33,33 @@ const upsampleProgramMetadata = {
   inputTypes: [TextureType.unpacked],
 };
 
-export const upsample: OperatorImplementation<UpsampleAttributes> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: UpsampleAttributes): Tensor[] => {
-      validateInputs(inputs, attributes);
-      const output = inferenceHandler.run(
-          {
-            ...upsampleProgramMetadata,
-            cacheHint: attributes.cacheKey,
-            get: () => createUpsampleProgramInfo(inferenceHandler, inputs, attributes)
-          },
-          inputs);
-      return [output];
-    };
+export const upsample: OperatorImplementation<UpsampleAttributes> = (
+  inferenceHandler: WebGLInferenceHandler,
+  inputs: Tensor[],
+  attributes: UpsampleAttributes,
+): Tensor[] => {
+  validateInputs(inputs, attributes);
+  const output = inferenceHandler.run(
+    {
+      ...upsampleProgramMetadata,
+      cacheHint: attributes.cacheKey,
+      get: () => createUpsampleProgramInfo(inferenceHandler, inputs, attributes),
+    },
+    inputs,
+  );
+  return [output];
+};
 
-export const parseUpsampleAttributesV7: OperatorInitialization<UpsampleAttributes> =
-    (node: Graph.Node): UpsampleAttributes => parseUpsampleAttributes(node, 7);
+export const parseUpsampleAttributesV7: OperatorInitialization<UpsampleAttributes> = (
+  node: Graph.Node,
+): UpsampleAttributes => parseUpsampleAttributes(node, 7);
 
-export const parseUpsampleAttributesV9: OperatorInitialization<UpsampleAttributes> =
-    (node: Graph.Node): UpsampleAttributes => parseUpsampleAttributes(node, 9);
+export const parseUpsampleAttributesV9: OperatorInitialization<UpsampleAttributes> = (
+  node: Graph.Node,
+): UpsampleAttributes => parseUpsampleAttributes(node, 9);
 
 export const parseUpsampleAttributes = (node: Graph.Node, opset: number): UpsampleAttributes => {
-  const isResize = (opset >= 10);
+  const isResize = opset >= 10;
 
   // processing node attributes
   const mode = node.attributes.getString('mode', 'nearest');
@@ -70,17 +76,24 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
   const extrapolationValue = node.attributes.getFloat('extrapolation_value', 0.0);
 
   const coordinateTransformMode =
-      opset > 10 ? node.attributes.getString('coordinate_transformation_mode', 'half_pixel') : 'asymmetric';
-  if ([
-        'asymmetric', 'pytorch_half_pixel', 'tf_half_pixel_for_nn', 'align_corners', 'tf_crop_and_resize', 'half_pixel'
-      ].indexOf(coordinateTransformMode) === -1) {
+    opset > 10 ? node.attributes.getString('coordinate_transformation_mode', 'half_pixel') : 'asymmetric';
+  if (
+    [
+      'asymmetric',
+      'pytorch_half_pixel',
+      'tf_half_pixel_for_nn',
+      'align_corners',
+      'tf_crop_and_resize',
+      'half_pixel',
+    ].indexOf(coordinateTransformMode) === -1
+  ) {
     throw new Error(`coordinate_transform_mode '${coordinateTransformMode}' is not supported`);
   }
-  const needRoiInput = (coordinateTransformMode === 'tf_crop_and_resize');
+  const needRoiInput = coordinateTransformMode === 'tf_crop_and_resize';
   const useExtrapolation = needRoiInput;
 
   const nearestMode =
-      (mode === 'nearest' && opset >= 11) ? node.attributes.getString('nearest_mode', 'round_prefer_floor') : '';
+    mode === 'nearest' && opset >= 11 ? node.attributes.getString('nearest_mode', 'round_prefer_floor') : '';
   if (['round_prefer_floor', 'round_prefer_ceil', 'floor', 'ceil', ''].indexOf(nearestMode) === -1) {
     throw new Error(`nearest_mode '${nearestMode}' is not supported`);
   }
@@ -92,7 +105,7 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
   }
 
   const useNearest2xOptimization =
-      (opset < 11) ? true : (mode === 'nearest' && coordinateTransformMode === 'asymmetric' && nearestMode === 'floor');
+    opset < 11 ? true : mode === 'nearest' && coordinateTransformMode === 'asymmetric' && nearestMode === 'floor';
 
   let roiInputIdx = 0;
   let scalesInputIdx = 0;
@@ -127,37 +140,44 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
     useNearest2xOptimization,
     roiInputIdx,
     scalesInputIdx,
-    sizesInputIdx
+    sizesInputIdx,
   });
 };
 
-const createUpsampleProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: UpsampleAttributes): ProgramInfo => {
-      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const [inputWidth, inputHeight] =
-          inferenceHandler.calculateTextureWidthAndHeight(inputs[0].dims, TextureType.unpacked);
+const createUpsampleProgramInfo = (
+  inferenceHandler: WebGLInferenceHandler,
+  inputs: Tensor[],
+  attributes: UpsampleAttributes,
+): ProgramInfo => {
+  const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+  const [inputWidth, inputHeight] = inferenceHandler.calculateTextureWidthAndHeight(
+    inputs[0].dims,
+    TextureType.unpacked,
+  );
 
-      const outputShape = inputs[0].dims.map((dim, i) => Math.floor(dim * attributes.scales[i]));
-      const [outputWidth, outputHeight] =
-          inferenceHandler.calculateTextureWidthAndHeight(outputShape, TextureType.unpacked);
-      const dim = outputShape.length;
+  const outputShape = inputs[0].dims.map((dim, i) => Math.floor(dim * attributes.scales[i]));
+  const [outputWidth, outputHeight] = inferenceHandler.calculateTextureWidthAndHeight(
+    outputShape,
+    TextureType.unpacked,
+  );
+  const dim = outputShape.length;
 
-      const outputPitches = new Array<number>(dim);
-      const inputPitches = new Array<number>(dim);
-      let precalculatedPitches = `
+  const outputPitches = new Array<number>(dim);
+  const inputPitches = new Array<number>(dim);
+  let precalculatedPitches = `
       int output_pitches[${dim}];
       int input_pitches[${dim}];
       `;
-      for (let d = dim - 1; d >= 0; d--) {
-        outputPitches[d] = (d === dim - 1) ? 1 : outputPitches[d + 1] * outputShape[d + 1];
-        inputPitches[d] = (d === dim - 1) ? 1 : inputPitches[d + 1] * inputs[0].dims[d + 1];
+  for (let d = dim - 1; d >= 0; d--) {
+    outputPitches[d] = d === dim - 1 ? 1 : outputPitches[d + 1] * outputShape[d + 1];
+    inputPitches[d] = d === dim - 1 ? 1 : inputPitches[d + 1] * inputs[0].dims[d + 1];
 
-        precalculatedPitches += `
+    precalculatedPitches += `
         output_pitches[${d}] = ${outputPitches[d]};
         input_pitches[${d}] = ${inputPitches[d]};
         `;
-      }
-      const getInputFloatFunction = `
+  }
+  const getInputFloatFunction = `
       float getInputFloat(int index) {
         vec2 coords = offsetToCoords(index, ${inputWidth}, ${inputHeight});
         float value = getColorAsFloat(${glsl.texture2D}(X, coords));
@@ -165,9 +185,10 @@ const createUpsampleProgramInfo =
       }
       `;
 
-      const shaderSource = attributes.mode === 'nearest' ?
-          // nearest
-          `
+  const shaderSource =
+    attributes.mode === 'nearest'
+      ? // nearest
+        `
     ${getInputFloatFunction}
     float process(int indices[${dim}]) {
       int input_index = 0;
@@ -190,10 +211,10 @@ const createUpsampleProgramInfo =
       }
 
       return getInputFloat(input_index);
-    }` :
-          dim === 4 ?
-          // bilinear 4D
-              `
+    }`
+      : dim === 4
+        ? // bilinear 4D
+          `
     ${getInputFloatFunction}
     float process(int indices[4]) {
       int input_index = 0;
@@ -247,9 +268,9 @@ const createUpsampleProgramInfo =
       float y0 = x00 + float(y_offset) * (x01 - x00) / float(scales[2]);
       float y1 = x10 + float(y_offset) * (x11 - x10) / float(scales[2]);
       return y0 + float(x_offset) * (y1 - y0) / float(scales[3]);
-    }` :
-              // bilinear 2D
-              `
+    }`
+        : // bilinear 2D
+          `
     ${getInputFloatFunction}
     float process(int indices[2]) {
       int input_index = 0;
@@ -297,23 +318,28 @@ const createUpsampleProgramInfo =
       float y1 = x10 + float(y_offset) * (x11 - x10) / float(scales[0]);
       return y0 + float(x_offset) * (y1 - y0) / float(scales[1]);
     }`;
-      return {
-        ...upsampleProgramMetadata,
-        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-        shaderSource,
-        variables: [{
-          name: 'scales',
-          type: 'int',
-          arrayLength: attributes.scales.length,
-          data: attributes.scales.map(x => Math.ceil(x))
-        }]
-      };
-    };
+  return {
+    ...upsampleProgramMetadata,
+    output: { dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked },
+    shaderSource,
+    variables: [
+      {
+        name: 'scales',
+        type: 'int',
+        arrayLength: attributes.scales.length,
+        data: attributes.scales.map((x) => Math.ceil(x)),
+      },
+    ],
+  };
+};
 
 export const validateInputs = (inputs: Tensor[], attribute: UpsampleAttributes): void => {
-  if (!inputs || (attribute.opset < 9 && inputs.length !== 1) ||
-      (attribute.opset >= 9 && attribute.opset < 11 && inputs.length !== 2) ||
-      (attribute.opset >= 11 && inputs.length < 2)) {
+  if (
+    !inputs ||
+    (attribute.opset < 9 && inputs.length !== 1) ||
+    (attribute.opset >= 9 && attribute.opset < 11 && inputs.length !== 2) ||
+    (attribute.opset >= 11 && inputs.length < 2)
+  ) {
     throw new Error('invalid inputs.');
   }
 

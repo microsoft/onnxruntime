@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * A sequence of {@link OnnxValue}s all of the same type.
@@ -24,6 +25,7 @@ import java.util.List;
  * </ul>
  */
 public class OnnxSequence implements OnnxValue {
+  private static final Logger logger = Logger.getLogger(OnnxSequence.class.getName());
 
   static {
     try {
@@ -40,6 +42,8 @@ public class OnnxSequence implements OnnxValue {
 
   private final SequenceInfo info;
 
+  private boolean closed;
+
   /**
    * Creates the wrapper object for a native sequence.
    *
@@ -53,6 +57,7 @@ public class OnnxSequence implements OnnxValue {
     this.nativeHandle = nativeHandle;
     this.allocatorHandle = allocatorHandle;
     this.info = info;
+    this.closed = false;
   }
 
   @Override
@@ -76,6 +81,7 @@ public class OnnxSequence implements OnnxValue {
    */
   @Override
   public List<? extends OnnxValue> getValue() throws OrtException {
+    checkClosed();
     if (info.sequenceOfMaps) {
       OnnxMap[] maps = getMaps(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
       return Collections.unmodifiableList(Arrays.asList(maps));
@@ -110,10 +116,27 @@ public class OnnxSequence implements OnnxValue {
     return "OnnxSequence(info=" + info.toString() + ")";
   }
 
+  @Override
+  public synchronized boolean isClosed() {
+    return closed;
+  }
+
   /** Closes this sequence, releasing the native memory backing it and it's elements. */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  public synchronized void close() {
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed sequence.");
+    }
+  }
+
+  /** Checks if the OnnxValue is closed, if so throws {@link IllegalStateException}. */
+  protected void checkClosed() {
+    if (closed) {
+      throw new IllegalStateException("Trying to use a closed OnnxValue");
+    }
   }
 
   private native OnnxMap[] getMaps(long apiHandle, long nativeHandle, long allocatorHandle)

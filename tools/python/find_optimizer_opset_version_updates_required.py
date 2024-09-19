@@ -54,7 +54,7 @@ def get_call_args_from_file(filename: str, function_or_declaration: str) -> typi
                     # TODO: handle automatically by merging lines
                     log.error(
                         "Call/Declaration is split over multiple lines. Please check manually."
-                        "File:{} Line:{}".format(filename, line_num)
+                        f"File:{filename} Line:{line_num}"
                     )
                     continue
 
@@ -199,9 +199,7 @@ def find_potential_issues(root_dir, op_to_opset):
                 latest = op_to_opset[op]
                 if int(latest) != int(last_version):
                     log.warning(
-                        "Newer opset found for {}. Latest:{} Optimizer support ends at {}. File:{}".format(
-                            op, latest, last_version, file
-                        )
+                        f"Newer opset found for {op}. Latest:{latest} Optimizer support ends at {last_version}. File:{file}"
                     )
             else:
                 log.error(f"Failed to find version information for {op}. File:{file}")

@@ -140,7 +140,6 @@ void resize(Index size, double reserveSizeFactor = 0) {
 }
 */
 #if !defined(DISABLE_SPARSE_TENSORS)
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 TEST(SparseToDenseMatMul, TestCsr) {
   constexpr int64_t rows = 9;
   constexpr int64_t cols = 9;
@@ -261,7 +260,6 @@ TEST(SparseToDenseMatMul, TestCsr) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
-#endif  // //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
 TEST(SparseToDenseMatMul, TestCoo) {
   constexpr int64_t rows = 9;

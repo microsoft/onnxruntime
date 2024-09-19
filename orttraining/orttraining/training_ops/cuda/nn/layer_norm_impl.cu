@@ -30,8 +30,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 namespace {
   // This is the un-specialized struct.  Note that we prevent instantiation of this
   // struct by putting an undefined symbol in the function body so it won't compile.

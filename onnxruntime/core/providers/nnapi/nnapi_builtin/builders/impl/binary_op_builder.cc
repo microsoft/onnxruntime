@@ -34,10 +34,10 @@ class BinaryOpBuilder : public BaseOpBuilder {
  private:
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
                                            const OpSupportCheckParams& params) const override;
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const GraphViewer& graph_viewer, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
@@ -95,7 +95,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (is_quant_op) {
     ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(
-        model_builder.GetInitializerTensors(), node_unit,
+        model_builder.GetGraphViewer(), node_unit,
         a_scale, b_scale, y_scale,
         a_zero_point, b_zero_point, y_zero_point));
   }
@@ -163,22 +163,22 @@ int BinaryOpBuilder::GetMinSupportedOpSet(const NodeUnit& node_unit) const {
 }
 
 bool BinaryOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   bool is_quantized_op = IsQuantizedOp(node_unit);
   bool is_pow = node_unit.OpType() == "Pow";
   if (!is_quantized_op && !is_pow)
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
 
   if (is_quantized_op) {
     // QLinearAdd/QDQAdd/QLinearMul/QDQMul
     if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, ArgType::kInput))
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0, 1}, params, ArgType::kInput))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput))
       return false;
   }
 
@@ -203,7 +203,7 @@ bool BinaryOpBuilder::HasSupportedInputOutputsImpl(
   return true;
 }
 
-bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+bool BinaryOpBuilder::IsOpSupportedImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& node_unit,
                                         const OpSupportCheckParams& /* params */) const {
   const auto& op_type(node_unit.OpType());
   const auto& inputs = node_unit.Inputs();

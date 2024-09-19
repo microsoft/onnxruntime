@@ -7,7 +7,7 @@ from logging import getLogger
 import numpy as np
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from onnx import TensorProto, helper, numpy_helper  # noqa: F401
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -239,7 +239,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 [0, None, 0, 0, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
-            )  # yapf: disable
+            )
         else:
             qkv_nodes = self.model.match_parent_path(
                 normalize_node,
@@ -247,7 +247,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 [None, 0, 0, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
-            )  # yapf: disable
+            )
 
         if qkv_nodes is None:
             return
@@ -361,7 +361,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                     "Div",
                 ],
                 [1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
-            )  # yapf: disable
+            )
             if mask_nodes is None:
                 logger.debug("fuse_attention: failed to match unidirectional mask path")
                 return
@@ -414,7 +414,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                         ),  # useless cast and reshape are removed.
                     ],
                     output_name_to_node,
-                )  # yapf: disable
+                )
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
                     return
@@ -437,7 +437,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                     ),
                 ],
                 output_name_to_node,
-            )  # yapf: disable
+            )
             if mask_nodes is None:
                 # TODO: match mask path for GPT2LMHeadModel_BeamSearchStep.
                 logger.debug("fuse_attention: failed to match mask path")

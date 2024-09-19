@@ -13,7 +13,9 @@ namespace onnxruntime {
 //            The format includes support for the ModuleState (stores the module parameters), OptimizerGroups
 //            (stores the optimizer states), and PropertyBag
 //            (stores custom user properties with support for int64, float and strings).
-constexpr const int kCheckpointVersion = 1;
+// Version 2: Introduces the On-Device Training nominal checkpoint state.
+//             Changes include the addition of the is_nominal_state field in the checkpoint's ModuleState.
+constexpr const int kCheckpointVersion = 2;
 
 /**
  * @brief Check if the given checkpoint version is supported in this build

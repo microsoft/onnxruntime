@@ -1,4 +1,18 @@
-trigger: none
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 pr:
   branches:
     include:
@@ -11,8 +25,9 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 # gid of video and render group on gcramdrr1-mi100-085 and -86
@@ -22,7 +37,9 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.6
+    value: 6.1
+  - name: RocmVersionPatchSuffix
+    value: ".3"
 
 jobs:
 - job: Linux_Build
@@ -32,8 +49,8 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: onnxruntime-Ubuntu2004-AMD-CPU
-  timeoutInMinutes: 120
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
+  timeoutInMinutes: 240
 
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -49,7 +66,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -85,6 +102,7 @@ jobs:
             ccache -s; \
             python tools/ci_build/build.py \
               --config Release \
+              --enable_training \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
@@ -94,6 +112,7 @@ jobs:
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
               --nccl_home /opt/rocm \
+              --enable_nccl \
               --update \
               --build_dir /build \
               --build \
@@ -146,7 +165,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
@@ -167,7 +186,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            bash /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh"
+            bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
 

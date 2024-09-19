@@ -37,12 +37,14 @@ class ReshapeHelper {
     if (unknown_dim != -1) {
       // calculate unknown dimension
       ORT_ENFORCE(size != 0 && (input_shape_size % size) == 0,
-                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape, ", requested shape:", TensorShape(requested_shape));
+                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
+                  ", requested shape:", TensorShape(requested_shape));
       requested_shape[unknown_dim] = input_shape_size / size;
     } else {
       // check if the output shape is valid.
       ORT_ENFORCE(input_shape_size == size,
-                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape, ", requested shape:", TensorShape(requested_shape));
+                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
+                  ", requested shape:", TensorShape(requested_shape));
     }
   }
 };

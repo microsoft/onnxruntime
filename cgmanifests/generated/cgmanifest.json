@@ -3,86 +3,10 @@
   "Version": 1,
   "Registrations": [
     {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "autoconf",
-          "Version": "2.71",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "automake",
-          "Version": "1.16.5",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.5.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "libtool",
-          "Version": "2.4.7",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "git",
-          "Version": "2.36.2",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.36.2.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "sqlite_autoconf",
-          "Version": "3390200",
-          "DownloadUrl": "https://www.sqlite.org/2022/sqlite-autoconf-3390200.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "openssl",
-          "Version": "1.1.1q",
-          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1q.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "50cf2b6dd4fdf04309445f2eec8de7051d953abf",
-          "repositoryUrl": "https://github.com/besser82/libxcrypt.git"
-        },
-        "comments": "manylinux dependency LIBXCRYPT"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
+          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -102,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e2525550194ce3d8a2c4a3af451c9d9b3ae6650e",
+          "commitHash": "595228d99e3977ac27cb79d5963adda262af99ad",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -112,10 +36,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "8c0b94e793a66495e0b1f34a5eb26bd7dc672db0",
+          "commitHash": "f46495ea96f68fc3f6c394f099b2992743f6ff7f",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "dbb0094fd0cb936469e35320bf37e866ef7a1da4",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "coremltools"
       }
     },
     {
@@ -132,7 +66,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e7e1482087f58913b80a20b04d5c58d9d6d90155",
+          "commitHash": "6e921e1b1d21e84a5c82416ba7ecd98e33a436d0",
           "repositoryUrl": "https://github.com/HowardHinnant/date.git"
         },
         "comments": "date"
@@ -152,7 +86,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6df40a2471737b27271bdd9b900ab5f3aec746c7",
+          "commitHash": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "flatbuffers"
@@ -182,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "361e8d1cfe0c6c36d30b39f1b61302ece5507320",
+          "commitHash": "a6ad7fbbdc2e14fab82bb8a6d27760d700198cbf",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "google_benchmark"
@@ -192,7 +126,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
+          "commitHash": "13de152c2a1cd73ff4df97bd2c406b6d15d34af3",
           "repositoryUrl": "https://github.com/google/nsync.git"
         },
         "comments": "google_nsync"
@@ -202,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "519beb0e52c842729b4b53731d27c0e0c32ab4a2",
+          "commitHash": "e39786088138f2749d64e9e90e0f9902daa77c40",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -212,7 +146,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -242,7 +176,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5f4caba4e7a9017816e47becdd918fcc872039ba",
+          "commitHash": "55f373e164d3f092dd6c7a56e3de6f90c4c6f3dc",
           "repositoryUrl": "https://github.com/microsoft/wil.git"
         },
         "comments": "microsoft_wil"
@@ -262,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "7bc4e1ae9b36ec8ee635c3629b59ec525bbe82b9",
+          "commitHash": "0a0b5fb001ce0233ae3a6f99d849c0649e5a7361",
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
@@ -272,7 +206,17 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6ba67d3428e05f690145373ca87fb8d32f98df45",
+          "commitHash": "150e7527d5286ddd3a995c228dedf8d76a7a86bc",
+          "repositoryUrl": "https://github.com/intel/neural-speed.git"
+        },
+        "comments": "neural_speed"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "62bdde2a04fcd53c2409cb895ee18db445b7e755",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -302,7 +246,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
           "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
         },
         "comments": "pthreadpool"
@@ -312,7 +256,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "80dc998efced8ceb2be59756668a7e90e8bef917",
+          "commitHash": "941f45bcb51457884fa1afd6e24a67377d70f75c",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "pybind11"
@@ -322,7 +266,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "commitHash": "ca678952a9a8eaa6de112d154e8e104b22f9ab3f",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"
@@ -332,7 +276,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5723bb8950318135ed9cf4fc76bed988a087f536",
+          "commitHash": "6dcd83d60f7944926bfd308cc13979fc53dd69ca",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"
@@ -342,7 +286,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
+          "commitHash": "4cafc9196c4da9c817992b20f5253ef967685bf8",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "safeint"
@@ -362,10 +306,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c4f6b8c6bc94ff69048492fb34df0dfaf1983933",
+          "commitHash": "7d49e6c7e2f8896c47f586706e67e1fb215529dc",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "72c943dea2b9240cd09efde15191e144bc7c7d38",
+          "repositoryUrl": "https://github.com/protocolbuffers/utf8_range.git"
+        },
+        "comments": "utf8_range"
       }
     },
     {
@@ -376,6 +330,46 @@
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
         "comments": "extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "204da9c522cebec5220bba52cd3542ebcaf99e7a",
+          "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
+        },
+        "comments": "composable_kernel"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+          "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
+        },
+        "comments": "directx_headers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "98ca4e1941fe3263f128f74f10063a3ea35c7019",
+          "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
+        },
+        "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]

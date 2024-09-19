@@ -22,9 +22,9 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 #ifdef ORT_ENABLE_STREAM
-static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
-  return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
+  return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
@@ -66,6 +66,7 @@ SessionState::SessionState(Graph& graph,
                            concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool,
                            const DataTransferManager& data_transfer_mgr,
+                           const ExternalDataLoaderManager& external_data_loader_mgr,
                            const logging::Logger& logger,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
@@ -78,6 +79,7 @@ SessionState::SessionState(Graph& graph,
       thread_pool_(thread_pool),
       inter_op_thread_pool_(inter_op_thread_pool),
       data_transfer_mgr_(data_transfer_mgr),
+      external_data_loader_mgr_(external_data_loader_mgr),
       sess_options_(sess_options),
       prepacked_weights_container_(prepacked_weights_container)
 #ifdef ORT_ENABLE_STREAM
@@ -1030,7 +1032,10 @@ Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep = node.GetExecutionProviderType();
-      if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider && ep != kRocmExecutionProvider && ep != kDmlExecutionProvider) {
+      if (!ep.empty() &&
+          ep != kCpuExecutionProvider && ep != kCudaExecutionProvider &&
+          ep != kRocmExecutionProvider && ep != kDmlExecutionProvider &&
+          ep != kJsExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
@@ -1043,7 +1048,8 @@ Status SessionState::CreateSubgraphSessionState() {
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_, sess_options_, nullptr, allocators_);
+                                         external_data_loader_mgr_, logger_, profiler_, sess_options_,
+                                         prepacked_weights_container_, allocators_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1406,7 +1412,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
-  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  // std::cout << std::make_pair(&*p_seq_exec_plan_, this);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
@@ -1482,7 +1488,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             }
             return Status::OK();
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func));
+          logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
+          memory_profile_func, name_to_buffered_tensor_));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

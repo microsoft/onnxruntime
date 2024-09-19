@@ -10,7 +10,7 @@
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "core/util/math.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace rocm {
@@ -65,6 +65,18 @@ inline int warpSizeDynamic() {
   hipDeviceProp_t deviceProp;
   HIP_CALL_THROW(hipGetDeviceProperties(&deviceProp, 0));
   return deviceProp.warpSize;
+}
+
+inline void hipMemGetInfoAlt(uint32_t deviceId, size_t* pFree, size_t* pTotal) {
+  const auto status = hipMemGetInfo(pFree, pTotal);
+  if (status != hipSuccess) {
+    size_t usedMemory = 0;
+    ROCMSMI_CALL_THROW(rsmi_init(0));
+    ROCMSMI_CALL_THROW(rsmi_dev_memory_total_get(deviceId, RSMI_MEM_TYPE_VIS_VRAM, pTotal));
+    ROCMSMI_CALL_THROW(rsmi_dev_memory_usage_get(deviceId, RSMI_MEM_TYPE_VIS_VRAM, &usedMemory));
+    *pFree = *pTotal - usedMemory;
+    ROCMSMI_CALL_THROW(rsmi_shut_down());
+  }
 }
 
 }  // namespace rocm

@@ -3,7 +3,7 @@
 #ifndef FLATBUFFERS_GENERATED_ORTTRTINT8CALTABLE_CALTABLEFLATBUFFERS_H_
 #define FLATBUFFERS_GENERATED_ORTTRTINT8CALTABLE_CALTABLEFLATBUFFERS_H_
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 namespace CalTableFlatBuffers {
 

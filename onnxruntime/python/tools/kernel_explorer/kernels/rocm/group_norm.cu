@@ -12,17 +12,21 @@
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
 namespace py = pybind11;
-
+using onnxruntime::contrib::rocm::GetGroupNormWorkspaceSizeInBytes;
 namespace onnxruntime {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 class GroupNormNHWC : public IKernelExplorer {
  public:
-  GroupNormNHWC(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
-                int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
-                batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
+  GroupNormNHWC(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip, DeviceArray& bias,
+                DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace, float epsilon,
+                int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu,
+                bool broadcast_skip, int channels_per_block)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
+                channels_per_block) {
     type_string_ = "GroupNormNHWC_" + std::to_string(ThreadsPerBlock) + "_" + std::to_string(VecSize);
   }
 
@@ -40,7 +44,7 @@ class GroupNormNHWC : public IKernelExplorer {
   }
 
  private:
-  using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
+  using ParamsT = contrib::rocm::GroupNormNHWCTunableParams<T>;
   ParamsT params_{};
   contrib::rocm::GroupNormNHWCOp<T, ThreadsPerBlock, VecSize> op_{};
   std::string type_string_{};
@@ -49,11 +53,15 @@ class GroupNormNHWC : public IKernelExplorer {
 template <typename T>
 class GroupNormNHWCStaticSelection : public IKernelExplorer {
  public:
-  GroupNormNHWCStaticSelection(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
-                               int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
-                batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
+  GroupNormNHWCStaticSelection(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip,
+                               DeviceArray& bias, DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace,
+                               float epsilon, int batch_size, int num_channels, int height, int width, int num_groups,
+                               bool use_silu, bool broadcast_skip, int channels_per_block)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
+                channels_per_block) {
     type_string_ = "GroupNormNHWCStaticSelection";
   }
 
@@ -71,7 +79,7 @@ class GroupNormNHWCStaticSelection : public IKernelExplorer {
   }
 
  private:
-  using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
+  using ParamsT = contrib::rocm::GroupNormNHWCTunableParams<T>;
   ParamsT params_{};
   std::string type_string_{};
 };
@@ -79,11 +87,15 @@ class GroupNormNHWCStaticSelection : public IKernelExplorer {
 template <typename T>
 class GroupNormNHWCTunable : public IKernelExplorer {
  public:
-  GroupNormNHWCTunable(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
-                       int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
-                batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
+  GroupNormNHWCTunable(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip,
+                       DeviceArray& bias, DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace,
+                       float epsilon, int batch_size, int num_channels, int height, int width, int num_groups,
+                       bool use_silu, bool broadcast_skip, int channels_per_block)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
+                channels_per_block) {
     params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
@@ -100,21 +112,25 @@ class GroupNormNHWCTunable : public IKernelExplorer {
   }
 
  private:
-  using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
+  using ParamsT = contrib::rocm::GroupNormNHWCTunableParams<T>;
   ParamsT params_{};
   contrib::rocm::GroupNormNHWCTunableOp<T> op_{};
 };
 
 #ifdef USE_COMPOSABLE_KERNEL
-template <typename T, bool WithSwish>
+template <typename T, bool WithSilu>
 class CKGroupNormNHWC : public IKernelExplorer {
  public:
-  CKGroupNormNHWC(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
-                  int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
-                batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
-    for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float, WithSwish>()) {
+  CKGroupNormNHWC(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip,
+                  DeviceArray& bias, DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace,
+                  float epsilon, int batch_size, int num_channels, int height, int width, int num_groups,
+                  bool use_silu, bool broadcast_skip, int channels_per_block)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
+                channels_per_block) {
+    for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float, WithSilu>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -141,7 +157,7 @@ class CKGroupNormNHWC : public IKernelExplorer {
   }
 
  private:
-  using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
+  using ParamsT = contrib::rocm::GroupNormNHWCTunableParams<T>;
   using OpT = rocm::tunable::Op<ParamsT>;
   ParamsT params_{};
   std::vector<OpT> ops_;
@@ -151,15 +167,19 @@ class CKGroupNormNHWC : public IKernelExplorer {
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
-template <typename T, bool WithSwish>
+template <typename T, bool WithSilu>
 class GroupNormNHWCTriton : public IKernelExplorer {
  public:
-  GroupNormNHWCTriton(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
-                      int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
-                batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
-    for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSwish>()) {
+  GroupNormNHWCTriton(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip,
+                      DeviceArray& bias, DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace,
+                      float epsilon, int batch_size, int num_channels, int height, int width, int num_groups,
+                      bool use_silu, bool broadcast_skip, int channels_per_block)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
+                channels_per_block) {
+    for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSilu>()) {
       name_strings_.emplace_back(name);
       ops_.emplace_back(std::move(op));
     }
@@ -186,7 +206,7 @@ class GroupNormNHWCTriton : public IKernelExplorer {
   }
 
  private:
-  using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
+  using ParamsT = contrib::rocm::GroupNormNHWCTunableParams<T>;
   using OpT = rocm::tunable::Op<ParamsT>;
   ParamsT params_{};
   std::vector<OpT> ops_;
@@ -198,7 +218,8 @@ class GroupNormNHWCTriton : public IKernelExplorer {
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
   py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                      \
-                    int, int, int, int, int, float, bool>())                                                   \
+                    DeviceArray&, DeviceArray&, DeviceArray&, float,                                           \
+                    int, int, int, int, int, bool, bool, int>())                                               \
       .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                 \
       .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                       \
       .def("Run", &name<type, threads_per_block, vec_size>::Run)                                               \
@@ -220,7 +241,8 @@ class GroupNormNHWCTriton : public IKernelExplorer {
 #define REGISTER_COMMON(name, type, ...)                                                  \
   py::class_<type<__VA_ARGS__>>(m, name)                                                  \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
-                    int, int, int, int, int, float, bool>())                              \
+                    DeviceArray&, DeviceArray&, DeviceArray&, float,                      \
+                    int, int, int, int, int, bool, bool, int>())                          \
       .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                                  \
       .def("Profile", &type<__VA_ARGS__>::Profile)                                        \
       .def("Run", &type<__VA_ARGS__>::Run)                                                \
@@ -230,11 +252,11 @@ class GroupNormNHWCTriton : public IKernelExplorer {
 #define REGISTER_OP_TYPED(name, type) \
   REGISTER_COMMON(#name "_" #type, name, type)
 
-#define REGISTER_CK(type, with_swish, swish_suffix) \
-  REGISTER_COMMON("CKGroupNormNHWC" swish_suffix "_" #type, CKGroupNormNHWC, type, with_swish)
+#define REGISTER_CK(type, with_silu, silu_suffix) \
+  REGISTER_COMMON("CKGroupNormNHWC" silu_suffix "_" #type, CKGroupNormNHWC, type, with_silu)
 
-#define REGISTER_TRITON(type, with_swish, swish_suffix) \
-  REGISTER_COMMON("GroupNormNHWCTriton" swish_suffix "_" #type, GroupNormNHWCTriton, type, with_swish)
+#define REGISTER_TRITON(type, with_silu, silu_suffix) \
+  REGISTER_COMMON("GroupNormNHWCTriton" silu_suffix "_" #type, GroupNormNHWCTriton, type, with_silu)
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, half);
@@ -248,16 +270,16 @@ KE_REGISTER(m) {
 
 #ifdef USE_COMPOSABLE_KERNEL
   REGISTER_CK(half, false, "Pass");
-  REGISTER_CK(half, true, "Swish");
+  REGISTER_CK(half, true, "Silu");
   REGISTER_CK(float, false, "Pass");
-  REGISTER_CK(float, true, "Swish");
+  REGISTER_CK(float, true, "Silu");
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
   REGISTER_TRITON(half, false, "Pass");
-  REGISTER_TRITON(half, true, "Swish");
+  REGISTER_TRITON(half, true, "Silu");
   REGISTER_TRITON(float, false, "Pass");
-  REGISTER_TRITON(float, true, "Swish");
+  REGISTER_TRITON(float, true, "Silu");
 #endif
 }
 

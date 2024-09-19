@@ -95,9 +95,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                  sizes.begin(),
                  [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", inputs,
                                                                             emscripten::val::array(starts),
-                                                                            emscripten::val::array(sizes));
+                                                                            emscripten::val::array(sizes),
+                                                                            options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
@@ -114,6 +117,24 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
   }
+
+  if (input_defs.size() < 3) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
+                          << input_defs.size();
+    return false;
+  }
+
+  // Inputs: starts, ends, axes, and steps must be constant initializers if present.
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    // Optional tensors (axes, steps) can be indicated by an empty name, just ignore it.
+    const std::string input_name = GetTensorName(input_defs, i);
+    if (!input_name.empty() && !Contains(initializers, input_name)) {
+      LOGS(logger, VERBOSE) << "Input [" << input_name << "] of " << op_type
+                            << " [" << name << "] must be known as initializer";
+      return false;
+    }
+  }
+
   if (input_defs.size() == 5) {  // Check steps.
     const auto& steps_tensor = *initializers.at(input_defs[4]->Name());
     std::vector<uint8_t> unpacked_tensor;
@@ -140,18 +161,6 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
   }
 
-  if (input_defs.size() < 3) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data starts and ends) but got "
-                          << input_defs.size();
-    return false;
-  }
-
-  const auto& starts_name = input_defs[1]->Name();
-  const auto& ends_name = input_defs[2]->Name();
-  if (!Contains(initializers, starts_name) || !Contains(initializers, ends_name)) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] need starts and ends as initializer.";
-    return false;
-  }
   return true;
 }
 

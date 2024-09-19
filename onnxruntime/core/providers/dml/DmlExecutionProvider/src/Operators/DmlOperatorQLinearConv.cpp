@@ -117,6 +117,15 @@ public:
         convDesc.EndPadding = kernelArgs.endPadding;
         convDesc.GroupCount = m_groupCount;
 
+        TryConvertTensorToBroadcastScalar(kernelInfo, convDesc.InputScaleTensor,      IN_X_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, convDesc.InputZeroPointTensor,  IN_X_ZERO_POINT);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, convDesc.FilterScaleTensor,     IN_F_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, convDesc.FilterZeroPointTensor, IN_F_ZERO_POINT);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, convDesc.OutputScaleTensor,     IN_Y_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, convDesc.OutputZeroPointTensor, IN_Y_ZERO_POINT);
+
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION, &convDesc };
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }

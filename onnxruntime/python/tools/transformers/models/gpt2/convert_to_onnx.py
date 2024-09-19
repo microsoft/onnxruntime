@@ -15,29 +15,31 @@ This converts GPT2 model to onnx. Examples:
 """
 
 import argparse
+import csv
 import json
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
 import numpy
 import torch
-from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
-from gpt2_tester import Gpt2Tester
-from packaging import version
-from transformers import AutoConfig
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from benchmark_helper import (  # noqa: E402
+from benchmark_helper import (
     Precision,
     create_onnxruntime_session,
     get_ort_environment_variables,
     prepare_environment,
     setup_logger,
 )
-from quantize_helper import QuantizeHelper  # noqa: E402
+from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
+from gpt2_tester import Gpt2Tester
+from packaging import version
+from quantize_helper import QuantizeHelper
+from transformers import AutoConfig
+from transformers import __version__ as transformers_version
+
+from onnxruntime import __version__ as ort_version
 
 logger = logging.getLogger("")
 
@@ -103,7 +105,7 @@ def parse_arguments(argv=None):
         required=False,
         type=float,
         default=0,
-        help="the aboslute and relative tolerance for parity verification",
+        help="the absolute and relative tolerance for parity verification",
     )
 
     parser.add_argument(
@@ -242,8 +244,6 @@ def get_latency_name(batch_size, sequence_length, past_sequence_length):
 
 def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: str = "gpt2_parity_results.csv"):
     result = {}
-    from transformers import __version__ as transformers_version
-
     if version.parse(transformers_version) < version.parse(
         "3.1.0"
     ):  # past_key_values name does not exist in 3.0.2 or older
@@ -253,8 +253,6 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
     setup_logger(args.verbose)
 
     if not experiment_name:
-        import sys
-
         experiment_name = " ".join(argv if argv else sys.argv[1:])
 
     if args.tolerance == 0:
@@ -366,16 +364,18 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         output_path = onnx_model_paths["int8"]
 
     if args.output.endswith(".onnx") and output_path != args.output and not args.use_external_data_format:
-        import shutil
-
         shutil.move(output_path, args.output)
         output_path = args.output
 
     logger.info(f"Output path: {output_path}")
     model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)  # noqa: N806
 
+    provider = args.provider
+    if args.provider == "migraphx":
+        provider = "MIGraphXExecutionProvider"
+
     session = create_onnxruntime_session(
-        output_path, args.use_gpu, args.provider, enable_all_optimization=True, verbose=args.verbose
+        output_path, args.use_gpu, provider, enable_all_optimization=True, verbose=args.verbose
     )
     if args.model_class == "GPT2LMHeadModel" and session is not None:
         parity_result = gpt2helper.test_parity(
@@ -424,10 +424,6 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
             logger.info(f"fp16 conversion parameters:{fp16_params}")
 
         # Write results to file
-        import csv
-
-        from onnxruntime import __version__ as ort_version
-
         latency_name = get_latency_name(batch_size, sequence_length, past_sequence_length)
         csv_file_existed = os.path.exists(csv_filename)
         with open(csv_filename, mode="a", newline="") as csv_file:

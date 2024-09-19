@@ -224,8 +224,7 @@ BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
-  ArgsProduct(
-      b,
+  b->ArgsProduct(
       {{2},       // Rank,
        {1},       // N
        {1, 2},    // Groups

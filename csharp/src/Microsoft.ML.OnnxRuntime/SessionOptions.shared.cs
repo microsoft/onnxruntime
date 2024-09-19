@@ -507,7 +507,12 @@ namespace Microsoft.ML.OnnxRuntime
         {
             try
             {
+#if NETSTANDARD2_0
+                var ortApiBasePtr = NativeMethods.OrtGetApiBase();
+                var ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
+#else
                 var ortApiBase = NativeMethods.OrtGetApiBase();
+#endif
                 NativeApiStatus.VerifySuccess(
                     OrtExtensionsNativeMethods.RegisterCustomOps(this.handle, ref ortApiBase)
                 );
@@ -697,6 +702,15 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _enableCpuMemArena = true;
 
         /// <summary>
+        /// Disables the per session threads. Default is true.
+        /// This makes all sessions in the process use a global TP.
+        /// </summary>
+        public void DisablePerSessionThreads()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisablePerSessionThreads(handle));
+        }
+
+        /// <summary>
         /// Log Id to be used for the session. Default is empty string.
         /// </summary>
         /// <value>returns _logId value</value>
@@ -754,8 +768,8 @@ namespace Microsoft.ML.OnnxRuntime
         private int _logVerbosityLevel = 0;
 
         /// <summary>
-        // Sets the number of threads used to parallelize the execution within nodes
-        // A value of 0 means ORT will pick a default
+        /// Sets the number of threads used to parallelize the execution within nodes
+        /// A value of 0 means ORT will pick a default
         /// </summary>
         /// <value>returns _intraOpNumThreads value</value>
         public int IntraOpNumThreads
@@ -773,9 +787,9 @@ namespace Microsoft.ML.OnnxRuntime
         private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
-        // Sets the number of threads used to parallelize the execution of the graph (across nodes)
-        // If sequential execution is enabled this value is ignored
-        // A value of 0 means ORT will pick a default
+        /// Sets the number of threads used to parallelize the execution of the graph (across nodes)
+        /// If sequential execution is enabled this value is ignored
+        /// A value of 0 means ORT will pick a default
         /// </summary>
         /// <value>returns _interOpNumThreads value</value>
         public int InterOpNumThreads

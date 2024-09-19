@@ -1,0 +1,35 @@
+parameters:
+  - name: build_id
+    type: string
+    default: 'latest'
+  - name: project
+    type: string
+    default: 'Lotus'
+  - name: pipeline
+    type: string
+    default: 'Python-CUDA-Packaging-Pipeline'
+
+resources:
+  repositories:
+    - repository: manylinux
+      type: Github
+      endpoint: Microsoft
+      name: pypa/manylinux
+      ref: 5eda9aded5462201e6310105728d33016e637ea7
+
+stages:
+  # ****The following Stage depend on all previous tags. ***
+  # GPU resources are very limited,
+  # To utilize gpu resource more efficiently, run GPU job only after all cpus jobs succeed
+  - stage: Linux_Test_GPU_x86_64_stage
+    dependsOn:
+    jobs:
+      - template: stages/jobs/py-linux-cuda-package-test-job.yml
+        parameters:
+          CudaVersion: '12.2'
+          machine_pool: 'Onnxruntime-Linux-GPU'
+          timeout: 480
+          build_id: ${{ parameters.build_id }}
+          project: ${{ parameters.project }}
+          pipeline: ${{ parameters.pipeline }}
+

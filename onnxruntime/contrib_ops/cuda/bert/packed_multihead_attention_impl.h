@@ -17,7 +17,8 @@ struct PackedMultiHeadAttentionData {
   const T* key;
   const T* value;
   const T* bias;
-  const T* relative_position_bias;
+  const T* attention_bias;
+
   const int32_t* token_offset;
   const int32_t* cumulative_sequence_length;
 
@@ -29,6 +30,7 @@ struct PackedMultiHeadAttentionData {
 
   void* fused_runner;
 
+  bool use_flash_attention;
   bool use_memory_efficient_attention;
 };
 

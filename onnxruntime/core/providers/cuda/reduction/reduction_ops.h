@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/optional.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
 namespace onnxruntime {

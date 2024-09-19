@@ -91,21 +91,58 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
   return count;
 }
 
-void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, std::string_view log_id,
-                               std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
-  // read raw data from model provided by the model_path
-  std::ifstream stream(model_path, std::ios::in | std::ios::binary);
-  std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
+void VerifyEPNodeAssignment(const Graph& graph, const std::string& provider_type,
+                            ExpectedEPNodeAssignment assignment) {
+  const auto provider_node_count = CountAssignedNodes(graph, provider_type);
+  if (assignment == ExpectedEPNodeAssignment::All) {
+    // Verify the entire graph is assigned to the EP
+    ASSERT_EQ(provider_node_count, graph.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+  } else if (assignment == ExpectedEPNodeAssignment::None) {
+    // or none of the graph
+    ASSERT_EQ(provider_node_count, 0) << "Some nodes were assigned to " << provider_type;
+  } else {
+    // or some of the graph
+    ASSERT_GT(provider_node_count, 0) << "No nodes were assigned to " << provider_type;
+  }
 }
 
-void RunAndVerifyOutputsWithEP(const std::string& model_data, std::string_view log_id,
+static gsl::span<const std::byte> GetModelBytes(ModelPathOrBytes model_path_or_bytes,
+                                                std::vector<std::byte>& byte_buffer_out) {
+  if (const auto* model_bytes = std::get_if<gsl::span<const std::byte>>(&model_path_or_bytes);
+      model_bytes != nullptr) {
+    byte_buffer_out = std::vector<std::byte>{};
+    return *model_bytes;
+  }
+
+  const auto model_path = std::get<std::basic_string_view<ORTCHAR_T>>(model_path_or_bytes);
+
+  std::vector<std::byte> byte_buffer{};
+  std::ifstream stream{std::basic_string<ORTCHAR_T>{model_path},
+                       std::ios::in | std::ios::binary | std::ios::ate};
+  ORT_ENFORCE(stream, "Failed to open file.");
+  const auto num_bytes = narrow<size_t>(stream.tellg());
+  byte_buffer.resize(num_bytes);
+  stream.seekg(0);
+  ORT_ENFORCE(stream.read(reinterpret_cast<char*>(byte_buffer.data()), num_bytes), "Failed to read file.");
+
+  byte_buffer_out = std::move(byte_buffer);
+  return gsl::span<const std::byte>(byte_buffer_out);
+}
+
+void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+                               const EPVerificationParams& params,
+                               const std::function<void(SessionOptions&)>& session_options_updater,
+                               bool verify_outputs) {
+  std::vector<std::byte> model_data_buffer{};
+  const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
+
   SessionOptions so;
+  if (session_options_updater) {
+    session_options_updater(so);
+  }
+
   so.session_logid = log_id;
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
@@ -142,26 +179,34 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, std::string_view l
   ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
-  // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
   const auto& graph2 = session_object2.GetGraph();
-  auto ep_nodes = CountAssignedNodes(graph2, provider_type);
-  if (params.ep_node_assignment == ExpectedEPNodeAssignment::All) {
-    // Verify the entire graph is assigned to the EP
-    ASSERT_EQ(ep_nodes, graph2.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
-  } else if (params.ep_node_assignment == ExpectedEPNodeAssignment::None) {
-    // Check if expected failure path is correctly handled by ep. (only used in NNAPI EP QDQ model test case for now)
-    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
-  } else {
-    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
-  }
+  ASSERT_NO_FATAL_FAILURE(VerifyEPNodeAssignment(graph2, provider_type, params.ep_node_assignment));
 
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(output_names, expected_fetches, fetches, params);
+  if (verify_outputs) {
+    VerifyOutputs(output_names, expected_fetches, fetches, params);
+  }
 
   if (params.graph_verifier) {
     (*params.graph_verifier)(graph2);
+  }
+}
+
+void TestModelLoad(ModelPathOrBytes model_path_or_bytes,
+                   std::unique_ptr<IExecutionProvider> execution_provider,
+                   const std::function<void(const Graph&)>& check_graph) {
+  std::vector<std::byte> model_data_buffer{};
+  const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
+
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  if (check_graph) {
+    check_graph(session_object.GetGraph());
   }
 }
 
@@ -188,7 +233,7 @@ void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
   using namespace ONNX_NAMESPACE;
-  Path model_path;
+  std::filesystem::path model_path;
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> ind_span;
   std::vector<int64_t> converted_indices;

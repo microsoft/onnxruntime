@@ -28,7 +28,7 @@ constexpr const char* RKNPU = "Rknpu";
 struct RknpuFuncState {
   std::string uniq_input_shape;
 
-  std::unique_ptr<rk::nn::Exection> exector;
+  std::unique_ptr<rk::nn::Execution> exector;
   ONNX_NAMESPACE::ModelProto model_proto;
   std::unordered_map<std::string, int> input_map;
   std::unordered_map<std::string, int> output_map;
@@ -282,7 +282,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       std::unique_ptr<RknpuFuncState> p =
           std::make_unique<RknpuFuncState>();
       rk::nn::Graph* graph = new rk::nn::Graph();
-      *p = {"", std::unique_ptr<rk::nn::Exection>(new rk::nn::Exection(graph)),
+      *p = {"", std::unique_ptr<rk::nn::Execution>(new rk::nn::Execution(graph)),
             model_proto_[context->node_name], input_info_[context->node_name],
             output_info_[context->node_name],
             std::vector<int>{}, std::vector<int>{}};

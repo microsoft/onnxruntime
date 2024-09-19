@@ -154,14 +154,14 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   const ONNX_NAMESPACE::TensorProto_DataType element_type =
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_output->TypeAsProto()->tensor_type().elem_type());
   new_cast_output_type_proto.mutable_tensor_type()->set_elem_type(element_type);
-  auto& new_cast_output = graph.GetOrCreateNodeArg(cast_output->Name() + "_transformed", &new_cast_output_type_proto);
+  auto& new_cast_output = graph.GetOrCreateNodeArg(cast_output->Name() + "/MatmulTransposeFusion/", &new_cast_output_type_proto);
 
   const std::array new_cast_input_defs{transpose_input};
   const std::array new_cast_output_defs{&new_cast_output};
   const std::array new_transpose_input_defs = {&new_cast_output};
   const std::array new_transpose_output_defs = {cast_output};
 
-  Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
+  Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "/MatmulTransposeFusion/"),
                                  cast->OpType(),
                                  "Created a new Cast node to interchange Cast and Transpose nodes",
                                  new_cast_input_defs,
@@ -385,7 +385,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     const std::array input_defs{left_input, right_input};
     const std::array output_defs{node.MutableOutputDefs()[0]};
 
-    Node& matmul_node = graph.AddNode(graph.GenerateNodeName("MatMul_With_Transpose"),
+    Node& matmul_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "/MatmulTransposeFusion/"),
                                       "FusedMatMul",
                                       "fused MatMul and Transpose ",
                                       input_defs,

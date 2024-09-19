@@ -26,8 +26,8 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 ImageScaler<T>::ImageScaler(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
-  ORT_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttr<float>("scale", &scale_));
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("bias", bias_));
 
   b_data_ = GetScratchBuffer<float>(bias_.size(), nullptr);
   // the transfer in kernel construction need to be sync on default stream.

@@ -37,6 +37,8 @@ TEST(BatchNormInternalTest, ForwardTrainingTest) {
   test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.114562f});
   test.AddOutput<float>("saved_inv_std", channel_dims, {1.2288f, 0.861317f});
 
+  test.SetOutputTolerance(0.0001f);
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
 

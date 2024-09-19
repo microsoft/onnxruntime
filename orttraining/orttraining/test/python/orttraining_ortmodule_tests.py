@@ -43,7 +43,7 @@ def run_ortmodule_ops_tests(cwd, log, transformers_cache):
 
     env = get_env_with_transformers_cache(transformers_cache)
 
-    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_onnx_ops_ortmodule.py"]
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_ortmodule_onnx_ops.py"]
 
     run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
 
@@ -146,7 +146,7 @@ def run_data_sampler_tests(cwd, log):
 def run_hooks_tests(cwd, log):
     log.debug("Running: Data hooks tests")
 
-    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_hooks.py"]
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_ortmodule_hooks.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 

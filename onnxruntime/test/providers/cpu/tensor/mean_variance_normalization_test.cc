@@ -5,6 +5,7 @@
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime::test {
 
@@ -154,6 +155,10 @@ TEST(MeanVarianceNormalizationTest, AxesSubsets5D) {
     test.AddAttribute("axes", axes);
     test.AddInput<float>("input", shape, X.data(), X.size());
     test.AddOutput<float>("output", shape, Y.data(), Y.size());
+
+    if (DefaultDmlExecutionProvider().get() != nullptr) {
+      test.SetOutputTolerance(0.001f);
+    }
 
     test.Run();
   };

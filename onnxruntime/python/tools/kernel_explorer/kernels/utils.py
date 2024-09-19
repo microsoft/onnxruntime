@@ -12,6 +12,10 @@ import scipy.special
 
 def dtype_to_bytes(dtype):
     type_map = {
+        "float8_e4m3fn": 1,
+        "float8_e4m3fnuz": 1,
+        "float8_e5m2": 1,
+        "float8_e5m2fnuz": 1,
         "float16": 2,
         "float32": 4,
         "float64": 8,
@@ -32,6 +36,8 @@ def dtype_to_suffix(dtype):
     return {
         "float32": "float",
         "float16": "half",
+        "float8_e4m3fn": "fp8e4m3fn",
+        "float8_e4m3fnuz": "fp8e4m3fnuz",
     }[dtype]
 
 
@@ -131,6 +137,11 @@ def gelu(x, bias):
 def relu(x, bias):
     x = x + bias
     return np.max(x, 0, keepdims=True)
+
+
+def root_mean_square(x, axis, epsilon):
+    rms = np.sqrt(np.mean(np.square(x), axis=axis, keepdims=True) + epsilon)
+    return rms
 
 
 def standardization(x, axis, epsilon):

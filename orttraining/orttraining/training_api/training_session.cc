@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/training_session.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime::training::api {
 
@@ -12,13 +13,12 @@ TrainingSession::TrainingSession(const Environment& session_env,
                                  const ModelIdentifiers& model_identifiers,
                                  gsl::span<OrtCustomOpDomain* const> custom_op_domains)
     : state_{state},
-      module_{std::make_unique<Module>(model_identifiers.train_model, state_,
-                                       session_options, session_env, providers,
-                                       model_identifiers.eval_model, custom_op_domains)},
-      optimizer_{model_identifiers.optim_model.has_value()
+      module_{std::make_unique<Module>(model_identifiers, state_,
+                                       session_options, session_env, providers, custom_op_domains)},
+      optimizer_{model_identifiers.IsOptimizerModelAvailable()
                      ? std::make_unique<Optimizer>(
-                           model_identifiers.optim_model.value(), state_,
-                           session_options, session_env, providers, custom_op_domains)
+                           model_identifiers, state_,
+                           session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 
 Status TrainingSession::RegisterScheduler(
@@ -112,7 +112,16 @@ Status TrainingSession::CopyParametersToBuffer(OrtValue& parameters_buffer, cons
 }
 
 Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
-  return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
+  const bool was_nominal_state = state_->module_checkpoint_state.is_nominal_state;
+  ORT_RETURN_IF_ERROR(module_->CopyBufferToParameters(parameters_buffer, trainable_only));
+
+  // If the checkpoint state was nominal before loading the params, then we need to construct the
+  // optimizer state and inputs.
+  if (was_nominal_state) {
+    ORT_RETURN_IF_ERROR(optimizer_->ConstructOptimizerStateAndInputs());
+  }
+
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

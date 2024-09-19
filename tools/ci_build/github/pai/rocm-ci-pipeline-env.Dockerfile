@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=5.6
+ARG ROCM_VERSION=6.1
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -41,7 +41,7 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # CMake
-ENV CMAKE_VERSION=3.26.3
+ENV CMAKE_VERSION=3.30.1
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
@@ -64,11 +64,8 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 # Create rocm-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
 ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.8
+RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
-
-# Conda base patch
-RUN pip install cryptography==41.0.0
 
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
@@ -77,9 +74,11 @@ SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
 
 # Install Pytorch
-RUN pip install install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
+RUN export MAJOR=$(cut -d '.' -f 1 <<< "$ROCM_VERSION") && \
+    export MINOR=$(cut -d '.' -f 2 <<< "$ROCM_VERSION") && \
+    export PATCH=$(cut -d '.' -f 3 <<< "$ROCM_VERSION") && \
+    pip install torch==2.1.2 torchvision==0.16.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${MAJOR}.${MINOR}/ && \
     pip install torch-ort --no-dependencies
-
 
 ##### Install Cupy to decrease CPU utilization
 # Install non dev openmpi
@@ -95,7 +94,7 @@ RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.b
 
 # Install CuPy, No stable version is available
 RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
-    git checkout fc251a808037f8a2270860c2a23a683bfc0de43e && \
+    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
     export CUPY_INSTALL_USE_HIP=1 && \
     export ROCM_HOME=/opt/rocm && \
     export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
@@ -116,7 +115,7 @@ RUN pip install \
     cerberus \
     sympy \
     h5py \
-    datasets==1.9.0 \
+    datasets==2.17.0 \
     requests \
     sacrebleu==1.5.1 \
     sacremoses \
@@ -126,11 +125,17 @@ RUN pip install \
     sentencepiece \
     wget \
     dill==0.3.4 \
-    pytorch_lightning==1.6.0 \
+    pytorch_lightning==2.3.3 \
+    tensorboard \
     pytest-xdist \
-    pytest-rerunfailures
+    pytest-rerunfailures \
+    ml_dtypes==0.3.0 \
+    pytest==7.4.4
 
-ENV ORTMODULE_ONNX_OPSET_VERSION=15
+# Install migraphx
+RUN apt update && apt install -y migraphx
+
+ENV ORTMODULE_ONNX_OPSET_VERSION=17
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

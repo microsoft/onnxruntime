@@ -14,19 +14,28 @@ namespace onnxruntime {
 @class ConstantSharing
 
 Transformer that traverses the graph top-down and performs constant sharing, i.e.,
-constant initializers having same dtype, value and shape, will be replaced by one single (newly created) initializer.
-Currently, only scalar valued initializers are handled.
+constant initializers having same data type, value and shape, will be replaced by one single initializer.
+Currently, only scalar-valued initializers are handled.
 */
 class ConstantSharing : public GraphTransformer {
  public:
   /**
-   * @param compatible_execution_providers comptatible execution provider list for considered nodes.
+   * @param compatible_execution_providers compatible execution provider list for considered nodes.
    * @param excluded_initializers explicitly excluded initializer names that should not changed.
    */
   ConstantSharing(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                   const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept
       : GraphTransformer("ConstantSharing", compatible_execution_providers),
         excluded_initializers_(excluded_initializers) {
+  }
+
+  bool ShouldOnlyApplyOnce() const override {
+#if defined(ENABLE_TRAINING)
+    return false;
+#else
+    // Reduce model processing time by applying this optimization only once for inference.
+    return true;
+#endif
   }
 
   static constexpr int64_t TENSOR_ELEM_COUNT_THRESHOLD = 8;

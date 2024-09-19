@@ -19,7 +19,7 @@ using onnxruntime::rnn::detail::Direction;
 using onnxruntime::rnn::detail::MakeDirection;
 
 // The class represents DeepCPU implementation of a long short term memory (LSTM) plus a Bahdanau Attention wraper.
-// The equivilent python usage could be checked int the corresponding op test directory, attention_lstm_data_gen.py.
+// The equivalent python usage could be checked int the corresponding op test directory, attention_lstm_data_gen.py.
 // Also please note that detail implementation re-used lot of code from current ONNXRuntime LSTM operator, refactor
 // is needed in future if this is become part of ONNX.
 class DeepCpuAttnLstmOp final : public OpKernel {

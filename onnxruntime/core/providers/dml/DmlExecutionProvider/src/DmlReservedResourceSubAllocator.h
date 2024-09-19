@@ -43,7 +43,7 @@ namespace Dml
 
         DmlReservedResourceSubAllocator(
             ID3D12Device* device,
-            std::shared_ptr<ExecutionContext> context,
+            ExecutionContext* context,
             ID3D12CommandQueue* queue,
             const D3D12_HEAP_PROPERTIES& heapProps,
             D3D12_HEAP_FLAGS heapFlags,
@@ -72,7 +72,7 @@ namespace Dml
         // resource flags, and initial resource state.
         DmlReservedResourceSubAllocator(
             ID3D12Device* device,
-            std::shared_ptr<ExecutionContext> context,
+            ExecutionContext* context,
             std::unique_ptr<DmlReservedResourceSubAllocator>&& subAllocator);
 
         void* Alloc(size_t size);
@@ -113,7 +113,7 @@ namespace Dml
         std::mutex m_mutex;
 
         Microsoft::WRL::ComPtr<ID3D12Device> m_device;
-        std::shared_ptr<ExecutionContext> m_context;
+        Microsoft::WRL::ComPtr<ExecutionContext> m_context;
         Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_queue;
         const D3D12_HEAP_PROPERTIES m_heapProperties;
         const D3D12_HEAP_FLAGS m_heapFlags;

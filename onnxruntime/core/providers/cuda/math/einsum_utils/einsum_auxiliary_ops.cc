@@ -51,25 +51,27 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
   CudaT one = cuda::ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = cuda::ToCudaType<T>::FromFloat(0.0f);
 
-  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
-                                                        CUBLAS_OP_N,
-                                                        CUBLAS_OP_N,
-                                                        static_cast<int>(N),
-                                                        static_cast<int>(M),
-                                                        static_cast<int>(K),
-                                                        &one,
-                                                        reinterpret_cast<const CudaT*>(input_2_data),
-                                                        static_cast<int>(N),
-                                                        static_cast<int>(right_stride),
-                                                        reinterpret_cast<const CudaT*>(input_1_data),
-                                                        static_cast<int>(K),
-                                                        static_cast<int>(left_stride),
-                                                        &zero,
-                                                        reinterpret_cast<CudaT*>(output_data),
-                                                        static_cast<int>(N),
-                                                        static_cast<int>(output_stride),
-                                                        static_cast<int>(num_batches),
-                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp()));
+  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
+      CUBLAS_OP_N,
+      CUBLAS_OP_N,
+      static_cast<int>(N),
+      static_cast<int>(M),
+      static_cast<int>(K),
+      &one,
+      reinterpret_cast<const CudaT*>(input_2_data),
+      static_cast<int>(N),
+      static_cast<int>(right_stride),
+      reinterpret_cast<const CudaT*>(input_1_data),
+      static_cast<int>(K),
+      static_cast<int>(left_stride),
+      &zero,
+      reinterpret_cast<CudaT*>(output_data),
+      static_cast<int>(N),
+      static_cast<int>(output_stride),
+      static_cast<int>(num_batches),
+      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
+      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->UseTF32()));
 
   return Status::OK();
 }

@@ -29,10 +29,10 @@ class OrtFormatModelDumper:
 
     def _dump_initializers(self, graph: fbs.Graph):
         print("Initializers:")
-        for idx in range(0, graph.InitializersLength()):
+        for idx in range(graph.InitializersLength()):
             tensor = graph.Initializers(idx)
             dims = []
-            for dim in range(0, tensor.DimsLength()):
+            for dim in range(tensor.DimsLength()):
                 dims.append(tensor.Dims(dim))
 
             print(f"{tensor.Name().decode()} data_type={tensor.DataType()} dims={dims}")
@@ -40,7 +40,7 @@ class OrtFormatModelDumper:
 
     def _dump_nodeargs(self, graph: fbs.Graph):
         print("NodeArgs:")
-        for idx in range(0, graph.NodeArgsLength()):
+        for idx in range(graph.NodeArgsLength()):
             node_arg = graph.NodeArgs(idx)
             type = node_arg.Type()
             if not type:
@@ -57,7 +57,7 @@ class OrtFormatModelDumper:
                 shape = tensor_type_and_shape.Shape()
                 if shape:
                     dims = []
-                    for dim in range(0, shape.DimLength()):
+                    for dim in range(shape.DimLength()):
                         d = shape.Dim(dim).Value()
                         if d.DimType() == fbs.DimensionValueType.DimensionValueType.VALUE:
                             dims.append(str(d.DimValue()))
@@ -76,8 +76,8 @@ class OrtFormatModelDumper:
         domain = node.Domain().decode() or "ai.onnx"  # empty domain defaults to ai.onnx
         since_version = node.SinceVersion()
 
-        inputs = [node.Inputs(i).decode() for i in range(0, node.InputsLength())]
-        outputs = [node.Outputs(i).decode() for i in range(0, node.OutputsLength())]
+        inputs = [node.Inputs(i).decode() for i in range(node.InputsLength())]
+        outputs = [node.Outputs(i).decode() for i in range(node.OutputsLength())]
         print(
             f"{node.Index()}:{node.Name().decode()}({domain}:{optype}:{since_version}) "
             f'inputs=[{",".join(inputs)}] outputs=[{",".join(outputs)}]'
@@ -91,12 +91,12 @@ class OrtFormatModelDumper:
         self._dump_initializers(graph)
         self._dump_nodeargs(graph)
         print("Nodes:")
-        for i in range(0, graph.NodesLength()):
+        for i in range(graph.NodesLength()):
             node = graph.Nodes(i)
             self._dump_node(node)
 
             # Read all the attributes
-            for j in range(0, node.AttributesLength()):
+            for j in range(node.AttributesLength()):
                 attr = node.Attributes(j)
                 attr_type = attr.Type()
                 if attr_type == fbs.AttributeType.AttributeType.GRAPH:
@@ -107,7 +107,7 @@ class OrtFormatModelDumper:
                     # the ONNX spec doesn't currently define any operators that have multiple graphs in an attribute
                     # so entering this 'elif' isn't currently possible
                     print(f"## Subgraphs for {node.OpType().decode()}.{attr.Name().decode()} ##")
-                    for k in range(0, attr.GraphsLength()):
+                    for k in range(attr.GraphsLength()):
                         print(f"## Subgraph {k} ##")
                         self._dump_graph(attr.Graphs(k))
                         print(f"## End Subgraph {k} ##")

@@ -82,7 +82,7 @@ class TestEP : public IExecutionProvider {
   TestTuningContext tuning_ctx_{this};
 
  public:
-  TestEP() : IExecutionProvider{kEPType, true} {}
+  TestEP() : IExecutionProvider{kEPType} {}
 
   ITuningContext* GetTuningContext() const override {
     return const_cast<TestTuningContext*>(&tuning_ctx_);
@@ -263,6 +263,7 @@ TEST(TunableOp, OpWrapsMutableFunctor) {
 
 class VecAddMoveOnlyFunctor {
  public:
+  VecAddMoveOnlyFunctor() = default;
   VecAddMoveOnlyFunctor(VecAddMoveOnlyFunctor&&) = default;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddMoveOnlyFunctor);
 
@@ -288,6 +289,7 @@ TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
 
 class VecAddWithIsSupportedMethod {
  public:
+  VecAddWithIsSupportedMethod() = default;
   VecAddWithIsSupportedMethod(VecAddWithIsSupportedMethod&&) = default;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddWithIsSupportedMethod);
 
@@ -457,6 +459,8 @@ class TunableVecAddSelectFastestIfSupported : public TunableOp<VecAddParamsRecor
   }
 };
 
+// We run Android tests in a simulator so the result might be different
+#if defined(__ANDROID__) && defined(NDEBUG)
 TEST(TunableOp, SelectFastestIfSupported) {
 #ifdef ORT_NO_RTTI
   GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
@@ -481,6 +485,7 @@ TEST(TunableOp, SelectFastestIfSupported) {
   ASSERT_EQ(last_run, "FastestNarrow");
 #endif
 }
+#endif
 
 TEST(TunableOp, DisabledWithManualSelection) {
 #ifdef ORT_NO_RTTI
@@ -531,7 +536,7 @@ class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
 
   void PostTuning(const VecAddParams* params) override {
     if (params->beta != 0) {
-      GSL_SUPPRESS(i .11)
+      GSL_SUPPRESS(i.11)
       delete[] params->c;
       delete params;
     }
@@ -663,7 +668,7 @@ TEST(TuningContext, TunableOpRespectTuningContext) {
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(last_run, "FastFull");
 
-    // After TunableOp(...), the result entry is corretly written.
+    // After TunableOp(...), the result entry is correctly written.
     ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 1u);
     ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
   }

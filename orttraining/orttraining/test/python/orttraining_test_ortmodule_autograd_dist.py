@@ -125,8 +125,6 @@ if __name__ == "__main__":
     try:
         mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
     except Exception:
-        import sys  # noqa: F811
-
         sys.stdout.flush()
         sys.stderr.flush()
         raise

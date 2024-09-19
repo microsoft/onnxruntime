@@ -7,6 +7,7 @@ package ai.onnxruntime;
 import java.lang.reflect.Array;
 import java.nio.Buffer;
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /** Describes an {@link OnnxTensor}, including it's size, shape and element type. */
 public class TensorInfo implements ValueInfo {
@@ -58,14 +59,37 @@ public class TensorInfo implements ValueInfo {
      */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
         16), // Non-IEEE floating-point format based on IEEE754 single-precision
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(
-        17), // Non-IEEE floating-point format based on IEEE754 single-precision
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ(
-        18), // Non-IEEE floating-point format based on IEEE754 single-precision
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(
-        19), // Non-IEEE floating-point format based on IEEE754 single-precision
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(
-        20); // Non-IEEE floating-point format based on IEEE754 single-precision
+    /**
+     * A non-IEEE 8-bit floating point format with 4 exponent bits and 3 mantissa bits, with NaN and
+     * no infinite values (FN).
+     *
+     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
+     * details.
+     */
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(17),
+    /**
+     * A non-IEEE 8-bit floating point format with 4 exponent bits and 3 mantissa bits, with NaN, no
+     * infinite values (FN) and no negative zero (UZ).
+     *
+     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
+     * details.
+     */
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ(18),
+    /**
+     * A non-IEEE 8-bit floating point format with 5 exponent bits and 2 mantissa bits.
+     *
+     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
+     * details.
+     */
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(19),
+    /**
+     * A non-IEEE 8-bit floating point format with 5 exponent bits and 2 mantissa bits, with NaN, no
+     * infinite values (FN) and no negative zero (UZ).
+     *
+     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
+     * details.
+     */
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(20);
 
     /** The int id on the native side. */
     public final int value;
@@ -136,6 +160,12 @@ public class TensorInfo implements ValueInfo {
   /** The shape of the tensor. */
   final long[] shape;
 
+  /** The names of the unbound dimensions. */
+  final String[] dimensionNames;
+
+  /** If there are non-empty dimension names */
+  private final boolean hasNames;
+
   /** The Java type of this tensor. */
   public final OnnxJavaType type;
 
@@ -154,6 +184,9 @@ public class TensorInfo implements ValueInfo {
    */
   TensorInfo(long[] shape, OnnxJavaType type, OnnxTensorType onnxType) {
     this.shape = shape;
+    this.dimensionNames = new String[shape.length];
+    Arrays.fill(dimensionNames, "");
+    this.hasNames = false;
     this.type = type;
     this.onnxType = onnxType;
     this.numElements = elementCount(shape);
@@ -165,10 +198,20 @@ public class TensorInfo implements ValueInfo {
    * <p>Called from JNI.
    *
    * @param shape The tensor shape.
+   * @param names The dimension names.
    * @param typeInt The native type int.
    */
-  TensorInfo(long[] shape, int typeInt) {
+  TensorInfo(long[] shape, String[] names, int typeInt) {
     this.shape = shape;
+    this.dimensionNames = names;
+    boolean hasNames = false;
+    for (String s : names) {
+      if (!s.isEmpty()) {
+        hasNames = true;
+        break;
+      }
+    }
+    this.hasNames = hasNames;
     this.onnxType = OnnxTensorType.mapFromInt(typeInt);
     this.type = OnnxJavaType.mapFromOnnxTensorType(this.onnxType);
     this.numElements = elementCount(shape);
@@ -183,15 +226,42 @@ public class TensorInfo implements ValueInfo {
     return Arrays.copyOf(shape, shape.length);
   }
 
+  /**
+   * Get a copy of the tensor's named dimensions.
+   *
+   * @return A copof the tensor's named dimensions.
+   */
+  public String[] getDimensionNames() {
+    return Arrays.copyOf(dimensionNames, dimensionNames.length);
+  }
+
   @Override
   public String toString() {
-    return "TensorInfo(javaType="
-        + type.toString()
-        + ",onnxType="
-        + onnxType.toString()
-        + ",shape="
-        + Arrays.toString(shape)
-        + ")";
+    String output =
+        "TensorInfo(javaType="
+            + type.toString()
+            + ",onnxType="
+            + onnxType.toString()
+            + ",shape="
+            + Arrays.toString(shape);
+    if (hasNames) {
+      output =
+          output
+              + ",dimNames=["
+              + Arrays.stream(dimensionNames)
+                  .map(
+                      a -> {
+                        if (a.isEmpty()) {
+                          return "\"\"";
+                        } else {
+                          return a;
+                        }
+                      })
+                  .collect(Collectors.joining(","))
+              + "]";
+    }
+    output = output + ")";
+    return output;
   }
 
   /**

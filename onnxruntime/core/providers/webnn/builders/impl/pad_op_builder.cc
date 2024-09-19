@@ -71,6 +71,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   NodeAttrHelper helper(node);
   const auto pad_mode = helper.Get("mode", std::string("constant"));
@@ -88,15 +89,15 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     const auto& pads_tensor = *initializers.at(input_defs[1]->Name());
     ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, logger), "Error while read pads tensor");
 
-    // Constant value and axes are optional.
-    if (input_defs.size() >= 3) {
+    // Constant value and axes are optional. Make sure they are not empty.
+    if (!GetTensorName(input_defs, 2).empty()) {
       const auto value_tensor = *initializers.at(input_defs[2]->Name());
       emscripten::val value = emscripten::val::object();
       ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, logger), "Cannot read constant value");
       options.set("value", value);
     }
 
-    if (input_defs.size() == 4) {
+    if (!GetTensorName(input_defs, 3).empty()) {
       const auto input_rank = input_shape.size();
       std::vector<int64_t> axes;
       const auto& axes_tensor = *initializers.at(input_defs[3]->Name());
@@ -143,9 +144,12 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       starts.push_back(start_padding[i] >= 0 ? SafeInt<uint32_t>(0) : SafeInt<uint32_t>(-start_padding[i]));
       sizes.push_back(SafeInt<uint32_t>(input_shape[i] + start_padding[i] + end_padding[i]));
     }
+    emscripten::val slice_options = emscripten::val::object();
+    slice_options.set("label", node.Name() + "_slice_output");
     output = model_builder.GetBuilder().call<emscripten::val>("slice", output,
                                                               emscripten::val::array(starts),
-                                                              emscripten::val::array(sizes));
+                                                              emscripten::val::array(sizes),
+                                                              slice_options);
   }
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
@@ -178,8 +182,10 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return false;
     }
     for (size_t i = 1; i < input_defs.size(); i++) {
-      if (!Contains(initializers, input_defs[i]->Name())) {
-        LOGS(logger, VERBOSE) << "Input [" << input_defs[i]->Name() << "] must be known as initializer";
+      // Optional tensors (constant_value, axes) can be indicated by an empty name, just ignore it.
+      const std::string input_name = GetTensorName(input_defs, i);
+      if (!input_name.empty() && !Contains(initializers, input_name)) {
+        LOGS(logger, VERBOSE) << "Input [" << input_name << "] must be known as initializer";
         return false;
       }
     }

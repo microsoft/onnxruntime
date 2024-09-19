@@ -5,7 +5,6 @@
 # --------------------------------------------------------------------------
 
 import os
-import unittest  # noqa: F401
 
 from onnx import ModelProto, TensorProto, external_data_helper, load_model, numpy_helper
 from parity_utilities import find_transformers_source

@@ -80,7 +80,7 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop, size_t rank, const gsl::span<c
   } break
 
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape,
-                       const TArray<int64_t>& input_strides, const void* input_data, void* output_data, int64_t N,
+                       const TArray<int64_t>& input_strides, const void* input_data, void* output_data, int64_t /*N*/,
                        const dim3& grid_size, const dim3& block_size) {
   switch (element_size) {
     HANDLE_TRANSPOSE_3D_TILE_DIM(int8_t);
@@ -145,7 +145,7 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
         (input_dims[3] % num_elements_per_thread) == 0 &&
         input_dims[1] <= prop.maxGridSize[1] &&
         input_dims[0] <= prop.maxGridSize[2]) {
-      // There are 2 constrains when luanching the kernels
+      // There are 2 constrains when launching the kernels
       // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
       // 2. block_size_y * num_block_ext >= input_dims[2]
       int64_t block_size_x = input_dims[3] / num_elements_per_thread;
@@ -248,10 +248,10 @@ __global__ void Transpose4DKernelParallelizeOneElementPerThread(
 }
 
 bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
-                                                    size_t element_size,
+                                                    size_t /*element_size*/,
                                                     int32_t rank,
                                                     const gsl::span<const int64_t>& input_dims,
-                                                    const gsl::span<const size_t>& permutations,
+                                                    const gsl::span<const size_t>& /*permutations*/,
                                                     dim3& grid_size, dim3& block_size) {
   if (rank == 4) {
     // dims[3]: block.x
@@ -261,7 +261,7 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
     if (input_dims[3] <= prop.maxThreadsPerBlock &&
         input_dims[1] <= prop.maxGridSize[1] &&
         input_dims[0] <= prop.maxGridSize[2]) {
-      // There are 2 constrains when luanching the kernels
+      // There are 2 constrains when launching the kernels
       // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
       // 2. block_size_y * num_block_ext >= input_dims[2]
       int64_t block_size_x = input_dims[3];

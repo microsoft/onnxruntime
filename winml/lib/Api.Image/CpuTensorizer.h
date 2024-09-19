@@ -39,7 +39,8 @@ class CpuTensorizer {
 
     auto nominalRangeConverter = NominalRangeConverter(pixelRange);
 
-    if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
+    if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 ||
+        formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
       // Convert BGR8 -> BGR8 or RGB8 -> RGB8
       for (uint64_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
@@ -52,7 +53,8 @@ class CpuTensorizer {
           nominalRangeConverter
         );
       }
-    } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
+    } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 ||
+               formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
       // Convert RGB8 -> BGR8 or BGR8 -> RGB8
       for (uint32_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
@@ -65,7 +67,8 @@ class CpuTensorizer {
           nominalRangeConverter
         );
       }
-    } else if (formatTo == kImageTensorChannelTypeGRAY8 && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
+    } else if (formatTo == kImageTensorChannelTypeGRAY8 &&
+               (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       // Convert BGR8 -> GRAY8 or RGB8 -> GRAY8
       uint32_t blueIncrement = formatFrom == kImageTensorChannelTypeBGR8 ? 0 : 2;
       uint32_t redIncrement = formatFrom == kImageTensorChannelTypeBGR8 ? 2 : 0;
@@ -80,7 +83,8 @@ class CpuTensorizer {
           pixelInd++;
         }
       }
-    } else if (formatFrom == kImageTensorChannelTypeGRAY8 && (formatTo == kImageTensorChannelTypeBGR8 || formatTo == kImageTensorChannelTypeRGB8)) {
+    } else if (formatFrom == kImageTensorChannelTypeGRAY8 &&
+               (formatTo == kImageTensorChannelTypeBGR8 || formatTo == kImageTensorChannelTypeRGB8)) {
       // Convert GRAY8 -> BGR8 or GRAY8 -> RGB8
       for (UINT32 i = start; i < end; i += bufferWidth) {
         for (UINT32 j = i; j < i + bytesPerRow; j += bytesPerPixel) {
@@ -112,13 +116,23 @@ class CpuTensorizer {
   template <typename T>
   static T ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter);
 
+  // clang-format off
   template <>
-  static float ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
+#if _MSVC_LANG < 202002L
+  static
+#endif
+  float ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
     return nominalRangeConverter.Normalize(static_cast<float>(input));
   }
+
+  // clang-format off
   template <>
-  static DirectX::PackedVector::HALF ConvertByteToFloat(
-    const BYTE& input, const NominalRangeConverter& nominalRangeConverter
+#if _MSVC_LANG < 202002L
+  static
+#endif
+  DirectX::PackedVector::HALF ConvertByteToFloat(
+    const BYTE& input,
+    const NominalRangeConverter& nominalRangeConverter
   ) {
     return nominalRangeConverter.Normalize(DirectX::PackedVector::XMConvertFloatToHalf(input));
   }
@@ -159,9 +173,13 @@ class CpuTensorizer {
     }
   }
 
+  // clang-format off
 #if defined(_M_AMD64) || defined(_M_IX86)
   template <>
-  static void DeinterleaveRowByteToFloat(
+#if _MSVC_LANG < 202002L
+  static
+#endif
+  void DeinterleaveRowByteToFloat(
     _In_ BYTE* pBuffer,
     _Inout_ float* xChannel,
     _Inout_ float* yChannel,

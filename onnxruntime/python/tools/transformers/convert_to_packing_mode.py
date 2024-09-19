@@ -67,7 +67,7 @@ class PackingAttentionBase:
                 last_layernorm_node = node
         return last_layernorm_node
 
-    def _are_attentions_supportted(self) -> bool:
+    def _are_attentions_supported(self) -> bool:
         raise NotImplementedError()
 
     def _insert_removepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
@@ -105,7 +105,7 @@ class PackingAttentionBase:
     def convert(self, use_symbolic_shape_infer: bool = True) -> None:
         logger.debug("start converting to packing model...")
 
-        if not self._are_attentions_supportted():
+        if not self._are_attentions_supported():
             return
 
         attention_mask = self._try_getting_attention_mask()
@@ -164,7 +164,7 @@ class PackingAttention(PackingAttentionBase):
     def __init__(self, model: OnnxModel):
         super().__init__(model, Operators.ATTENTION)
 
-    def _are_attentions_supportted(self) -> bool:
+    def _are_attentions_supported(self) -> bool:
         for node in self.attention_nodes:
             if OnnxModel.get_node_attribute(node, "past_present_share_buffer") is not None:
                 return False
@@ -184,9 +184,9 @@ class PackingAttention(PackingAttentionBase):
 
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
         for attention in self.attention_nodes:
-            relative_pos_bias = (
-                attention.input[AttentionInputIDs.RELATIVE_POSITION_BIAS]
-                if len(attention.input) > AttentionInputIDs.RELATIVE_POSITION_BIAS
+            attention_bias = (
+                attention.input[AttentionInputIDs.ATTENTION_BIAS]
+                if len(attention.input) > AttentionInputIDs.ATTENTION_BIAS
                 else ""
             )
             packed_attention = helper.make_node(
@@ -197,7 +197,7 @@ class PackingAttention(PackingAttentionBase):
                     attention.input[AttentionInputIDs.BIAS],
                     token_offset,
                     cumulative_sequence_length,
-                    relative_pos_bias,
+                    attention_bias,
                 ],
                 outputs=[attention.output[AttentionOutputIDs.OUTPUT]],
                 name=self.model.create_node_name(Operators.PACKEDATTENTION),
@@ -237,7 +237,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
                 return False
         return True
 
-    def _are_attentions_supportted(self) -> bool:
+    def _are_attentions_supported(self) -> bool:
         for node in self.attention_nodes:
             for attr in node.attribute:
                 if attr.name not in ["num_heads", "mask_filter_value", "scale"]:
@@ -261,9 +261,9 @@ class PackingMultiHeadAttention(PackingAttentionBase):
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
         gated_relative_pos_bias_count = 0
         for mha in self.attention_nodes:
-            relative_pos_bias = (
-                mha.input[MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS]
-                if len(mha.input) > MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS
+            attention_bias = (
+                mha.input[MultiHeadAttentionInputIDs.ATTENTION_BIAS]
+                if len(mha.input) > MultiHeadAttentionInputIDs.ATTENTION_BIAS
                 else ""
             )
             packed_mha = helper.make_node(
@@ -275,7 +275,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
                     mha.input[MultiHeadAttentionInputIDs.BIAS],
                     token_offset,
                     cumulative_sequence_length,
-                    relative_pos_bias,
+                    attention_bias,
                 ],
                 outputs=[mha.output[MultiHeadAttentionOutputIDs.OUTPUT]],
                 name=self.model.create_node_name(Operators.PACKED_MULTI_HEAD_ATTENTION),
@@ -293,8 +293,8 @@ class PackingMultiHeadAttention(PackingAttentionBase):
             self.node_name_to_graph_name[packed_mha.name] = self.this_graph_name
 
             # Append token_offset input to GatedRelativePositionBias
-            if relative_pos_bias:
-                rel_pos_bias_node = self.model.get_parent(mha, MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS)
+            if attention_bias:
+                rel_pos_bias_node = self.model.get_parent(mha, MultiHeadAttentionInputIDs.ATTENTION_BIAS)
                 if (
                     rel_pos_bias_node
                     and rel_pos_bias_node.op_type == "GatedRelativePositionBias"

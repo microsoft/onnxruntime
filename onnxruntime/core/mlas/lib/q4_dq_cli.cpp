@@ -218,12 +218,20 @@ quantize(const Cli& cli)
         } else {
             buf = std::cout.rdbuf();
         }
+#if defined(__GNUC__) && __GNUC__ >= 12
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored \
+    "-Wdangling-pointer"  // TODO: suppress warning about dangling pointer until we have a fix
         std::ostream stream(buf);
+#pragma GCC diagnostic pop
+#else
+        std::ostream stream(buf);
+#endif
+
         writeUint8Txt(stream, dstbuf.data(), dstbuf.size());
     }
     return 0;
 }
-
 
 int
 dequantize(const Cli& cli)
@@ -254,13 +262,14 @@ dequantize(const Cli& cli)
         out.write((const char*)dstbuf.data(), std::streamsize(dstbuf.size()) * sizeof(float));
     } else {
         std::streambuf* buf;
+        std::ofstream file_output_stream;
         if (cli.output_file) {
-            std::ofstream out(cli.output_file, std::ios::out);
-            if (!out) {
+            file_output_stream.open(cli.output_file, std::ios::out);
+            if (file_output_stream.fail()) {
                 std::cerr << "Cannot open output file " << cli.output_file << std::endl;
                 return -1;
             }
-            buf = out.rdbuf();
+            buf = file_output_stream.rdbuf();
         } else {
             buf = std::cout.rdbuf();
         }

@@ -858,12 +858,12 @@ struct FillMapTensors {
   static HRESULT Run(
     const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value
   ) {
-    AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
+    typename AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
     RETURN_HR_IF_NOT_OK_MSG(
       ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(&keys_mutable_data)), ort_api
     );
 
-    AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
+    typename AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
     RETURN_HR_IF_NOT_OK_MSG(
       ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data)), ort_api
     );
@@ -884,7 +884,7 @@ struct FillMapTensors<HSTRING, TAbiValue> {
   static HRESULT Run(
     const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value
   ) {
-    AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
+    typename AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
     RETURN_HR_IF_NOT_OK_MSG(
       ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data)), ort_api
     );
@@ -912,7 +912,7 @@ struct FillMapTensors<TAbiKey, HSTRING> {
   static HRESULT Run(
     const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value
   ) {
-    AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
+    typename AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
     RETURN_HR_IF_NOT_OK_MSG(
       ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(&keys_mutable_data)), ort_api
     );

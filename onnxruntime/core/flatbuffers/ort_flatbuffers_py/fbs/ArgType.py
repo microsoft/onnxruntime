@@ -5,4 +5,3 @@
 class ArgType(object):
     INPUT = 0
     OUTPUT = 1
-

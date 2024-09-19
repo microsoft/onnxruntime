@@ -33,10 +33,9 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 - name: packageName
-  # now we can build onnxruntime or onnxruntime-mobile for Android, need specify it here
   displayName: Package Name
   type: string
   default: 'onnxruntime-android'
@@ -64,9 +63,10 @@ jobs:
         mkdir -p $(artifacts_directory)
       workingDirectory: $(Build.BinariesDirectory)
 
+  #TODO: use a different docker file since this job doesn't need to rely on manylinux
   - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild

@@ -106,7 +106,7 @@ class PythonOpBase {
 
   // Name of containing class. For example, MyReLU.
   std::string name_;
-  int64_t inplace_;
+  std::vector<int64_t> all_output_to_tensor_input_reuse_map_;
   std::string input_convention_;
   bool is_training_mode_;
   // input_requires_grads_[i] indicates if the i-th inputs of apply() should have gradient.
@@ -149,6 +149,8 @@ class PythonOpBase {
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
 
+  bool safe_run_mode_enabled_{true};
+
  private:
   void AddPrimitiveTypeScalarArgs();
   void AddInputTupleArgs();
@@ -179,7 +181,7 @@ class PythonOpGradBase {
  protected:
   // Name of containing class. For example, MyReLU.
   std::string name_;
-  int64_t inplace_;
+
   // Input types of MyReLU.backward(...).
   std::vector<int64_t> input_tensor_types_;
 
@@ -189,6 +191,11 @@ class PythonOpGradBase {
   std::vector<int64_t> output_tensor_requires_grads_;
   std::vector<int64_t> arg_positions_;
   std::vector<int64_t> const_arg_positions_;
+
+  // Memory reuse map for all outputs.
+  std::vector<int64_t> all_output_to_tensor_input_reuse_map_;
+
+  bool safe_run_mode_enabled_{true};
 
  private:
   void SetPositions();

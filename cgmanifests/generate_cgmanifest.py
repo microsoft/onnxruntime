@@ -73,7 +73,7 @@ def add_github_dep(name, parsed_url):
             return
         # Make a REST call to convert to tag to a git commit
         url = f"https://api.github.com/repos/{org_name}/{repo_name}/git/refs/tags/{tag}"
-        print("requesting %s ..." % url)
+        print(f"requesting {url} ...")
         res = requests.get(url, auth=(args.username, args.token))
         response_json = res.json()
         tag_object = response_json["object"]
@@ -88,55 +88,6 @@ def add_github_dep(name, parsed_url):
         dep = GitDep(commit, git_repo_url)
         if dep not in git_deps:
             git_deps[dep] = name
-
-
-with open(
-    os.path.join(REPO_DIR, "tools", "ci_build", "github", "linux", "docker", "Dockerfile.manylinux2014_cuda11"),
-) as f:
-    for line in f:
-        if not line.strip():
-            package_name = None
-            package_filename = None
-            package_url = None
-        if package_filename is None:
-            m = re.match(r"RUN\s+export\s+(.+?)_ROOT=(\S+).*", line)
-            if m is not None:
-                package_name = m.group(1)
-                package_filename = m.group(2)
-            else:
-                m = re.match(r"RUN\s+export\s+(.+?)_VERSION=(\S+).*", line)
-                if m is not None:
-                    package_name = m.group(1)
-                    package_filename = m.group(2)
-        elif package_url is None:
-            m = re.match(r"(.+?)_DOWNLOAD_URL=(\S+)", line)
-            if m is not None:
-                package_url = m.group(2)
-                if package_name == "LIBXCRYPT":
-                    package_url = m.group(2) + "/v" + package_filename + ".tar.gz"
-                elif package_name == "CMAKE":
-                    package_url = m.group(2) + "/v" + package_filename + "/cmake-" + package_filename + ".tar.gz"
-                else:
-                    package_url = m.group(2) + "/" + package_filename + ".tar.gz"
-                parsed_url = urlparse(package_url)
-                if parsed_url.hostname == "github.com":
-                    add_github_dep("manylinux dependency " + package_name, parsed_url)
-                else:
-                    registration = {
-                        "Component": {
-                            "Type": "other",
-                            "other": {
-                                "Name": package_name.lower(),
-                                "Version": package_filename.split("-")[-1],
-                                "DownloadUrl": package_url,
-                            },
-                            "comments": "manylinux dependency",
-                        }
-                    }
-                    registrations.append(registration)
-                package_name = None
-                package_filename = None
-                package_url = None
 
 
 def normalize_path_separators(path):
@@ -164,8 +115,8 @@ proc = subprocess.run(
 submodule_lines = proc.stdout.splitlines()
 for submodule_line in submodule_lines:
     (absolute_path, url, commit) = submodule_line.split(" ")
-    git_deps[GitDep(commit, url)] = "git submodule at {}".format(
-        normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))
+    git_deps[GitDep(commit, url)] = (
+        f"git submodule at {normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))}"
     )
 
 with open(os.path.join(SCRIPT_DIR, "..", "cmake", "deps.txt")) as f:

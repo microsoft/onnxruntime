@@ -8,6 +8,7 @@ import { Image, Text, TextInput, View } from 'react-native';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import MNIST, { MNISTInput, MNISTOutput, MNISTResult, } from './mnist-data-handler';
 import { Buffer } from 'buffer';
+import { readFile } from 'react-native-fs';
 
 interface State {
   session:
@@ -39,10 +40,21 @@ export default class App extends React.PureComponent<{}, State> {
         this.setState({ imagePath });
 
         const modelPath = await MNIST.getLocalModelPath();
-        const session: InferenceSession = await InferenceSession.create(modelPath);
+
+        // test creating session with path
+        console.log('Creating with path');
+        const pathSession: InferenceSession = await InferenceSession.create(modelPath);
+        pathSession.release();
+
+        // and with bytes
+        console.log('Creating with bytes');
+        const base64Str = await readFile(modelPath, 'base64');
+        const bytes = Buffer.from(base64Str, 'base64');
+        const session: InferenceSession = await InferenceSession.create(bytes);
         this.setState({ session });
 
-        void this.infer();
+        console.log('Test session created');
+        void await this.infer();
       } catch (err) {
         console.log(err.message);
       }

@@ -6,6 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/webnn/builders/helper.h"
 
 #include <emscripten.h>
@@ -18,7 +19,7 @@ class Model;
 
 class WebNNExecutionProvider : public IExecutionProvider {
  public:
-  WebNNExecutionProvider(const std::string& webnn_device_flags, const std::string& webnn_power_flags);
+  explicit WebNNExecutionProvider(const std::string& webnn_device_flags);
   virtual ~WebNNExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -41,11 +42,12 @@ class WebNNExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
-  emscripten::val wnn_context_ = emscripten::val::object();
-  emscripten::val wnn_builder_ = emscripten::val::object();
+  emscripten::val wnn_context_ = emscripten::val::undefined();
+  emscripten::val wnn_limits_ = emscripten::val::undefined();
 
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::webnn::Model>> models_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 }  // namespace onnxruntime

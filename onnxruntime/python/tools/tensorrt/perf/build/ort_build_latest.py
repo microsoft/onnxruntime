@@ -13,6 +13,12 @@ def parse_arguments():
     parser.add_argument("-b", "--branch", required=False, default="master", help="Github branch to test perf off of")
     parser.add_argument("-s", "--save", required=False, help="Directory to archive wheel file")
     parser.add_argument("-a", "--use_archived", required=False, help="Archived wheel file")
+    parser.add_argument(
+        "--use_tensorrt_oss_parser",
+        action="store_true",
+        default=False,
+        help="Use TensorRT OSS Parser",
+    )
     args = parser.parse_args()
     return args
 
@@ -35,14 +41,14 @@ def install_new_ort_wheel(ort_master_path):
 def main():
     args = parse_arguments()
 
-    cmake_tar = "cmake-3.18.4-Linux-x86_64.tar.gz"
+    cmake_tar = "cmake-3.28.3-linux-x86_64.tar.gz"
     if not os.path.exists(cmake_tar):
-        subprocess.run(["wget", "-c", "https://cmake.org/files/v3.18/" + cmake_tar], check=True)
+        subprocess.run(["wget", "-c", "https://cmake.org/files/v3.28/" + cmake_tar], check=True)
     tar = tarfile.open(cmake_tar)
     tar.extractall()
     tar.close()
 
-    os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.18.4-Linux-x86_64"), "bin") + ":" + os.environ["PATH"]
+    os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.28.3-linux-x86_64"), "bin") + ":" + os.environ["PATH"]
     os.environ["CUDACXX"] = os.path.join(args.cuda_home, "bin", "nvcc")
 
     ort_master_path = args.ort_master_path
@@ -57,24 +63,24 @@ def main():
         subprocess.run(["git", "fetch"], check=True)
         subprocess.run(["git", "checkout", args.branch], check=True)
         subprocess.run(["git", "pull", "origin", args.branch], check=True)
-        subprocess.run(
-            [
-                "./build.sh",
-                "--config",
-                "Release",
-                "--use_tensorrt",
-                "--tensorrt_home",
-                args.tensorrt_home,
-                "--cuda_home",
-                args.cuda_home,
-                "--cudnn",
-                "/usr/lib/x86_64-linux-gnu",
-                "--build_wheel",
-                "--skip_tests",
-                "--parallel",
-            ],
-            check=True,
-        )
+        command = [
+            "./build.sh",
+            "--config",
+            "Release",
+            "--use_tensorrt",
+            "--tensorrt_home",
+            args.tensorrt_home,
+            "--cuda_home",
+            args.cuda_home,
+            "--cudnn",
+            "/usr/lib/x86_64-linux-gnu",
+            "--build_wheel",
+            "--skip_tests",
+            "--parallel",
+        ]
+        if args.use_tensorrt_oss_parser:
+            command.append("--use_tensorrt_oss_parser")
+        subprocess.run(command, check=True)
 
         ort_wheel_file = install_new_ort_wheel(ort_master_path)
 

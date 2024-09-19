@@ -14,7 +14,7 @@
 
 using namespace onnxruntime;
 
-OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
+OnnxModelInfo::OnnxModelInfo(const std::filesystem::path& model_url, bool is_ort_model)
     : model_url_(model_url) {
   if (is_ort_model) {
     InitOrtModelInfo(model_url);
@@ -38,7 +38,7 @@ static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<
   }
 }
 
-void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  // parse model
+void OnnxModelInfo::InitOnnxModelInfo(const std::filesystem::path& model_url) {  // parse model
   int model_fd;
   auto st = Env::Default().FileOpenRd(model_url, model_fd);
   if (!st.IsOK()) {
@@ -50,7 +50,9 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
   const bool parse_result = model_pb.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!parse_result) {
     (void)Env::Default().FileClose(model_fd);
-    ORT_THROW("Failed to load model because protobuf parsing failed.");
+    std::ostringstream oss;
+    oss << "Failed to load model from " << model_url << " because protobuf parsing failed.";
+    ORT_THROW(oss.str());
   }
   (void)Env::Default().FileClose(model_fd);
   {
@@ -91,7 +93,7 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
+void OnnxModelInfo::InitOrtModelInfo(const std::filesystem::path& model_url) {
   std::vector<uint8_t> bytes;
   size_t num_bytes = 0;
   const auto model_location = ToWideString(model_url);

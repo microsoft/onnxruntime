@@ -359,11 +359,7 @@ def main(output_path: str, domain_filter: [str]):
 
             for _, namemap in supportmap:
                 for n, schema, versions in namemap:  # noqa: B007
-                    s = '  * {}<a href="#{}">{}</a>\n'.format(
-                        support_level_str(schema.support_level),
-                        format_name_with_domain(domain, n),
-                        format_name_with_domain(domain, n),
-                    )
+                    s = f'  * {support_level_str(schema.support_level)}<a href="#{format_name_with_domain(domain, n)}">{format_name_with_domain(domain, n)}</a>\n'
                     fout.write(s)
 
         fout.write("\n")

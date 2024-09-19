@@ -24,7 +24,7 @@ namespace Dml
         // resource flags, and initial resource state.
         BucketizedBufferAllocator(
             ID3D12Device* device,
-            std::shared_ptr<ExecutionContext> context,
+            ExecutionContext* context,
             const D3D12_HEAP_PROPERTIES& heapProps,
             D3D12_HEAP_FLAGS heapFlags,
             D3D12_RESOURCE_FLAGS resourceFlags,
@@ -78,9 +78,16 @@ namespace Dml
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
 
-        std::shared_ptr<ExecutionContext> m_context;
+        ComPtr<ExecutionContext> m_context;
 
-    #if _DEBUG
+        // Unless specifically requested, allocation sizes are not rounded to enable pooling
+        // until SetDefaultRoundingMode is called.  This should be done at completion of session
+        // initialization.
+        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
+
+        std::unique_ptr<DmlSubAllocator> m_subAllocator;
+
+    #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet
         std::map<size_t, AllocationInfo*> m_outstandingAllocationsById;
     #endif

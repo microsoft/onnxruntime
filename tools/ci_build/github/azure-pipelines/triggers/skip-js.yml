@@ -1,0 +1,26 @@
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'

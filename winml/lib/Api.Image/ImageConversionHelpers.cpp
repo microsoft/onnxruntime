@@ -69,7 +69,8 @@ void _winmli::ConvertVideoFrameToVideoFrame(
   wgdx::Direct3D11::IDirect3DSurface spInputDirect3DSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
+  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) ||
+      (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
     WINML_THROW_HR(E_INVALIDARG);
   }
 
@@ -133,11 +134,9 @@ bool _winmli::NeedsVideoFrameConversion(
 
   if (FAILED((hr = GetVideoFrameInfo(inputVideoFrame, format, width, height, luid)))) {
     bNeedConversion = true;
-  } else if (((int)inputBounds.Width != outputWidth) ||
-            (inputBounds.X != 0) ||
-            ((int)inputBounds.Height != outputHeight) ||
-            (inputBounds.Y != 0) ||
-            (inputVideoFrame == nullptr))  // Check crop
+  } else if (((int)inputBounds.Width != outputWidth) || (inputBounds.X != 0) ||
+             ((int)inputBounds.Height != outputHeight) || (inputBounds.Y != 0) ||
+             (inputVideoFrame == nullptr))  // Check crop
   {
     bNeedConversion = true;
   } else if (luid.HighPart != outputLuid.HighPart || luid.LowPart != outputLuid.LowPart) {

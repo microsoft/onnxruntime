@@ -30,7 +30,7 @@ namespace Dml
 
     BucketizedBufferAllocator::BucketizedBufferAllocator(
         ID3D12Device* device,
-        std::shared_ptr<ExecutionContext> context,
+        ExecutionContext* context,
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
@@ -204,12 +204,16 @@ namespace Dml
         }
         else
         {
-            // Free the underlying allocation once queued work has completed.
+            if (!m_context->IsClosed())
+            {
+                // Free the underlying allocation once queued work has completed.
 #ifdef _GAMING_XBOX
-            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetD3D12Resource()).Get());
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetD3D12Resource()).Get());
 #else
-            m_context->QueueReference(allocInfo->GetD3D12Resource());
+                m_context->QueueReference(allocInfo->GetD3D12Resource());
 #endif
+            }
+
             allocInfo->DetachResourceWrapper();
         }
 
@@ -230,16 +234,11 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
         const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
-
-        auto owner = allocInfo->GetOwner();
-        //The owner can be null if the resource was wrapped via CreateGPUAllocationFromD3DResource
-        if (owner != nullptr && owner != this)
-        {
-            // This allocation doesn't belong to this allocator!
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-
         return allocInfo;
     }
 
+    void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
+    {
+        m_defaultRoundingMode = roundingMode;
+    }
 } // namespace Dml

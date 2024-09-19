@@ -60,7 +60,7 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
   if (size > 0) {
     p = alloc_(size);
 
-    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    // review(codemzs): ORT_ENFORCE does not seem appropriate.
     ORT_ENFORCE(p != nullptr);
   }
 

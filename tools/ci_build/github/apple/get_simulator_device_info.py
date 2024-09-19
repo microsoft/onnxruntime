@@ -138,13 +138,11 @@ def get_simulator_device_info(
 
 def main():
     parser = argparse.ArgumentParser(description="Gets simulator info from Xcode and prints it in JSON format.")
-    _ = parser.parse_args()  # no args yet
+    parser.add_argument("--max-runtime-version", help="The maximum runtime version to allow.")
+    args = parser.parse_args()
 
     info = get_simulator_device_info(
-        # The macOS-13 hosted agent image has iOS 17 which is currently in beta. Limit it to 16.4 for now.
-        # See https://github.com/actions/runner-images/issues/8023
-        # TODO Remove max_runtime_version limit.
-        max_runtime_version_str="16.4",
+        max_runtime_version_str=args.max_runtime_version,
     )
 
     print(json.dumps(info, indent=2))

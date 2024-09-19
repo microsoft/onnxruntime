@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <bool Layout>
 class SpaceToDepth final : public CudaKernel, SpaceDepthBase {
  public:
   explicit SpaceToDepth(const OpKernelInfo& info) : CudaKernel(info), SpaceDepthBase(info) {
@@ -17,6 +18,7 @@ class SpaceToDepth final : public CudaKernel, SpaceDepthBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <bool Layout>
 class DepthToSpace final : public CudaKernel, SpaceDepthBase {
  public:
   explicit DepthToSpace(const OpKernelInfo& info) : CudaKernel(info), SpaceDepthBase(info) {

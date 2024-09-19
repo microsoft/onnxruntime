@@ -168,18 +168,16 @@ def output_test_data(directory: str, inputs: Dict[str, np.ndarray]):
         try:
             os.mkdir(directory)
         except OSError:
-            print("Creation of the directory %s failed" % directory)
+            print(f"Creation of the directory {directory} failed")
         else:
-            print("Successfully created the directory %s " % directory)
+            print(f"Successfully created the directory {directory} ")
     else:
-        print("Warning: directory %s existed. Files will be overwritten." % directory)
+        print(f"Warning: directory {directory} existed. Files will be overwritten.")
 
-    index = 0
-    for name, data in inputs.items():
+    for index, (name, data) in enumerate(inputs.items()):
         tensor = numpy_helper.from_array(data, name)
         with open(os.path.join(directory, f"input_{index}.pb"), "wb") as file:
             file.write(tensor.SerializeToString())
-        index += 1
 
 
 def fake_test_data(
@@ -584,7 +582,12 @@ def create_and_save_test_data(
 
     import onnxruntime
 
-    session = onnxruntime.InferenceSession(model)
+    providers = (
+        ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        if "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+        else ["CPUExecutionProvider"]
+    )
+    session = onnxruntime.InferenceSession(model, providers=providers)
     output_names = [output.name for output in session.get_outputs()]
 
     for i, inputs in enumerate(all_inputs):
@@ -629,6 +632,7 @@ def main():
         args.only_input_tensors,
         args.average_sequence_length,
         args.random_sequence_length,
+        args.mask_type,
     )
 
     print("Test data is saved to directory:", output_dir)

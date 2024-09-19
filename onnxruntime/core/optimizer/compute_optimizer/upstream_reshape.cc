@@ -4,6 +4,7 @@
 #ifdef ENABLE_TRAINING
 
 #include "core/framework/tensorprotoutils.h"
+#include "core/common/string_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
@@ -21,23 +22,23 @@ UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
       //    If optype is not enough to guarantee the equivalence, we need to add a customized pre-check function.
       // 2. Should all inputs be allowed when tracking back further (bottom-up);
       //    if not, add the input index restriction.
-      {GetFullQualifiedOpName("Add", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Add", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_14_13_7_6_1)},
-      {GetFullQualifiedOpName("BiasGelu", kMSDomain),
+      {utils::GetFullQualifiedOpName("BiasGelu", kMSDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
-      {GetFullQualifiedOpName("Cast", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_19_13_9_6_1)},
-      {GetFullQualifiedOpName("Dropout", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Dropout", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
       {// Be noted, this is our own implementation of ONNX domain op.
-       GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
+       utils::GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<LayerNormalizationReshapeActor>(), opset_1)},
-      {GetFullQualifiedOpName("MatMul", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("MatMul", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<MatMulReshapeActor>(), opset_13_9_1)},
   });
@@ -47,7 +48,7 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
     Graph& graph, std::deque<ReshapeInfo>& queue, Node& current_node, ReshapeInfo& info,
     const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config,
     const logging::Logger& logger) const {
-  const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
+  const std::string op_type = utils::GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::vector<int> propagate_input_indices;
   std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;

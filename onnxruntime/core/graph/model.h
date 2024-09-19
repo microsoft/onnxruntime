@@ -7,19 +7,16 @@
 #include <memory>
 #include <climits>
 #include <string>
-#include "core/common/path.h"
+#include <filesystem>
+
+#include "core/common/flatbuffers.h"
+
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
 #endif
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -142,7 +139,7 @@ class Model {
   // Returns empty string if not specified.
   const std::string GraphDocString() const;
 
-  const InlinedHashMap<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
+  const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
 
 #else
   // Get model's IR version.
@@ -177,7 +174,7 @@ class Model {
   const ModelMetaData& MetaData() const noexcept;
 
   // Gets the path from which the model was loaded, if any.
-  const Path& ModelPath() const noexcept { return model_path_; }
+  const std::filesystem::path& ModelPath() const noexcept { return model_path_; }
 
   // Get model's main graph.
   Graph& MainGraph() noexcept;
@@ -185,42 +182,59 @@ class Model {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Get model's serialization proto data.
-  ONNX_NAMESPACE::ModelProto ToProto();
+  ONNX_NAMESPACE::ModelProto ToProto() const;
 
   // Get model's serialization proto data.
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
-  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                  const PathString& file_path,
-                                                                  size_t initializer_size_threshold);
+  // initializer offset could be page aligned and allocation granularity aligned for mmap support.
+  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                                  const std::filesystem::path& file_path,
+                                                                  size_t initializer_size_threshold,
+                                                                  const Graph::OffsetAlignmentInfo& align_info) const;
 
-#ifdef _WIN32
-  static common::Status Save(Model& model, const std::wstring& file_path);
-#endif
-  static common::Status Save(Model& model, const std::string& file_path);
+  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                                  const std::filesystem::path& file_path,
+                                                                  size_t initializer_size_threshold) const {
+    Graph::OffsetAlignmentInfo default_align_info;
+    return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info);
+  }
+
+  static common::Status Save(Model& model, const PathString& file_path);
 
   static common::Status Save(Model& model, int fd);
 
   // Save the model to file using an external file for initializers larger than the given threshold (in bytes).
-  // Notice that when on Windows the external_file_name is a plain string.
-  // This is because the string is saved inside the output protobuf as a plain string, where wchar is not supported.
-#ifdef _WIN32
+  // Initializer offset could be page aligned and allocation granularity aligned for mmap support.
   static common::Status SaveWithExternalInitializers(Model& model,
-                                                     const std::wstring& file_path,
-                                                     const std::string& external_file_name,
-                                                     size_t initializer_size_threshold);
-#else
+                                                     const std::filesystem::path& file_path,
+                                                     const std::filesystem::path& external_file_path,
+                                                     size_t initializer_size_threshold,
+                                                     const Graph::OffsetAlignmentInfo& align_info);
+
   static common::Status SaveWithExternalInitializers(Model& model,
-                                                     const std::string& file_path,
-                                                     const std::string& external_file_name,
-                                                     size_t initializer_size_threshold);
-#endif
+                                                     const std::filesystem::path& file_path,
+                                                     const std::filesystem::path& external_file_path,
+                                                     size_t initializer_size_threshold) {
+    Graph::OffsetAlignmentInfo default_align_info;
+    return SaveWithExternalInitializers(model, file_path, external_file_path, initializer_size_threshold, default_align_info);
+  }
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
-                                                     const PathString& file_path,
-                                                     const std::string& external_file_name,
-                                                     size_t initializer_size_threshold);
+                                                     const std::filesystem::path& file_path,
+                                                     const std::filesystem::path& external_file_path,
+                                                     size_t initializer_size_threshold,
+                                                     const Graph::OffsetAlignmentInfo& align_info);
+
+  static common::Status SaveWithExternalInitializers(Model& model,
+                                                     int fd,
+                                                     const std::filesystem::path& file_path,
+                                                     const std::filesystem::path& external_file_path,
+                                                     size_t initializer_size_threshold) {
+    Graph::OffsetAlignmentInfo default_align_info;
+    return SaveWithExternalInitializers(model, fd, file_path, external_file_path, initializer_size_threshold, default_align_info);
+  }
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
@@ -249,7 +263,7 @@ class Model {
                              const ModelOptions& options = {});
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
-  static common::Status LoadFromBytes(int count, void* pBytes,
+  static common::Status LoadFromBytes(int count, const void* pBytes,
                                       /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
@@ -294,6 +308,13 @@ class Model {
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
+  /// <summary>
+  /// Frees local function definitions in the model, excluding those in the `retained` set.
+  /// Called from GraphPartitioner::InlineFunctionsAOT.
+  /// </summary>
+  /// <param name="retained">contains function IDs that should not be removed.</param>
+  void RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
@@ -313,15 +334,14 @@ class Model {
   // map from function id to pointer of model local function proto
   // FunctionProto is hosted in ModelProto.
   // this map will be used for the local functions' schema's type/shape inference.
-  InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
-  // this is the container that host the generated schemas for model local functions.
-  // the generated schemare will be used for graph resolving and type/shape inference.
-  // those schemas' type/shape inference will reference to the model_local_functions_ as context,
-  // so need to keep them with same lifetime.
-  InlinedVector<std::unique_ptr<FunctionTemplate>> model_local_function_templates_;
+  // This container is used by ONNX code and must be an std::unordered_map.
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
   // this is the map from function id to the local function template.
   // this map will be used by graph to instantiate the function body.
-  InlinedHashMap<std::string, FunctionTemplate*> model_local_function_templates_maps_;
+  // Defined as a node based map so the memory is released when not all of the functions
+  // are inlined and removed.
+  NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
+
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;
@@ -338,7 +358,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  const Path model_path_;
+  const std::filesystem::path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;

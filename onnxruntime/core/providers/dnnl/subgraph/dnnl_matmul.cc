@@ -12,6 +12,25 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
+inline static dnnl::memory::format_tag get_default_format(const dnnl::memory::dims& tensor_dims) {
+  switch (tensor_dims.size()) {
+    case 1:
+      return dnnl::memory::format_tag::a;
+    case 2:
+      return dnnl::memory::format_tag::ab;
+    case 3:
+      return dnnl::memory::format_tag::abc;
+    case 4:
+      return dnnl::memory::format_tag::abcd;
+    case 5:
+      return dnnl::memory::format_tag::abcde;
+    case 6:
+      return dnnl::memory::format_tag::abcdef;
+    default:
+      return dnnl::memory::format_tag::undef;
+  }
+}
+
 DnnlMatMul::DnnlMatMul() {}
 
 // This handles ONNX defined "MatMul" as well as two other variations of MatMul
@@ -107,7 +126,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       }
 
       // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
-      // that will have the correct dimentions and correct memory::format
+      // that will have the correct dimensions and correct memory::format
       transposedA_md = dnnl::memory::desc(transposedA_dims, node.Input(IN_A).Type(), sp.GetDnnlFormat(transposedA_dims.size()));
       transposedA_mem = dnnl::memory(transposedA_md, eng, nullptr);
       void* handle = intermediateA_mem.get_data_handle();
@@ -127,7 +146,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       }
 
       // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
-      // that will have the correct dimentions and correct memory::format
+      // that will have the correct dimensions and correct memory::format
       transposedB_md = dnnl::memory::desc(transposedB_dims, node.Input(IN_B).Type(), sp.GetDnnlFormat(transposedB_dims.size()));
       transposedB_mem = dnnl::memory(transposedB_md, eng, nullptr);
       void* handle = intermediateB_mem.get_data_handle();
@@ -139,14 +158,14 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   if (transA || transBatchA) {
     src_md = transposedA_md;
   } else {
-    src_md = dnnl::memory::desc(src_dims, node.Input(IN_A).Type(), dnnl::memory::format_tag::any);
+    src_md = dnnl::memory::desc(src_dims, node.Input(IN_A).Type(), get_default_format(src_dims));
   }
 
   dnnl::memory::desc weights_md;
   if (transB || transBatchB) {
     weights_md = transposedB_md;
   } else {
-    weights_md = dnnl::memory::desc(weights_dims, node.Input(IN_B).Type(), dnnl::memory::format_tag::any);
+    weights_md = dnnl::memory::desc(weights_dims, node.Input(IN_B).Type(), get_default_format(weights_dims));
   }
 
   auto output_shape = src_dims;
@@ -174,8 +193,8 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   create a post op binary with possible unsqueezing in order to make sure onednn properly broadcast
   current limitation
   1. is no unsqueeze for matmul output as it is not exposed due to post op fusion
-  2. the third input has to be reordered to plain format (eg, no memory format propogation if the third input is internal to subgraph)
-  3. adding 1s to front (unsqueeze/expand) in logical dims would possibly fail if physcial layout is not plain format
+  2. the third input has to be reordered to plain format (eg, no memory format propagation if the third input is internal to subgraph)
+  3. adding 1s to front (unsqueeze/expand) in logical dims would possibly fail if physical layout is not plain format
   */
   dnnl::primitive_attr attr;
   if (has_postop_fusion) {
@@ -241,7 +260,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     attr.set_scales_mask(DNNL_ARG_SRC, 0);
   }
 
-  auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
+  auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), get_default_format(output_shape));
 
   auto matmul_pd = dnnl::matmul::primitive_desc(eng, src_md, weights_md, dst_md, attr);
 

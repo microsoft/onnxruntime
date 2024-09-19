@@ -93,7 +93,8 @@ class DeviceStreamCollectionImpl {
   const AllocatorMap& allocators_;
   bool is_main_graph_ = false;
   // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
-  // labelled this stream in the current thread, instead of the default stream which will be used in all the threads (thus caused thread safe issue)
+  // labeled this stream in the current thread, instead of the default stream which will be used in all the threads
+  // (thus caused thread safe issue)
   std::unique_ptr<Stream> root_stream_;
   OrtDevice root_stream_device_;
   void ReleaseSingleStreamBuffers();

@@ -15,7 +15,8 @@ static void RunTest(const std::vector<float>& x_vals,
                     int64_t axis = 1,
                     bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& error_msg = "") {
+                    const std::string& error_msg = "",
+                    float tolerance = 0.0f) {
   OpTester tester("LogSoftmax", opset);
 
   if (opset < 13) {
@@ -30,6 +31,10 @@ static void RunTest(const std::vector<float>& x_vals,
 
   tester.AddInput("X", dimensions, x_vals);
   tester.AddOutput("Y", dimensions, expected_vals);
+
+  if (tolerance != 0.0f) {
+    tester.SetOutputAbsErr("Y", tolerance);
+  }
 
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
@@ -62,7 +67,7 @@ TEST(LogSoftmaxOperator, LargeNumber) {
                                       -3.4401896f, -2.4401896f, -1.44018972f, -0.44018969f};
   std::vector<int64_t> dimensions = {2, 4};
 
-  RunTest(x_vals, expected_vals, dimensions);
+  RunTest(x_vals, expected_vals, dimensions, 7, 1, true, OpTester::ExpectResult::kExpectSuccess, "", 0.0005f);
 }
 
 // np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python

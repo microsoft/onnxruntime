@@ -14,11 +14,18 @@ class Expand final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-Status ComputeOutputShape(
-    const std::string& node_name,
-    const TensorShape& lhs_shape,
-    const TensorShape& rhs_shape,
-    TensorShape& out_shape);
+Status FuncExpand(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input_data_tensor,
+    const Tensor* /*input_shape_tensor*/,
+    Tensor* output_tensor);
+
+std::unique_ptr<Tensor> FuncExpand(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input_data_tensor,
+    const Tensor* input_shape_tensor);
 
 }  // namespace cuda
 }  // namespace onnxruntime

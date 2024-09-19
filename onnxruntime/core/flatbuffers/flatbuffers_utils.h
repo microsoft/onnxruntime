@@ -5,6 +5,8 @@
 
 #include <unordered_map>
 
+#include "core/common/flatbuffers.h"
+
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/common/status.h"
@@ -12,18 +14,6 @@
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 }
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-
-template <typename T>
-struct Offset;
-
-struct String;
-
-template <typename T>
-class Vector;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -50,7 +40,7 @@ void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_st
 #define LOAD_STR_FROM_ORT_FORMAT(protobuf_msg, str_field, fbs_string) \
   {                                                                   \
     if (fbs_string)                                                   \
-      protobuf_msg.set_##str_field(fbs_string->c_str());              \
+      protobuf_msg.set_##str_field(fbs_string->str());                \
   }
 
 onnxruntime::common::Status LoadValueInfoOrtFormat(

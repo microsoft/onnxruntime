@@ -31,8 +31,8 @@ fn main() {
     assert_ne!(g_ort, std::ptr::null_mut());
 
     //*************************************************************************
-    // initialize  enviroment...one enviroment per process
-    // enviroment maintains thread pools and other state info
+    // initialize  environment...one environment per process
+    // environment maintains thread pools and other state info
     let mut env_ptr: *mut OrtEnv = std::ptr::null_mut();
     let env_name = std::ffi::CString::new("test").unwrap();
     let status = unsafe {
@@ -307,7 +307,7 @@ fn main() {
 
     let output_node_names_cstring: Vec<std::ffi::CString> = output_node_names
         .iter()
-        .map(|n| std::ffi::CString::new(n.clone()).unwrap())
+        .map(|n| std::ffi::CString::new(*n).unwrap())
         .collect();
     let output_node_names_ptr: Vec<*const i8> = output_node_names_cstring
         .iter()

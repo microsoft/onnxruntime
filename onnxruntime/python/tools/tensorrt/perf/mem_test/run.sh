@@ -4,19 +4,18 @@
 
 set -x
 
-while getopts p:o:l:s: parameter
+while getopts p:o:l:s:c: parameter
 do case "${parameter}"
 in
 p) WORKSPACE=${OPTARG};;
 o) ORT_BINARY_PATH=${OPTARG};;
 l) BUILD_ORT_LATEST=${OPTARG};;
 s) ORT_SOURCE=${OPTARG};;
+c) CONCURRENCY=${OPTARG};;
 esac
 done
 
-ONNX_MODEL_TAR_URL="https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-7.tar.gz"
-MODEL_TAR_NAME="squeezenet1.0-7.tar.gz"
-ONNX_MODEL="squeezenet.onnx"
+ONNX_MODEL="/data/ep-perf-models/onnx-zoo-models/squeezenet1.0-7/squeezenet/model.onnx"
 ASAN_OPTIONS="protect_shadow_gap=0:new_delete_type_mismatch=0:log_path=asan.log"
 
 export LD_LIBRARY_PATH=${ORT_BINARY_PATH}
@@ -48,15 +47,11 @@ cp ../squeezenet_calibration.flatbuffers .
 
 cmake ..
 make -j
-wget ${ONNX_MODEL_TAR_URL} -O squeezenet1.0-7.tar.gz
-tar -xzf ${MODEL_TAR_NAME} --strip-components=1
-mv model.onnx ${ONNX_MODEL}
-rm ${MODEL_TAR_NAME}
 mkdir result
 
 # Run valgrind
 echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Starting memcheck with' ${ONNX_MODEL}
-valgrind --leak-check=full --show-leak-kinds=all --log-file=valgrind.log ${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${ONNX_MODEL}
+valgrind --leak-check=full --show-leak-kinds=definite --max-threads=3000 --num-callers=20 --keep-debuginfo=yes --log-file=valgrind.log ${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${ONNX_MODEL}
 echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Analyzing valgrind log'
 
 found_leak_summary=false
@@ -109,6 +104,26 @@ if [ "$is_mem_leaked" = "true" ]; then
 fi
 
 mv valgrind.log result
+
+# Concurrency Test
+FRCNN_FOLDER="/data/ep-perf-models/onnx-zoo-models/FasterRCNN-10/"
+
+mkdir FasterRCNN-10/
+cp -r ${FRCNN_FOLDER}/test_data_set_0 ${FRCNN_FOLDER}/faster_rcnn_R_50_FPN_1x.onnx ./FasterRCNN-10/
+
+# replicate test inputs
+for (( i=1; i<CONCURRENCY; i++ )); do
+    cp -r "./FasterRCNN-10/test_data_set_0/" "./FasterRCNN-10/test_data_set_$i/"
+done
+
+pip install onnx requests packaging
+python ${ORT_SOURCE}/onnxruntime/python/tools/symbolic_shape_infer.py \
+    --input="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
+    --output="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
+    --auto_merge
+
+${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c ${CONCURRENCY} -r 100 ./FasterRCNN-10/ > concurrency_test.log 2>&1
+mv concurrency_test.log result
 
 # Run AddressSanitizer 
 ASAN_OPTIONS=${ASAN_OPTIONS} ./onnx_memtest

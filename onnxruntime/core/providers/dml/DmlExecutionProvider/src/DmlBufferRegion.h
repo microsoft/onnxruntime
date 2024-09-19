@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include "directx/d3d12.h"
+#include <DirectML.h>
+#include <wil/result_macros.h>
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+
 namespace Dml
 {
     // Represents a region of a D3D12 buffer resource. A buffer region has an

@@ -24,9 +24,9 @@ namespace Dml
         return readbackHeap;
     }
 
-    ReadbackHeap::ReadbackHeap(ID3D12Device* device, std::shared_ptr<ExecutionContext> executionContext)
+    ReadbackHeap::ReadbackHeap(ID3D12Device* device, ExecutionContext* executionContext)
         : m_device(device)
-        , m_executionContext(std::move(executionContext))
+        , m_executionContext(executionContext)
     {
     }
 
@@ -91,7 +91,7 @@ namespace Dml
 
         // Wait for completion and map the result
         m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        m_executionContext->GetCurrentCompletionEvent().WaitForSignal(m_executionContext->CpuSyncSpinningEnabled());
         m_executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination
@@ -141,7 +141,7 @@ namespace Dml
 
         // Wait for completion and map the result
         m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        m_executionContext->GetCurrentCompletionEvent().WaitForSignal(m_executionContext->CpuSyncSpinningEnabled());
         m_executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination

@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace logging {
 
 void AppleLogSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
-  using date::operator<<;
+  using timestamp_ns::operator<<;
   std::ostringstream msg;
   msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
       << message.Location().ToString() << "] " << message.Message();

@@ -23,7 +23,7 @@ Status ConcatReplacement::Apply(Graph& graph, Node& concat_node, RewriteRuleEffe
 
   concat_outputs.push_back(&ip_shape_op);
 
-  Node& concat_training_node = graph.AddNode(graph.GenerateNodeName("ConcatTraining"),
+  Node& concat_training_node = graph.AddNode(graph.GenerateNodeName(concat_node.Name() + "/ConcatReplacement/"),
                                              "ConcatTraining",
                                              "Concat with extra output",
                                              concat_inputs,

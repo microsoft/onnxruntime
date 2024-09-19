@@ -22,23 +22,36 @@
 namespace onnxruntime {
 namespace coreml {
 
-OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer, uint32_t coreml_flags) {
+OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer,
+                                         int32_t coreml_version,
+                                         uint32_t coreml_flags) {
   return OpBuilderInputParams{graph_viewer,
-                              (coreml_flags & COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES) != 0};
+                              coreml_version,
+                              (coreml_flags & COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES) != 0,
+                              (coreml_flags & COREML_FLAG_CREATE_MLPROGRAM) != 0};
+}
+
+const IOpBuilder* GetOpBuilder(const Node& node) {
+  const auto& op_builders = GetOpBuilders();
+  const auto it = op_builders.find(node.OpType());
+  if (it != op_builders.cend()) {
+    return it->second;
+  }
+
+  return nullptr;
 }
 
 bool IsNodeSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) {
-  const auto& op_builders = GetOpBuilders();
-  if (Contains(op_builders, node.OpType())) {
-    const auto* op_builder = op_builders.at(node.OpType());
+  const auto* op_builder = GetOpBuilder(node);
+  if (op_builder) {
     return op_builder->IsOpSupported(node, input_params, logger);
   } else {
     return false;
   }
 }
 
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name,
-                      const OpBuilderInputParams& input_params, const logging::Logger& logger) {
+bool IsInputSupported(const Node& node, const NodeArg& input, const OpBuilderInputParams& input_params,
+                      const logging::Logger& logger, bool allow_empty_input) {
   if (!input.Exists()) {
     // optional input that is not provided
     return true;
@@ -48,8 +61,8 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name,
   std::vector<int64_t> shape;
   // We do not support input with no shape
   if (!GetShape(input, shape, logger)) {
-    LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has no shape";
+    LOGS(logger, VERBOSE) << MakeString("Input [", input_name, "] of Node [", node.Name(), "] type [", node.OpType(),
+                                        "] has no shape");
     return false;
   }
 
@@ -63,11 +76,28 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name,
     // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
     // input has dimension > 16384
     // See this issue, https://github.com/apple/coremltools/issues/1003
+    // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
+    // root cause.
     if (dim > 16384) {
-      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
-                            << ", actual dim: " << dim;
+      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384. Input:" << input_name
+                            << ", shape: " << Shape2String(shape);
       return false;
     }
+
+    if (dim == 0 && !allow_empty_input) {
+      LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
+                            << ", shape: " << Shape2String(shape);
+      return false;
+    }
+  }
+
+  // Limit input shape rank to 5.
+  // CoreML doesn't currently support shapes with rank greater that 5.
+  // https://github.com/apple/coremltools/issues/832
+  if (shape.size() > 5) {
+    LOGS(logger, VERBOSE) << "CoreML EP doesn't allow input shapes with rank greater than 5. Input: "
+                          << input_name << ", shape: " << Shape2String(shape);
+    return false;
   }
 
   return true;
@@ -77,13 +107,6 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
                                                   const OpBuilderInputParams& input_params,
                                                   const logging::Logger& logger) {
   std::unordered_set<const Node*> supported_nodes{};
-
-#ifdef __APPLE__
-  if (!util::HasRequiredBaseOS()) {
-    LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
-    return supported_nodes;
-  }
-#endif
 
   for (const auto& node : graph_viewer.Nodes()) {
     const bool supported = IsNodeSupported(node, input_params, logger);
@@ -98,6 +121,16 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
   }
 
   return supported_nodes;
+}
+
+bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& graph_viewer,
+                                const logging::Logger& logger, std::string_view input_description) {
+  if (graph_viewer.GetConstantInitializer(node_arg.Name()) == nullptr) {
+    LOGS(logger, VERBOSE) << input_description << " (NodeArg name: '" << node_arg.Name()
+                          << "') is not a constant initializer tensor";
+    return false;
+  }
+  return true;
 }
 
 bool HasNeuralEngine(const logging::Logger& logger) {
@@ -130,7 +163,9 @@ bool HasNeuralEngine(const logging::Logger& logger) {
 #else
   // In this case, we are running the EP on non-apple platform, which means we are running the model
   // conversion with CoreML EP enabled, for this we always assume the target system has Neural Engine
-  LOGS(logger, VERBOSE) << "HasNeuralEngine running on non-Apple hardware for model conversion only";
+  LOGS(logger, INFO) << "HasNeuralEngine running on non-Apple hardware. "
+                        "Returning true to enable model conversion and local testing of CoreML EP implementation. "
+                        "No CoreML model will be compiled or run.";
   has_neural_engine = true;
 #endif  // #ifdef __APPLE__
 

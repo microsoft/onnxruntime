@@ -25,8 +25,8 @@ void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
 
   auto& node = *graph.Nodes().begin();
   ASSERT_EQ(node.OpType(), op);
-  // Inline function will call Resolve itself
   ASSERT_STATUS_OK(graph.InlineFunction(node));
+  ASSERT_STATUS_OK(graph.Resolve());
 
   // Hookup the inputs and outputs
   std::unordered_map<std::string, OrtValue> feeds;
@@ -72,7 +72,7 @@ void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
   }
 }
 
-OpFunctionTester::~OpFunctionTester(){};
+OpFunctionTester::~OpFunctionTester() {};
 
 template <class T>
 std::unique_ptr<T> CreateOpTester(const onnxruntime::training::OpDef& op_def,

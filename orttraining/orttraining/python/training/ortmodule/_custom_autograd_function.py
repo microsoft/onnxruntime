@@ -52,10 +52,9 @@ def enable_custom_autograd_support(to_enable=True):
     if to_enable is True and custom_autograd_function_enabler.state is False:
         if custom_autograd_function_enabler.already_enabled is False:
             # Initialize static objects needed to run custom autograd.Function's.
-            from ._custom_autograd_function_runner import call_python_backward_function, call_python_forward_function
 
-            register_forward_runner(call_python_forward_function)
-            register_backward_runner(call_python_backward_function)
+            register_forward_runner(torch_interop_utils.get_custom_function_forward_runner())
+            register_backward_runner(torch_interop_utils.get_custom_function_backward_runner())
 
             # Unregister all python functions automatically upon normal interpreter termination.
             atexit.register(unregister_python_functions)

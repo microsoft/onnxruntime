@@ -1,11 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "api.h"
+#ifdef ENABLE_TRAINING_APIS
+#include "onnxruntime_training_cxx_api.h"
+#endif
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "api.h"
 
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 namespace {
@@ -13,6 +17,14 @@ OrtEnv* g_env;
 OrtErrorCode g_last_error_code;
 std::string g_last_error_message;
 }  // namespace
+
+enum DataLocation {
+  DATA_LOCATION_NONE = 0,
+  DATA_LOCATION_CPU = 1,
+  DATA_LOCATION_CPU_PINNED = 2,
+  DATA_LOCATION_TEXTURE = 3,
+  DATA_LOCATION_GPU_BUFFER = 4
+};
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
@@ -152,6 +164,12 @@ int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, con
   return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
 }
 
+int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
+                                const char* dim_param_name,
+                                int dim_value) {
+  return CHECK_STATUS(AddFreeDimensionOverrideByName, session_options, dim_param_name, dim_value);
+}
+
 int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
                              const char* config_key,
                              const char* config_value) {
@@ -214,13 +232,23 @@ void OrtFree(void* ptr) {
   }
 }
 
-OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length) {
+OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location) {
+  if (data_location != DATA_LOCATION_CPU &&
+      data_location != DATA_LOCATION_CPU_PINNED &&
+      data_location != DATA_LOCATION_GPU_BUFFER) {
+    std::ostringstream ostr;
+    ostr << "Invalid data location: " << data_location;
+    CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
+    return nullptr;
+  }
+
   std::vector<int64_t> shapes(dims_length);
   for (size_t i = 0; i < dims_length; i++) {
     shapes[i] = dims[i];
   }
 
   if (data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+    // data_location is ignored for string tensor. It is always CPU.
     OrtAllocator* allocator = nullptr;
     RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
@@ -235,12 +263,16 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
 
     return UNREGISTER_AUTO_RELEASE(value);
   } else {
-    OrtMemoryInfo* memoryInfo = nullptr;
-    RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memoryInfo);
-    REGISTER_AUTO_RELEASE_HANDLE(MemoryInfo, memoryInfo);
+    OrtMemoryInfo* memory_info = nullptr;
+    if (data_location != DATA_LOCATION_GPU_BUFFER) {
+      RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
+    } else {
+      RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+    }
+    REGISTER_AUTO_RELEASE_HANDLE(MemoryInfo, memory_info);
 
     OrtValue* value = nullptr;
-    int error_code = CHECK_STATUS(CreateTensorWithDataAsOrtValue, memoryInfo, data, data_length,
+    int error_code = CHECK_STATUS(CreateTensorWithDataAsOrtValue, memory_info, data, data_length,
                                   dims_length > 0 ? shapes.data() : nullptr, dims_length,
                                   static_cast<ONNXTensorElementDataType>(data_type), &value);
 
@@ -364,18 +396,85 @@ void OrtReleaseRunOptions(OrtRunOptions* run_options) {
   Ort::GetApi().ReleaseRunOptions(run_options);
 }
 
+OrtIoBinding* OrtCreateBinding(OrtSession* session) {
+  OrtIoBinding* binding = nullptr;
+  int error_code = CHECK_STATUS(CreateIoBinding, session, &binding);
+  return (error_code == ORT_OK) ? binding : nullptr;
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtBindInput(OrtIoBinding* io_binding,
+                                      const char* name,
+                                      OrtValue* input) {
+  return CHECK_STATUS(BindInput, io_binding, name, input);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
+                                       const char* name,
+                                       OrtValue* output,
+                                       int output_location) {
+  if (output) {
+    return CHECK_STATUS(BindOutput, io_binding, name, output);
+  } else {
+    if (output_location != DATA_LOCATION_NONE &&
+        output_location != DATA_LOCATION_CPU &&
+        output_location != DATA_LOCATION_CPU_PINNED &&
+        output_location != DATA_LOCATION_GPU_BUFFER) {
+      std::ostringstream ostr;
+      ostr << "Invalid data location (" << output_location << ") for output: \"" << name << "\".";
+      return CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
+    }
+
+    OrtMemoryInfo* memory_info = nullptr;
+    if (output_location != DATA_LOCATION_GPU_BUFFER) {
+      RETURN_ERROR_CODE_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
+    } else {
+      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+    }
+    REGISTER_AUTO_RELEASE_HANDLE(MemoryInfo, memory_info);
+    return CHECK_STATUS(BindOutputToDevice, io_binding, name, memory_info);
+  }
+}
+
+void OrtClearBoundOutputs(OrtIoBinding* io_binding) {
+  Ort::GetApi().ClearBoundOutputs(io_binding);
+}
+
+void OrtReleaseBinding(OrtIoBinding* io_binding) {
+  Ort::GetApi().ReleaseIoBinding(io_binding);
+}
+
+int OrtRunWithBinding(OrtSession* session,
+                      OrtIoBinding* io_binding,
+                      size_t output_count,
+                      OrtValue** outputs,
+                      OrtRunOptions* run_options) {
+  RETURN_ERROR_CODE_IF_ERROR(RunWithBinding, session, run_options, io_binding);
+
+  OrtAllocator* allocator = nullptr;
+  RETURN_ERROR_CODE_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
+
+  size_t binding_output_count = 0;
+  OrtValue** binding_outputs = nullptr;
+  RETURN_ERROR_CODE_IF_ERROR(GetBoundOutputValues, io_binding, allocator, &binding_outputs, &binding_output_count);
+  REGISTER_AUTO_RELEASE_BUFFER(OrtValue*, binding_outputs, allocator);
+
+  if (binding_output_count != output_count) {
+    return CheckStatus(
+        Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Output count is inconsistent with IO Binding output data."));
+  }
+
+  for (size_t i = 0; i < output_count; i++) {
+    outputs[i] = binding_outputs[i];
+  }
+
+  return ORT_OK;
+}
+
 int OrtRun(OrtSession* session,
            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
-#if defined(USE_JSEP)
-  EM_ASM({ Module["jsepRunPromise"] = new Promise(function(r) { Module.jsepRunPromiseResolve = r; }); });
-#endif
-  auto status_code = CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
-#if defined(USE_JSEP)
-  EM_ASM({ Module.jsepRunPromiseResolve($0); }, status_code);
-#endif
-  return status_code;
+  return CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
 }
 
 char* OrtEndProfiling(ort_session_handle_t session) {
@@ -387,3 +486,152 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              ? file_name
              : nullptr;
 }
+
+// Training API Section
+
+#ifdef ENABLE_TRAINING_APIS
+#define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
+  CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
+
+#define RETURN_TRAINING_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)         \
+  do {                                                                 \
+    int error_code = CHECK_TRAINING_STATUS(ORT_API_NAME, __VA_ARGS__); \
+    if (error_code != ORT_OK) {                                        \
+      return error_code;                                               \
+    }                                                                  \
+  } while (false)
+
+ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer,
+                                                                                size_t checkpoint_size) {
+  OrtCheckpointState* checkpoint_state = nullptr;
+  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint_data_buffer,
+                                checkpoint_size, &checkpoint_state) == ORT_OK)
+             ? checkpoint_state
+             : nullptr;
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
+  Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
+}
+
+ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t options,
+                                                                            ort_training_checkpoint_handle_t training_checkpoint_state_handle,
+                                                                            void* train_model,
+                                                                            size_t train_size,
+                                                                            void* eval_model,
+                                                                            size_t eval_size,
+                                                                            void* optimizer_model,
+                                                                            size_t optimizer_size) {
+  OrtTrainingSession* training_session = nullptr;
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromBuffer, g_env, options,
+                                training_checkpoint_state_handle, train_model, train_size,
+                                eval_model, eval_size, optimizer_model, optimizer_size,
+                                &training_session) == ORT_OK)
+             ? training_session
+             : nullptr;
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t training_handle) {
+  return CHECK_TRAINING_STATUS(LazyResetGrad, training_handle);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
+                                                 ort_tensor_handle_t* inputs,
+                                                 size_t input_count,
+                                                 ort_tensor_handle_t* outputs,
+                                                 size_t output_count,
+                                                 ort_run_options_handle_t options) {
+  return CHECK_TRAINING_STATUS(TrainStep, training_handle, options, input_count, inputs, output_count, outputs);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t training_handle,
+                                                  const ort_run_options_handle_t run_options) {
+  return CHECK_TRAINING_STATUS(OptimizerStep, training_handle, run_options);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
+                                             ort_tensor_handle_t* inputs,
+                                             size_t input_count,
+                                             ort_tensor_handle_t* outputs,
+                                             size_t output_count,
+                                             ort_run_options_handle_t options) {
+  return CHECK_TRAINING_STATUS(EvalStep, training_handle,
+                               options, input_count, inputs, output_count, outputs);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
+                                                      size_t* param_size,
+                                                      bool trainable_only) {
+  return CHECK_TRAINING_STATUS(GetParametersSize, training_handle, param_size, trainable_only);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
+                                                           ort_tensor_handle_t parameters_buffer,
+                                                           size_t parameter_count,
+                                                           bool trainable_only) {
+  return CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle, parameters_buffer, trainable_only);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
+                                                             ort_tensor_handle_t parameters_buffer,
+                                                             size_t parameter_count,
+                                                             bool trainable_only) {
+  return CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle, parameters_buffer, trainable_only);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputCount(ort_training_session_handle_t training_handle,
+                                                             size_t* input_count,
+                                                             size_t* output_count,
+                                                             bool isEvalModel) {
+  if (isEvalModel) {
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelInputCount, training_handle, input_count);
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelOutputCount, training_handle, output_count);
+    return ORT_OK;
+  } else {
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelInputCount, training_handle, input_count);
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelOutputCount, training_handle, output_count);
+    return ORT_OK;
+  }
+}
+
+char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_session_handle_t training_handle,
+                                                              size_t index,
+                                                              bool isInput,
+                                                              bool isEvalModel) {
+  OrtAllocator* allocator = nullptr;
+  RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
+
+  char* name = nullptr;
+
+  if (isEvalModel) {
+    if (isInput) {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetEvalModelInputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    } else {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetEvalModelOutputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    }
+  } else {
+    if (isInput) {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelInputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    } else {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelOutputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    }
+  }
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
+  Ort::GetTrainingApi().ReleaseTrainingSession(training_handle);
+}
+
+#endif

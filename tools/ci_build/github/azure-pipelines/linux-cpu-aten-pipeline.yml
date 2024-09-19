@@ -1,3 +1,5 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -10,7 +12,6 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -24,15 +25,8 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
+#### end trigger ####
 
 jobs:
 - job: Linux_Build
@@ -42,7 +36,7 @@ jobs:
   variables:
     CCACHE_DIR: $(Agent.TempDirectory)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: onnxruntime-Ubuntu2004-AMD-CPU
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -52,13 +46,9 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '16.x'
-
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.aten_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: 'onnxruntimecpubuildaten'
@@ -97,7 +87,7 @@ jobs:
                       --config Release \
                       --skip_submodule_sync \
                       --build_shared_lib \
-                      --parallel \
+                      --parallel --use_binskim_compliant_compile_flags \
                       --build_wheel \
                       --skip_tests \
                       --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
@@ -129,7 +119,7 @@ jobs:
                 --config Release \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel \
+                --parallel --use_binskim_compliant_compile_flags \
                 --build_wheel \
                 --test \
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"

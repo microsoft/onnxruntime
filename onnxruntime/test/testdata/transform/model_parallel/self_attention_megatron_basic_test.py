@@ -7,7 +7,7 @@ attention_head = 2
 hidden_per_attention = 2
 
 # Self-attention.
-# Handle self-attension.
+# Handle self-attention.
 # MatMul->Add->Split->Reshape->Transpose->MatMul->Div->Mul->Sub->Softmax->Dropout->MatMul->Transpose->Reshape->MatMul->Add
 #                  |->Reshape->Transpose->|                                        |
 #                  |->Reshape->Transpose------------------------------------------>|

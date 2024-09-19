@@ -104,14 +104,12 @@ class RegistrationProcessor:
         :param end_version: End version or None if unversioned registration
         :param type: Type or types used in registration, if this is a typed registration
         """
-        pass
 
     def process_other_line(self, line):
         """
         Process a line that does not contain a kernel registration
         :param line: Original line
         """
-        pass
 
     def ok(self):
         """

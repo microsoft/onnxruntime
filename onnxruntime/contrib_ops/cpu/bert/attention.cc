@@ -198,7 +198,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
@@ -208,8 +208,14 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &parameters));
+
+  if (parameters.do_rotary) {
+    ORT_NOT_IMPLEMENTED(
+        "Rotary embedding is not supported in Attention CPU kernel. \
+                        Please fuse the model with MHA + RotaryEmbedding.");
+  }
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -332,7 +338,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                         output, nullptr /* present_key */, nullptr /* present_value */,
                         batch_size, sequence_length, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        relative_position_bias, context);
+                        attention_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

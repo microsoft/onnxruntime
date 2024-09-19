@@ -16,6 +16,7 @@ import unittest
 
 import numpy as np
 import torch
+from onnx import TensorProto, helper
 from torch import nn
 
 torch.manual_seed(0)
@@ -30,8 +31,6 @@ def create_t5_mha_graph(
     use_past,
     is_static_kv,
 ):
-    from onnx import TensorProto, helper
-
     use_present = not use_past
     if not is_static_kv and use_past:
         use_present = True
@@ -58,7 +57,7 @@ def create_t5_mha_graph(
                 "value" if use_present or is_static_kv else "",
                 "",  # bias
                 "key_padding_mask" if use_mask else "",
-                "relative_position_bias" if use_rpb else "",
+                "attention_bias" if use_rpb else "",
                 "past_key" if use_past and not is_static_kv else "",
                 "past_value" if use_past and not is_static_kv else "",
             ],
@@ -94,9 +93,7 @@ def create_t5_mha_graph(
 
     if use_rpb:
         graph_inputs.append(
-            helper.make_tensor_value_info(
-                "relative_position_bias", TensorProto.FLOAT, [1, num_heads, seq_len, rpb_length]
-            )
+            helper.make_tensor_value_info("attention_bias", TensorProto.FLOAT, [1, num_heads, seq_len, rpb_length])
         )
 
     if use_past and not is_static_kv:
@@ -163,8 +160,6 @@ def create_t5_decoder_masked_mha_graph(
     num_heads,
     is_cross_attention,
 ):
-    from onnx import TensorProto, helper
-
     nodes = [
         helper.make_node(
             "DecoderMaskedMultiHeadAttention",
@@ -173,7 +168,7 @@ def create_t5_decoder_masked_mha_graph(
                 "key",
                 "value",
                 "mask_index" if is_cross_attention else "",
-                "relative_position_bias" if not is_cross_attention else "",
+                "attention_bias" if not is_cross_attention else "",
                 "past_key" if not is_cross_attention else "",
                 "past_value" if not is_cross_attention else "",
                 "past_sequence_length" if not is_cross_attention else "",
@@ -223,7 +218,7 @@ def create_t5_decoder_masked_mha_graph(
         graph_inputs.append(helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, 1, hidden_size]))
         graph_inputs.append(
             helper.make_tensor_value_info(
-                "relative_position_bias", TensorProto.FLOAT, [1, num_heads, 1, past_sequence_length + 1]
+                "attention_bias", TensorProto.FLOAT, [1, num_heads, 1, past_sequence_length + 1]
             )
         )
         # use past_sequence_length + 1 to simulate max_sequence_length
@@ -561,7 +556,7 @@ class T5Attention(nn.Module):
             if torch_key_padding_mask is not None:
                 ort_inputs["key_padding_mask"] = np.ascontiguousarray(torch_key_padding_mask.detach().numpy())
             if torch_position_bias is not None:
-                ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
+                ort_inputs["attention_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
         else:
             torch_past_key = past_key_value[0]
             torch_past_value = past_key_value[1]
@@ -620,7 +615,7 @@ class T5Attention(nn.Module):
                 else:
                     ort_inputs["key_padding_mask"] = np.ascontiguousarray(torch_key_padding_mask.detach().numpy())
             if torch_position_bias is not None:
-                ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
+                ort_inputs["attention_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
 
         ort_output = ort_session.run(None, ort_inputs)
 

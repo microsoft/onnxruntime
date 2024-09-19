@@ -1,35 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
-#ifdef __APPLE__
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
-
 class BinaryOpBuilder : public BaseOpBuilder {
-  // Add operator related
- private:
-#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
-  // Operator support related
+
   int GetMinSupportedOpSet(const Node& node) const override;
 
-  bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                              const logging::Logger& logger) const override;
+
+  bool SupportsMLProgram() const override { return true; }
 };
 
-#ifdef __APPLE__
-static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger) {
+namespace {
+bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
 
   const auto* x_shape_proto = input_defs[0]->Shape();
@@ -57,78 +53,94 @@ static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger&
                     y_shape_proto->dim().begin(), y_shape_proto->dim().end(),
                     dim_eq);
 }
-
-// Add operator related
+}  // namespace
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
 
-  if (op_type == "Add") {
-    // original mutable_add() has limited broadcasting support
-    // updated to use CoreML::AddBroadcastableLayerParams which has more general broadcasting support
-    if (CheckIfBothInputShapesMatch(node, logger)) {
-      layer->mutable_add();
+    // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_binary
+    std::string_view coreml_op_type;
+    if (op_type == "Add") {
+      coreml_op_type = "add";
+    } else if (op_type == "Mul") {
+      coreml_op_type = "mul";
+    } else if (op_type == "Sub") {
+      coreml_op_type = "sub";
+    } else if (op_type == "Div") {
+      // we only support fp32 currently. when we add support for integers we need to check the type and use
+      // "floor_div" or "real_div" accordingly
+      coreml_op_type = "real_div";
+    } else if (op_type == "Pow") {
+      coreml_op_type = "pow";
     } else {
-      layer->mutable_addbroadcastable();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "BinaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
     }
-  } else if (op_type == "Mul") {
-    if (CheckIfBothInputShapesMatch(node, logger)) {
-      layer->mutable_multiply();
+
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
+    AddOperationInput(*op, "x", input_defs[0]->Name());
+    AddOperationInput(*op, "y", input_defs[1]->Name());
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
+
+    model_builder.AddOperation(std::move(op));
+  } else
+#endif  // defined (COREML_ENABLE_MLPROGRAM)
+  {
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+
+    if (op_type == "Add") {
+      // original mutable_add() has limited broadcasting support
+      // updated to use CoreML::AddBroadcastableLayerParams which has more general broadcasting support
+      if (CheckIfBothInputShapesMatch(node, logger)) {
+        layer->mutable_add();
+      } else {
+        layer->mutable_addbroadcastable();
+      }
+    } else if (op_type == "Mul") {
+      if (CheckIfBothInputShapesMatch(node, logger)) {
+        layer->mutable_multiply();
+      } else {
+        layer->mutable_multiplybroadcastable();
+      }
+    } else if (op_type == "Sub") {
+      layer->mutable_subtractbroadcastable();
+    } else if (op_type == "Div") {
+      layer->mutable_dividebroadcastable();
+    } else if (op_type == "Pow") {
+      layer->mutable_powbroadcastable();
     } else {
-      layer->mutable_multiplybroadcastable();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "BinaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
     }
-  } else if (op_type == "Sub") {
-    layer->mutable_subtractbroadcastable();
-  } else if (op_type == "Div") {
-    layer->mutable_dividebroadcastable();
-  } else if (op_type == "Pow") {
-    layer->mutable_powbroadcastable();
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+
+    *layer->mutable_input()->Add() = input_defs[0]->Name();
+    *layer->mutable_input()->Add() = input_defs[1]->Name();
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+    model_builder.AddLayer(std::move(layer));
   }
 
-  *layer->mutable_input()->Add() = input_defs[0]->Name();
-  *layer->mutable_input()->Add() = input_defs[1]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
-
-  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
   return 7;
 }
 
-bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
-  bool is_pow = node.OpType() == "Pow";
-  if (!is_pow) {
-    return BaseOpBuilder::HasSupportedInputsImpl(node, logger);
-  }
-
-  const auto& input_1 = *node.InputDefs()[0];
-  const auto& input_2 = *node.InputDefs()[1];
-  // Pow we only support both inputs as fp32 for now
-  int32_t input_type_1;
-  if (!GetType(input_1, input_type_1, logger))
-    return false;
-
-  int32_t input_type_2;
-  if (!GetType(input_2, input_type_2, logger))
-    return false;
-
-  if (input_type_1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type_1 != input_type_2) {
-    LOGS(logger, VERBOSE) << "Pow only supports fp32 inputs, actual input type"
-                          << ", Input type 1: " << input_type_1
-                          << ", Input type 2: " << input_type_2;
+bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                             const logging::Logger& logger) const {
+  // Add/Sub/Mul/Div spec says inputs must be of the same type.
+  // Pow spec says inputs can be different types.
+  // We only support float for all of these inputs.
+  if (!IsInputFloat(node, 0, input_params, logger) ||
+      ((node.OpType() == "Pow") && !IsInputFloat(node, 1, input_params, logger))) {
     return false;
   }
 

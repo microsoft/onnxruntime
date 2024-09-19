@@ -30,6 +30,7 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
+#include "contrib_ops/rocm/bert/decoder_attention_impl.h"
 
 using namespace onnxruntime::rocm;
 
@@ -118,7 +119,7 @@ Status ClassifyAttentionMode(
       if (attn->qkv_format == Q_K_V_BSNH) {
         attn->mode = BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE;
         return Status::OK();
-      } else if (attn->pass_past_in_kv) {
+      } else if (attn->qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
         attn->mode = BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE;
         return Status::OK();
       }
@@ -127,7 +128,7 @@ Status ClassifyAttentionMode(
         if (attn->qkv_format == Q_K_V_BSNH) {
           attn->mode = BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH;
           return Status::OK();
-        } else if (attn->pass_past_in_kv) {
+        } else if (attn->qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
           attn->mode = BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH;
           return Status::OK();
         }
@@ -135,7 +136,7 @@ Status ClassifyAttentionMode(
         if (attn->qkv_format == Q_K_V_BSNH) {
           attn->mode = BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH;
           return Status::OK();
-        } else if (attn->pass_past_in_kv) {
+        } else if (attn->qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
           attn->mode = BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH;
           return Status::OK();
         }
@@ -145,7 +146,7 @@ Status ClassifyAttentionMode(
         if (attn->qkv_format == Q_K_V_BSNH) {
           attn->mode = BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH;
           return Status::OK();
-        } else if (attn->pass_past_in_kv) {
+        } else if (attn->qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
           attn->mode = BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH;
           return Status::OK();
         }
@@ -153,7 +154,7 @@ Status ClassifyAttentionMode(
         if (attn->qkv_format == Q_K_V_BSNH) {
           attn->mode = BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH;
           return Status::OK();
-        } else if (attn->pass_past_in_kv) {
+        } else if (attn->qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
           attn->mode = BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH;
           return Status::OK();
         }

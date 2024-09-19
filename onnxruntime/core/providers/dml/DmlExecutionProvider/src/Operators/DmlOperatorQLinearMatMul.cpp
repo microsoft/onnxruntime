@@ -104,6 +104,15 @@ public:
         matMulDesc.OutputZeroPointTensor = inputDescs[IN_Y_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_Y_ZERO_POINT] : nullptr; 
         matMulDesc.OutputTensor = &outputDescs[0];
 
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.AScaleTensor,           IN_A_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.AZeroPointTensor,       IN_A_ZERO_POINT);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.BScaleTensor,           IN_B_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.BZeroPointTensor,       IN_B_ZERO_POINT);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.OutputScaleTensor,      IN_Y_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.OutputZeroPointTensor,  IN_Y_ZERO_POINT);
+
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY, &matMulDesc };
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }

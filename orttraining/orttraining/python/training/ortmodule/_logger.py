@@ -21,15 +21,18 @@ from ._utils import get_rank, get_world_size
 
 class LogLevel(IntEnum):
     VERBOSE = 0
-    INFO = 1
-    WARNING = 2
-    ERROR = 3
-    FATAL = 4
+    DEVINFO = 1  # For ORT developers.
+    INFO = 2  # For ORT users.
+    WARNING = 3
+    ERROR = 4
+    FATAL = 5
 
 
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
     LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
-    LogLevel.INFO: [Severity.INFO, logging.INFO],
+    LogLevel.DEVINFO: [Severity.INFO, logging.INFO],
+    # ONNX Runtime has too many INFO logs, so we map it to WARNING for a better user experience.
+    LogLevel.INFO: [Severity.WARNING, logging.INFO],
     LogLevel.WARNING: [Severity.WARNING, logging.WARNING],
     LogLevel.ERROR: [Severity.ERROR, logging.ERROR],
     LogLevel.FATAL: [Severity.FATAL, logging.FATAL],
@@ -48,13 +51,13 @@ def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
     """Configure the logger for ortmodule according to following rules.
     1. If multiple processes are used, the rank will be appended
        to the logger name.
-    2. If the log level is greater than info, the logger will be
+    2. If the log level is equal to or greater than INFO, the logger will be
        disabled for non-zero ranks.
     """
     rank_info = f".rank-{get_rank()}" if get_world_size() > 1 else ""
     logger = logging.getLogger(f"orttraining{rank_info}")
-    # Disable the logger for non-zero ranks when level > info
-    logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
+    # Disable the logger for non-zero ranks when level >= INFO
+    logger.disabled = log_level >= LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
     return logger
 
@@ -162,6 +165,24 @@ class TrackTime:
         return wrapper
 
 
+class TrackTimeForStaticFunction:
+    """A function decorator to track time spent in different phases of ORT backend first-time initialization."""
+
+    def __init__(self, phase: ORTModuleInitPhase):
+        self.phase = phase
+
+    def __call__(self, func: Callable):
+        def wrapper(*args, **kwargs):
+            if "time_tracker" not in kwargs:
+                raise RuntimeError("The function to be tracked must have a 'time_tracker' kwarg.")
+            kwargs["time_tracker"].start(self.phase)
+            result = func(*args, **kwargs)
+            kwargs["time_tracker"].end(self.phase)
+            return result
+
+        return wrapper
+
+
 @contextmanager
 def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
     """Suppress output from being printed to stdout and stderr.
@@ -252,25 +273,27 @@ class SuppressLogs:
         self.is_ort_filter = is_ort_filter
 
     def __call__(self, func: Callable):
-        def wrapper(graph_execution_manager, *args, **kwargs):
-            if not hasattr(graph_execution_manager, "_logger"):
-                raise RuntimeError("The class of the function to be tracked must have a '_logger' attribute.")
+        def wrapper(*args, **kwargs):
+            if "logger" not in kwargs:
+                raise RuntimeError("The function to be tracked must have a 'logger' kwarg.")
 
-            if not hasattr(graph_execution_manager, "_debug_options"):
-                raise RuntimeError("The class of the function to be tracked must have a '_debug_options' attribute.")
+            if "debug_options" not in kwargs:
+                raise RuntimeError("The function to be tracked must have a 'debug_options' kwarg.")
 
             with _suppress_os_stream_output(
-                enable=graph_execution_manager._debug_options.log_level >= LogLevel.INFO,
+                enable=kwargs["debug_options"].log_level >= LogLevel.DEVINFO,
                 on_exit=partial(
                     _log_with_filter,
-                    graph_execution_manager._logger,
-                    graph_execution_manager._debug_options.onnxruntime_log_filter
-                    if self.is_ort_filter
-                    else graph_execution_manager._debug_options.torch_exporter_filter,
+                    kwargs["logger"],
+                    (
+                        kwargs["debug_options"].onnxruntime_log_filter
+                        if self.is_ort_filter
+                        else kwargs["debug_options"].torch_exporter_filter
+                    ),
                     self.phase.to_string(),
                 ),
             ):
-                result = func(graph_execution_manager, *args, **kwargs)
+                result = func(*args, **kwargs)
             return result
 
         return wrapper

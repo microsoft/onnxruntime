@@ -55,9 +55,15 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
   // size_t total_len = type_info.GetElementCount();
   ASSERT_EQ(values_y.size(), static_cast<size_t>(5));
 
+// test inference is using onnxruntime_shared_lib_test_LIBS, so HasCudaEnvironment(800) isn't available
+#ifdef USE_CUDA
+  const float tolerance = 1e-5f;
+#else
+  const float tolerance = 1e-6f;
+#endif
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != static_cast<size_t>(5); ++i) {
-    ASSERT_NEAR(values_y[i], f[i], 1e-6f);
+    ASSERT_NEAR(values_y[i], f[i], tolerance);
   }
 }
 
@@ -68,7 +74,9 @@ static Ort::Session GetSessionObj(Ort::Env& env, T model_uri, int provider_type)
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    OrtCUDAProviderOptionsV2* options;
+    Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+    session_options.AppendExecutionProvider_CUDA_V2(*options);
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return Ort::Session(nullptr);

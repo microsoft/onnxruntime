@@ -480,9 +480,7 @@ class LSTM:
                 grad_forget_gate = grad_c * (
                     all_cell_states[t - 1, 0, idx, :]
                     if t > 0
-                    else initial_cell_state[0, idx, :]
-                    if initial_cell_state is not None
-                    else 0
+                    else initial_cell_state[0, idx, :] if initial_cell_state is not None else 0
                 )
                 grad_control_gate = grad_c * input_gate
 
@@ -522,9 +520,7 @@ class LSTM:
                 prev_h = (
                     all_hidden_states[t - 1, 0, idx, :]
                     if t > 0
-                    else initial_hidden_state[0, idx, :]
-                    if initial_hidden_state is not None
-                    else 0
+                    else initial_hidden_state[0, idx, :] if initial_hidden_state is not None else 0
                 )
                 grad_recurrence_weights[0, : self._hidden_size, :] += np.dot(
                     np.expand_dims(grad_input_activation, axis=0).T, np.expand_dims(prev_h, axis=0)
@@ -553,9 +549,7 @@ class LSTM:
                     grad_peephole_weights[0, : self._hidden_size] += grad_input_activation * (
                         all_cell_states[t - 1, 0, idx, :]
                         if t > 0
-                        else initial_cell_state[0, idx, :]
-                        if initial_cell_state is not None
-                        else 0
+                        else initial_cell_state[0, idx, :] if initial_cell_state is not None else 0
                     )
                     grad_peephole_weights[0, self._hidden_size : 2 * self._hidden_size] += (
                         grad_output_activation * all_cell_states[t, 0, idx, :]
@@ -565,9 +559,7 @@ class LSTM:
                     ] += grad_forget_activation * (
                         all_cell_states[t - 1, 0, idx, :]
                         if t > 0
-                        else initial_cell_state[0, idx, :]
-                        if initial_cell_state is not None
-                        else 0
+                        else initial_cell_state[0, idx, :] if initial_cell_state is not None else 0
                     )
 
                 grad_c = grad_prev_c

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <unordered_map>
 
 #include "core/common/common.h"
@@ -18,7 +19,7 @@ class TuningResultsValidator;
 
 class ITuningContext {
  public:
-  explicit ITuningContext(IExecutionProvider* ep) : ep_(ep) {}
+  explicit ITuningContext(IExecutionProvider* ep) : ep_(ep), allocators_(nullptr) {}
   virtual ~ITuningContext() = default;
 
   virtual void EnableTunableOp() = 0;

@@ -1,11 +1,17 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <map>
+#include <memory>
+#include <utility>
+#include <string>
+
 #include "orttraining/core/agent/training_agent.h"
 #include "core/framework/utils.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/stream_execution_context.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
 
 namespace onnxruntime {
 namespace training {
@@ -25,7 +31,8 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
-  auto& training_node_execution_order = session_state.GetGraphViewer().GetNodesInTopologicalOrder(session.GetSessionOptions().execution_order);
+  auto& training_node_execution_order = session_state.GetGraphViewer().GetNodesInTopologicalOrder(
+      session.GetSessionOptions().execution_order);
   for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));
@@ -53,7 +60,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
 
 TrainingAgent::~TrainingAgent() = default;
 
-common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+common::Status TrainingAgent::RunForward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                          PartialGraphExecutionState& state, const OrtValueCachePtr& cache) {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   inference_session_.GetMemoryProfiler().GetMemoryInfo().SetIteration(profile_step_);
@@ -67,7 +74,7 @@ common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std
   return RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_, cache, partial_graph_index);
 }
 
-common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+common::Status TrainingAgent::RunBackward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_);
   state.SetProgramCounterEnd(bw_program_counter_end_);
@@ -75,7 +82,7 @@ common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, st
   return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, nullptr, partial_graph_index);
 }
 
-common::Status TrainingAgent::RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+common::Status TrainingAgent::RunCore(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                       PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
                                       const OrtValueCachePtr& cache, int32_t partial_graph_index) {
   auto fetches_size = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
@@ -89,7 +96,8 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
                                                            const std::vector<std::string>& feed_names,
                                                            const std::vector<std::string>& fetches_names,
                                                            const std::vector<OrtDevice>& outputs_device_info,
-                                                           std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager) {
+                                                           std::unique_ptr<FeedsFetchesManager>&
+                                                               feeds_fetches_manager) {
   ORT_THROW_IF_ERROR(FeedsFetchesManager::Create(feed_names, fetches_names, session_state.GetOrtValueNameIdxMap(),
                                                  feeds_fetches_manager));
   auto& fetch_info = feeds_fetches_manager->GetMutableFetchesDeviceCopyInfo();
@@ -98,6 +106,26 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
   }
 
   ORT_ENFORCE(utils::InitializeFeedFetchCopyInfo(session_state, *feeds_fetches_manager) == Status::OK());
+}
+
+std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
+                                                            std::string_view recompute_probe_level,
+                                                            const bool return_opportunity_table,
+                                                            std::map<std::string, std::pair<std::string, int>>&
+                                                                cluster_id_combinations_to_saved_symbolic_byte_map)
+    const {
+  auto& session_state = inference_session_.GetSessionState();
+  const OrtValueNameIdxMap& ortvalue_name_to_idx_map = session_state.GetOrtValueNameIdxMap();
+  const SequentialExecutionPlan& p_seq_exec_plan = *session_state.GetExecutionPlan();
+  return optimizer::memory_optimizer::GetSerializedORTModuleMemoryStat(
+      session_state.GetGraphViewer(),
+      memory_optimization_config,
+      recompute_probe_level,
+      return_opportunity_table,
+      *inference_session_.GetLogger(),
+      cluster_id_combinations_to_saved_symbolic_byte_map,
+      &ortvalue_name_to_idx_map,
+      &p_seq_exec_plan);
 }
 
 }  // namespace training

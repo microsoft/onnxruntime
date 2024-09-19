@@ -56,6 +56,13 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
+    NodeArg* node_output = node.MutableOutputDefs()[0];
+    auto data_type = node_output->TypeAsProto()->tensor_type().elem_type();
+    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      // FusedGemm is only registered for float data type in fused_gemm.cc!
+      continue;
+    }
+
     const Node& next_node = *(node.OutputNodesBegin());
     if (!IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;

@@ -4,37 +4,20 @@
 #pragma once
 
 #include "test/util/include/default_providers.h"
-#ifdef USE_CUDA
-#include "cuda_runtime_api.h"
-#endif
 
 namespace onnxruntime {
 namespace test {
+
+// CUDA architecture of the current device like 100 * major + 10 * minor.
+// Please call this function after CUDA EP is enabled.
+int GetCudaArchitecture();
 
 inline bool HasCudaEnvironment(int min_cuda_architecture) {
   if (DefaultCudaExecutionProvider().get() == nullptr) {
     return false;
   }
 
-  if (min_cuda_architecture == 0) {
-    return true;
-  }
-
-  int cuda_architecture = 0;
-
-#ifdef USE_CUDA
-  int currentCudaDevice = 0;
-  cudaGetDevice(&currentCudaDevice);
-  cudaDeviceSynchronize();
-  cudaDeviceProp prop;
-  if (cudaSuccess != cudaGetDeviceProperties(&prop, currentCudaDevice)) {
-    return false;
-  }
-
-  cuda_architecture = prop.major * 100 + prop.minor * 10;
-#endif
-
-  return cuda_architecture >= min_cuda_architecture;
+  return GetCudaArchitecture() >= min_cuda_architecture;
 }
 
 inline bool NeedSkipIfCudaArchLowerThan(int min_cuda_architecture) {

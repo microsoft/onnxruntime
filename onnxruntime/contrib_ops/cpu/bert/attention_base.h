@@ -18,7 +18,7 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* relative_position_bias,
+                     const Tensor* attention_bias,
                      void* parameters,
                      const int max_threads_per_block,  // for CUDA
                      const Tensor* past_seq_len = nullptr) const;
@@ -38,6 +38,7 @@ class AttentionBase {
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
     do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
+    rotary_embedding_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
     mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
     scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -62,7 +63,7 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* relative_position_bias,
+                     const Tensor* attention_bias,
                      void* parameters,
                      const Tensor* past_seq_len = nullptr) const;
 
@@ -72,6 +73,7 @@ class AttentionBase {
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
   bool do_rotary_;                         // whether or not to use rotary embeddings
+  int rotary_embedding_;                   // rotary embedding dimension
   float mask_filter_value_;                // the value to be used for filtered out positions
   float scale_;                            // the scale to be used for softmax
 };

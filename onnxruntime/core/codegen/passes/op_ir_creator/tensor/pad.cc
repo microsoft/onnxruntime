@@ -23,9 +23,9 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Pad)::Evaluate(
   std::vector<int64_t> pads;
   float value;
 
-  ORT_ENFORCE(attrs.GetAttr<std::string>("mode", &mode).IsOK());
-  ORT_ENFORCE(attrs.GetAttrs<int64_t>("pads", pads).IsOK());
-  ORT_ENFORCE(attrs.GetAttr<float>("value", &value).IsOK());
+  ORT_THROW_IF_ERROR(attrs.GetAttr<std::string>("mode", &mode));
+  ORT_THROW_IF_ERROR(attrs.GetAttrs<int64_t>("pads", pads));
+  ORT_THROW_IF_ERROR(attrs.GetAttr<float>("value", &value));
 
   if (mode != "constant" && mode != "edge" && mode != "reflect")
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Pad: Unsupported padding mode!");

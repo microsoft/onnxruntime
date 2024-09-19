@@ -25,7 +25,7 @@ namespace onnxruntime {
 
 using namespace rocm::tunable::blas::internal;
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class GemmHipBlasLt : public IKernelExplorer {
  public:
   GemmHipBlasLt(BlasOp opa, BlasOp opb,
@@ -54,7 +54,7 @@ class GemmHipBlasLt : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    for (auto&& [type_string, op] : GetHipBlasLtGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetHipBlasLtGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -90,7 +90,7 @@ class GemmHipBlasLt : public IKernelExplorer {
   size_t selected_op_{};
 };
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class StridedBatchedGemmHipBlasLt : public IKernelExplorer {
  public:
   StridedBatchedGemmHipBlasLt(
@@ -125,7 +125,7 @@ class StridedBatchedGemmHipBlasLt : public IKernelExplorer {
     params_.stride_c = stride_c;
     params_.batch = batch;
 
-    for (auto&& [type_string, op] : GetHipBlasLtStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetHipBlasLtStridedBatchedGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -161,44 +161,44 @@ class StridedBatchedGemmHipBlasLt : public IKernelExplorer {
   size_t selected_op_{};
 };
 
-#define REGISTER_OP_COMMON(type, dtype, alayout, blayout, layout_string)           \
-  py::class_<type<dtype, alayout, blayout>>(m, #type "_" #dtype "_" layout_string) \
-      .def("SetRepeats", &type<dtype, alayout, blayout>::SetRepeats)               \
-      .def("Profile", &type<dtype, alayout, blayout>::Profile)                     \
-      .def("Run", &type<dtype, alayout, blayout>::Run)                             \
-      .def("ListOps", &type<dtype, alayout, blayout>::ListOps)                     \
-      .def("SelectOp", &type<dtype, alayout, blayout>::SelectOp)
+#define REGISTER_OP_COMMON(type, dtype, opa, opb, layout_string)           \
+  py::class_<type<dtype, opa, opb>>(m, #type "_" #dtype "_" layout_string) \
+      .def("SetRepeats", &type<dtype, opa, opb>::SetRepeats)               \
+      .def("Profile", &type<dtype, opa, opb>::Profile)                     \
+      .def("Run", &type<dtype, opa, opb>::Run)                             \
+      .def("ListOps", &type<dtype, opa, opb>::ListOps)                     \
+      .def("SelectOp", &type<dtype, opa, opb>::SelectOp)
 
-#define REGISTER_GEMM_HIPBLASLT(dtype, alayout, blayout, layout_string)     \
-  REGISTER_OP_COMMON(GemmHipBlasLt, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,              \
-                    double,                                                 \
-                    DeviceArray&, int64_t,                                  \
-                    DeviceArray&, int64_t,                                  \
-                    double,                                                 \
+#define REGISTER_GEMM_HIPBLASLT(dtype, opa, opb, layout_string)     \
+  REGISTER_OP_COMMON(GemmHipBlasLt, dtype, opa, opb, layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,      \
+                    double,                                         \
+                    DeviceArray&, int64_t,                          \
+                    DeviceArray&, int64_t,                          \
+                    double,                                         \
                     DeviceArray&, int64_t>());
 
-#define REGISTER_GEMM_HIPBLASLT_FOR_ALL_TRANSAB(dtype) \
-  REGISTER_GEMM_HIPBLASLT(dtype, Row, Row, "NN");      \
-  REGISTER_GEMM_HIPBLASLT(dtype, Row, Col, "NT");      \
-  REGISTER_GEMM_HIPBLASLT(dtype, Col, Row, "TN");      \
-  REGISTER_GEMM_HIPBLASLT(dtype, Col, Col, "TT");
+#define REGISTER_GEMM_HIPBLASLT_FOR_ALL_TRANSAB(dtype)        \
+  REGISTER_GEMM_HIPBLASLT(dtype, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_GEMM_HIPBLASLT(dtype, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_GEMM_HIPBLASLT(dtype, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_GEMM_HIPBLASLT(dtype, BlasOp::T, BlasOp::T, "TT");
 
-#define REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, alayout, blayout, layout_string)     \
-  REGISTER_OP_COMMON(StridedBatchedGemmHipBlasLt, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                            \
-                    double,                                                               \
-                    DeviceArray&, int64_t, int64_t,                                       \
-                    DeviceArray&, int64_t, int64_t,                                       \
-                    double,                                                               \
-                    DeviceArray&, int64_t, int64_t,                                       \
+#define REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, opa, opb, layout_string)     \
+  REGISTER_OP_COMMON(StridedBatchedGemmHipBlasLt, dtype, opa, opb, layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                    \
+                    double,                                                       \
+                    DeviceArray&, int64_t, int64_t,                               \
+                    DeviceArray&, int64_t, int64_t,                               \
+                    double,                                                       \
+                    DeviceArray&, int64_t, int64_t,                               \
                     int64_t>());
 
-#define REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT_FOR_ALL_TRANSAB(dtype) \
-  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, Row, Row, "NN");      \
-  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, Row, Col, "NT");      \
-  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, Col, Row, "TN");      \
-  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, Col, Col, "TT");
+#define REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT_FOR_ALL_TRANSAB(dtype)        \
+  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_STRIDEDBATCHEDGEMM_HIPBLASLT(dtype, BlasOp::T, BlasOp::T, "TT");
 
 KE_REGISTER(m) {
   REGISTER_GEMM_HIPBLASLT_FOR_ALL_TRANSAB(float);

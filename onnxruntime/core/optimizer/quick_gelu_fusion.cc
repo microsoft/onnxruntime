@@ -88,7 +88,7 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     NodeArg* quick_gelu_output_arg = mul_node.MutableOutputDefs()[0];
     Node& quick_gelu_node =
-        graph.AddNode(graph.GenerateNodeName("QuickGelu"), "QuickGelu", "QuickGelu", std::array{quick_gelu_input_arg},
+        graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/QuickGeluFusion/"), "QuickGelu", "QuickGelu", std::array{quick_gelu_input_arg},
                       std::array{quick_gelu_output_arg}, {}, kMSDomain);
     quick_gelu_node.AddAttribute("alpha", alpha);
     quick_gelu_node.SetExecutionProviderType(node.GetExecutionProviderType());

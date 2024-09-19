@@ -5,7 +5,6 @@
 
 #include <sstream>
 
-#include "date/date.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -14,6 +13,16 @@
 
 class MockSink : public ::onnxruntime::logging::ISink {
  public:
+  MOCK_METHOD3(SendImpl, void(const ::onnxruntime::logging::Timestamp& timestamp,
+                              const std::string& logger_id,
+                              const ::onnxruntime::logging::Capture& message));
+};
+
+class MockEtwSink : public ::onnxruntime::logging::ISink {
+ public:
+  MockEtwSink() : ISink(onnxruntime::logging::SinkType::EtwSink) {}
+  ~MockEtwSink() = default;
+
   MOCK_METHOD3(SendImpl, void(const ::onnxruntime::logging::Timestamp& timestamp,
                               const std::string& logger_id,
                               const ::onnxruntime::logging::Capture& message));
@@ -30,7 +39,7 @@ class MockSink : public ::onnxruntime::logging::ISink {
 #endif
 
 ACTION(PrintArgs) {
-  using date::operator<<;
+  using onnxruntime::logging::timestamp_ns::operator<<;
 
   // const Timestamp &timestamp, const std::string &logger_id, const Message &message
   //                  arg0                          arg1                        arg2

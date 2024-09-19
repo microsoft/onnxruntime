@@ -178,6 +178,9 @@ class Module:
     def copy_buffer_to_parameters(self, buffer: OrtValue, trainable_only: bool = True) -> None:
         """Copies the OrtValue buffer to the training session parameters.
 
+        In case the module was loaded from a nominal checkpoint, invoking this function is required
+        to load the updated parameters onto the checkpoint to complete it.
+
         Args:
             buffer: The OrtValue buffer to copy to the training session parameters.
         """

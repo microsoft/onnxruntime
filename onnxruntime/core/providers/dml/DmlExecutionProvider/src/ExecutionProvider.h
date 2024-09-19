@@ -8,6 +8,8 @@
 #include "DmlBufferRegion.h"
 #include "DmlBuffer.h"
 #include "DmlAllocatorRoundingMode.h"
+#include "core/providers/dml/DmlExecutionProvider/src/IExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlReusedCommandListState.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -31,7 +33,6 @@ namespace Dml
     class ReadbackHeap;
     class ExecutionContext;
     class BucketizedBufferAllocator;
-    class DmlCpuAllocator;
     class ExecutionProvider;
     class DmlGpuAllocator;
     class DmlExternalGpuAllocator;
@@ -44,8 +45,11 @@ namespace Dml
         ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
-            ID3D12CommandQueue* queue,
+            Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
+            bool enableGraphCapture,
+            bool enableCpuSyncSpinning,
+            bool disableMemoryArena,
             bool enableBfcAllocator);
 
         void ReleaseCompletedReferences();
@@ -142,8 +146,17 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
+        bool GraphCaptureEnabled() const noexcept;
+        bool GraphCaptured(int graph_annotation_id) const;
+        Status ReplayGraph(int graph_annotation_id);
+        Status OnRunStart(const onnxruntime::RunOptions& run_options);
+        Status OnRunEnd();
+        int GetCurrentGraphAnnotationId() const { return m_currentGraphAnnotationId; }
+        void AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph);
+        bool CpuSyncSpinningEnabled() const noexcept;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
 
@@ -178,17 +191,27 @@ namespace Dml
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
+        bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
-        bool m_bfcAllocatorEnabled = true;
+        int m_currentGraphAnnotationId = 0;
         bool m_native16BitShaderOpsSupported = false;
-        std::shared_ptr<ExecutionContext> m_context;
+        bool m_graphCaptured = false;
+        bool m_graphCaptureEnabled = false;
+
+        std::unordered_map<int, std::vector<std::unique_ptr<DmlReusedCommandListState>>> m_capturedGraphs;
+        std::unordered_set<int> m_graphCapturingDone;
+        bool m_sessionInitialized = false;
+        bool m_cpuSyncSpinningEnabled = false;
+        bool m_memoryArenaDisabled = false;
+        bool m_bfcAllocatorEnabled = true;
+        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<onnxruntime::BFCArena> m_bfcAllocator;
         std::shared_ptr<BucketizedBufferAllocator> m_bucketizedAllocator;
         std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
         std::shared_ptr<DmlExternalGpuAllocator> m_externalGpuAllocator;
-        std::shared_ptr<DmlCpuAllocator> m_cpuInputAllocator;
+        std::shared_ptr<onnxruntime::IAllocator> m_cpuInputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
@@ -235,8 +258,11 @@ namespace Dml
 
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
-            ID3D12CommandQueue* commandQueue,
+            Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
+            bool enableGraphCapture,
+            bool enableSyncSpinning,
+            bool disableMemoryArena,
             bool enableBfcAllocator);
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
@@ -263,7 +289,7 @@ namespace Dml
             return m_impl->OnSessionInitializationEnd();
         }
 
-        virtual onnxruntime::Status Sync() const final override
+        onnxruntime::Status Sync() const final override
         {
             // Completely wait until the device has completed all preceding tasks.
             // The application could have called SynchronizeBoundOutputs().
@@ -271,12 +297,14 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual onnxruntime::Status OnRunEnd(bool /*sync_stream*/) final override
+        Status OnRunStart(const onnxruntime::RunOptions& run_options) final
         {
-            // Flush any pending work to the GPU, but don't block for completion, permitting it
-            // to overlap other work.
-            m_impl->Flush();
-            return Status::OK();
+            return m_impl->OnRunStart(run_options);
+        }
+
+        Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final
+        {
+            return m_impl->OnRunEnd();
         }
 
         void Flush()
@@ -299,11 +327,6 @@ namespace Dml
             return m_impl.Get();
         }
 
-        void MetacommandsEnabled()
-        {
-            m_impl->MetacommandsEnabled();
-        }
-
         virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override
         {
             return m_impl->CreatePreferredAllocators();
@@ -317,6 +340,21 @@ namespace Dml
             }
 
             return GetOrtDeviceByMemType(mem_type);
+        }
+
+        bool IsGraphCaptureEnabled() const override
+        {
+            return m_impl->GraphCaptureEnabled();
+        }
+
+        bool IsGraphCaptured(int graph_annotation_id) const override
+        {
+            return m_impl->GraphCaptured(graph_annotation_id);
+        }
+
+        Status ReplayGraph(int graph_annotation_id) override
+        {
+            return m_impl->ReplayGraph(graph_annotation_id);
         }
 
     private:

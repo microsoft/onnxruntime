@@ -70,7 +70,7 @@ class ForwardBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        self._model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+        self._model = self.infer_shapes_on_base()
 
         _graph_utils.register_graph_outputs(self._model, output)
 
@@ -187,7 +187,7 @@ class TrainingBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+        model = self.infer_shapes_on_base()
 
         _graph_utils.register_graph_outputs(model, output)
 
@@ -204,6 +204,8 @@ class TrainingBlock(blocks.Block):
         self._training_model, self._eval_model = _training_graph_utils.build_gradient_graph(
             model, self._requires_grad, self._frozen_params, output, accessor._GLOBAL_CUSTOM_OP_LIBRARY
         )
+
+        logging.debug("Adding gradient accumulation nodes for training block %s", self.__class__.__name__)
 
         _training_graph_utils.build_gradient_accumulation_graph(self._training_model, self._requires_grad)
 

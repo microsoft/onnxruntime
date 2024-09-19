@@ -26,14 +26,14 @@ namespace SchemaHelpers
         return field;
     }
 
-    inline OperatorFieldTypes::OperatorDesc ToOperatorFieldType(const DML_OPERATOR_DESC* value)
+    inline OperatorFieldTypes::FusedActivationOperatorDesc ToOperatorFieldType(const DML_OPERATOR_DESC* value)
     {
-        return value ? OperatorFieldTypes::OperatorDesc(ConvertOperatorDesc(*value)) : std::nullopt;
+        return value ? OperatorFieldTypes::FusedActivationOperatorDesc(ConvertOperatorDesc(*value)) : std::nullopt;
     }
 
-    inline OperatorFieldTypes::OperatorDescArray ToOperatorFieldType(const DML_OPERATOR_DESC* values, uint32_t count)
+    inline OperatorFieldTypes::FusedActivationOperatorDescArray ToOperatorFieldType(const DML_OPERATOR_DESC* values, uint32_t count)
     {
-        OperatorFieldTypes::OperatorDescArray field;
+        OperatorFieldTypes::FusedActivationOperatorDescArray field;
         if (values && count != 0)
         {
             field.emplace(count);
@@ -65,13 +65,17 @@ namespace SchemaHelpers
         return value;
     }
 
+    inline OperatorFieldTypes::Bool ToOperatorFieldType(bool value)
+    {
+        return value;
+    }
+
     inline OperatorFieldTypes::UIntArray ToOperatorFieldType(const uint32_t* values, uint32_t count)
     {
         OperatorFieldTypes::UIntArray field;
         if (values && count != 0)
         {
-            field.emplace(count);
-            std::copy_n(values, count, field->begin());
+            field.assign(values, values + count);
         }
         return field;
     }
@@ -81,8 +85,7 @@ namespace SchemaHelpers
         OperatorFieldTypes::IntArray field;
         if (values && count != 0)
         {
-            field.emplace(count);
-            std::copy_n(values, count, field->begin());
+            field.assign(values, values + count);
         }
         return field;
     }
@@ -92,8 +95,7 @@ namespace SchemaHelpers
         OperatorFieldTypes::FloatArray field;
         if (values && count != 0)
         {
-            field.emplace(count);
-            std::copy_n(values, count, field->begin());
+            field.assign(values, values + count);
         }
         return field;
     }
@@ -237,7 +239,7 @@ namespace SchemaHelpers
         {
             DML_OPERATOR_DESC* desc = nullptr;
 
-            const auto& value = field.AsOperatorDesc();
+            const auto& value = field.AsFusedActivationOperatorDesc();
             if (value)
             {
                 desc = allocator->template Allocate<DML_OPERATOR_DESC>();
@@ -251,7 +253,7 @@ namespace SchemaHelpers
         {
             DML_OPERATOR_DESC* descs = nullptr;
 
-            const auto& values = field.AsOperatorDescArray();
+            const auto& values = field.AsFusedActivationOperatorDescArray();
             if (values)
             {
                 descs = allocator->template Allocate<DML_OPERATOR_DESC>(values->size());
@@ -288,16 +290,20 @@ namespace SchemaHelpers
             dst->Write(value);
         } break;
 
+        case DML_SCHEMA_FIELD_TYPE_BOOL:
+        {
+            // OperatorFieldTypes::Bool is a 'bool' (1 byte) but written as 'BOOL' in op descs (4 bytes).
+            BOOL value = static_cast<BOOL>(field.AsBool());
+            dst->Write(value);
+        } break;
+
         case DML_SCHEMA_FIELD_TYPE_UINT_ARRAY:
         {
             uint32_t* arrayPtr = nullptr;
 
             const auto& values = field.AsUIntArray();
-            if (values)
-            {
-                arrayPtr = allocator->template Allocate<uint32_t>(values->size());
-                std::copy(values->begin(), values->end(), arrayPtr);
-            }
+            arrayPtr = allocator->template Allocate<uint32_t>(values.size());
+            std::copy(values.begin(), values.end(), arrayPtr);
 
             dst->Write(arrayPtr);
         } break;
@@ -307,11 +313,8 @@ namespace SchemaHelpers
             int32_t* arrayPtr = nullptr;
 
             const auto& values = field.AsIntArray();
-            if (values)
-            {
-                arrayPtr = allocator->template Allocate<int32_t>(values->size());
-                std::copy(values->begin(), values->end(), arrayPtr);
-            }
+            arrayPtr = allocator->template Allocate<int32_t>(values.size());
+            std::copy(values.begin(), values.end(), arrayPtr);
 
             dst->Write(arrayPtr);
         } break;
@@ -321,11 +324,8 @@ namespace SchemaHelpers
             float* arrayPtr = nullptr;
 
             const auto& values = field.AsFloatArray();
-            if (values)
-            {
-                arrayPtr = allocator->template Allocate<float>(values->size());
-                std::copy(values->begin(), values->end(), arrayPtr);
-            }
+            arrayPtr = allocator->template Allocate<float>(values.size());
+            std::copy(values.begin(), values.end(), arrayPtr);
 
             dst->Write(arrayPtr);
         } break;

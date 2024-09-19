@@ -66,13 +66,13 @@ static void RunAllOpsetAllDomainPadTests(
     bool pads_is_initializer;
     bool value_is_initializer;
   };
-  const std::vector<TestParams> all_test_params {
-    {false, false},
+  const std::vector<TestParams> all_test_params{
+      {false, false},
 #if (defined(USE_NNAPI) && defined(__ANDROID__)) || (defined(USE_COREML) && defined(__APPLE__))
-        // only enable when building NNAPI EP on Android or building CoreML EP for Apple environment
-        // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
-        // TODO try to enable when we move from QEMU to arm64 CI machines
-        {true, true},
+      // only enable when building NNAPI EP on Android or building CoreML EP for Apple environment
+      // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
+      // TODO try to enable when we move from QEMU to arm64 CI machines
+      {true, true},
 #endif
   };
   for (const auto& test_params : all_test_params) {

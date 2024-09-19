@@ -358,7 +358,7 @@ class InferenceSession(Session):
     def __init__(
         self,
         path_or_bytes: str | bytes | os.PathLike,
-        sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
+        sess_options: onnxruntime.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
@@ -413,15 +413,17 @@ class InferenceSession(Session):
             self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
 
         # internal parameters that we don't expect to be used in general so aren't documented
-        disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
+        disabled_optimizers = kwargs.get("disabled_optimizers")
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
         except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
                 try:
+                    print("*************** EP Error ***************")
                     print(f"EP Error {e} when using {providers}")
                     print(f"Falling back to {self._fallback_providers} and retrying.")
+                    print("****************************************")
                     self._create_inference_session(self._fallback_providers, None)
                     # Fallback only once.
                     self.disable_fallback()
@@ -434,11 +436,34 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
         if "TensorrtExecutionProvider" in available_providers:
-            self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "TensorrtExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
         elif "MIGraphXExecutionProvider" in available_providers:
-            self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            if providers and any(
+                provider == "ROCMExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
+                for provider in providers
+            ):
+                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
         else:
             self._fallback_providers = ["CPUExecutionProvider"]
 
@@ -446,16 +471,11 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
-        if not providers and len(available_providers) > 1:
-            self.disable_fallback()
-            raise ValueError(
-                f"This ORT build has {available_providers} enabled. "
-                "Since ORT 1.9, you are required to explicitly set "
-                "the providers parameter when instantiating InferenceSession. For example, "
-                f"onnxruntime.InferenceSession(..., providers={available_providers}, ...)"
-            )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
+
+        self._register_ep_custom_ops(session_options, providers, provider_options, available_providers)
+
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
@@ -497,6 +517,17 @@ class InferenceSession(Session):
         self._sess = None
         self._sess_options = self._sess_options_initial
         self._create_inference_session(providers, provider_options)
+
+    def _register_ep_custom_ops(self, session_options, providers, provider_options, available_providers):
+        for i in range(len(providers)):
+            if providers[i] in available_providers and providers[i] == "TensorrtExecutionProvider":
+                C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
+            elif (
+                isinstance(providers[i], tuple)
+                and providers[i][0] in available_providers
+                and providers[i][0] == "TensorrtExecutionProvider"
+            ):
+                C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
 
 
 class IOBinding:
@@ -623,7 +654,7 @@ class IOBinding:
         return self._iobinding.get_outputs()
 
     def copy_outputs_to_cpu(self):
-        """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
+        """Copy output contents to CPU."""
         return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):

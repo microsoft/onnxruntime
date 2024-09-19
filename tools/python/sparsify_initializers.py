@@ -78,7 +78,7 @@ def convert_tensor_to_sparse(
                 indices.append(index)
                 nnz_count += 1
 
-    sparsity = float(1.0) - float(nnz_count) / data_len
+    sparsity = 1.0 - float(nnz_count) / data_len
 
     ind_data_type = TensorProto.INT8
     ind_dtype = np.int8
@@ -126,7 +126,7 @@ def convert_tensor_to_sparse(
     # int32 indices are often selected, thus we really want to guard against loosing
     # rather than winning.
     if tensor_data_bytes <= total_sparse_bytes:
-        sparsity = float(1.0) - float(tensor_data_bytes) / total_sparse_bytes
+        sparsity = 1.0 - float(tensor_data_bytes) / total_sparse_bytes
         logger.debug(f"initializer={tensor.name}, adjusted_sparsity={sparsity}")
         return (object(), sparsity)
 

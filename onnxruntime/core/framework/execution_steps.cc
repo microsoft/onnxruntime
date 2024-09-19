@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/framework/execution_steps.h"
 #include "core/framework/sequential_executor.h"
+
 namespace onnxruntime {
+
 BarrierStep::BarrierStep(size_t id, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
                                                             barrier_id_{id} {}
 
@@ -16,8 +19,8 @@ Status BarrierStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string BarrierStep::ToString() const {
-  return ::onnxruntime::MakeString("Set a barrier with id: ",
-                                   barrier_id_, ", count: ", 2, ".");
+  // Set a barrier with id: barrier_id_, count: 2.
+  return MakeString("Barrier - BarrierId: ", barrier_id_, ", Count: ", 2);
 }
 
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
@@ -42,11 +45,17 @@ Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string WaitOnEPStep::ToString() const {
-  return ::onnxruntime::MakeString("WaitOnEPStep: wait on notification with id: ",
-                                   notification_idx_, ". ");
+  // Wait on notification with notification_idx_
+  return MakeString("WaitOnEP - NotificationId: ", notification_idx_);
 }
 
-LaunchKernelStep::LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(index) {}
+#if defined(ORT_MINIMAL_BUILD)
+LaunchKernelStep::LaunchKernelStep(NodeIndex index)
+    : SequentialExecutionPlan::ExecutionStep(index) {}
+#else
+LaunchKernelStep::LaunchKernelStep(NodeIndex index, std::string_view node_name)
+    : SequentialExecutionPlan::ExecutionStep(index), node_name_(node_name) {}
+#endif
 
 Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  size_t stream_idx,
@@ -61,13 +70,17 @@ Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
     return Status::OK();
   }
 #endif
-  onnxruntime::Status status = ExecuteKernel(ctx, node_index_, stream_idx, terminate_flag, session_scope);
+  Status status = ExecuteKernel(ctx, node_index_, stream_idx, terminate_flag, session_scope);
   continue_flag = status.IsOK();
   return status;
 }
 
 std::string LaunchKernelStep::ToString() const {
-  return ::onnxruntime::MakeString("Launch kernel with node id: ", node_index_, ". ");
+#if defined(ORT_MINIMAL_BUILD)
+  return MakeString("LaunchKernel - ", "NodeIndex: ", node_index_);
+#else
+  return MakeString("LaunchKernel - ", "NodeIndex: ", node_index_, ", Name: ", node_name_);
+#endif
 }
 
 ActivateNotificationStep::ActivateNotificationStep(
@@ -89,12 +102,12 @@ Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string ActivateNotificationStep::ToString() const {
-  return ::onnxruntime::MakeString("ActivateNotificationStep: activate notification with id: ",
-                                   notification_idx_, ". ");
+  // Activate notification with id: notification_idx_
+  return MakeString("ActivateNotification - NotificationId: ", notification_idx_);
 }
 
-TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                                                                                 trigger_point_index_(trigger_point_index) {}
+TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index)
+    : SequentialExecutionPlan::ExecutionStep(node_index), trigger_point_index_(trigger_point_index) {}
 
 Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
                                       size_t /*stream_idx*/,
@@ -107,7 +120,8 @@ Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string TriggerDownstreamStep::ToString() const {
-  return ::onnxruntime::MakeString("TriggerDownstreamStep: trigger downstream of trigger point: ",
-                                   trigger_point_index_, ".");
+  // Trigger downstream of trigger point: trigger_point_index_.
+  return MakeString("TriggerDownstream - TriggerPointIndex: ", trigger_point_index_);
 }
+
 }  // namespace onnxruntime

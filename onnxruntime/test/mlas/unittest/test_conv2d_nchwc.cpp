@@ -4,11 +4,6 @@
 #include "test_conv2d_nchwc.h"
 #include "test_conv2d_fixture.h"
 
-template <>
-MlasNchwcConv2DTest<false>* MlasTestFixture<MlasNchwcConv2DTest<false>>::mlas_tester(nullptr);
-template <>
-MlasNchwcConv2DTest<true>* MlasTestFixture<MlasNchwcConv2DTest<true>>::mlas_tester(nullptr);
-
 static size_t Conv2dNchwcRegistLongExecute() {
   size_t count = 0;
 

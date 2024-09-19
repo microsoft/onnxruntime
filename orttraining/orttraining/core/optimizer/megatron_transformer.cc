@@ -21,7 +21,7 @@ struct OpInfo {
          const size_t output_count = 1) : op_type(op_type),
                                           supported_versions(supported_versions),
                                           domain(domain),
-                                          output_count(output_count){};
+                                          output_count(output_count) {};
 
   std::string op_type;
   std::initializer_list<OperatorSetVersion> supported_versions;
@@ -53,7 +53,7 @@ const OpInfo where_info = OpInfo("Where", opset_v9);
 struct NodeInfo {
   NodeInfo(const std::vector<OpInfo>& op_infos,
            const bool required = true) : op_infos(op_infos),
-                                         required(required){};
+                                         required(required) {};
 
   std::vector<OpInfo> op_infos;
   bool required;
