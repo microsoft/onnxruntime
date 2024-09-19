@@ -52,7 +52,8 @@ static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor
   if (y_zp == nullptr) {
     // Because y_zp is not provided, the output is float32
     // Either fill with bias_data if present or 0
-    ORT_ENFORCE(y.SizeInBytes() == SafeInt<size_t>(M) * N * sizeof(float), "Output must be sized for float");
+    ORT_ENFORCE(y.SizeInBytes() == SafeInt<size_t>(M) * N * sizeof(float),
+                "Output must be sized for float");
     float* output = reinterpret_cast<float*>(y.MutableDataRaw());
     if (bias != nullptr) {
       auto to_float = [](uint32_t v) -> float { return static_cast<float>(v); };
@@ -64,18 +65,32 @@ static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor
     }
   } else {
     if (bias != nullptr) {
-      const float a_scale_value = a_scale.Data<float>()[0];
-      const float b_scale_value = b_scale.Data<float>()[0];
-
       // scale bias_data back to float with result = bias_data * a_scale * b_scale.
       Tensor scaled_back(DataTypeImpl::GetType<float>(), y.Shape(), allocator);
+      const float a_scale_value = a_scale.Data<float>()[0];
+      const auto& b_shape = b_scale.Shape();
+      if (b_shape.Size() == 1) {
+        // bscale is a scalar
+        const float b_scale_value = b_scale.Data<float>()[0];
+        auto scale_back_fn = [a_scale_value, b_scale_value](int32_t v) -> float {
+          return static_cast<float>(v) * a_scale_value * b_scale_value;
+        };
+        GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(), bias->Shape(),
+                                    scaled_back.MutableData<float>(), scale_back_fn);
+      } else {
+        // b_scale is a 1-D tensor which should be the size of N
+        ORT_ENFORCE(b_shape[0] == N, "Length of b_scale is expected to be equal to N");
+        const auto* b_scaled_data = b_scale.Data<float>();
+        Eigen::Index counter = 0;
+        auto scale_back_fn = [a_scale_value, b_scaled_data, N, counter](int32_t v) mutable -> float {
+          auto b_idx = counter++ % N;
+          return static_cast<float>(v) * a_scale_value * b_scaled_data[b_idx];
+        };
 
-      auto scale_back_fn = [a_scale_value, b_scale_value](int32_t v) -> float {
-        return static_cast<float>(v) * a_scale_value * b_scale_value;
-      };
-
-      GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(), bias->Shape(),
-                                  scaled_back.MutableData<float>(), scale_back_fn);
+        std::function<float(uint32_t)> fn{scale_back_fn};
+        GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(), bias->Shape(),
+                                    scaled_back.MutableData<float>(), fn);
+      }
 
       // re-quantize
       if (y_zp->IsDataType<int8_t>()) {
