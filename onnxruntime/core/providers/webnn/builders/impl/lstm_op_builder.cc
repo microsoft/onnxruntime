@@ -27,6 +27,8 @@ class LstmOpBuilder : public BaseOpBuilder {
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) const override;
 };
 
 void LstmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -197,7 +199,7 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 }
 
 bool LstmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                          const logging::Logger& logger) const {
+                                           const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
@@ -241,6 +243,31 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::v
   }
 
   return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+}
+
+bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                            const emscripten::val& wnn_limits,
+                                            const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const auto& op_type = node.OpType();
+  int32_t Y_type = 0;
+  int32_t Y_h_type = 0;
+  int32_t Y_c_type = 0;
+  bool has_Y = output_defs.size() > 0 && output_defs[0]->Exists();
+  bool has_Y_h = output_defs.size() > 1 && output_defs[1]->Exists();
+  bool has_Y_c = output_defs.size() > 2 && output_defs[2]->Exists();
+
+  if (has_Y && GetType(*output_defs[0], Y_type, logger)) {
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+  }
+  if (has_Y_h && GetType(*output_defs[1], Y_h_type, logger)) {
+    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "outputs", "Y_h", logger);
+  }
+  if (has_Y_c && GetType(*output_defs[2], Y_c_type, logger)) {
+    return IsDataTypeSupportedByOp(op_type, Y_c_type, wnn_limits, "outputs", "Y_c", logger);
+  }
+
+  return false;
 }
 
 void CreateLstmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
