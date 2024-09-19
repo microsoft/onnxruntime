@@ -52,7 +52,7 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<int32_t> repetitions;
   std::transform(repetitions_data.cbegin(), repetitions_data.cend(),
                  std::back_inserter(repetitions),
-                 [](int64_t repetition) -> uint32_t { return SafeInt<int32_t>(repetition); });
+                 [](int64_t repetition) -> uint32_t { return SafeInt<uint32_t>(repetition); });
 
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
