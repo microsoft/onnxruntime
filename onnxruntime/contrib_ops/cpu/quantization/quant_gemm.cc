@@ -88,10 +88,10 @@ static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor
                                         narrow<size_t>(scaled_back.Shape().Size()));
       }
     } else {
+      const int32_t zp = (y_zp->IsDataType<int8_t>()) ? *(y_zp->Data<int8_t>()) : *(y_zp->Data<uint8_t>());
       // We just fill out the output, does not matter singed or unsigned
       int8_t* output = reinterpret_cast<int8_t*>(y.MutableDataRaw());
-      EigenMatrixMapRowMajor<int8_t> output_mat(output, M, N);
-      output_mat.setConstant(*(y_zp->Data<int8_t>()));
+      memset(output, zp, narrow<size_t>(M * N));
     }
   }
 }
