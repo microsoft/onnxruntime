@@ -161,7 +161,7 @@ class MatMulNBits final : public OpKernel {
                          AllocatorPtr& allocator,
                          concurrency::ThreadPool* thread_pool,
                          const MatMulComputeHelper& helper) const {
-    ORT_THROW("MatMulNBits op is not supported for T1 type.");
+    ORT_THROW("ComputeBUnpacked is not supported for T1 type.");
   }
 
   Status ComputeBPacked(const T1* a_data,
@@ -172,13 +172,31 @@ class MatMulNBits final : public OpKernel {
                         AllocatorPtr& allocator,
                         concurrency::ThreadPool* thread_pool,
                         const MatMulComputeHelper& helper) const {
-    ORT_THROW("MatMulNBits op is not supported for T1 type.");
+    ORT_THROW("ComputeBPacked is not supported for T1 type.");
+  }
+
+  void PackScale(const Tensor& tensor) {
+    ORT_THROW("PackScale is not supported for T1 type.");
   }
 };
 
-bool IsATypeFloat16(const Tensor& tensor) {
-  return tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+#ifdef MLAS_TARGET_AMD64_IX86
+template <>
+void MatMulNBits<MLFloat16>::PackScale(const Tensor& tensor) {
+  auto sptr = tensor.Data<MLFloat16>();
+  std::vector<float> scales_v(static_cast<unsigned int>(tensor.Shape().Size()));
+  MlasConvertHalfToFloatBuffer(sptr, &scales_v[0], scales_v.size());
+  MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), &scales_v[0],
+                               has_zp_input_, nullptr, nullptr);
 }
+
+template <>
+void MatMulNBits<float>::PackScale(const Tensor& tensor) {
+  auto sptr = tensor.Data<float>();
+  MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                               has_zp_input_, nullptr, nullptr);
+}
+#endif
 
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
@@ -257,15 +275,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   } else if (compute_type_ == CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
-      if (IsATypeFloat16(tensor)) {
-        auto sptr = tensor.Data<MLFloat16>();
-        std::vector<float> scales_v(static_cast<unsigned int>(tensor.Shape().Size()));
-        MlasConvertHalfToFloatBuffer(sptr, &scales_v[0], scales_v.size());
-        MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), &scales_v[0], has_zp_input_, nullptr, nullptr);
-      } else {
-        auto sptr = tensor.Data<float>();
-        MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr, has_zp_input_, nullptr, nullptr);
-      }
+      PackScale(tensor);
       is_packed = false;
     } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
       auto zptr = tensor.Data<uint8_t>();
