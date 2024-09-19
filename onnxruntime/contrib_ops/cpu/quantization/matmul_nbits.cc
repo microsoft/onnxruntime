@@ -151,24 +151,25 @@ class MatMulNBits final : public OpKernel {
 
 #endif  // defined(ORT_NEURAL_SPEED)
 
-  Status ComputeBUnpacked(const T1* a_data,
-                         const uint8_t* b_data,
-                         const T1* scales_data,
-                         const void* zero_points_data,
-                         const int32_t* reorder_idx_data,
-                         T1* y_data,
-                         bool zero_points_is_type_t1,
-                         AllocatorPtr& allocator,
-                         concurrency::ThreadPool* thread_pool,
-                         const MatMulComputeHelper& helper) const {
+  // dequantize B first and then compute float gemm
+  Status ComputeBUnpacked(const Tensor* a,
+                          const Tensor* b,
+                          const Tensor* scales,
+                          const Tensor* zero_points,
+                          const Tensor* reorder_idx,
+                          const Tensor* bias,
+                          Tensor* y,
+                          AllocatorPtr& allocator,
+                          concurrency::ThreadPool* thread_pool,
+                          const MatMulComputeHelper& helper) const {
     ORT_THROW("ComputeBUnpacked is not supported for T1 type.");
   }
 
-  Status ComputeBPacked(const T1* a_data,
-                        const T1* scales_data,
-                        const void* zero_points_data,
-                        const T1* bias_data,
-                        T1* y_data,
+  Status ComputeBPacked(const Tensor* a,
+                        const Tensor* scales,
+                        const Tensor* zero_points,
+                        const Tensor* bias,
+                        Tensor* y,
                         AllocatorPtr& allocator,
                         concurrency::ThreadPool* thread_pool,
                         const MatMulComputeHelper& helper) const {
@@ -200,8 +201,8 @@ void MatMulNBits<float>::PackScale(const Tensor& tensor) {
 
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                            /*out*/ bool& is_packed,
-                            /*out*/ PrePackedWeights* prepacked_weights) {
+                                /*out*/ bool& is_packed,
+                                /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
@@ -291,7 +292,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
 template <typename T1>
 Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
-                                              /*out*/ bool& used_shared_buffers) {
+                                                  /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
 #if defined(ORT_NEURAL_SPEED)
@@ -323,14 +324,20 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 }
 
 template <>
-Status MatMulNBits<float>::ComputeBPacked(const float* a_data,
-                                          const float* scales_data,
-                                          const void* zero_points_data,
-                                          const float* bias_data,
-                                          float* y_data,
+Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
+                                          const Tensor* scales,
+                                          const Tensor* zero_points,
+                                          const Tensor* bias,
+                                          Tensor* y,
                                           AllocatorPtr& allocator,
                                           concurrency::ThreadPool* thread_pool,
                                           const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<float>();
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<float>();
+  auto* y_data = y->MutableData<float>();
+
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
@@ -366,14 +373,20 @@ Status MatMulNBits<float>::ComputeBPacked(const float* a_data,
 }
 
 template <>
-Status MatMulNBits<MLFloat16>::ComputeBPacked(const MLFloat16* a_data,
-                                              const MLFloat16* scales_data,
-                                              const void* zero_points_data,
-                                              const MLFloat16* bias_data,
-                                              MLFloat16* y_data,
+Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
+                                              const Tensor* scales,
+                                              const Tensor* zero_points,
+                                              const Tensor* bias,
+                                              Tensor* y,
                                               AllocatorPtr& allocator,
                                               concurrency::ThreadPool* thread_pool,
                                               const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<MLFloat16>();
+  const auto* scales_data = scales->Data<MLFloat16>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<MLFloat16>();
+  auto* y_data = y->MutableData<MLFloat16>();
+
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
@@ -423,18 +436,24 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const MLFloat16* a_data,
   return Status::OK();
 }
 
-// dequantize B first and then compute float gemm
 template <>
-Status MatMulNBits<float>::ComputeBUnpacked(const float* a_data,
-                                           const uint8_t* b_data,
-                                           const float* scales_data,
-                                           const void* zero_points_data,
-                                           const int32_t* reorder_idx_data,
-                                           float* y_data,
-                                           bool zero_points_is_type_t1,
-                                           AllocatorPtr& allocator,
-                                           concurrency::ThreadPool* thread_pool,
-                                           const MatMulComputeHelper& helper) const {
+Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
+                                            const Tensor* b,
+                                            const Tensor* scales,
+                                            const Tensor* zero_points,
+                                            const Tensor* reorder_idx,
+                                            const Tensor* bias,
+                                            Tensor* y,
+                                            AllocatorPtr& allocator,
+                                            concurrency::ThreadPool* thread_pool,
+                                            const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<float>();
+  const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
+  auto* y_data = y->MutableData<float>();
+
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
@@ -444,12 +463,12 @@ Status MatMulNBits<float>::ComputeBUnpacked(const float* a_data,
 
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
 
-  if ((reorder_idx_data == nullptr) && !zero_points_is_type_t1) {
+  if ((reorder_idx_data == nullptr) && (!zero_points || zero_points->IsDataType<float>())) {
     // dequantize b, only 4b quantization is supported for now
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_data,                                   // quantization scales
+        scales_data,                                    // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -459,11 +478,11 @@ Status MatMulNBits<float>::ComputeBUnpacked(const float* a_data,
   } else {
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
-    if (zero_points_is_type_t1) {
+    if (zero_points && zero_points->IsDataType<float>()) {
       DequantizeBlockwise<float, float>(
           tmp_b_data_ptr.get(),                         // dequantized output
           b_data,                                       // quantized input
-          scales_data,                                 // quantization scales
+          scales_data,                                  // quantization scales
           static_cast<const float*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -475,7 +494,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const float* a_data,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_data,                                   // quantization scales
+          scales_data,                                    // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -504,8 +523,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const float* a_data,
   }
 
   // if there is a bias input, copy bias values into C and set beta to 1.0f
-  if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
-      bias != nullptr) {
+  if (bias) {
     gsl::span<const float> bias_span = bias->DataAsSpan<float>();
     for (size_t i = 0; i < batch_count; ++i) {
       float* C_row = data[i].C;
@@ -525,18 +543,24 @@ Status MatMulNBits<float>::ComputeBUnpacked(const float* a_data,
   return Status::OK();
 }
 
-// dequantize B first and then compute float gemm
 template <>
-Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const MLFloat16* a_data,
-                                               const uint8_t* b_data,
-                                               const MLFloat16* scales_data,
-                                               const void* zero_points_data,
-                                               const int32_t* reorder_idx_data,
-                                               MLFloat16* y_data,
-                                               bool zero_points_is_type_t1,
-                                               AllocatorPtr& allocator,
-                                               concurrency::ThreadPool* thread_pool,
-                                               const MatMulComputeHelper& helper) const {
+Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
+                                                const Tensor* b,
+                                                const Tensor* scales,
+                                                const Tensor* zero_points,
+                                                const Tensor* reorder_idx,
+                                                const Tensor* bias,
+                                                Tensor* y,
+                                                AllocatorPtr& allocator,
+                                                concurrency::ThreadPool* thread_pool,
+                                                const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<MLFloat16>();
+  const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<MLFloat16>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
+  auto* y_data = y->MutableData<MLFloat16>();
+
   const float* scales_data_;
   std::vector<float> scales_data_v;
   scales_data_v.resize((const unsigned int)scales->Shape().Size());
@@ -552,7 +576,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const MLFloat16* a_data,
 
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
 
-  if ((reorder_idx_data == nullptr) && !zero_points_is_type_t1) {
+  if ((reorder_idx_data == nullptr) && (!zero_points || zero_points->IsDataType<MLFloat16>())) {
     // dequantize b, only 4b quantization is supported for now
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
@@ -567,11 +591,11 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const MLFloat16* a_data,
   } else {
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
-    if (zero_points_is_type_t1) {
+    if (zero_points && zero_points->IsDataType<MLFloat16>()) {
       DequantizeBlockwise<float, MLFloat16>(
-          tmp_b_data_ptr.get(),                         // dequantized output
-          b_data,                                       // quantized input
-          scales_data_,                                 // quantization scales
+          tmp_b_data_ptr.get(),                             // dequantized output
+          b_data,                                           // quantized input
+          scales_data_,                                     // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -615,8 +639,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const MLFloat16* a_data,
   }
 
   // if there is a bias input, copy bias values into C and set beta to 1.0f
-  if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
-      bias != nullptr) {
+  if (bias) {
     auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(bias->Shape().Size()));
     MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(),
                                  tmp_bias_data_ptr.get(),
@@ -639,7 +662,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const MLFloat16* a_data,
 }
 
 template <typename T1>
-Status MatMulNBits<T1>::Compute(OpKernelContext * ctx) const {
+Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
   const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
@@ -659,24 +682,15 @@ Status MatMulNBits<T1>::Compute(OpKernelContext * ctx) const {
     return Status::OK();
   }
 
-  const auto* a_data = a->Data<T1>();
-  const uint8_t* b_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<T1>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
-  auto* y_data = y->MutableData<T1>();
-
-  bool zero_points_is_type_t1 = zero_points && zero_points->IsDataType<T1>();
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
 
-    // clang-format off
+  // clang-format off
   const bool has_single_b_matrix = std::all_of(
       helper.RightOffsets().begin(),
       helper.RightOffsets().end(),
       [](size_t offset) { return offset == 0; });
-    // clang-format on
+  // clang-format on
 
   if (has_single_b_matrix &&
       packed_b_) {  // Assume that MlasSQNBitGemmBatch() always requires packed B.
@@ -684,6 +698,8 @@ Status MatMulNBits<T1>::Compute(OpKernelContext * ctx) const {
                     // MlasSQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasSQNBitGemmBatch()
                     // with B directly too.
 #if defined(ORT_NEURAL_SPEED)
+    const auto* a_data = a->Data<T1>();
+    auto* y_data = y->MutableData<T1>();
     const size_t batch_count = helper.OutputOffsets().size();
     const size_t M = static_cast<size_t>(helper.M());
     const size_t N = static_cast<size_t>(helper.N());
@@ -702,16 +718,14 @@ Status MatMulNBits<T1>::Compute(OpKernelContext * ctx) const {
     auto ws_ptr = IAllocator::MakeUniquePtr<int8_t>(allocator, ws_size);
     NSSQNBitsGemmBatchPackedB(M, N, K, batch_count, gemm_params.data(), ws_ptr.get(), thread_pool);
     return Status::OK();
-#else  // defined(ORT_NEURAL_SPEED)
+#else   // defined(ORT_NEURAL_SPEED)
     if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
-      return ComputeBPacked(a_data, scales_data, zero_points_data, bias_data, y_data, compute_type_,
-                            allocator, thread_pool, helper);
+      return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
-  }
 #endif  // !defined(ORT_NEURAL_SPEED)
+  }
 
-  return ComputeBUnpacked(a_data, b_data, scales_data, zero_points_data, reorder_idx_data, y_data,
-                         zero_points_is_type_t1, allocator, thread_pool, helper);
+  return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
 
 #define REGISTER_MatMulNBits(T1)                                            \
