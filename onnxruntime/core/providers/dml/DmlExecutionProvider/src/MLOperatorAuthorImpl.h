@@ -358,9 +358,9 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         return false;
     }
 
-    onnxruntime::IAllocator* STDMETHODCALLTYPE GetAllocator() const noexcept override
+    onnxruntime::AllocatorPtr STDMETHODCALLTYPE GetAllocator() const noexcept override
     {
-        return m_impl->GetAllocator(OrtMemTypeDefault).get();
+        return m_impl->GetAllocator(OrtMemTypeDefault);
     }
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
@@ -437,9 +437,9 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
 
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override;
 
-    onnxruntime::IAllocator* STDMETHODCALLTYPE GetAllocator() const noexcept override
+    onnxruntime::AllocatorPtr STDMETHODCALLTYPE GetAllocator() const noexcept override
     {
-        THROW_HR(E_UNEXPECTED);
+        THROW_HR(E_NOTIMPL);
     }
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
@@ -465,9 +465,14 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     OpKernelContextWrapper(onnxruntime::OpKernelContext* context, const onnxruntime::IExecutionProvider* provider, bool isInternalOperator, const EdgeShapes* outputShapes);
 
-    onnxruntime::IAllocator* STDMETHODCALLTYPE GetAllocator() const noexcept override
+    onnxruntime::AllocatorPtr STDMETHODCALLTYPE GetAllocator() const noexcept override
     {
-        return m_impl->GetAllocator(m_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeDefault)).get();
+        return m_impl->GetAllocator(m_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeDefault));
+    }
+
+    onnxruntime::AllocatorPtr STDMETHODCALLTYPE GetCpuAllocator() const noexcept override
+    {
+        return m_impl->GetAllocator(m_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeCPUInput));
     }
 
     bool STDMETHODCALLTYPE IsSequenceInputTensor(uint32_t inputIndex) const noexcept override;

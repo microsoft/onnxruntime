@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/framework/allocator.h"
+
 interface IDMLOperation;
 interface IDMLOperator;
 struct DML_OPERATOR_DESC;
@@ -82,7 +84,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         ) const noexcept PURE;
 
     STDMETHOD_(bool, IsDmlGraphNode)() const noexcept PURE;
-    STDMETHOD_(onnxruntime::IAllocator*, GetAllocator)() const noexcept PURE;
+    STDMETHOD_(onnxruntime::AllocatorPtr, GetAllocator)() const noexcept PURE;
 
     STDMETHOD(SetDmlOperator)(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc
@@ -267,7 +269,8 @@ IMLOperatorKernelContextPrivate : IUnknown
     //! Returns whether the tensor at inputIndex is a sequence tensor or not
     STDMETHOD_(bool, IsSequenceInputTensor)(uint32_t inputIndex) const = 0;
 
-    STDMETHOD_(onnxruntime::IAllocator*, GetAllocator)() const = 0;
+    STDMETHOD_(onnxruntime::AllocatorPtr, GetAllocator)() const = 0;
+    STDMETHOD_(onnxruntime::AllocatorPtr, GetCpuAllocator)() const = 0;
 };
 
 // Declare private enum MLOperatorAttributeType::Tensor.

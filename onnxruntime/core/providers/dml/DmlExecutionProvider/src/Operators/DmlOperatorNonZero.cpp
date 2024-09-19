@@ -75,7 +75,7 @@ public:
         ExecutionProviderImpl* executionProvider = static_cast<ExecutionProviderImpl*>(m_executionProvider.Get());
 
         // Create the DML output tensor for the number of nonzero elements
-        onnxruntime::Tensor outputCountDml(onnxruntime::DataTypeImpl::GetType<uint32_t>(), m_outputCountShape, executionProvider->GetGpuAllocator());
+        onnxruntime::Tensor outputCountDml(onnxruntime::DataTypeImpl::GetType<uint32_t>(), m_outputCountShape, kernelContext.GetAllocator());
         Microsoft::WRL::ComPtr<IMLOperatorTensor> outputCountDmlWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
             &outputCountDml,
             true,
@@ -83,7 +83,7 @@ public:
             true);
 
         // Create the DML output tensor for the coordinates (not cropped)
-        onnxruntime::Tensor intermediateCoordinatesDml(onnxruntime::DataTypeImpl::GetType<int64_t>(), m_outputCoordinatesShape, executionProvider->GetGpuAllocator());
+        onnxruntime::Tensor intermediateCoordinatesDml(onnxruntime::DataTypeImpl::GetType<int64_t>(), m_outputCoordinatesShape, kernelContext.GetAllocator());
         Microsoft::WRL::ComPtr<IMLOperatorTensor> intermediateCoordinatesDmlWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
             &intermediateCoordinatesDml,
             true,
@@ -105,7 +105,7 @@ public:
                 gsl::make_span(nonzeroCoordinatesOutputTensors)));
 
             // Copy the number of nonzero elements back to the CPU
-            onnxruntime::Tensor outputCountCpu(onnxruntime::DataTypeImpl::GetType<uint32_t>(), {1}, executionProvider->GetCpuInputAllocator());
+            onnxruntime::Tensor outputCountCpu(onnxruntime::DataTypeImpl::GetType<uint32_t>(), {1}, kernelContext.GetCpuAllocator());
             Microsoft::WRL::ComPtr<IMLOperatorTensor> outputCountCpuWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
                 &outputCountCpu,
                 false,

@@ -23,7 +23,7 @@ DmlCommandRecorder::DmlCommandRecorder(
 }
 
 void DmlCommandRecorder::InitializeOperator(
-    onnxruntime::IAllocator* allocator,
+    onnxruntime::AllocatorPtr& allocator,
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,
     const DML_BINDING_DESC& inputArrayBinding)
@@ -101,7 +101,7 @@ void DmlCommandRecorder::InitializeOperator(
 }
 
 void DmlCommandRecorder::ExecuteOperator(
-    onnxruntime::IAllocator* allocator,
+    onnxruntime::AllocatorPtr& allocator,
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,
     gsl::span<const DML_BINDING_DESC> inputBindings,

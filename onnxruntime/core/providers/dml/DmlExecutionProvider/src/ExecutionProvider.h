@@ -56,14 +56,14 @@ namespace Dml
         STDMETHOD(AddUAVBarrier)() const noexcept final;
 
         STDMETHOD(InitializeOperator)(
-            onnxruntime::IAllocator* allocator,
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputBindings
             ) const noexcept final;
 
         STDMETHOD(ExecuteOperator)(
-            onnxruntime::IAllocator* allocator,
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<IMLOperatorTensor*> inputTensors,
@@ -71,7 +71,7 @@ namespace Dml
             ) const noexcept final;
 
         STDMETHOD(ExecuteOperator)(
-            onnxruntime::IAllocator* allocator,
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<DML_BINDING_DESC> inputTensors,
@@ -166,8 +166,6 @@ namespace Dml
         int GetCurrentGraphAnnotationId() const { return m_currentGraphAnnotationId; }
         void AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph);
         bool CpuSyncSpinningEnabled() const noexcept;
-        std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
-        std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
@@ -215,7 +213,6 @@ namespace Dml
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
-        std::shared_ptr<onnxruntime::IAllocator> m_cpuInputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;

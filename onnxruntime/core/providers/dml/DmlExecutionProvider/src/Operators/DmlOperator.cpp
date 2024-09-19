@@ -630,7 +630,7 @@ namespace Dml
         return dmlCompiledOperator;
     }
 
-    void DmlOperator::ExecuteZeroInt64Tensor(onnxruntime::IAllocator* allocator, IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor)
+    void DmlOperator::ExecuteZeroInt64Tensor(onnxruntime::AllocatorPtr& allocator, IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor)
     {
         // Element-wise XOR takes two inputs and an output. We want in-place execution, so all three
         // resources are the same.

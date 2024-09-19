@@ -236,14 +236,15 @@ namespace Dml
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-
-            // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-            OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator);
-            memoryInfo.mem_type = ::OrtMemType::OrtMemTypeCPUInput;
-            m_cpuInputAllocator = std::make_shared<onnxruntime::CPUAllocator>(memoryInfo);
         }
 
-        return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
+        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
+        OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, ::OrtMemType::OrtMemTypeCPUInput);
+
+        return std::vector<onnxruntime::AllocatorPtr>{
+            m_allocator,
+            std::make_shared<onnxruntime::CPUAllocator>(memoryInfo),
+        };
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -290,7 +291,7 @@ namespace Dml
     }
 
     HRESULT __stdcall ExecutionProviderImpl::InitializeOperator(
-        onnxruntime::IAllocator* allocator,
+        onnxruntime::AllocatorPtr& allocator,
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<const DML_BUFFER_BINDING> inputBindings
@@ -337,7 +338,7 @@ namespace Dml
     }
 
     HRESULT __stdcall ExecutionProviderImpl::ExecuteOperator(
-        onnxruntime::IAllocator* allocator,
+        onnxruntime::AllocatorPtr& allocator,
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<IMLOperatorTensor*> inputTensors,
@@ -418,7 +419,7 @@ namespace Dml
     }
 
     HRESULT __stdcall ExecutionProviderImpl::ExecuteOperator(
-        onnxruntime::IAllocator* allocator,
+        onnxruntime::AllocatorPtr& allocator,
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<DML_BINDING_DESC> inputTensors,
@@ -1164,16 +1165,6 @@ namespace Dml
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
         return m_internalRegInfoMap;
-    }
-
-    std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetGpuAllocator()
-    {
-        return m_allocator;
-    }
-
-    std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuInputAllocator()
-    {
-        return m_cpuInputAllocator;
     }
 
     onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd()

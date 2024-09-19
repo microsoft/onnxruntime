@@ -73,7 +73,7 @@ namespace Dml
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                kernelInfo.GetAllocator(OrtMemTypeDefault).get(),
+                kernelInfo.GetAllocator(OrtMemTypeDefault),
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
@@ -140,7 +140,7 @@ namespace Dml
 
                 auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
                 ExecuteOperator(
-                    Info().GetAllocator(OrtMemTypeDefault).get(),
+                    Info().GetAllocator(OrtMemTypeDefault),
                     m_compiledExecutionPlanOperator.Get(),
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     inputPtrs,
@@ -192,7 +192,7 @@ namespace Dml
         }
 
         void ExecuteOperator(
-            onnxruntime::IAllocator* allocator,
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<ID3D12Resource*> inputTensors,

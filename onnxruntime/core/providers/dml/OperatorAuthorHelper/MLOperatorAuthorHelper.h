@@ -956,11 +956,18 @@ public:
         return ret;
     }
 
-    onnxruntime::IAllocator* GetAllocator() const
+    onnxruntime::AllocatorPtr GetAllocator() const
     {
         Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
         m_impl.As(&operatorKernelContext);
         return operatorKernelContext->GetAllocator();
+    }
+
+    onnxruntime::AllocatorPtr GetCpuAllocator() const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        return operatorKernelContext->GetCpuAllocator();
     }
 
  private:

@@ -251,7 +251,7 @@ public:
         m_dftOperator.dftLength = params.frameSize;
     }
 
-    void CompileAndInitFramingOperator(onnxruntime::IAllocator* allocator, const DmlSTFTParameters& params)
+    void CompileAndInitFramingOperator(onnxruntime::AllocatorPtr& allocator, const DmlSTFTParameters& params)
     {
         StackAllocator<1024> stackAllocator;
 
