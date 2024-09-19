@@ -27,7 +27,7 @@ Node inputs & outputs: variadic
 Domain: com.microsoft
 Atrribures:
 
-|`"Attributes"`       |Data type|Description                                                                                               |
+|Attributes           |Data type|Description                                                                                               |
 |---------------------|---------|----------------------------------------------------------------------------------------------------------|
 |main_context         |int64    |1 (default): This node points to an EP context content that contains the graph referred to by this node.<br/>0: The node does not point to any EP context content. Expect to get the graph from node with this field is 1.<br/>Qualcomm QNN supports 1 single context contains multiple graphs. The EPContext node with main_context=1 refers to the real context. And the context contains graphs that are referred by other nodes with main_context=0.|
 |ep_cache_context     |string   |Payload of the EP context if embed_mode=1, or path to the context file if embed_mode=0.<br/>The path is a relative path to the Onnx model file. It can be a file name, or subfolder/filename|
@@ -43,7 +43,7 @@ Atrribures:
 
 ## OnnxRuntime Session options related to EP context cache generation and inference
 
-|`"session option"`       |Description                                                                                               |
+|session option             |Description                                                                                               |
 |---------------------------|----------------------------------------------------------------------------------------------------------|
 |ep.context_enable          |Used for context model generation only.<br/>1: Enable OnnxRuntime to dump the context cache model.<br/>0 (default): disable.|
 |ep.context_file_path       |Specify the file path for the dump model.<br/>Default to original_file_name.onnx_ctx.onnx for context model generation.<br/>For model inference, if user loads model from memory buffer and the EP context binary is outside the Onnx model, user need to set this option. OnnxRuntime EP use this path to get the folder path together with the ep_cache_context (which point to the contex binary path) to get the absoluate path for the context binary file.|
