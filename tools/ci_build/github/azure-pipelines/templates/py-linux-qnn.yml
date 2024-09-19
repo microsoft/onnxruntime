@@ -34,6 +34,21 @@ jobs:
   workspace:
     clean: all
   pool: ${{ parameters.machine_pool }}
+  templateContext:
+      codeSignValidation:
+        enabled: true
+        break: true
+      psscriptanalyzer:
+        enabled: true
+      sdl:
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+          targetPathPattern: '\".*.so\"'
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: linux_qnn_wheel_x64
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
     - name: skipComponentGovernanceDetection
@@ -86,11 +101,12 @@ jobs:
             env:
               ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
 
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
-      inputs:
-        PathtoPublish: '$(Build.BinariesDirectory)/dist'
-        ArtifactName: onnxruntime-linux-qnn-x64
+    - script: |
+        set -e -x
+        mv $(Build.BinariesDirectory)/dist .
+        find . -name \*.whl -exec unzip {} \;
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+      displayName: 'Move files'
 
     - template: component-governance-component-detection-steps.yml
       parameters :

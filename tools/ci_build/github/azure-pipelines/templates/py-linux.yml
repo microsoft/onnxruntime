@@ -46,7 +46,7 @@ jobs:
         binskim:
           enabled: true
           scanOutputDirectoryOnly: true
-          targetPathPattern: '+:file|$(Build.ArtifactStagingDirectory)\**\*.so'
+          targetPathPattern: '\".*.so\"'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
@@ -104,7 +104,9 @@ jobs:
 
 
     - script: |
+        set -e -x
         mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} $(Build.BinariesDirectory)/dist .
+        find . -name \*.whl -exec unzip {} \;
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
       displayName: 'Move files'
 

@@ -54,7 +54,7 @@ stages:
         binskim:
           enabled: true
           scanOutputDirectoryOnly: true
-          targetPathPattern: '+:file|$(Build.ArtifactStagingDirectory)\**\*.so'
+          targetPathPattern: '\".*.so\"'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
@@ -91,7 +91,9 @@ stages:
           arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
 
       - script: |
+          set -e -x
           mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} $(Build.BinariesDirectory)/dist .
+          find . -name \*.whl -exec unzip {} \;
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'Move files'
 
