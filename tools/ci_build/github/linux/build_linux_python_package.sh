@@ -7,9 +7,9 @@ mkdir -p /build/dist
 
 EXTRA_ARG=""
 
-# Put 3.8 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this 
+# Put 3.10 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this 
 # config to Azure DevOps Artifacts and download them to a Ubuntu 22.04 machine to run the tests.
-PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp310-cp310/bin/python3.10")
+PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp310-cp310/bin/python3.10")
 while getopts "d:p:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
@@ -22,8 +22,6 @@ c) BUILD_CONFIG=${OPTARG};;
    exit 1;;
 esac
 done
-
-
 
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel")
 if [[ "$EXTRA_ARG" == *"training"* ]]; then

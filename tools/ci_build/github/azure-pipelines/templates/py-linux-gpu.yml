@@ -41,7 +41,24 @@ stages:
     timeoutInMinutes: 240
     workspace:
       clean: all
-    pool: ${{ parameters.machine_pool }}
+    pool: 
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    templateContext:
+      codeSignValidation:
+        enabled: true
+        break: true
+      psscriptanalyzer:
+        enabled: true
+      sdl:
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+          targetPathPattern: '+:file|$(Build.ArtifactStagingDirectory)\**\*.so'
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: linux_gpu_wheel_${{ parameters.arch }}
     variables:
       # The build machine pool doesn't have dotnet, so it can't run CG.
       - name: skipComponentGovernanceDetection
@@ -73,18 +90,10 @@ stages:
           filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
           arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
 
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          PathtoPublish: '$(Build.BinariesDirectory)/dist'
-          ArtifactName: onnxruntime_gpu
-
-      - task: PublishPipelineArtifact@0
-        displayName: 'Publish Test Binaries'
-        inputs:
-          artifactName: 'drop-linux-gpu-${{ parameters.arch }}'
-          targetPath: '$(Build.BinariesDirectory)/Release'
-
+      - script: |
+          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} $(Build.BinariesDirectory)/dist .
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'Move files'
 
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'

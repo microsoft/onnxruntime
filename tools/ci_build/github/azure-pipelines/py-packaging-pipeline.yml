@@ -73,20 +73,299 @@ parameters:
 
 trigger: none
 
-stages:
-- template: templates/py-packaging-stage.yml
+# The `resources` specify the location and version of the 1ES PT.
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+    
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
-    enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
-    enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
-    enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
-    enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
-    enable_linux_arm: ${{ parameters.enable_linux_arm }}
-    enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
-    enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
-    enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
-    enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
-    build_py_parameters: ${{ parameters.build_py_parameters }}
-    cmake_build_type: ${{ parameters.cmake_build_type }}
-    qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
-    publish_symbols: true
+    # Update the pool with your team's 1ES hosted pool.
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
+      os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
+
+    stages:
+    - stage: Windows_CPU_Jobs
+      jobs:
+      - job: Windows_CPU
+        variables:
+          OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+          EnvSetupScript: setup_env.bat
+        pool:
+          name: 'onnxruntime-Win-CPU-2022'
+          os: windows
+        strategy:
+          matrix:
+            Python310_x64:
+              PythonVersion: '3.10'
+              MsbuildPlatform: x64
+              buildArch: x64
+            Python311_x64:
+              PythonVersion: '3.11'
+              MsbuildPlatform: x64
+              buildArch: x64
+            Python312_x64:
+              PythonVersion: '3.12'
+              MsbuildPlatform: x64
+              buildArch: x64
+        # If the pipeline publishes artifacts, use `templateContext` to define the artifacts.
+        # This will enable 1ES PT to run SDL analysis tools on the artifacts and then upload them.
+        templateContext:
+          codeSignValidation:
+            enabled: true
+            break: true
+          psscriptanalyzer:
+            enabled: true
+          sdl:
+            binskim:
+              enabled: true
+              scanOutputDirectoryOnly: true
+              targetPathPattern: '\".*.(pyd|dll)\"'
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)
+            artifactName: win_cpu_wheel_$(PythonVersion)_$(buildArch)
+        # Define the steps that the pipeline will run.
+        # In most cases, copy and paste the steps from the original pipeline.
+        timeoutInMinutes: 180
+        workspace:
+          clean: all
+
+        steps:
+        - checkout: self
+          clean: true
+          submodules: recursive
+
+        - template: /tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: $(PythonVersion)
+            addToPath: true
+            architecture: $(buildArch)
+
+        - template: /tools/ci_build/github/azure-pipelines/templates/set-nightly-build-option-variable-step.yml@self
+
+        - task: BatchScript@1
+          displayName: 'setup env'
+          inputs:
+            filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+            modifyEnvironment: true
+            workingFolder: '$(Build.BinariesDirectory)'
+
+        - template: /tools/ci_build/github/azure-pipelines/templates/download-deps.yml@self
+
+        - task: PythonScript@0
+          displayName: 'Update deps.txt'
+          inputs:
+            scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+            arguments: --new_dir $(Build.BinariesDirectory)/deps
+            workingDirectory: $(Build.BinariesDirectory)
+
+        - task: PowerShell@2
+          displayName: 'Install ONNX'
+          inputs:
+            filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+            workingDirectory: '$(Build.BinariesDirectory)'
+            arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
+
+        - task: PythonScript@0
+          displayName: 'Generate cmake config'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: >
+              --config ${{ parameters.cmake_build_type }}
+              --enable_lto
+              --build_dir $(Build.BinariesDirectory)
+              --skip_submodule_sync
+              --cmake_generator "Visual Studio 17 2022"
+              --enable_pybind
+              --enable_onnx_tests
+              ${{ parameters.build_py_parameters }}
+              --parallel --use_binskim_compliant_compile_flags --update
+              $(TelemetryOption)
+            workingDirectory: '$(Build.BinariesDirectory)'
+
+        - task: VSBuild@1
+          displayName: 'Build'
+          inputs:
+            solution: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
+            platform: $(MsbuildPlatform)
+            configuration: ${{ parameters.cmake_build_type }}
+            msbuildArchitecture: $(buildArch)
+            maximumCpuCount: true
+            logProjectEvents: true
+            workingFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}'
+            createLogFile: true
+
+        # Esrp signing
+        - template: /tools/ci_build/github/azure-pipelines/templates/win-esrp-dll.yml@self
+          parameters:
+            FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+            DisplayName: 'ESRP - Sign Native dlls'
+            DoEsrp: true
+            Pattern: '*.pyd,*.dll'
+
+        - task: PythonScript@0
+          displayName: 'Build wheel'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\setup.py'
+            arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+            workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+
+        - task: CopyFiles@2
+          displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
+            Contents: '*.whl'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - script: |
+            7z x *.whl
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'unzip the package'
+
+        - powershell: |
+           python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+           Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+           Remove-Item -Recurse -Force onnxruntime
+           python onnx_backend_test_series.py
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          displayName: 'Run ONNX Backend Tests' 
+
+        - template: /tools/ci_build/github/azure-pipelines/templates/component-governance-component-detection-steps.yml@self
+          parameters:
+            condition: 'succeeded'
+
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
+        PYTHON_VERSION: '3.8'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
+        PYTHON_VERSION: '3.9'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
+        PYTHON_VERSION: '3.10'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
+        PYTHON_VERSION: '3.11'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
+        PYTHON_VERSION: '3.12'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+        PYTHON_VERSION: '3.8'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+        PYTHON_VERSION: '3.9'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+        PYTHON_VERSION: '3.10'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+        PYTHON_VERSION: '3.11'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-win-gpu.yml@self
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+        PYTHON_VERSION: '3.12'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        
+    - stage: Python_Packaging_Linux_CPU
+      dependsOn: []
+      jobs:
+      - template: /tools/ci_build/github/azure-pipelines/templates/py-linux.yml@self
+        parameters:
+          arch: 'x86_64'
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - stage: Python_Packaging_Linux_ARM
+      dependsOn: []
+      jobs:
+      - template: /tools/ci_build/github/azure-pipelines/templates/py-linux.yml@self
+        parameters:
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+       
+    - template: /tools/ci_build/github/azure-pipelines/templates/py-linux-gpu.yml@self
+      parameters:
+        arch: 'x86_64'
+        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
+        extra_build_arg: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        trt_version: '10.3.0.26-1.cuda11.8'
+        cuda_version: '11.8'
