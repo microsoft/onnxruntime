@@ -80,7 +80,8 @@ project.ext.react = [
     entryFile: "index.tsx",
 ]
 
-apply from: "../../node_modules/react-native/react.gradle"
+// For 'react-native' >= 0.73.x, the react-native/react.gradle file is no longer used
+// apply from: "../../node_modules/react-native/react.gradle"
 
 /**
  * Set this to true to create two separate APKs instead of one:
