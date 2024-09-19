@@ -49,7 +49,7 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto size = repetitions_initializer.dims()[0];
   TensorShapeVector repetitions_data{raw_repetitions_data, raw_repetitions_data + size};
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
-  std::vector<int32_t> repetitions;
+  std::vector<uint32_t> repetitions;
   std::transform(repetitions_data.cbegin(), repetitions_data.cend(),
                  std::back_inserter(repetitions),
                  [](int64_t repetition) -> uint32_t { return SafeInt<uint32_t>(repetition); });
