@@ -5940,5 +5940,16 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare) {
 TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
+
+TEST(ReductionOpTest, MissingOptionalAxes) {
+  OpTester test("ReduceMax", 18);
+  test.AddInput<float>("data", {2, 2},
+                       {1.0f, 4.0f,
+                        3.0f, 2.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("reduced", {1, 1}, {4.0f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
