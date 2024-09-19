@@ -152,7 +152,7 @@ export const tensorFromImage = async (
     }
   };
   const createCanvasContext = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
-    if (canvas instanceof HTMLCanvasElement) {
+    if (typeof HTMLCanvasElement !== undefined && canvas instanceof HTMLCanvasElement) {
       return canvas.getContext('2d');
     } else if (canvas instanceof OffscreenCanvas) {
       return canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
