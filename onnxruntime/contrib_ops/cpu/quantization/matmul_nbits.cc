@@ -80,7 +80,7 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
 }
 
 // T1 is the type of the input matrix A, scales and biases.
-// Use class level template to facilitate specializaiton for different types.
+// Use class level template to facilitate specialization for different types.
 template <typename T1>
 class MatMulNBits final : public OpKernel {
  public:
@@ -408,11 +408,11 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
 
   std::vector<float> bias_data_v;
   if (bias_data != nullptr) {
-    bias_data_v.resize((const unsigned int)(bias->Shape().Size()));
+    bias_data_v.resize(static_cast<size_t>(bias->Shape().Size()));
     MlasConvertHalfToFloatBuffer(bias_data, &bias_data_v[0], bias_data_v.size());
   }
 
-  std::vector<float> C_v((const unsigned int)(y->Shape().Size()));
+  std::vector<float> C_v(static_cast<size_t>(y->Shape().Size()));
 
   InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
@@ -563,7 +563,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   const float* scales_data_;
   std::vector<float> scales_data_v;
-  scales_data_v.resize((const unsigned int)scales->Shape().Size());
+  scales_data_v.resize(static_cast<size_t>(scales->Shape().Size()));
   MlasConvertHalfToFloatBuffer(scales_data, &scales_data_v[0], scales_data_v.size());
   scales_data_ = &scales_data_v[0];
 
