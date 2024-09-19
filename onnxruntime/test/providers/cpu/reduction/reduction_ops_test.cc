@@ -3550,7 +3550,7 @@ TEST(ReductionOpTest, ArgMin_int8) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_int64) {
