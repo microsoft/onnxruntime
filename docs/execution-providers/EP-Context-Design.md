@@ -43,7 +43,7 @@ Atrribures:
 
 ## OnnxRuntime Session options related to EP context cache generation and inference
 
-|session option             |Description                                                                                               |
+|Session option             |Description                                                                                               |
 |---------------------------|----------------------------------------------------------------------------------------------------------|
 |ep.context_enable          |Used for context model generation only.<br/>1: Enable OnnxRuntime to dump the context cache model.<br/>0 (default): disable.|
 |ep.context_file_path       |Specify the file path for the dump model.<br/>Default to original_file_name.onnx_ctx.onnx for context model generation.<br/>For model inference, if user loads model from memory buffer and the EP context binary is outside the Onnx model, user need to set this option. OnnxRuntime EP use this path to get the folder path together with the ep_cache_context (which point to the contex binary path) to get the absoluate path for the context binary file.|
