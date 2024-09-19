@@ -2574,7 +2574,7 @@ ORT_API(size_t, OrtApis::OrtGraph_SerializeToArray, const OrtGraphViewer* graph,
 #endif
     graph_viewer->DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
   onnx::ModelProto model_proto = model.ToProto();
-  GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true);
+  GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true, ExecutionOrder::PRIORITY_BASED);
   size_t ret = model_proto.ByteSizeLong();
   *data = malloc(ret);    // TODO(leca): release
   model_proto.SerializeToArray(*data, ret);

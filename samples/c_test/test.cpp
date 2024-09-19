@@ -194,22 +194,33 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 //    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
-int main() {
+// ./TestOutTreeEp c/k/t/tc/otc relu/resnet/rcnn
+int main(int argc, char *argv[]) {
     OrtEnv* p_env = nullptr;
     OrtLoggingLevel log_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR;//OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
     THROW_ON_ERROR(g_ort->CreateEnv(log_level, "", &p_env));
     OrtSessionOptions* so = nullptr;
     THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
 
-    //TestCompileBasedEp(g_ort, p_env, so);
-    //TestKernelBasedEp(g_ort, p_env, so);
-    //TestTensorRTEp(g_ort, p_env, so);
-    TestTensorRTAndCudaEp(g_ort, p_env, so);
-    //TestOriginalTensorRTEp(g_ort, so);
+    if (strcmp(argv[1], "c") == 0) {
+        TestCompileBasedEp(g_ort, p_env, so);
+    } else if (strcmp(argv[1], "k") == 0) {
+        TestKernelBasedEp(g_ort, p_env, so);
+    } else if (strcmp(argv[1], "t") == 0) {
+        TestTensorRTEp(g_ort, p_env, so);
+    } else if (strcmp(argv[1], "tc") == 0) {
+        TestTensorRTAndCudaEp(g_ort, p_env, so);
+    } else if (strcmp(argv[1], "otc") == 0) {
+        TestOriginalTensorRTEp(g_ort, so);
+    }
 
-    //RunRelu(g_ort, p_env, so);
-    //RunResnet18v1_7(g_ort, p_env, so);
-    RunFastRcnn(g_ort, p_env, so);
+    if (!strcmp(argv[2], "relu")) {
+        RunRelu(g_ort, p_env, so);
+    } else if (!strcmp(argv[2], "resnet")) {
+        RunResnet18v1_7(g_ort, p_env, so);
+    } else if (!strcmp(argv[2], "rcnn")) {
+        RunFastRcnn(g_ort, p_env, so);
+    }
 
     g_ort->ReleaseEnv(p_env);
     return 0;
