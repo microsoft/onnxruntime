@@ -514,6 +514,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                             graphNodeCreateInfo,
                             constantCpuInputCapture,
                             constantInputGetter);
+
+                    Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+                    ORT_THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
                     kernelInfoWrapper->Close();
                 };
 
