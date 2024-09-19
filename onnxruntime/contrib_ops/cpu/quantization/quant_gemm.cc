@@ -50,14 +50,16 @@ static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor
   const auto N = narrow<Eigen::Index>(output_dims[1]);
 
   if (y_zp == nullptr) {
+    // Because y_zp is not provided, the output is float32
     // Either fill with bias_data if present or 0
-    uint8_t* output = reinterpret_cast<uint8_t*>(y.MutableDataRaw());
+    ORT_ENFORCE(y.SizeInBytes() == SafeInt<size_t>(M) * N * sizeof(float), "Output must be sized for float");
+    float* output = reinterpret_cast<float*>(y.MutableDataRaw());
     if (bias != nullptr) {
-      auto clip_fn = [](uint32_t v) -> uint8_t { return static_cast<uint8_t>(v & 0xFF); };
+      auto to_float = [](uint32_t v) -> float { return static_cast<float>(v); };
       GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(),
-                                  bias->Shape(), output, clip_fn);
+                                  bias->Shape(), output, to_float);
     } else {
-      EigenMatrixMapRowMajor<uint8_t> output_mat(output, M, N);
+      EigenMatrixMapRowMajor<float> output_mat(output, M, N);
       output_mat.setZero();
     }
   } else {
