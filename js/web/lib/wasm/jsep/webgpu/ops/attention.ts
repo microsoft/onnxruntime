@@ -65,7 +65,6 @@ export interface AttentionParameters {
   broadcastResPosBias: boolean;
   passPastInKv: boolean;
   qkvFormat: AttentionQkvFormat;
-  isPastkvBSNH?: boolean;
 }
 
 export interface AttentionAttrs {

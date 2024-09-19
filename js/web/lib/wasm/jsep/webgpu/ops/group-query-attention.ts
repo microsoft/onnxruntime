@@ -88,13 +88,17 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   }
   const hasPastKey = pastKey && pastKey.dims.length !== 0;
   const hasPastValue = pastValue && pastValue.dims.length !== 0;
-  // TODO : this should be from attributes.
   const isPastkvBSNH =
     hasPastKey &&
     pastKey.dims.length === 4 &&
     pastKey.dims[0] === batchSize &&
+    pastKey.dims[1] !== attributes.kvNumHeads &&
     pastKey.dims[2] === attributes.kvNumHeads &&
     pastKey.dims[3] === headSize;
+
+  if (isPastkvBSNH) {
+    throw new Error('BSNH pastKey/pastValue is not supported');
+  }
   if (hasPastKey && hasPastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
@@ -102,20 +106,13 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     if (pastValue.dims.length !== 4) {
       throw new Error('Input "past_value" is expected to have 4 dimensions');
     }
-    if (isPastkvBSNH) {
-      // For BSNH
-      pastSequenceLength = pastKey.dims[1];
-      maxSequenceLength = pastKey.dims[1];
-    } else {
-      // For BNSH
-      pastSequenceLength = pastKey.dims[2];
-      maxSequenceLength = pastKey.dims[2];
-    }
+    pastSequenceLength = pastKey.dims[2];
+    maxSequenceLength = pastKey.dims[2];
   } else if (hasPastKey || hasPastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
 
-  let qkvFormat: AttentionQkvFormat;
+  let qkvFormat: AttentionQkvFormat = AttentionQkvFormat.qkvBNSH;
   if (key && key.dims.length > 0) {
     if (query.dims.length !== 3) {
       throw new Error('Input "query" is expected to have 3 dimensions when key is given');
@@ -131,7 +128,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       if (query.dims[2] % key.dims[2] !== 0) {
         throw new Error('Dimension 2 of "query" should be a multiple of "key"');
       }
-      qkvFormat = AttentionQkvFormat.qkvBSNH;
       kvSequenceLength = key.dims[1];
     } else if (key.dims.length === 5) {
       if (key.dims[2] !== attributes.numHeads || key.dims[3] !== 2 || key.dims[4] !== headSize) {
@@ -140,15 +136,12 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       if (value) {
         throw new Error('Expect "value" be none when "key" has packed kv format.');
       }
-      qkvFormat = AttentionQkvFormat.qKvBSNHxBSN2H;
       kvSequenceLength = key.dims[1];
     } else {
       // key_dims.size() == 4 (cross-attention with past_key)
       if (key.dims[1] !== attributes.numHeads || key.dims[3] !== headSize) {
         throw new Error('Expect "key" shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key');
       }
-
-      qkvFormat = AttentionQkvFormat.unknown;
       kvSequenceLength = key.dims[2];
     }
   } else {
@@ -212,7 +205,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     broadcastResPosBias,
     passPastInKv,
     qkvFormat,
-    isPastkvBSNH,
   };
 };
 
@@ -222,7 +214,7 @@ const createConcatProgramInfo = (
   dataType: DataType,
   params: AttentionParameters,
 ): ProgramInfo => {
-  const outputShape = [params.batchSize, params.totalSequenceLength, params.kvNumHeads!, params.headSize];
+  const outputShape = [params.batchSize, params.kvNumHeads!, params.totalSequenceLength, params.headSize];
   const component = 4;
   const outputSize = ShapeUtil.size(outputShape) / component;
   const presentSequenceLength = params.totalSequenceLength;
@@ -261,9 +253,6 @@ const createConcatProgramInfo = (
 
   const pastStr = `      let past_batch_stride = uniforms.past_seqlen * num_heads * H;
         var past_head_stride = uniforms.past_seqlen * H;
-        if (is_bsnh) {
-          past_head_stride = H;
-        }
         let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
         present_kv[out_offset] = past_kv[in_offset];`;
   const newStr = `      let new_batch_stride = uniforms.new_seqlen * num_heads * H;
@@ -298,15 +287,7 @@ const createConcatProgramInfo = (
     let present_seqlen = uniforms.present_seqlen;
     let present_batch_stride = present_seqlen * num_heads * H;
     var row_stride = H;
-    let is_bsnh = ${params.isPastkvBSNH};
-
-    if (is_bsnh) {
-      row_stride = num_heads * H;
-    }
     var present_head_stride = present_seqlen * H;
-    if (is_bsnh) {
-      present_head_stride = H;
-    }
 
     let past_seqlen = uniforms.past_seqlen;
 
@@ -341,50 +322,29 @@ const maybeExpandAndTransposeToBNSH = (
   let reshapedInput = input;
   const numHeads = params.kvNumHeads!;
   const nReps = params.nReps!;
-  if (input && input.dims.length === 3 && params.kvSequenceLength !== 0) {
+  const nonEmptyPastKV = pastKV && pastKV.dims.length > 0 && ShapeUtil.size(pastKV.dims) > 0;
+  if (input.dims.length === 3 && params.kvSequenceLength !== 0) {
     reshapedInput = input.reshape([params.batchSize, params.kvSequenceLength, numHeads, params.headSize]);
+    reshapedInput = context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
+      inputs: [reshapedInput],
+      outputs: [nonEmptyPastKV ? -1 : outputIndex],
+    })[0];
   }
-  if (reshapedInput && ShapeUtil.size(reshapedInput.dims) > 0) {
-    if (pastKV && ShapeUtil.size(pastKV.dims) > 0) {
-      reshapedInput = context.compute(createConcatProgramInfo(reshapedInput, pastKV, pastKV.dataType, params), {
-        inputs: [reshapedInput, pastKV],
-        outputs: [params.isPastkvBSNH ? outputIndex : -1],
-      })[0];
-    } else {
-      reshapedInput = context.compute(
-        createConcatProgramInfo(reshapedInput, undefined, reshapedInput.dataType, params),
-        { inputs: [reshapedInput], outputs: [params.isPastkvBSNH ? outputIndex : -1] },
-      )[0];
-    }
-  } else {
-    if (pastKV && ShapeUtil.size(pastKV.dims) > 0) {
-      reshapedInput = context.compute(createConcatProgramInfo(undefined, pastKV, pastKV.dataType, params), {
-        inputs: [pastKV],
-        outputs: [params.isPastkvBSNH ? outputIndex : -1],
-      })[0];
-    } else {
-      if (params.isPastkvBSNH) {
-        context.output(outputIndex, reshapedInput ? reshapedInput.dims : pastKV!.dims);
-      }
-    }
+
+  if (nonEmptyPastKV) {
+    reshapedInput = context.compute(createConcatProgramInfo(reshapedInput, pastKV, pastKV.dataType, params), {
+      inputs: [reshapedInput, pastKV],
+      outputs: [pastKV ? outputIndex : -1],
+    })[0];
   }
   if (nReps !== 1) {
-    reshapedInput = context.compute(createTileProgramInfo([reshapedInput], [1, 1, 1, nReps]), {
+    reshapedInput = context.compute(createTileProgramInfo([reshapedInput], [1, 1, nReps, 1]), {
       inputs: [reshapedInput],
       outputs: [-1],
     })[0];
-    reshapedInput = reshapedInput.reshape([
-      params.batchSize,
-      params.totalSequenceLength,
-      numHeads * nReps,
-      params.headSize,
-    ]);
   }
 
-  return context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
-    inputs: [reshapedInput],
-    outputs: [params.isPastkvBSNH ? -1 : outputIndex],
-  })[0];
+  return reshapedInput;
 };
 
 export const groupQueryAttention = (context: ComputeContext, attributes: AttentionAttrs): void => {
