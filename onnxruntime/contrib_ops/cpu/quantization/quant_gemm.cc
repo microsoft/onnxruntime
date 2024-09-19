@@ -12,110 +12,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <class T, class ApplyFn>
-void GemmBroadcastBiasAndApplyFn(Eigen::Index M, Eigen::Index N, const int32_t* bias_data,
-                                 const TensorShape& bias_shape, T* output, ApplyFn apply_fn) {
-  auto output_mat = EigenMatrixMapRowMajor<T>(output, M, N);
-  if (bias_shape.Size() == 1) {
-    // C is (), (1,) or (1, 1), set the scalar
-    const auto constant = apply_fn(bias_data[0]);
-    output_mat.setConstant(constant);
-  } else if (bias_shape.NumDimensions() == 1 || bias_shape[0] == 1) {
-    // C is (N,) or (1, N)
-    output_mat.rowwise() = ConstEigenVectorMap<int32_t>(bias_data, N).transpose().unaryExpr(apply_fn);
-  } else if (bias_shape[1] == 1) {
-    // C is (M, 1)
-    output_mat.colwise() = ConstEigenVectorMap<int32_t>(bias_data, M).unaryExpr(apply_fn);
-  } else {
-    // C is (M, N), no broadcast needed.
-    output_mat = ConstEigenMatrixMapRowMajor<int32_t>(bias_data, M, N).unaryExpr(apply_fn);
-  }
-}
-
-/// <summary>
-/// This function will attempt to handle the case where K is zero while M and N are not
-/// We need to fill the output either with zeros or with bias_data if present.
-/// </summary>
-/// <param name="a_scale"></param>
-/// <param name="b_scale"></param>
-/// <param name="y"></param>
-/// <param name="allocator"></param>
-/// <param name="y_scale"></param>
-/// <param name="y_zp"></param>
-/// <param name="bias_data"></param>
-static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor& y, const AllocatorPtr& allocator,
-                            const Tensor* y_scale, const Tensor* y_zp, const Tensor* bias) {
-  const auto output_dims = y.Shape().GetDims();
-  const auto M = narrow<Eigen::Index>(output_dims[0]);
-  const auto N = narrow<Eigen::Index>(output_dims[1]);
-
-  if (y_zp == nullptr) {
-    // Because y_zp is not provided, the output is float32
-    // Either fill with bias_data if present or 0
-    ORT_ENFORCE(y.SizeInBytes() == SafeInt<size_t>(M) * N * sizeof(float),
-                "Output must be sized for float");
-    float* output = reinterpret_cast<float*>(y.MutableDataRaw());
-    if (bias != nullptr) {
-      auto to_float = [](uint32_t v) -> float { return static_cast<float>(v); };
-      GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(),
-                                  bias->Shape(), output, to_float);
-    } else {
-      EigenMatrixMapRowMajor<float> output_mat(output, M, N);
-      output_mat.setZero();
-    }
-  } else {
-    if (bias != nullptr) {
-      // scale bias_data back to float with result = bias_data * a_scale * b_scale.
-      Tensor scaled_back(DataTypeImpl::GetType<float>(), y.Shape(), allocator);
-      const float a_scale_value = a_scale.Data<float>()[0];
-      const auto& b_shape = b_scale.Shape();
-      if (b_shape.Size() == 1) {
-        // bscale is a scalar
-        const float b_scale_value = b_scale.Data<float>()[0];
-        auto scale_back_fn = [a_scale_value, b_scale_value](int32_t v) -> float {
-          return static_cast<float>(v) * a_scale_value * b_scale_value;
-        };
-        GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(), bias->Shape(),
-                                    scaled_back.MutableData<float>(), scale_back_fn);
-      } else {
-        // b_scale is a 1-D tensor which should be the size of N
-        ORT_ENFORCE(b_shape[0] == N, "Length of b_scale is expected to be equal to N");
-        const auto* b_scaled_data = b_scale.Data<float>();
-        Eigen::Index counter = 0;
-        auto scale_back_fn = [a_scale_value, b_scaled_data, N, counter](int32_t v) mutable -> float {
-          auto b_idx = counter++ % N;
-          return static_cast<float>(v) * a_scale_value * b_scaled_data[b_idx];
-        };
-
-        std::function<float(uint32_t)> fn{scale_back_fn};
-        GemmBroadcastBiasAndApplyFn(M, N, bias->Data<int32_t>(), bias->Shape(),
-                                    scaled_back.MutableData<float>(), fn);
-      }
-
-      // re-quantize
-      if (y_zp->IsDataType<int8_t>()) {
-        auto q_params = quantization::GetTensorQuantizationParams<int8_t>(y_scale, y_zp);
-        quantization::Quantize<int8_t>(scaled_back.Data<float>(),
-                                       reinterpret_cast<int8_t*>(y.MutableDataRaw()), q_params,
-                                       narrow<size_t>(scaled_back.Shape().Size()));
-      } else {
-        auto q_params = quantization::GetTensorQuantizationParams<uint8_t>(y_scale, y_zp);
-        quantization::Quantize<uint8_t>(scaled_back.Data<float>(),
-                                        reinterpret_cast<uint8_t*>(y.MutableDataRaw()), q_params,
-                                        narrow<size_t>(scaled_back.Shape().Size()));
-      }
-    } else {
-      if (y_zp->IsDataType<int8_t>()) {
-        EigenMatrixMapRowMajor<int8_t> output_mat(reinterpret_cast<int8_t*>(y.MutableDataRaw()), M, N);
-        output_mat.setConstant(*(y_zp->Data<int8_t>()));
-      } else {
-        EigenMatrixMapRowMajor<uint8_t> output_mat(reinterpret_cast<uint8_t*>(y.MutableDataRaw()), M, N);
-        output_mat.setConstant(*(y_zp->Data<uint8_t>()));
-      }
-    }
-  }
-}
-
 class QGemm : protected GemmBase, public MatMulIntegerBase {
  public:
   QGemm(const OpKernelInfo& info) : GemmBase(info), MatMulIntegerBase(info) {
@@ -149,14 +45,6 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-    auto y = context->Output(OUT_Y, {M, N});
-    if (M == 0 || N == 0) return Status::OK();
-
-    if (K == 0) {
-      HandleZeroKCase(*a_scale, *b_scale, *y, allocator, y_scale, y_zp, c);
-      return Status::OK();
-    }
-
     bool a_is_signed = a->IsDataType<int8_t>();
     const uint8_t* a_data = static_cast<const uint8_t*>(a->DataRaw());
 
@@ -178,6 +66,9 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, allocator, N, K);
       }
     }
+
+    auto y = context->Output(OUT_Y, {M, N});
+    if (M == 0 || N == 0) return Status::OK();
 
     // prepare output buffer of GEMM
     int32_t* gemm_output_data = nullptr;

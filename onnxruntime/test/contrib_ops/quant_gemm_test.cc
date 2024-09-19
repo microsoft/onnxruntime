@@ -202,20 +202,5 @@ TEST(QuantGemmTest, GEMM) {
   RunQuantGemmTestBatch(4, 8, 68);
 }
 
-TEST(QuantGemmTest, EmptyInputsNoBiasNoZp) {
-  OpTester test("QGemm", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("transA", 0);
-  test.AddAttribute<int64_t>("transB", 0);
-  test.AddAttribute<float>("alpha", 1.f);
-
-  test.AddInput<int8_t>("A", {4, 0}, {});
-  test.AddInput<float>("a_scale", {}, {1.f});
-  test.AddInput<int8_t>("a_zero_point", {}, {-1});
-
-  test.AddInput<int8_t>("B", {0, 4}, {});
-  test.AddInput<float>("b_scale", {}, {1.f});
-  test.AddInput<int8_t>("b_zero_point", {}, {-1});
-}
-
 }  // namespace test
 }  // namespace onnxruntime
