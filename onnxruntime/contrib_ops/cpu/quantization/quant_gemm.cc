@@ -12,35 +12,55 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <class S, class T>
-void GemmBroadcastBiasScaleBackWithCast(Eigen::Index M, Eigen::Index N, const S* c_data, const TensorShape& bias_shape,
-                                        T* output, float a_scale, float b_scale) {
-  auto output_mat = EigenMatrixMapRowMajor<T>(output, M, N);
+void GemmBroadcastBiasScaleBack(Eigen::Index M, Eigen::Index N, const int32_t* bias_data,
+                                const TensorShape& bias_shape,
+                                float* output, float a_scale, float b_scale) {
+  auto output_mat = EigenMatrixMapRowMajor<float>(output, M, N);
   if (bias_shape.Size() == 1) {
     // C is (), (1,) or (1, 1), set the scalar
-    const auto constant = static_cast<T>(static_cast<float>(c_data[0]) * a_scale * b_scale);
+    const auto constant = static_cast<float>(bias_data[0]) * a_scale * b_scale;
     output_mat.setConstant(constant);
   } else if (bias_shape.NumDimensions() == 1 || bias_shape[0] == 1) {
     // C is (N,) or (1, N)
-    output_mat.rowwise() = (ConstEigenVectorMap<S>(c_data, N).transpose().template cast<float>() *
-                            a_scale * b_scale)
-                               .template cast<T>();
+    output_mat.rowwise() = ConstEigenVectorMap<int32_t>(bias_data, N).transpose().cast<float>() *
+                           a_scale * b_scale;
   } else if (bias_shape[1] == 1) {
     // C is (M, 1)
-    output_mat.colwise() = (ConstEigenVectorMap<S>(c_data, M).template cast<float>() *
-                            a_scale * b_scale)
-                               .template cast<T>();
+    output_mat.colwise() = ConstEigenVectorMap<int32_t>(bias_data, M).cast<float>() *
+                           a_scale * b_scale;
   } else {
     // C is (M, N), no broadcast needed.
-    output_mat = (ConstEigenMatrixMapRowMajor<S>(c_data, M, N).template cast<float>() *
-                  a_scale * b_scale)
-                     .template cast<T>();
+    output_mat = ConstEigenMatrixMapRowMajor<int32_t>(bias_data, M, N).cast<float>() *
+                 a_scale * b_scale;
+  }
+}
+
+void GemmBroadcastBiasAndClip(Eigen::Index M, Eigen::Index N, const int32_t* bias_data,
+                              const TensorShape& bias_shape, uint8_t* output) {
+  auto clip = [](int32_t v) -> uint8_t {
+    return static_cast<uint8_t>(v & 0xff);
+  };
+
+  auto output_mat = EigenMatrixMapRowMajor<uint8_t>(output, M, N);
+  if (bias_shape.Size() == 1) {
+    // C is (), (1,) or (1, 1), set the scalar
+    const auto constant = clip(bias_data[0]);
+    output_mat.setConstant(constant);
+  } else if (bias_shape.NumDimensions() == 1 || bias_shape[0] == 1) {
+    // C is (N,) or (1, N)
+    output_mat.rowwise() = ConstEigenVectorMap<int32_t>(bias_data, N).transpose().unaryExpr(clip);
+  } else if (bias_shape[1] == 1) {
+    // C is (M, 1)
+    output_mat.colwise() = ConstEigenVectorMap<int32_t>(bias_data, M).unaryExpr(clip);
+  } else {
+    // C is (M, N), no broadcast needed.
+    output_mat = ConstEigenMatrixMapRowMajor<int32_t>(bias_data, M, N).unaryExpr(clip);
   }
 }
 
 /// <summary>
 /// This function will attempt to handle the case where K is zero while M and N are not
-/// We need to fill the output either with zeros or with c_data if present.
+/// We need to fill the output either with zeros or with bias_data if present.
 /// </summary>
 /// <param name="a_scale"></param>
 /// <param name="b_scale"></param>
@@ -48,7 +68,7 @@ void GemmBroadcastBiasScaleBackWithCast(Eigen::Index M, Eigen::Index N, const S*
 /// <param name="allocator"></param>
 /// <param name="y_scale"></param>
 /// <param name="y_zp"></param>
-/// <param name="c_data"></param>
+/// <param name="bias_data"></param>
 static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor& y, const AllocatorPtr& allocator,
                             const Tensor* y_scale, const Tensor* y_zp, const Tensor* bias) {
   const auto output_dims = y.Shape().GetDims();
@@ -58,22 +78,21 @@ static void HandleZeroKCase(const Tensor& a_scale, const Tensor& b_scale, Tensor
   const float b_scale_value = b_scale.Data<float>()[0];
 
   if (y_zp == nullptr) {
-    // Either fill with c_data if present or 0
-    int8_t* output = reinterpret_cast<int8_t*>(y.MutableDataRaw());
+    // Either fill with bias_data if present or 0
+    uint8_t* output = reinterpret_cast<uint8_t*>(y.MutableDataRaw());
     if (bias != nullptr) {
-      GemmBroadcastBiasScaleBackWithCast<int32_t, int8_t>(M, N, bias->Data<int32_t>(), bias->Shape(), output,
-                                                          1.f, 1.f);
+      GemmBroadcastBiasAndClip(M, N, bias->Data<int32_t>(), bias->Shape(), output);
     } else {
-      EigenMatrixMapRowMajor<int8_t> output_mat(output, M, N);
+      EigenMatrixMapRowMajor<uint8_t> output_mat(output, M, N);
       output_mat.setZero();
     }
   } else {
     if (bias != nullptr) {
-      // scale c_data back to float with result = c_data * a_scale * b_scale.
+      // scale bias_data back to float with result = bias_data * a_scale * b_scale.
       Tensor scaled_back(DataTypeImpl::GetType<float>(), y.Shape(), allocator);
-      GemmBroadcastBiasScaleBackWithCast<int32_t, float>(M, N, bias->Data<int32_t>(), bias->Shape(),
-                                                         scaled_back.MutableData<float>(),
-                                                         a_scale_value, b_scale_value);
+      GemmBroadcastBiasScaleBack(M, N, bias->Data<int32_t>(), bias->Shape(),
+                                 scaled_back.MutableData<float>(),
+                                 a_scale_value, b_scale_value);
 
       // re-quantize
       if (y_zp->IsDataType<int8_t>()) {
