@@ -80,7 +80,7 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
 }
 
 // T1 is the type of the input matrix A, scales and biases.
-// Use calss level template to facilitate specializaiton for different types.
+// Use class level template to facilitate specializaiton for different types.
 template <typename T1>
 class MatMulNBits final : public OpKernel {
  public:
@@ -463,7 +463,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
 
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
 
-  if ((reorder_idx_data == nullptr) && (!zero_points || zero_points->IsDataType<float>())) {
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
     // dequantize b, only 4b quantization is supported for now
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
@@ -576,7 +576,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
 
-  if ((reorder_idx_data == nullptr) && (!zero_points || zero_points->IsDataType<MLFloat16>())) {
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
     // dequantize b, only 4b quantization is supported for now
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
@@ -665,7 +665,6 @@ template <typename T1>
 Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
-  const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
   const Tensor* scales = ctx->Input<Tensor>(InputIndex::scales);
   const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
@@ -725,6 +724,8 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 #endif  // !defined(ORT_NEURAL_SPEED)
   }
 
+  // If B is prepacked, B would have been removed from the context
+  const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
   return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
 
