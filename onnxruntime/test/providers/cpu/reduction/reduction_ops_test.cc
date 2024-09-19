@@ -2780,6 +2780,22 @@ TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_13) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceSum_missing_axes_input_noop_opset_13) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);  // missing axes input and noop. should be identity
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddOptionalInputEdge<int64_t>();  // missing optional axes input
+  test.AddOutput<float>("reduced", {1, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f});
+
+  // TODO: OpenVINO doesn't support "axes" input in opset 13
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceSum0DTensor) {
   OpTester test("ReduceSum");
   test.AddInput<float>("data", {}, {2});
@@ -5948,7 +5964,9 @@ TEST(ReductionOpTest, MissingOptionalAxes) {
                         3.0f, 2.0f});
   test.AddOptionalInputEdge<int64_t>();
   test.AddOutput<float>("reduced", {1, 1}, {4.0f});
-  test.Run();
+
+  // OpenVINO doesn't support "axes" input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
