@@ -13,12 +13,12 @@ PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/py
 while getopts "d:p:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
-#GPU or CPU.
+#GPU|CPU|NPU.
 d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-*) echo "Usage: $0 -d <GPU|CPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+*) echo "Usage: $0 -d <GPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
 done
@@ -53,6 +53,11 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
     BUILD_ARGS+=("--nvcc_threads=1" "--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
+fi
+
+if [ "$BUILD_DEVICE" == "NPU" ]; then
+    #Enable QNN EP
+    BUILD_ARGS+=("--use_qnn" "--qnn_home=/qnn_sdk")
 fi
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
