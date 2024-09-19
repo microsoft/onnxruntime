@@ -71,7 +71,7 @@ stages:
         ${{ if eq(parameters.DoESRP, true)}}:
           vmImage: 'macOS-12'
         ${{ else }}:
-          vmImage: 'macOS-latest'
+          vmImage: 'macOS-13'
       steps:
       - checkout: none
       - template: flex-downloadPipelineArtifact.yml
