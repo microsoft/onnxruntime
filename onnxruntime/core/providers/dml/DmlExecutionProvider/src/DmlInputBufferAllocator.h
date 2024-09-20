@@ -17,14 +17,14 @@
 
 namespace Dml
 {
-    class DmlExternalBufferAllocator : public onnxruntime::IAllocator
+    class DmlInputBufferAllocator : public onnxruntime::IAllocator
     {
     public:
-        DmlExternalBufferAllocator(int device_id) : onnxruntime::IAllocator(
+        DmlInputBufferAllocator(int device_id) : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
+                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_INPUT, 0)
             ))
         {
             m_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);

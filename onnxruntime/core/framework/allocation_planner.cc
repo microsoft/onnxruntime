@@ -767,7 +767,16 @@ class PlannerImpl {
 
             if (!is_implicit_input) {
               OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(mem_type));
+              auto ort_device = exec_provider->GetOrtDeviceByMemType(mem_type);
+
+#ifdef USE_DML
+              // DML uses a different allocator for weights and inputs that allocates unpooled memory
+              if (p_kernel_def->Provider() == onnxruntime::kDmlExecutionProvider && mem_type == OrtMemType::OrtMemTypeDefault) {
+                ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_INPUT, ort_device.Id());
+              }
+#endif
+
+              plan_.SetLocation(static_cast<size_t>(index), ort_device);
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level
@@ -886,7 +895,16 @@ class PlannerImpl {
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
     // weights are not output from any node, so it's OK to put its location on CPU provider
-    return p_provider->GetOrtDeviceByMemType(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
+    auto ort_device = p_provider->GetOrtDeviceByMemType(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
+
+#ifdef USE_DML
+    // DML uses a different allocator for weights and inputs that allocates unpooled memory
+    if (node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider && ort_device.MemType() == OrtDevice::MemType::DEFAULT) {
+      ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_INPUT, ort_device.Id());
+    }
+#endif
+
+    return ort_device;
   }
 
   std::vector<std::pair<int, int>> GetAliasMap(const Node& node, const KernelCreateInfo& kernel_create_info) {

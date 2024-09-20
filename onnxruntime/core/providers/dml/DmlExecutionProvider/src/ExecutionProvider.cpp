@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
+#include "DmlInputBufferAllocator.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -243,6 +244,7 @@ namespace Dml
 
         return std::vector<onnxruntime::AllocatorPtr>{
             m_allocator,
+            std::make_shared<DmlInputBufferAllocator>(0),
             std::make_shared<onnxruntime::CPUAllocator>(memoryInfo),
         };
     }
