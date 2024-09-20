@@ -78,7 +78,7 @@ static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::st
                                                    std::string_view input, std::string_view attr_name,
                                                    const std::vector<int64_t>& attr_val) {
   std::vector<std::string_view> inputs{input};
-  std::unique_ptr<api::NodeRef> node = graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
+  std::unique_ptr<api::NodeRef> node = graph.AddNode(op_type, op_type, inputs, /*num_outputs*/ 1);
   node->SetAttributeInts(attr_name, attr_val);
   return node;
 }
@@ -102,7 +102,7 @@ static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::
 
   std::vector<std::string_view> inputs{input, axes_initializer};
 
-  return graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
+  return graph.AddNode(op_type, op_type, inputs, /*num_outputs*/ 1);
 }
 
 /// <summary>
@@ -136,7 +136,7 @@ static std::unique_ptr<api::NodeRef> MakeQuantizeOp(api::GraphRef& graph, std::s
                                                     std::optional<int64_t> block_size,
                                                     std::optional<int64_t> output_dtype,
                                                     std::optional<int64_t> saturate) {
-  std::unique_ptr<api::NodeRef> node = graph.AddNode("QuantizeLinear", inputs, /* num_outputs */ 1, domain);
+  std::unique_ptr<api::NodeRef> node = graph.AddNode("QuantizeLinear", "QuantizeLinear", inputs, /* num_outputs */ 1, domain);
 
   SetAttrIfNotDefault(*node, "axis", axis, 1);
 
@@ -170,7 +170,7 @@ static std::unique_ptr<api::NodeRef> MakeDequantizeOp(api::GraphRef& graph, std:
                                                       std::vector<std::string_view> inputs,
                                                       std::optional<int64_t> axis,
                                                       std::optional<int64_t> block_size) {
-  std::unique_ptr<api::NodeRef> node = graph.AddNode("DequantizeLinear", inputs, /* num_outputs */ 1, domain);
+  std::unique_ptr<api::NodeRef> node = graph.AddNode("DequantizeLinear", "DequantizeLinear", inputs, /* num_outputs */ 1, domain);
 
   SetAttrIfNotDefault(*node, "axis", axis, 1);
 
@@ -1724,7 +1724,7 @@ static bool HandleShape(HandlerArgs& args) {
 
   // X -> Shape -> Y,   Gather
   std::vector<std::string_view> gather_inputs{"", perm_const};
-  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
+  auto gather_ptr = args.ctx.graph.AddNode("Gather", "Gather", gather_inputs, /*num_outputs*/ 1);
   api::NodeRef& gather = *gather_ptr;
   gather.SetAttributeInt("axis", 0);
 
@@ -1767,7 +1767,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   // inputs that would never be quantized.
   std::string_view gather_indices_const = AddInitializerInt64(graph, /*shape*/ {rank_int}, perm);
   std::vector<std::string_view> gather_inputs{input_name, gather_indices_const};
-  auto gather_ptr = graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
+  auto gather_ptr = graph.AddNode("Gather", "Gather", gather_inputs, /*num_outputs*/ 1);
   api::NodeRef& gather = *gather_ptr;
   std::string_view gather_output = gather.Outputs()[0];
   graph.CopyValueInfo(input_name, gather_output);
@@ -2215,7 +2215,7 @@ static bool HandleTile(HandlerArgs& args) {
     // Case 2: Repeats is computed. Insert Gather node.
     std::string_view perm_inv_const = AddInitializerInt64(args.ctx.graph, perm_shape, args.perm_inv);
     std::vector<std::string_view> gather_inputs{repeats_inp, perm_inv_const};
-    auto gather_node_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
+    auto gather_node_ptr = args.ctx.graph.AddNode("Gather", "Gather", gather_inputs, /*num_outputs*/ 1);
     api::NodeRef& gather_node = *gather_node_ptr;
     std::string_view gather_output = gather_node.Outputs()[0];
     args.ctx.graph.CopyValueInfo(repeats_inp, gather_output);
@@ -2265,7 +2265,7 @@ static void RemoveCancelingTransposeNodes(HandlerArgs& args) {
       // Worst-case scenario: Both parent output and 2nd transpose/reshape output cannot be removed (both graph outputs)
       // despite computing the same value. Use an Identity op instead.
       std::vector<std::string_view> single_empty_input{""};
-      auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input, /*num_outputs*/ 1);
+      auto identity_ptr = args.ctx.graph.AddNode("Identity", "Identity", single_empty_input, /*num_outputs*/ 1);
       api::NodeRef& identity = *identity_ptr;
       args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
       identity.SetInput(0, transpose_input);
@@ -2297,7 +2297,7 @@ static bool HandleTransposeImpl(HandlerArgs& args, const std::vector<int64_t>& n
       // replace Reshape with Transpose to simplify the logic.
       // use the same input as the 1st Transpose, move the output from the Reshape to the new Transpose node,
       // and remove the Reshape node.
-      new_node = args.ctx.graph.AddNode("Transpose", {args.transpose.Inputs()[0]}, 1);
+      new_node = args.ctx.graph.AddNode("Transpose", "Transpose", {args.transpose.Inputs()[0]}, 1);
       args.ctx.graph.MoveOutput(args.node, 0, *new_node, 0);
       args.ctx.graph.RemoveNode(args.node);
     } else {
