@@ -221,9 +221,9 @@ bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::va
   return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
-bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
-                                            const emscripten::val& wnn_limits,
-                                            const logging::Logger& logger) const {
+bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                           const emscripten::val& wnn_limits,
+                                           const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
   const auto& op_type = node.OpType();
   int32_t Y_type = 0;
