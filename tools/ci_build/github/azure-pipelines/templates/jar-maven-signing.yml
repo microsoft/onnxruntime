@@ -15,7 +15,7 @@ steps:
       RunAsPreJob: false
 
   - task: PowerShell@2
-      displayName: 'Sign jar files: GPG and sha256'
+      displayName: 'Sign jar files - GPG and sha256'
       inputs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_maven_signing.ps1'
         arguments: '$(JarFileDirectory) $(WorkingDirectory)'
