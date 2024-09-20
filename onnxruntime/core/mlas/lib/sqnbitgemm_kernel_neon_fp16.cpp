@@ -27,5 +27,21 @@ Abstract:
 void
 MlasCastF16ToF32KernelNeon(const unsigned short* Source, float* Destination, size_t Count)
 {
+    size_t i = 0;
+    for (; i + 4 < Count; i += 4)
+    {
+        float16x4_t fp16_4 = vreinterpret_f16_u16(vld1_u16(Source + i));
+        float32x4_t fp32_4 = vcvt_f32_f16(fp16_4);
+        vst1q_f32(Destination + i, fp32_4);
+    }
 
+    if (i < Count)
+    {
+        float16x4_t fp16_4 = vreinterpret_f16_u16(vld1_u16(Source + i));
+        float32x4_t fp32_4 = vcvt_f32_f16(fp16_4);
+        for (size_t j = 0; i < Count; ++i, ++j)
+        {
+            Destination[i] = vgetq_lane_f32(fp32_4, j);
+        }
+    }
 }
