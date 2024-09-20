@@ -19,7 +19,7 @@ steps:
       inputs:
         targetType: filePath
         filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_maven_signing.ps1
-        arguments: '$(JarFileDirectory) $(WorkingDirectory)'
+        arguments: '${{ parameters.JarFileDirectory }} ${{ parameters.WorkingDirectory }}'
         workingDirectory: '$(Build.BinariesDirectory)'
         failOnStderr: true
         showWarnings: true
