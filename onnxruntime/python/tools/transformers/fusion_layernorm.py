@@ -186,8 +186,6 @@ class FusionLayerNormalizationNCHW(Fusion):
                        (0,2,3,1)                            (0,3,1,2)
             [Root] --> Transpose --> LayerNormalization --> Transpose -->
         """
-        self.model.save_model_to_file("before_ln_fusion.onnx")
-
         axes = OnnxModel.get_node_attribute(node, "axes")
         if (not isinstance(axes, list)) or axes != [1]:
             return

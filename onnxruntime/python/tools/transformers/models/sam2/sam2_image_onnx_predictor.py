@@ -33,7 +33,7 @@ def create_ort_session(
         providers = [(provider, provider_options), "CPUExecutionProvider"]
     else:
         providers = ["CPUExecutionProvider"]
-    print(f"Using providers: {providers}")
+    logger.info("Using providers: %s", providers)
     return InferenceSession(onnx_path, session_options, providers=providers)
 
 
@@ -83,7 +83,7 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
             sam_model, mask_threshold=mask_threshold, max_hole_area=max_hole_area, max_sprinkle_area=max_sprinkle_area
         )
 
-        print(self.device)
+        logger.debug("self.device=%s, device=%s", self.device, device)
 
         # This model is exported by image_encoder.py.
         self.encoder_session = create_session(

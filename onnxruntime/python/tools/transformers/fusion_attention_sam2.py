@@ -33,7 +33,7 @@ class FusionMultiHeadAttentionSam2(Fusion):
         self.num_heads_warning = True
         self.hidden_size_warning = True
 
-    def get_num_heads(self, reshape_q: NodeProto) -> int:
+    def get_decoder_num_heads(self, reshape_q: NodeProto) -> int:
         """Detect num_heads from a reshape node.
 
         Args:
@@ -109,7 +109,7 @@ class FusionMultiHeadAttentionSam2(Fusion):
         if is_encoder:
             num_heads = self.get_encoder_num_heads(reshape_q)
         else:
-            num_heads = self.get_num_heads(reshape_q)
+            num_heads = self.get_decoder_num_heads(reshape_q)
         if num_heads <= 0:
             num_heads = self.num_heads  # Fall back to user specified value
 
@@ -303,7 +303,7 @@ class FusionMultiHeadAttentionSam2(Fusion):
     # --------------------------------------------------------
     # The following are for SAM encoder
     # --------------------------------------------------------
-    def fuse_sam_encoder_pattern(self, normalize_node, input_name_to_nodes, output_name_to_node):
+    def fuse_sam_encoder_pattern(self, normalize_node, input_name_to_nodes, output_name_to_node) -> bool:
         # SAM encoder attention layer pattern:
         #           Add -----------+
         #            |             |
@@ -406,20 +406,26 @@ class FusionMultiHeadAttentionSam2(Fusion):
         self.nodes_to_add.append(reshape_q)
         self.node_name_to_graph_name[reshape_q.name] = self.this_graph_name
 
-        # MHA do not accept BNHS format, so we transpose K to BNSH format instead.
+        # Reuse the transpose_q node to transpose K from BSNH to BNSH. Here we update the input and output of the node.
         transpose_k_bnsh = transpose_q
         transpose_k_bnsh.input[0] = transpose_k.input[0]
-        transpose_k_bnsh.output[0] = transpose_k.output[0] + "_BNSH"
+        transpose_k_bnsh.output[0] = transpose_k.input[0] + "_BNSH"
 
-        print(f"Found MHA: {q_num_heads=} {q_hidden_size=}")
+        logger.debug(f"Found MHA: {q_num_heads=} {q_hidden_size=}")
 
         # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
-        # TODO: use new output instead since its shape is changed.
         new_node = self.create_mha_node(
-            reshape_q, transpose_k_bnsh, transpose_v, q_num_heads, output=transpose_out.output[0]
+            reshape_q,
+            transpose_k_bnsh,
+            transpose_v,
+            q_num_heads,
         )
         if new_node is None:
             return False
+
+        # Update the input of the next node that consumes the output of the MHA.
+        assert len(self.model.get_children(transpose_out, input_name_to_nodes)) == 1
+        reshape_out.input[0] = new_node.output[0]
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
@@ -490,19 +496,17 @@ class FusionMultiHeadAttentionSam2(Fusion):
         transpose_k: NodeProto,
         transpose_v: NodeProto,
         num_heads: int,
-        output: str,
-    ) -> Union[NodeProto, None]:
-        """Create an Attention node.
+    ) -> NodeProto:
+        """Create a MultiHeadAttention node for SAM2 encoder.
 
         Args:
             reshape_q (NodeProto): Reshape node for Q, output is 3D BxSxNH format
             transpose_k (NodeProto): Transpose node for K, output is BNSH format
             transpose_v (NodeProto): Transpose node for V, output is BNSH format
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
-            output (str): output name
 
         Returns:
-            Union[NodeProto, None]: the node created or None if failed.
+            NodeProto: the MultiHeadAttention node created.
         """
 
         attention_node_name = self.model.create_node_name("MultiHeadAttention")
@@ -512,6 +516,9 @@ class FusionMultiHeadAttentionSam2(Fusion):
             transpose_k.output[0],
             transpose_v.output[0],
         ]
+
+        # Create a new output name since the shape is 3D, which is different from the original output shape (4D).
+        output = attention_node_name + "_out"
 
         attention_node = helper.make_node(
             "MultiHeadAttention",

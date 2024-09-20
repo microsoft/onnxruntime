@@ -229,36 +229,22 @@ def main():
                     args.use_gpu,
                 )
 
-            optimize_sam2_model(
-                image_decoder_onnx_path,
-                image_decoder_onnx_path.replace(".onnx", f"{suffix}.onnx"),
-                convert_to_fp16,
-                args.use_gpu,
-            )
+            # Use optimized models to run demo.
+            image_encoder_onnx_path = optimized_image_encoder_onnx_path
+            image_decoder_onnx_path = optimized_image_decoder_onnx_path
+            image_decoder_multi_onnx_path = optimized_image_decoder_multi_onnx_path
 
-            ort_image_files = run_demo(
-                args.sam2_dir,
-                args.model_type,
-                engine="ort",
-                dtype=dtype,
-                image_encoder_onnx_path=optimized_image_encoder_onnx_path,
-                image_decoder_onnx_path=optimized_image_decoder_onnx_path,
-                image_decoder_multi_onnx_path=optimized_image_decoder_multi_onnx_path,
-                use_gpu=args.use_gpu,
-            )
-            print("demo output files for ONNX Runtime:", ort_image_files)
-        else:
-            ort_image_files = run_demo(
-                args.sam2_dir,
-                args.model_type,
-                engine="ort",
-                dtype=dtype,
-                image_encoder_onnx_path=image_encoder_onnx_path,
-                image_decoder_onnx_path=image_decoder_onnx_path,
-                image_decoder_multi_onnx_path=image_decoder_multi_onnx_path,
-                use_gpu=args.use_gpu,
-            )
-            print("demo output files for ONNX Runtime:", ort_image_files)
+        ort_image_files = run_demo(
+            args.sam2_dir,
+            args.model_type,
+            engine="ort",
+            dtype=dtype,
+            image_encoder_onnx_path=image_encoder_onnx_path,
+            image_decoder_onnx_path=image_decoder_onnx_path,
+            image_decoder_multi_onnx_path=image_decoder_multi_onnx_path,
+            use_gpu=args.use_gpu,
+        )
+        print("demo output files for ONNX Runtime:", ort_image_files)
 
         # Get results from torch engine to compare.
         torch_image_files = run_demo(args.sam2_dir, args.model_type, engine="torch", dtype=dtype, use_gpu=args.use_gpu)
