@@ -140,6 +140,7 @@ def run_with_adapter(model_path: os.PathLike, adapter_path: os.PathLike):
     inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
 
     outputs = session.run(None, inputs, run_options)
+
     print(outputs)
 
 
