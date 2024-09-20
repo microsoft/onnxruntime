@@ -30,6 +30,9 @@ constexpr static const std::string_view STORAGE_TYPE[] = {
     "vec2<u32>",  // int64
     "vec2<u32>",  // uint64
     "u32",        // vec4bool
+    "u32",        // uint8
+    "vec2<u32>",  // vec2uint8
+    "vec4<u32>",  // vec4uint8
 };
 
 constexpr static const std::string_view VALUE_TYPE[] = {
@@ -48,6 +51,9 @@ constexpr static const std::string_view VALUE_TYPE[] = {
     "i32",         // int64 (trancated to i32)
     "u32",         // uint64 (trancated to u32)
     "vec4<bool>",  // vec4bool
+    "u32",         // uint8
+    "vec2<u32>",   // vec2uint8
+    "vec4<u32>",   // vec4uint8
 };
 
 constexpr static const std::string_view ELEMENT_TYPE[] = {
@@ -66,6 +72,9 @@ constexpr static const std::string_view ELEMENT_TYPE[] = {
     "i32",   // int64
     "u32",   // uint64
     "bool",  // vec4bool
+    "u32",   // uint8
+    "u32",   // vec2uint8
+    "u32",   // vec4uint8
 };
 
 inline std::string GetIndicesType(int rank) {

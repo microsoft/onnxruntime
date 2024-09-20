@@ -12,7 +12,8 @@ namespace contrib {
 namespace webgpu {
 
 namespace {
-uint32_t getMaxComponents(uint32_t size) {
+// Put it to a common place?
+uint32_t GetMaxComponents(uint32_t size) {
   // we cannot use vec3 type since it has alignment of 16 bytes
   if (size % 4 == 0) {
     return 4;
@@ -116,7 +117,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                    << "}\n";
   for (int c = 0; c < output_element_number; c++) {
     process_one_word << "b_value = " << "b" << c << "_data";
-    if (b.NumComponents() > 1) {
+    if (components_b_ > 1) {
       process_one_word << "[i]";
     }
     process_one_word << ";\n"
@@ -186,7 +187,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   const uint32_t shared_memory_size = output_number_ * WORKGROUP_SIZE;
   std::string offset = "workgroup_idx * " + std::to_string(output_number_);
-  shader.AppendImplementation("var<workgroup> workgroup_shared : array<output_value_t," + std::to_string(shared_memory_size) + ">;\n const workgroup_size = " + std::to_string(static_cast<uint32_t>(WORKGROUP_SIZE)) + "u;\n");
+  shader.AppendImplementation("var<workgroup> workgroup_shared : array<output_value_t," + std::to_string(shared_memory_size) + ">;\n");
   shader.SetMainFunctionBody("let output_indices = ", y.OffsetToIndices(offset),
                              ";\n"
                              "let col = output_indices[2];\n"
@@ -195,13 +196,13 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              "let n_blocks_per_col = uniforms.input_b_shape[1];\n"
                              "let blob_size = uniforms.input_b_shape[2]"
                              ";\n"
-                             "for (var block = local_id.x; block < n_blocks_per_col; block += workgroup_size) {\n"
+                             "for (var block = local_id.x; block < n_blocks_per_col; block += workgroup_size_x) {\n"
                              "  var word_offset = block * uniforms.block_size / ",
                              a.NumComponents(), ";\n",
                              prepare_scale_and_zero_point.str(),
                              "  for (var word: u32 = 0; word < blob_size; word += 1) {\n",
                              prepare_b_data.str(),
-                             "    for (var i: u32 = 0; i < ", b.NumComponents(), "; i++) {\n",
+                             "    for (var i: u32 = 0; i < ", components_b_, "; i++) {\n",
                              process_one_word.str(),
                              "      word_offset += ", 8 / a.NumComponents(),
                              ";\n"
@@ -260,9 +261,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
   const uint32_t blob_size = (block_size / 8) * nbits;
   const uint32_t blob_size_in_words = blob_size / 4;
-  const uint32_t components_a = getMaxComponents(K);
-  const uint32_t components_b = getMaxComponents(blob_size_in_words);
-  const uint32_t components = getMaxComponents(N);
+  const uint32_t components_a = GetMaxComponents(K);
+  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
+  const uint32_t components = GetMaxComponents(N);
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   // const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;
   const uint32_t output_number = 1;
@@ -272,15 +273,17 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   TensorShape reshaped_y_shape{batch_count, M, N / components};
 
   const bool has_zero_points = zero_points != nullptr;
-  MatMulNBitsProgram program{output_number, has_zero_points};
+  MatMulNBitsProgram program{output_number, SafeInt<int>(components_b), has_zero_points};
   program
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, SafeInt<int>(components_a)}, {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, SafeInt<int>(components_b)}, {scales, ProgramTensorMetadataDependency::None}})
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, SafeInt<int>(components_a)},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, SafeInt<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
+                  {scales, ProgramTensorMetadataDependency::None}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, SafeInt<int>(components)})
       .SetDispatchGroupSize(data_size / components / output_number)
       .AddUniformVariable({block_size})
       .CacheHint(std::to_string(output_number));
   if (has_zero_points) {
-    program.AddInput({zero_points, ProgramTensorMetadataDependency::None});
+    program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
   return context.RunProgram(program);
 }

@@ -150,9 +150,9 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
                         "Unexpected program variable type ", int(var_type), " for bool tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint32 ||
-                            var_type == ProgramVariableDataType::Vec2Uint32 ||
-                            var_type == ProgramVariableDataType::Vec4Uint32,
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint8 ||
+                            var_type == ProgramVariableDataType::Vec2Uint8 ||
+                            var_type == ProgramVariableDataType::Vec4Uint8,
                         "Unexpected program variable type ", int(var_type), " for UINT8 tensor");
       break;
     default:
@@ -169,7 +169,7 @@ Status ValidateVariableShape(const TensorShape& origin_shape,
                              int num_components) {
   if (use_override_shape) {
     // if override shape specified, assert override_size == ceil( origin_size / 4 )
-    ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size() || ((origin_shape.Size() + num_components - 1) / num_components / 4 == override_shape.Size()),
+    ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
                       "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
   }
 

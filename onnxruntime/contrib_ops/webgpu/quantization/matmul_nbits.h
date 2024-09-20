@@ -14,7 +14,10 @@ using namespace onnxruntime::webgpu;
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t output_number, bool has_zero_points) : Program{"MatMulNBits"}, output_number_{output_number}, has_zero_points_{has_zero_points} {
+  MatMulNBitsProgram(const uint32_t output_number, const int components_b, const bool has_zero_points) : Program{"MatMulNBits"},
+                                                                                                         output_number_{output_number},
+                                                                                                         components_b_{components_b},
+                                                                                                         has_zero_points_{has_zero_points} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -22,6 +25,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
 
  private:
   uint32_t output_number_;
+  int components_b_;
   bool has_zero_points_;
 };
 

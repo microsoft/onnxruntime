@@ -99,6 +99,9 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "i64",     // int64
     "u64",     // uint64
     "boolx4",  // vec4bool
+    "u32",     // uint8
+    "u32x2",   // vec2uint8
+    "u32x4",   // vec4uint8
 };
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
   os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
@@ -125,7 +128,12 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Vec4Uint32:
     case ProgramVariableDataType::Vec4Float16:
     case ProgramVariableDataType::Vec4Bool:
+    case ProgramVariableDataType::Uint8:
       return 4;
+    case ProgramVariableDataType::Vec2Uint8:
+      return 8;
+    case ProgramVariableDataType::Vec4Uint8:
+      return 16;
     default:
       return -1;
   }
@@ -134,8 +142,6 @@ int NumberOfComponents(ProgramVariableDataType type) {
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component /* = 1 */) {
   if (component == 1) {
     switch (element_type) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        return ProgramVariableDataType::Uint32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -153,8 +159,6 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
     }
   } else if (component == 2) {
     switch (element_type) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        return ProgramVariableDataType::Vec2Uint32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Vec2Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -169,7 +173,7 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   } else if (component == 4) {
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        return ProgramVariableDataType::Vec4Uint32;
+        return ProgramVariableDataType::Uint8;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Vec4Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -180,6 +184,20 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
         return ProgramVariableDataType::Vec4Uint32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
         return ProgramVariableDataType::Vec4Bool;
+      default:
+        return ProgramVariableDataType::InvalidType;
+    }
+  } else if (component == 8) {
+    switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Vec2Uint8;
+      default:
+        return ProgramVariableDataType::InvalidType;
+    }
+  } else if (component == 16) {
+    switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Vec4Uint8;
       default:
         return ProgramVariableDataType::InvalidType;
     }
