@@ -49,7 +49,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<std::string> input_names_str_;
   const int input_length_;
   std::string provider_name_;
-  std::string device_memory_name_; // Device memory type name to use from the list in allocator.h
+  std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
 };
 
 }  // namespace perftest
