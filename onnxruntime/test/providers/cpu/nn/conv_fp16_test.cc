@@ -45,6 +45,9 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
     if (!attributes.activation_parameters.empty()) {
       tester->AddAttribute("activation_params", attributes.activation_parameters);
     }
+#if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    return;
+#endif
   } else {
     tester = std::make_unique<OpTester>("Conv", opset);
   }

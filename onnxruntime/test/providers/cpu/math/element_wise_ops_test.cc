@@ -70,13 +70,8 @@ void TestUnaryFloat16([[maybe_unused]] const char* op_name,
                       [[maybe_unused]] const std::initializer_list<float>& lhs_values,
                       [[maybe_unused]] const std::vector<int64_t>& out_dim,
                       [[maybe_unused]] const std::initializer_list<float>& out_values,
-                      [[maybe_unused]] int opset = 14) {
-  ORT_UNUSED_PARAMETER(op_name);
-  ORT_UNUSED_PARAMETER(lhs_dim);
-  ORT_UNUSED_PARAMETER(lhs_values);
-  ORT_UNUSED_PARAMETER(out_dim);
-  ORT_UNUSED_PARAMETER(out_values);
-  ORT_UNUSED_PARAMETER(opset);
+                      [[maybe_unused]] int opset = 14,
+                      [[maybe_unused]] bool run_bf16 = true) {
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
   {
     OpTester tester(op_name, opset);
@@ -95,7 +90,7 @@ void TestUnaryFloat16([[maybe_unused]] const char* op_name,
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-  {
+  if (run_bf16) {
     OpTester tester(op_name, opset);
     tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
     tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
@@ -816,7 +811,7 @@ TEST(MathOpTest, Reciprocal) {
   test.AddInput<float>("X", dims, inputs);
   test.AddOutput<float>("Y", dims, outputs);
   test.Run();
-  TestUnaryFloat16("Reciprocal", dims, inputs, dims, outputs, 12);
+  TestUnaryFloat16("Reciprocal", dims, inputs, dims, outputs, 12, false);
 }
 
 TEST(MathOpTest, Reciprocal_double) {

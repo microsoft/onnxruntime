@@ -138,8 +138,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto K = transB ? b1 : b0;
   const auto N = transB ? b0 : b1;
   // we already checked it and dtype must be existed.
-  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 #if defined(COREML_ENABLE_MLPROGRAM)
+  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
