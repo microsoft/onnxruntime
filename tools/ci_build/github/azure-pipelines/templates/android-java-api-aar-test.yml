@@ -70,15 +70,16 @@ jobs:
       set -e -x
       cd tools/python
       pip install requests
+      export BROWSERSTACK_ID=$(browserstack_username)
+      export BROWSERSTACK_TOKEN=$(browserstack_access_key)
       python upload_and_run_browserstack_tests.py \
         --test_platform espresso \
-        --id $(browserstack_username) \
-        --token $(browserstack_access_key) \
         --app_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/debug/app-debug.apk" \
         --test_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" \
         --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
     displayName: Run E2E tests using Browserstack
     workingDirectory: $(Build.SourcesDirectory)
+    timeoutInMinutes: 15
 
   - template: component-governance-component-detection-steps.yml
     parameters :
