@@ -670,13 +670,12 @@ def write_calibration_table(calibration_cache, dir="."):
 
     import json
 
-    import numpy as np
-
     import flatbuffers
+    import numpy as np
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
-    from onnxruntime.quantization.calibrate import TensorData, TensorsData, CalibrationMethod
+    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
     logging.info(f"calibration cache: {calibration_cache}")
 
@@ -685,7 +684,7 @@ def write_calibration_table(calibration_cache, dir="."):
             if isinstance(obj, (TensorData, TensorsData)):
                 return obj.to_dict()
             if isinstance(obj, np.ndarray):
-                return {"data": obj.tolist(), "dtype":str(obj.dtype), "CLS": "numpy.array"}
+                return {"data": obj.tolist(), "dtype": str(obj.dtype), "CLS": "numpy.array"}
             if isinstance(obj, CalibrationMethod):
                 return {"CLS": obj.__class__.__name__, "value": str(obj)}
             return json.JSONEncoder.default(self, obj)

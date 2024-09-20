@@ -1722,7 +1722,7 @@ class TestQDQ4bit(TestQDQFormat):
 
     def test_json_serialization(self):
         td = TensorData(lowest=np.array([0.1], dtype=np.float32), highest=np.array([1.1], dtype=np.float32))
-        new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, {"td":td})
+        new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, {"td": td})
         write_calibration_table(new_calibrate_tensors_range)
 
 
