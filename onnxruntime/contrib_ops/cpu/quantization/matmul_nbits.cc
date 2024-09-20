@@ -181,6 +181,21 @@ class MatMulNBits final : public OpKernel {
   }
 };
 
+template <size_t AlignBits>
+struct AddressAligner {
+ public:
+  const size_t extra_bytes_;
+
+  AddressAligner() : extra_bytes_((AlignBits >> 3) - 1) {
+    static_assert((AlignBits & (AlignBits - 1)) == 0, "AlignBits must be a power of 2");
+  }
+
+  template <typename T>
+  T* GetAlignedAddress(T* addr) const {
+    return reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(addr) + extra_bytes_) & ~extra_bytes_);
+  }
+};
+
 #ifdef MLAS_TARGET_AMD64_IX86
 template <>
 void MatMulNBits<MLFloat16>::PackScale(const Tensor& tensor) {
@@ -270,6 +285,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       return Status::OK();
     }
     auto qptr = tensor.DataRaw();
+    // TODO(fajin): check alignment
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr, nullptr);
     is_packed = true;
@@ -348,7 +364,9 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
   const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(
       M, N, K, batch_count, nbits_, block_size_, compute_type_);
   if (workspace_size > 0) {
-    workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+    // Use reserve since no caching is needed
+    // TODO(fajin): check alignment
+    workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
   }
 
   InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
@@ -397,26 +415,40 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(
       M, N, K, batch_count, nbits_, block_size_, compute_type_);
   if (workspace_size > 0) {
-    workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+    // Use reserve since no caching is needed
+    // TODO(fajin): check alignment
+    workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
   }
 
-  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()));
+  // For avx512
+  auto addr_aligner = AddressAligner<512>();
 
-  auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(scales->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), static_cast<size_t>(scales->Shape().Size()));
+  auto a_size = static_cast<size_t>(a->Shape().Size());
+  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size + addr_aligner.extra_bytes_, true);
+  float* aligned_a = addr_aligner.GetAlignedAddress(tmp_a_data_ptr.get());
+  MlasConvertHalfToFloatBuffer(a_data, aligned_a, a_size);
+
+  auto scales_size = static_cast<size_t>(scales->Shape().Size());
+  auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, scales_size + addr_aligner.extra_bytes_, true);
+  float* aligned_scales = addr_aligner.GetAlignedAddress(tmp_scales_data_ptr.get());
+  MlasConvertHalfToFloatBuffer(scales_data, aligned_scales, scales_size);
 
   std::vector<float> bias_data_v;
+  float* aligned_bias = nullptr;
   if (bias_data != nullptr) {
-    bias_data_v.resize(static_cast<size_t>(bias->Shape().Size()));
-    MlasConvertHalfToFloatBuffer(bias_data, &bias_data_v[0], bias_data_v.size());
+    auto bias_size = static_cast<size_t>(bias->Shape().Size());
+    bias_data_v.resize(bias_size + addr_aligner.extra_bytes_);
+    aligned_bias = addr_aligner.GetAlignedAddress(bias_data_v.data());
+    MlasConvertHalfToFloatBuffer(bias_data, aligned_bias, bias_size);
   }
 
-  std::vector<float> C_v(static_cast<size_t>(y->Shape().Size()));
+  size_t c_size = static_cast<size_t>(y->Shape().Size());
+  std::vector<float> c_v(c_size + addr_aligner.extra_bytes_);
+  float* aligned_c = addr_aligner.GetAlignedAddress(c_v.data());
 
   InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
-    data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+    data[i].A = aligned_a + helper.LeftOffsets()[i];
     data[i].lda = lda;
 #ifdef MLAS_TARGET_AMD64_IX86
     if (compute_type_ == CompInt8) {
@@ -424,15 +456,15 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     }
 #endif
     data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
-    data[i].QuantBScale = tmp_scales_data_ptr.get();
+    data[i].QuantBScale = aligned_scales;
     data[i].QuantBZeroPoint = zero_points_data;
-    data[i].Bias = bias_data != nullptr ? &bias_data_v[0] : nullptr;
-    data[i].C = &C_v[0] + helper.OutputOffsets()[i];
+    data[i].Bias = bias_data != nullptr ? aligned_bias : nullptr;
+    data[i].C = aligned_c + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
   MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                       thread_pool);
-  MlasConvertFloatToHalfBuffer(&C_v[0], y_data, C_v.size());
+  MlasConvertFloatToHalfBuffer(aligned_c, y_data, c_size);
   return Status::OK();
 }
 
@@ -461,7 +493,8 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(true);
 
-  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
+  // TODO(fajin): check alignment
+  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
     // dequantize b, only 4b quantization is supported for now
@@ -561,11 +594,12 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
   auto* y_data = y->MutableData<MLFloat16>();
 
-  const float* scales_data_;
-  std::vector<float> scales_data_v;
-  scales_data_v.resize(static_cast<size_t>(scales->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(scales_data, &scales_data_v[0], scales_data_v.size());
-  scales_data_ = &scales_data_v[0];
+  auto addr_aligner = AddressAligner<512>();
+
+  const size_t scales_size = static_cast<size_t>(scales->Shape().Size());
+  std::vector<float> scales_data_v(scales_size + addr_aligner.extra_bytes_);
+  const float* aligned_scales = addr_aligner.GetAlignedAddress(scales_data_v.data());
+  MlasConvertHalfToFloatBuffer(scales_data, aligned_scales, scales_size);
 
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
@@ -574,14 +608,15 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(true);
 
-  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
+  // TODO(fajin): check alignment
+  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
     // dequantize b, only 4b quantization is supported for now
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_data_,                                   // quantization scales
+        aligned_scales,                                   // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -595,7 +630,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, MLFloat16>(
           tmp_b_data_ptr.get(),                             // dequantized output
           b_data,                                           // quantized input
-          scales_data_,                                     // quantization scales
+          aligned_scales,                                     // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -607,7 +642,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_data_,                                   // quantization scales
+          aligned_scales,                                   // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -623,16 +658,23 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 #endif
 
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
-  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()));
-  auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(y->Shape().Size()));
+
+  auto a_size = static_cast<size_t>(a->Shape().Size());
+  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size + addr_aligner.extra_bytes_, true);
+  float* aligned_a = addr_aligner.GetAlignedAddress(tmp_a_data_ptr.get());
+  MlasConvertHalfToFloatBuffer(a_data, aligned_a, a_size);
+
+  auto c_size = static_cast<size_t>(y->Shape().Size());
+  auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, c_size + addr_aligner.extra_bytes_, true);
+  float* aligned_c = addr_aligner.GetAlignedAddress(tmp_c_ptr.get());
+
   for (size_t i = 0; i < batch_count; i++) {
     data[i].BIsPacked = false;
-    data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+    data[i].A = aligned_a + helper.LeftOffsets()[i];
     data[i].lda = lda;
     data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
     data[i].ldb = ldb;
-    data[i].C = tmp_c_ptr.get() + helper.OutputOffsets()[i];
+    data[i].C = aligned_c + helper.OutputOffsets()[i];
     data[i].ldc = N;
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
@@ -640,24 +682,23 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   // if there is a bias input, copy bias values into C and set beta to 1.0f
   if (bias) {
-    auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(bias->Shape().Size()));
-    MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(),
-                                 tmp_bias_data_ptr.get(),
-                                 static_cast<size_t>(bias->Shape().Size()));
+    auto bias_size = static_cast<size_t>(bias->Shape().Size());
+    auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, bias_size + addr_aligner.extra_bytes_, true);
+    float* aligned_bias = addr_aligner.GetAlignedAddress(tmp_bias_data_ptr.get());
+    MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), aligned_bias, bias_size);
     for (size_t i = 0; i < batch_count; ++i) {
       float* C_row = data[i].C;
       const size_t ldc = data[i].ldc;
       for (size_t m = 0; m < M; ++m) {
-        std::copy(tmp_bias_data_ptr.get(), tmp_bias_data_ptr.get() + bias->Shape().Size(), C_row);
+        std::copy(aligned_bias, aligned_bias + bias_size, C_row);
         C_row += ldc;
       }
       data[i].beta = 1.0f;
     }
   }
 
-  MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), batch_count, thread_pool);
-  MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, static_cast<size_t>(y->Shape().Size()));
+  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), batch_count, thread_pool);
+  MlasConvertFloatToHalfBuffer(aligned_c, y_data, c_size);
   return Status::OK();
 }
 
