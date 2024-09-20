@@ -893,8 +893,6 @@ if (MSVC)
   set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
                       "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc"
                APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
-  set_property(SOURCE "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc"
-               APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
