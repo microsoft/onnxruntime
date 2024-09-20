@@ -5,8 +5,8 @@ import onnx
 
 import onnxruntime as ort
 
-model_path = "C:/dev/ort_main/onnxruntime/test/testdata/lora/two_params_lora_model.onnx"
-adapter_path = "C:/dev/ort_main/onnxruntime/test/testdata/lora/two_params_lora_model.onnx_adapter"
+model_path = "two_params_lora_model.onnx"
+adapter_path = "two_params_lora_model.onnx_adapter"
 
 
 def create_model(model_path: os.PathLike):
