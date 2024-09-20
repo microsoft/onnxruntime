@@ -63,43 +63,43 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
   constexpr size_t element_size = sizeof(T);
   ProcessBroadcastSpanFuncs add_funcs{
       [](BroadcastHelper& per_iter_bh) {
-        // per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
-        auto num_elements = per_iter_bh.NumOutputElements();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
+        // auto num_elements = per_iter_bh.NumOutputElements();
 
-        const auto* input_1 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput1<T>().data());
-        ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_1_vec_map(input_1, num_elements);
+        // const auto* input_1 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput1<T>().data());
+        // ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_1_vec_map(input_1, num_elements);
 
-        auto* output = reinterpret_cast<typename EigenType<T>::Type*>(per_iter_bh.OutputEigen<T>().data());
-        EigenVectorArrayMap<typename EigenType<T>::Type> output_vec_map(output, num_elements);
+        // auto* output = reinterpret_cast<typename EigenType<T>::Type*>(per_iter_bh.OutputEigen<T>().data());
+        // EigenVectorArrayMap<typename EigenType<T>::Type> output_vec_map(output, num_elements);
 
-        output_vec_map = input_1_vec_map + static_cast<typename EigenType<T>::Type>(per_iter_bh.ScalarInput0<T>());
+        // output_vec_map = input_1_vec_map + static_cast<typename EigenType<T>::Type>(per_iter_bh.ScalarInput0<T>());
       },
       [](BroadcastHelper& per_iter_bh) {
-        // per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
-        auto num_elements = per_iter_bh.NumOutputElements();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
+        // auto num_elements = per_iter_bh.NumOutputElements();
 
-        const auto* input_0 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput0<T>().data());
-        ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_0_vec_map(input_0, num_elements);
+        // const auto* input_0 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput0<T>().data());
+        // ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_0_vec_map(input_0, num_elements);
 
-        auto* output = reinterpret_cast<typename EigenType<T>::Type*>(per_iter_bh.OutputEigen<T>().data());
-        EigenVectorArrayMap<typename EigenType<T>::Type> output_vec_map(output, num_elements);
+        // auto* output = reinterpret_cast<typename EigenType<T>::Type*>(per_iter_bh.OutputEigen<T>().data());
+        // EigenVectorArrayMap<typename EigenType<T>::Type> output_vec_map(output, num_elements);
 
-        output_vec_map = input_0_vec_map + static_cast<typename EigenType<T>::Type>(per_iter_bh.ScalarInput1<T>());
+        // output_vec_map = input_0_vec_map + static_cast<typename EigenType<T>::Type>(per_iter_bh.ScalarInput1<T>());
       },
       [](BroadcastHelper& per_iter_bh) {
-        // per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-        auto num_elements = per_iter_bh.NumOutputElements();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
+        // auto num_elements = per_iter_bh.NumOutputElements();
 
-        const auto* input_0 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput0<T>().data());
-        ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_0_vec_map(input_0, num_elements);
+        // const auto* input_0 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput0<T>().data());
+        // ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_0_vec_map(input_0, num_elements);
 
-        const auto* input_1 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput1<T>().data());
-        ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_1_vec_map(input_1, num_elements);
+        // const auto* input_1 = reinterpret_cast<const typename EigenType<T>::Type*>(per_iter_bh.EigenInput1<T>().data());
+        // ConstEigenVectorArrayMap<typename EigenType<T>::Type> input_1_vec_map(input_1, num_elements);
 
-        auto* output = reinterpret_cast<typename EigenType<T>::Type*>(per_iter_bh.OutputEigen<T>().data());
-        EigenVectorArrayMap<typename EigenType<T>::Type> output_vec_map(output, num_elements);
+        // auto* output = reinterpret_cast<typename EigenType<T>::Type*>(per_iter_bh.OutputEigen<T>().data());
+        // EigenVectorArrayMap<typename EigenType<T>::Type> output_vec_map(output, num_elements);
 
-        output_vec_map = input_0_vec_map + input_1_vec_map;
+        // output_vec_map = input_0_vec_map + input_1_vec_map;
       }};  // For element-wise add
 
   // Allocate space for output of Q(BS, D) + bias(D)
@@ -175,47 +175,47 @@ Status AddBiasReshape(const Tensor* qkv,        // Input: Q/K/V data - query is 
                       OpKernelContext* context) {
   // Note: the comments below will refer to Q's dimensions for simplicity
   auto element_type = DataTypeImpl::GetType<T>();
-  using eigen_type = typename EigenType<T>::Type;
+  //using eigen_type = typename EigenType<T>::Type;
   constexpr size_t element_size = sizeof(T);
   ProcessBroadcastSpanFuncs add_funcs{
       [](BroadcastHelper& per_iter_bh) {
-        //per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
-        auto num_elements = per_iter_bh.NumOutputElements();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
+        // auto num_elements = per_iter_bh.NumOutputElements();
 
-        const auto* input_1 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput1<T>().data());
-        ConstEigenVectorArrayMap<eigen_type> input_1_vec_map(input_1, num_elements);
+        // const auto* input_1 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput1<T>().data());
+        // ConstEigenVectorArrayMap<eigen_type> input_1_vec_map(input_1, num_elements);
 
-        auto* output = reinterpret_cast<eigen_type*>(per_iter_bh.OutputEigen<T>().data());
-        EigenVectorArrayMap<eigen_type> output_vec_map(output, num_elements);
+        // auto* output = reinterpret_cast<eigen_type*>(per_iter_bh.OutputEigen<T>().data());
+        // EigenVectorArrayMap<eigen_type> output_vec_map(output, num_elements);
 
-        output_vec_map = input_1_vec_map + static_cast<eigen_type>(per_iter_bh.ScalarInput0<T>());
+        // output_vec_map = input_1_vec_map + static_cast<eigen_type>(per_iter_bh.ScalarInput0<T>());
       },
       [](BroadcastHelper& per_iter_bh) {
-        // per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
-        auto num_elements = per_iter_bh.NumOutputElements();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
+        // auto num_elements = per_iter_bh.NumOutputElements();
 
-        const auto* input_0 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput0<T>().data());
-        ConstEigenVectorArrayMap<eigen_type> input_0_vec_map(input_0, num_elements);
+        // const auto* input_0 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput0<T>().data());
+        // ConstEigenVectorArrayMap<eigen_type> input_0_vec_map(input_0, num_elements);
 
-        auto* output = reinterpret_cast<eigen_type*>(per_iter_bh.OutputEigen<T>().data());
-        EigenVectorArrayMap<eigen_type> output_vec_map(output, num_elements);
+        // auto* output = reinterpret_cast<eigen_type*>(per_iter_bh.OutputEigen<T>().data());
+        // EigenVectorArrayMap<eigen_type> output_vec_map(output, num_elements);
 
-        output_vec_map = input_0_vec_map + static_cast<eigen_type>(per_iter_bh.ScalarInput1<T>());
+        // output_vec_map = input_0_vec_map + static_cast<eigen_type>(per_iter_bh.ScalarInput1<T>());
       },
       [](BroadcastHelper& per_iter_bh) {
-        // per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-        auto num_elements = per_iter_bh.NumOutputElements();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
+        // auto num_elements = per_iter_bh.NumOutputElements();
 
-        const auto* input_0 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput0<T>().data());
-        ConstEigenVectorArrayMap<eigen_type> input_0_vec_map(input_0, num_elements);
+        // const auto* input_0 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput0<T>().data());
+        // ConstEigenVectorArrayMap<eigen_type> input_0_vec_map(input_0, num_elements);
 
-        const auto* input_1 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput1<T>().data());
-        ConstEigenVectorArrayMap<eigen_type> input_1_vec_map(input_1, num_elements);
+        // const auto* input_1 = reinterpret_cast<const eigen_type*>(per_iter_bh.EigenInput1<T>().data());
+        // ConstEigenVectorArrayMap<eigen_type> input_1_vec_map(input_1, num_elements);
 
-        auto* output = reinterpret_cast<eigen_type*>(per_iter_bh.OutputEigen<T>().data());
-        EigenVectorArrayMap<eigen_type> output_vec_map(output, num_elements);
+        // auto* output = reinterpret_cast<eigen_type*>(per_iter_bh.OutputEigen<T>().data());
+        // EigenVectorArrayMap<eigen_type> output_vec_map(output, num_elements);
 
-        output_vec_map = input_0_vec_map + input_1_vec_map;
+        // output_vec_map = input_0_vec_map + input_1_vec_map;
       }};  // For element-wise add
 
   // Get Q's bias from combined bias

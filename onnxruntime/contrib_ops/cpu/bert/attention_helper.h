@@ -10,7 +10,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
-#include <stdio.h>
 
 using onnxruntime::concurrency::ThreadPool;
 
