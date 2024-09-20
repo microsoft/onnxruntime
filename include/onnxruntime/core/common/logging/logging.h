@@ -61,6 +61,7 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 // C++20 has operator<< in std::chrono for Timestamp type but mac builds need additional checks
 // to ensure usage is valid.
 // TODO: As we enable C++20 on other platforms we may need similar checks.
+// define a temporary value to determine whether to use the std::chrono or date implementation.
 #define TEMP_USE_CXX20_STD_CHRONO __cplusplus >= 202002L
 
 // Apply constraints for mac builds
