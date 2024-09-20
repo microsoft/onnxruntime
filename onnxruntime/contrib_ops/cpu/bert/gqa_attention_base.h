@@ -200,10 +200,10 @@ class GQAAttentionBase {
           auto q_k_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
 
-          auto q_fp32 = static_cast<float*>(q_k_fp32);
-          MlasConvertHalfToFloatBuffer(q, q_k_fp32, head_size * sequence_length);
+          float* q_fp32 = static_cast<float*>(q_k_fp32);
+          MlasConvertHalfToFloatBuffer(q, q_fp32, head_size * sequence_length);
 
-          auto k_fp32 = q_fp32 + head_size * sequence_length;
+          float* k_fp32 = q_fp32 + head_size * sequence_length;
           MlasConvertHalfToFloatBuffer(k, k_fp32, head_size * total_seqlen);
 
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q_fp32,
@@ -336,10 +336,10 @@ class GQAAttentionBase {
           auto v_o_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(v_o_fp32, BufferDeleter(allocator));
 
-          auto v_fp32_ptr = static_cast<float*>(v_o_fp32);
+          float* v_fp32_ptr = static_cast<float*>(v_o_fp32);
           MlasConvertHalfToFloatBuffer(v, v_fp32_ptr, head_size * total_seqlen);
 
-          auto output_fp32 = v_fp32_ptr + head_size * total_seqlen;
+          float* output_fp32 = v_fp32_ptr + head_size * total_seqlen;
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen, 1.f, /*alpha*/
                                       attention_probs + attention_probs_offset,
                                       static_cast<int>(present_buffer_sequence_length), v_fp32_ptr, static_cast<int>(head_size),
