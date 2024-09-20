@@ -22,18 +22,14 @@ std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) 
   return output;
 }
 
-void TestBinaryFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
-                       const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
-                       const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
-                       const std::initializer_list<float>& out_values, bool enable_bf16 = true) {
-  ORT_UNUSED_PARAMETER(op_name);
-  ORT_UNUSED_PARAMETER(lhs_dim);
-  ORT_UNUSED_PARAMETER(lhs_values);
-  ORT_UNUSED_PARAMETER(rhs_dim);
-  ORT_UNUSED_PARAMETER(rhs_values);
-  ORT_UNUSED_PARAMETER(out_dim);
-  ORT_UNUSED_PARAMETER(out_values);
-  ORT_UNUSED_PARAMETER(enable_bf16);
+void TestBinaryFloat16([[maybe_unused]] const char* op_name,
+                       [[maybe_unused]] const std::vector<int64_t>& lhs_dim,
+                       [[maybe_unused]] const std::initializer_list<float>& lhs_values,
+                       [[maybe_unused]] const std::vector<int64_t>& rhs_dim,
+                       [[maybe_unused]] const std::initializer_list<float>& rhs_values,
+                       [[maybe_unused]] const std::vector<int64_t>& out_dim,
+                       [[maybe_unused]] const std::initializer_list<float>& out_values,
+                       [[maybe_unused]] bool enable_bf16 = true) {
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
   {
     OpTester tester(op_name, 14);
@@ -69,9 +65,12 @@ void TestBinaryFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
 #endif
 }
 
-void TestUnaryFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
-                      const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& out_dim,
-                      const std::initializer_list<float>& out_values, int opset = 14) {
+void TestUnaryFloat16([[maybe_unused]] const char* op_name,
+                      [[maybe_unused]] const std::vector<int64_t>& lhs_dim,
+                      [[maybe_unused]] const std::initializer_list<float>& lhs_values,
+                      [[maybe_unused]] const std::vector<int64_t>& out_dim,
+                      [[maybe_unused]] const std::initializer_list<float>& out_values,
+                      [[maybe_unused]] int opset = 14) {
   ORT_UNUSED_PARAMETER(op_name);
   ORT_UNUSED_PARAMETER(lhs_dim);
   ORT_UNUSED_PARAMETER(lhs_values);
