@@ -231,21 +231,23 @@ bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
   bool has_Y = output_defs.size() > 0 && output_defs[0]->Exists();
   bool has_Y_h = output_defs.size() > 1 && output_defs[1]->Exists();
 
-  if (has_Y && !has_Y_h && GetType(*output_defs[0], Y_type, logger)) {
+  bool Y_supported = has_Y && GetType(*output_defs[0], Y_type, logger);
+  bool Y_h_supported = has_Y_h && GetType(*output_defs[1], Y_h_type, logger);
+
+  if (Y_supported && !Y_h_supported) {
     return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
-  }
-  if (!has_Y && has_Y_h && GetType(*output_defs[1], Y_h_type, logger)) {
+  } else if (!Y_supported && Y_h_supported) {
     return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "outputs", "Y_h", logger);
-  }
-  if (has_Y && has_Y_h && GetType(*output_defs[0], Y_type, logger) && GetType(*output_defs[1], Y_h_type, logger)) {
+  } else if (Y_supported && Y_h_supported) {
     if (Y_type != Y_h_type) {
       LOGS(logger, VERBOSE) << "[GRU] Output data types must be the same.";
       return false;
     }
     return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+  } else {
+    LOGS(logger, VERBOSE) << "[GRU] No output found.";
+    return false;
   }
-
-  return false;
 }
 
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
