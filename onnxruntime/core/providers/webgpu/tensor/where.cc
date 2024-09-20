@@ -5,7 +5,6 @@
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -156,13 +155,28 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
+namespace {
+const std::vector<MLDataType>& WhereOpTypeConstraints() {
+  // currently support boolean, integer and float types that explicitly allowed in WGSL:
+  // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
+  //
+  static std::vector<MLDataType> types{
+      DataTypeImpl::GetTensorType<MLFloat16>(),
+      DataTypeImpl::GetTensorType<float>(),
+      DataTypeImpl::GetTensorType<int32_t>(),
+      DataTypeImpl::GetTensorType<uint32_t>(),
+      DataTypeImpl::GetTensorType<bool>()};
+  return types;
+}
+}  // namespace
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Where,
     kOnnxDomain,
     9, 15,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+        .TypeConstraint("T", WhereOpTypeConstraints()),
     Where);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -171,7 +185,7 @@ ONNX_OPERATOR_KERNEL_EX(
     16,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+        .TypeConstraint("T", WhereOpTypeConstraints()),
     Where);
 
 }  // namespace webgpu
