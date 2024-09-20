@@ -89,7 +89,15 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
+  NodeAttrHelper helper(node);
+
+  // noop_with_empty_axes defaults to false and is only available in newer opsets where 'axes' is an optional input
+  // so we don't need to check the 'axes' attribute used in older opsets here.
+  const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
+  bool empty_axes = true;
+
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
+    // 'axes' is optional input in new opsets
     const auto& axes_name = input_defs[1]->Name();
     const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
     if (!Contains(initializers, axes_name)) {
@@ -97,12 +105,13 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
       return false;
     }
 
-    NodeAttrHelper helper(node);
+    empty_axes = initializers.at(axes_name)->int64_data_size() == 0;
+  }
 
-    if (initializers.at(axes_name)->int64_data_size() == 0 && helper.Get("noop_with_empty_axes", 0) != 0) {
-      LOGS(logger, VERBOSE) << "CoreML doesn't support noop on empty axes for reduction layers" << std::endl;
-      return false;
-    }
+  if (empty_axes && noop_with_empty_axes) {
+    // TODO: When we add ML Program support we should enable this as it makes the node an Identity op
+    LOGS(logger, VERBOSE) << "CoreML doesn't support noop on empty axes for reduction layers" << std::endl;
+    return false;
   }
 
   return true;
