@@ -77,6 +77,7 @@ static void RunTest(
   if (tensor_type == TensorType::kFloat && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
   }
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
   if (execution_providers.size() == 0) {
     // Return early if CI pipeline does not support EP (e.g. CUDA EP for CPU CI pipeline)
     return;
