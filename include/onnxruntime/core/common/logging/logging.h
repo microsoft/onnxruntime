@@ -62,7 +62,7 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 // to ensure usage is valid.
 // TODO: As we enable C++20 on other platforms we may need similar checks.
 // define a temporary value to determine whether to use the std::chrono or date implementation.
-#define TEMP_USE_CXX20_STD_CHRONO __cplusplus >= 202002L
+#define ORT_USE_CXX20_STD_CHRONO __cplusplus >= 202002L
 
 // Apply constraints for mac builds
 #if __APPLE__
@@ -72,7 +72,7 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 #if TARGET_OS_MACCATALYST
 // maccatalyst requires version 16.3
 #if (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED < 160300)
-#undef TEMP_USE_CXX20_STD_CHRONO
+#undef ORT_USE_CXX20_STD_CHRONO
 #endif
 
 #elif TARGET_OS_MAC
@@ -80,20 +80,19 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 // but the target macOS version must also be >= 13.3 for it to be used.
 #if (defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED < 140400) || \
     (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED < 130300)
-#undef TEMP_USE_CXX20_STD_CHRONO
+#undef ORT_USE_CXX20_STD_CHRONO
 #endif
 
 #endif
-
 #endif  // __APPLE__
 
-#if TEMP_USE_CXX20_STD_CHRONO
+#if ORT_USE_CXX20_STD_CHRONO
 namespace timestamp_ns = std::chrono;
 #else
 namespace timestamp_ns = ::date;
 #endif
 
-#undef _USE_CXX20_STD_CHRONO
+#undef ORT_USE_CXX20_STD_CHRONO
 
 #ifndef NDEBUG
 ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
