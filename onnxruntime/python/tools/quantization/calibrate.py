@@ -145,7 +145,7 @@ class TensorsData:
         # This is needed to serialize the data into JSON.
         data = {
             "CLS": self.__class__.__name__,
-            "data": {k: v.to_dict() for k,v in self.data.items()},
+            "data": self.data,
             "calibration_method": self.calibration_method,
         }
         return data
