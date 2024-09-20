@@ -17,11 +17,13 @@ concurrency:
 
 env:
   python_version: 3.11
-  xcode_version: 16
 
 jobs:
   ARM64:
     runs-on: macos-14
+
+    env:
+      xcode_version: 16
 
     timeout-minutes: 60
 
@@ -144,6 +146,9 @@ jobs:
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
+
+    env:
+      xcode_version: 15.2
 
     timeout-minutes: 30
 
