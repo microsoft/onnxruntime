@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#include "core/providers/cpu/math/matmul_helper.h"
-#include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -57,7 +57,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
-  const std::string qDqDataType = QuantizedDataType(a.NumComponents());
+  const std::string quantized_data_type = QuantizedDataType(a.NumComponents());
   const int output_element_number = y.NumComponents() * SafeInt<int>(output_number_);
   std::ostringstream prepare_scale_and_zero_point;
   prepare_scale_and_zero_point.imbue(std::locale::classic());
@@ -100,13 +100,13 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                  << "let b_mask : u32 = 0x0F0F0F0Fu;\n"
                  << "var b_value_lower : vec4<u32>;\n"
                  << "var b_value_upper : vec4<u32>;\n"
-                 << "var b_quantized_values : " << qDqDataType << ";\n "
-                 << "var b_dequantized_values : " << qDqDataType << ";\n ";
+                 << "var b_quantized_values : " << quantized_data_type << ";\n "
+                 << "var b_dequantized_values : " << quantized_data_type << ";\n ";
 
   std::ostringstream process_one_word;
   process_one_word.imbue(std::locale::classic());
   process_one_word << "var input_offset = " << a.IndicesToOffset("input_a_indices_t(batch, row, word_offset)") << ";\n"
-                   << "var a_data: " << qDqDataType << ";\n "
+                   << "var a_data: " << quantized_data_type << ";\n "
                    << "for (var j: u32 = 0; j < " << (8 / a.NumComponents()) << "; j++) {\n"
                    << "  if (word_offset + j < uniforms.input_a_shape[2]) {\n"
                    << "    a_data[j] = " << a.GetByOffset("input_offset") << ";\n"
@@ -123,11 +123,11 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     process_one_word << ";\n"
                      << "b_value_lower = unpack4xU8(b_value & b_mask);\n"
                      << "b_value_upper = unpack4xU8((b_value >> 4) & b_mask);\n"
-                     << "b_quantized_values = " << qDqDataType << "(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
+                     << "b_quantized_values = " << quantized_data_type << "(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
                      << "b_dequantized_values = ";
     if (a.NumComponents() == 1) {
       if (has_zero_points_) {
-        process_one_word << qDqDataType << "((b_quantized_values[0] - zero_point" << c << ") * scale" << c << ", "
+        process_one_word << quantized_data_type << "((b_quantized_values[0] - zero_point" << c << ") * scale" << c << ", "
                          << "(b_quantized_values[1] - zero_point" << c << ") * scale" << c << ", "
                          << "(b_quantized_values[2] - zero_point" << c << ") * scale" << c << ", "
                          << "(b_quantized_values[3] - zero_point" << c << ") * scale" << c << ", "
@@ -136,7 +136,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                          << "(b_quantized_values[6] - zero_point" << c << ") * scale" << c << ", "
                          << "(b_quantized_values[7] - zero_point" << c << ") * scale" << c << ");\n";
       } else {
-        process_one_word << qDqDataType << "((b_quantized_values[0] - zero_point) * scale" << c << ", "
+        process_one_word << quantized_data_type << "((b_quantized_values[0] - zero_point) * scale" << c << ", "
                          << "(b_quantized_values[1] - zero_point) * scale" << c << ","
                          << "(b_quantized_values[2] - zero_point) * scale" << c << ","
                          << "(b_quantized_values[3] - zero_point) * scale" << c << ","
@@ -146,7 +146,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                          << "(b_quantized_values[7] - zero_point) * scale" << c << ");\n";
       }
     } else {
-      process_one_word << "(b_quantized_values - " << qDqDataType << "(";
+      process_one_word << "(b_quantized_values - " << quantized_data_type << "(";
       for (int i = 0; i < 8; i++) {
         if (has_zero_points_) {
           process_one_word << "zero_point" << c;
