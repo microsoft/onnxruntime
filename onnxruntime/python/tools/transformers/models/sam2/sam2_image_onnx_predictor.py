@@ -11,7 +11,7 @@ import torch
 from PIL.Image import Image
 from sam2.modeling.sam2_base import SAM2Base
 from sam2.sam2_image_predictor import SAM2ImagePredictor
-from sam2_utils import decoder_shape_dict, encoder_shape_dict, get_decoder_onnx_path, get_image_encoder_onnx_path
+from sam2_utils import decoder_shape_dict, encoder_shape_dict
 
 from onnxruntime import InferenceSession
 from onnxruntime.transformers.io_binding_helper import CudaSession
@@ -38,7 +38,11 @@ def create_ort_session(
 
 
 def create_session(
-    onnx_path: str, session_options=None, provider="CUDAExecutionProvider", device="cuda", enable_cuda_graph=False
+    onnx_path: str,
+    session_options=None,
+    provider="CUDAExecutionProvider",
+    device: Union[str, torch.device] = "cuda",
+    enable_cuda_graph=False,
 ) -> CudaSession:
     ort_session = create_ort_session(
         onnx_path, session_options, provider, enable_cuda_graph=enable_cuda_graph, use_tf32=True
@@ -51,8 +55,11 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
     def __init__(
         self,
         sam_model: SAM2Base,
-        onnx_directory: str = "sam2_onnx_models",
-        model_type: str = "sam2_hiera_large",
+        image_encoder_onnx_path: str = "",
+        image_decoder_onnx_path: str = "",
+        image_decoder_multi_onnx_path: str = "",
+        provider: str = "CUDAExecutionProvider",
+        device: Union[str, torch.device] = "cuda",
         onnx_dtype: torch.dtype = torch.float32,
         mask_threshold=0.0,
         max_hole_area=0.0,
@@ -77,18 +84,10 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         )
 
         print(self.device)
-        if torch.cuda.is_available():
-            provider = "CUDAExecutionProvider"
-            device = "cuda"
-        else:
-            provider = "CPUExecutionProvider"
-            device = "cpu"
 
         # This model is exported by image_encoder.py.
-        onnx_path = get_image_encoder_onnx_path(onnx_directory, model_type)
-
         self.encoder_session = create_session(
-            onnx_path,
+            image_encoder_onnx_path,
             session_options=None,
             provider=provider,
             device=device,
@@ -97,9 +96,8 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         self.onnx_dtype = onnx_dtype
 
         # This model is exported by image_decoder.py. It outputs only one mask.
-        onnx_path = get_decoder_onnx_path(onnx_directory, model_type, multimask_output=False)
         self.decoder_session = create_session(
-            onnx_path,
+            image_decoder_onnx_path,
             session_options=None,
             provider=provider,
             device=device,
@@ -107,9 +105,8 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         )
 
         # This model is exported by image_decoder.py. It outputs multiple (3) masks.
-        onnx_path = get_decoder_onnx_path(onnx_directory, model_type, multimask_output=True)
         self.decoder_session_multi_out = create_session(
-            onnx_path,
+            image_decoder_multi_onnx_path,
             session_options=None,
             provider=provider,
             device=device,
@@ -253,20 +250,20 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         image_embeddings = self._features["image_embed"][img_idx].unsqueeze(0)
 
         if mask_input is None:
-            input_masks = torch.zeros(num_labels, 1, 256, 256, dtype=torch.float, device=self.device)
-            has_input_masks = torch.zeros(num_labels, dtype=torch.float, device=self.device)
+            input_masks = torch.zeros(num_labels, 1, 256, 256, dtype=self.onnx_dtype, device=self.device)
+            has_input_masks = torch.zeros(num_labels, dtype=self.onnx_dtype, device=self.device)
         else:
             input_masks = mask_input[img_idx].unsqueeze(0).repeat(num_labels, 1, 1, 1)
-            has_input_masks = torch.ones(num_labels, dtype=torch.float, device=self.device)
+            has_input_masks = torch.ones(num_labels, dtype=self.onnx_dtype, device=self.device)
 
         feed_dict = {
-            "image_embeddings": image_embeddings.contiguous().to(dtype=torch.float32).to(self.device),
-            "image_features_0": image_features_0.contiguous().to(dtype=torch.float32).to(self.device),
-            "image_features_1": image_features_1.contiguous().to(dtype=torch.float32).to(self.device),
-            "point_coords": concat_points[0].to(dtype=torch.float32).to(self.device),
+            "image_embeddings": image_embeddings.contiguous().to(dtype=self.onnx_dtype).to(self.device),
+            "image_features_0": image_features_0.contiguous().to(dtype=self.onnx_dtype).to(self.device),
+            "image_features_1": image_features_1.contiguous().to(dtype=self.onnx_dtype).to(self.device),
+            "point_coords": concat_points[0].to(dtype=self.onnx_dtype).to(self.device),
             "point_labels": concat_points[1].to(dtype=torch.int32).to(self.device),
-            "input_masks": input_masks.to(dtype=torch.float32).to(self.device),
-            "has_input_masks": has_input_masks.to(dtype=torch.float32).to(self.device),
+            "input_masks": input_masks.to(dtype=self.onnx_dtype).to(self.device),
+            "has_input_masks": has_input_masks.to(dtype=self.onnx_dtype).to(self.device),
             "original_image_size": torch.tensor(self._orig_hw[img_idx], dtype=torch.int32, device=self.device),
         }
 
