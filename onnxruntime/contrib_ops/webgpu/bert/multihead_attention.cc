@@ -57,7 +57,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   const int head_offset = head_size;
   bool has_bias = bias != nullptr;
 
-  TransferBSDToBNSHProgram program{"TransferBSDToBNSH", has_bias};
+  TransferBSDToBNSHProgram program{has_bias};
   program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
@@ -91,8 +91,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("present_key", ShaderVariable::UseUniform);
   }
 
-  shader.AppendImplementation("const TILE_SIZE = ", tile_size_, "u;\n")
-        .AppendImplementation("var<workgroup> tileQ: array<q_value_t, ", tile_size_ * tile_size_, ">;\n")
+  shader.AppendImplementation("var<workgroup> tileQ: array<q_value_t, ", tile_size_ * tile_size_, ">;\n")
         .AppendImplementation("var<workgroup> tileK: array<key_value_t, ", tile_size_ * tile_size_, ">;\n");
 
   std::string f32_str = components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32");
@@ -192,6 +191,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                             (parameters.sequence_length + tile_size - 1) / tile_size,
                             parameters.batch_size * parameters.num_heads)
          .SetWorkgroupSize(tile_size, tile_size)
+         .CacheHint(std::to_string(tile_size))
          .AddUniformVariables({
              {static_cast<uint32_t>(parameters.sequence_length)},
              {static_cast<uint32_t>(vectorized_head_size)},
@@ -199,7 +199,8 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
              {static_cast<uint32_t>(parameters.num_heads)},
              {static_cast<float>(alpha)},
              {static_cast<uint32_t>(past_sequence_length)},
-             {static_cast<uint32_t>(parameters.kv_sequence_length)}});
+             {static_cast<uint32_t>(parameters.kv_sequence_length)}})
+         .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);
 }
@@ -287,8 +288,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("present_value", ShaderVariable::UseUniform);
   }
 
-  shader.AppendImplementation("const TILE_SIZE = ", tile_size_, "u;\n")
-        .AppendImplementation("var<workgroup> tileQ: array<probs_value_t, ", tile_size_ * tile_size_, ">;\n")
+  shader.AppendImplementation("var<workgroup> tileQ: array<probs_value_t, ", tile_size_ * tile_size_, ">;\n")
         .AppendImplementation("var<workgroup> tileK: array<v_value_t, ", tile_size_ * tile_size_, ">;\n");
 
   std::ostringstream ss;
@@ -387,7 +387,8 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
              {static_cast<uint32_t>(parameters.num_heads)},
              {static_cast<uint32_t>(parameters.v_hidden_size)},
              {static_cast<uint32_t>(past_sequence_length)},
-             {static_cast<uint32_t>(parameters.kv_sequence_length)}});
+             {static_cast<uint32_t>(parameters.kv_sequence_length)}})
+         .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});;
 
   return context.RunProgram(program);
 }

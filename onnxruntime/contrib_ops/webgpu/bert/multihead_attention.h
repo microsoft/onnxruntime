@@ -16,7 +16,7 @@ using namespace onnxruntime::webgpu;
 
 class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> {
  public:
-  TransferBSDToBNSHProgram(const std::string& kernel_name, bool has_bias) : Program{kernel_name}, has_bias_(has_bias) {}
+  TransferBSDToBNSHProgram(bool has_bias) : Program{"TransferBSDToBNSH"}, has_bias_(has_bias) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -47,6 +47,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32});
+
+  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
 private:
   bool feed_past_key_;
@@ -89,6 +91,8 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
                                           {"v_hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32});
+
+  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
 private:
   bool feed_past_value_;
