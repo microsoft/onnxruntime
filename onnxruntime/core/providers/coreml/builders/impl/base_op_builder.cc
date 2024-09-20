@@ -19,7 +19,7 @@ static std::set<std::string> Float16Ops = {
     "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
     "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
     "Clip", "DepthToSpace", "Resize", "Slice", "Conv",
-    "ConvTranspose", "GlobalMaxPool",
+    "ConvTranspose", "GlobalMaxPool", "Gemm", "MatMul",
     "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
 
 namespace {

@@ -3,7 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"

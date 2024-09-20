@@ -25,7 +25,7 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
-// Only CUDA and ROCM kernel has float 16 support
+// Only CUDA and ROCM/CoreML kernel has float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -34,12 +34,6 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
     return;
   }
 #endif
-  OpTester test("Gemm", 13);
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
 
   std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
                        -1.0f, -2.0f, -3.0f, -4.0f};
@@ -57,13 +51,71 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
   ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
-  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
-  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
-  test.AddInput<MLFloat16>("C", {2, 3}, f_C);
-  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
+  {
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+    test.AddInput<MLFloat16>("C", {2, 3}, f_C);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    // CoreML program require B/C are constant
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, true);
+    f_C.resize(3);
+    test.AddInput<MLFloat16>("C", {3}, f_C, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, true);
+    f_C.resize(1);
+    test.AddInput<MLFloat16>("C", {1}, f_C, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {3, 4}, f_B, true);
+    f_C.resize(1);
+    test.AddInput<MLFloat16>("C", {1}, f_C, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)

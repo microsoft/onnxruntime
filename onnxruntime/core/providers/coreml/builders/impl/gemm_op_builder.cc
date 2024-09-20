@@ -179,7 +179,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
             // expand scalar to N
             no_typed_bias_data.resize(N * bytes_in_type, 0);
             for (int64_t i = 0; i < N; i++) {
-              std::copy_n(bias_data_span.data() + i * bytes_in_type, bytes_in_type, no_typed_bias_data.data() + i * bytes_in_type);
+              std::copy_n(bias_data_span.data(), bytes_in_type, no_typed_bias_data.data() + i * bytes_in_type);
             }
             bias_data_span = AsSpan(no_typed_bias_data);
           }
