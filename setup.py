@@ -89,7 +89,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
-    package_name = "onnxruntime-qnn" if not nightly_build else "ort-qnn-nightly"
+    package_name = "onnxruntime-qnn" if not nightly_build else "ort-nightly-qnn"
 
 if is_rocm or is_migraphx:
     package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
