@@ -113,7 +113,8 @@ public class OnnxTensor extends OnnxTensorLike {
    * ByteBuffer} then convert it to the right type. If it's not convertible it throws {@link
    * IllegalStateException}.
    *
-   * <p>Note this method converts FP16 and BFLOAT16 ShortBuffers into FP32 FloatBuffers.
+   * <p>Note this method converts FP16 and BFLOAT16 ShortBuffers into FP32 FloatBuffers, to preserve
+   * compatibility with existing {@link #getValue} calls.
    *
    * @param buf The buffer to convert.
    * @return The buffer with the expected type.

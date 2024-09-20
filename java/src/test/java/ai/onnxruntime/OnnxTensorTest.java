@@ -132,7 +132,13 @@ public class OnnxTensorTest {
       // Can modify the tensor through the buffer.
       FloatBuffer buf = (FloatBuffer) t.getBufferRef().get();
       buf.put(0, 25);
+      buf.put(12, 32);
+      buf.put(13, 33);
+      buf.put(23, 35);
       arr3dValues[0][0][0] = 25;
+      arr3dValues[2][0][0] = 32;
+      arr3dValues[2][0][1] = 33;
+      arr3dValues[3][1][2] = 35;
       output = (float[][][]) t.getValue();
       Assertions.assertArrayEquals(arr3dValues, output);
     }
