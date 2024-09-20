@@ -670,22 +670,37 @@ def write_calibration_table(calibration_cache, dir="."):
 
     import json
 
+    import numpy as np
+
     import flatbuffers
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+    from onnxruntime.quantization.calibrate import TensorData, TensorsData, CalibrationMethod
 
     logging.info(f"calibration cache: {calibration_cache}")
 
+    class MyEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, (TensorData, TensorsData)):
+                return obj.to_dict()
+            if isinstance(obj, np.ndarray):
+                return {"data": obj.tolist(), "dtype":str(obj.dtype), "CLS": "numpy.array"}
+            if isinstance(obj, CalibrationMethod):
+                return {"CLS": obj.__class__.__name__, "value": str(obj)}
+            return json.JSONEncoder.default(self, obj)
+
+    json_data = json.dumps(calibration_cache, cls=MyEncoder)
+
     with open(os.path.join(dir, "calibration.json"), "w") as file:
-        file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
+        file.write(json_data)  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
     builder = flatbuffers.Builder(1024)
     key_value_list = []
     for key in sorted(calibration_cache.keys()):
         values = calibration_cache[key]
-        value = str(max(abs(values[0]), abs(values[1])))
+        value = str(values.to_dict())  # str(max(abs(values[0]), abs(values[1])))
 
         flat_key = builder.CreateString(key)
         flat_value = builder.CreateString(value)
@@ -725,7 +740,7 @@ def write_calibration_table(calibration_cache, dir="."):
     with open(os.path.join(dir, "calibration.cache"), "w") as file:
         for key in sorted(calibration_cache.keys()):
             value = calibration_cache[key]
-            s = key + " " + str(max(abs(value[0]), abs(value[1])))
+            s = key + " " + str(value.to_dict())
             file.write(s)
             file.write("\n")
 
