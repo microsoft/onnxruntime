@@ -58,7 +58,7 @@ stages:
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
-    - template: jar-maven-signing.yml
+    - template: ../templates/jar-maven-signing.yml
       parameters:
         JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         WorkingDirectory: '$(Build.SourcesDirectory)'
