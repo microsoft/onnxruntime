@@ -133,7 +133,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
 
     if (!status.IsOK()) {
       LOGS(logger, ERROR) << "[QNN EP] Failed to add supported node to QNN graph during EP's compile call: "
-                           << status.ErrorMessage() << std::endl;
+                          << status.ErrorMessage() << std::endl;
       return status;
     }
   }
@@ -204,11 +204,11 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
 
   for (const auto& qnn_input_info : qnn_input_infos_) {
     LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
-                           << " index = " << qnn_input_info.ort_index;
+                          << " index = " << qnn_input_info.ort_index;
     auto ort_input_tensor = context.GetInput(qnn_input_info.ort_index);
     auto ort_tensor_size = TensorDataSize(ort_input_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
-                           << "Ort tensor size: " << ort_tensor_size;
+                          << "Ort tensor size: " << ort_tensor_size;
     ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
                       "ORT Tensor data size does not match QNN tensor data size.");
 
@@ -228,7 +228,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
     auto ort_output_tensor = context.GetOutput(qnn_output_info.ort_index, output_shape.data(), output_shape.size());
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
-                           << "Ort tensor size: " << ort_tensor_size;
+                          << "Ort tensor size: " << ort_tensor_size;
     ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
                       "ORT Tensor data size does not match QNN tensor data size");
 
