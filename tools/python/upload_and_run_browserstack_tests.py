@@ -10,8 +10,6 @@ def response_to_json(response):
     response_json = response.json()
     print(response_json)
     print("-" * 30)
-    if "error" in response_json:
-        raise Exception(response_json["error"])
     return response_json
 
 
