@@ -191,7 +191,7 @@ class GQAAttentionBase {
           q = Q + q_input_chunk_length * i;
         }
 
-        if (std::is_same<T, float>::value) {
+        if constexpr (std::is_same<T, float>::value) {
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
                                           static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/, output,
                                           static_cast<int>(present_buffer_sequence_length), nullptr);
@@ -326,7 +326,7 @@ class GQAAttentionBase {
         T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 
-        if (std::is_same<T, float>::value) {
+        if constexpr (std::is_same<T, float>::value) {
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen, 1.f, /*alpha*/
                                       attention_probs + attention_probs_offset,
                                       static_cast<int>(present_buffer_sequence_length), v, static_cast<int>(head_size),
