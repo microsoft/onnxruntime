@@ -4,7 +4,7 @@
 import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
 import { ShapeUtil } from '../../util';
-import { ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
+import { ComputeContext, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
 import { createTransposeProgramInfo } from './transpose';
 
 import {
@@ -22,92 +22,6 @@ export interface InstanceNormAttributes {
   format: 'NHWC' | 'NCHW';
 }
 
-const createInstanceNormProgramInfo = (
-  inputs: readonly TensorView[],
-  attributes: InstanceNormAttributes,
-): ProgramInfo => {
-  const xShape = inputs[0].dims;
-  const outputShape = xShape;
-  const axis = 2;
-  const normCount = ShapeUtil.sizeToDimension(xShape, axis);
-  const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
-  const components = getMaxComponents(normSize);
-  const normPackedSize = normSize / components;
-  const inputShape = [xShape[0], xShape[1], normPackedSize];
-  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'type', 'type'];
-  const programUniforms: ProgramUniform[] = [];
-  programUniforms.push(...createTensorShapeVariables(inputShape, inputShape));
-
-  const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const x = inputVariable('x', inputs[0].dataType, inputShape.length, components);
-    const scale = inputVariable('scale', inputs[1].dataType, inputs[1].dims);
-    const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims);
-    const output = outputVariable('output', inputs[0].dataType, inputShape.length, components);
-    const variables = [x, scale, bias, output];
-    const dataType = x.type.value;
-    const f32Type = components === 1 ? 'f32' : `vec${components}<f32>`;
-    const wgType = components === 1 ? 'vec2f' : `mat2x${components}f`;
-    const workgroupSize = 64;
-
-    return `
-  var<workgroup> channel_scale : f32;
-  var<workgroup> channel_shift : f32;
-  var<workgroup> workgroup_shared : array<${wgType}, ${workgroupSize}>;
-  const workgroup_size = ${workgroupSize}u;
-  ${shaderHelper.declareVariables(...variables)}
-  ${shaderHelper.mainStart(workgroupSize)}
-    let batch = workgroup_index / uniforms.x_shape[1];
-    let channel = workgroup_index % uniforms.x_shape[1];
-    let hight = uniforms.x_shape[2];
-    // initialize workgroup memory
-    var sum = ${f32Type}(0);
-    var squared_sum = ${f32Type}(0);
-    for (var h = local_idx; h < hight; h += workgroup_size) {
-      let value = ${f32Type}(${x.get('batch', 'channel', 'h')});
-      sum += value;
-      squared_sum += value * value;
-    }
-    workgroup_shared[local_idx] = ${wgType}(sum, squared_sum);
-    workgroupBarrier();
-
-    // Calculate the mean of current channel data.
-    for (var currSize = workgroup_size >> 1;  currSize > 0; currSize = currSize >> 1) {
-      if (local_idx < currSize) {
-        workgroup_shared[local_idx] = workgroup_shared[local_idx] + workgroup_shared[local_idx + currSize];
-      }
-      workgroupBarrier();
-    }
-    if (local_idx == 0) {
-      let sum_final = ${sumVector('workgroup_shared[0][0]', components)} / f32(hight * ${components});
-      let squared_sum_final = ${sumVector('workgroup_shared[0][1]', components)} / f32(hight * ${components});
-
-      let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(${attributes.epsilon}));
-      channel_scale = inv_std_dev * f32(scale[channel]);
-      channel_shift = f32(bias[channel]) - sum_final * channel_scale;
-    }
-    workgroupBarrier();
-
-    for (var h = local_idx; h < hight; h += workgroup_size) {
-      let value = ${x.get('batch', 'channel', 'h')} * ${dataType}(${f32Type}(channel_scale)) + ${dataType}(${
-        f32Type
-      }(channel_shift));
-      ${output.set('batch', 'channel', 'h', 'value')};
-    }
-  }`;
-  };
-  return {
-    ...{ name: 'InstanceNormalization' },
-    // TODO: use epsilon as uniform. Currently epsilon as uniform fails test_instancenorm_epsilon.
-    shaderCache: { hint: `${attributes.epsilon};${components}`, inputDependencies },
-    getRunData: () => ({
-      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
-      dispatchGroup: { x: normCount },
-      programUniforms,
-    }),
-    getShaderSource,
-  };
-};
-
 const computeChannelScaleShift = (
   context: ComputeContext,
   input: TensorView,
@@ -118,17 +32,6 @@ const computeChannelScaleShift = (
   c: number,
   epsilon: number,
 ) => {
-  // transpose x from NHWC to NCHW
-  const xShape = context.inputs[0].dims;
-  const transposedXPerm = [0, xShape.length - 1];
-  for (let i = 0; i < xShape.length - 2; i++) {
-    transposedXPerm.push(i + 1);
-  }
-  const transposedX = context.compute(createTransposeProgramInfo(input, transposedXPerm), {
-    inputs: [context.inputs[0]],
-    outputs: [-1],
-  })[0];
-
   const components = getMaxComponents(h);
   const f32Type = components === 1 ? 'f32' : `vec${components}f`;
   const wgType = components === 1 ? 'vec2f' : `mat2x${components}f`;
@@ -196,8 +99,73 @@ const computeChannelScaleShift = (
       }),
       getShaderSource,
     },
-    { inputs: [transposedX, scale, bias], outputs: [-1] },
+    { inputs: [input, scale, bias], outputs: [-1] },
   )[0];
+};
+
+const createInstanceNormProgramInfo = (
+  context: ComputeContext,
+  inputs: readonly TensorView[],
+  attributes: InstanceNormAttributes,
+) => {
+  const xShape = inputs[0].dims;
+  const outputShape = xShape;
+  const axis = 2;
+  const N = xShape[0];
+  const C = xShape[1];
+  const H = ShapeUtil.sizeFromDimension(xShape, axis);
+  const components = getMaxComponents(H);
+  const outputSize = ShapeUtil.size(outputShape) / components;
+  // compute channel scale and channel shift.
+  const channelScaleShift = computeChannelScaleShift(
+    context,
+    inputs[0],
+    inputs[1],
+    inputs[2],
+    N,
+    H,
+    C,
+    attributes.epsilon,
+  );
+
+  const inputShape = [N, C, H / components];
+  const scaleShape = [N, C];
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'none'];
+
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const x = inputVariable('x', inputs[0].dataType, inputShape.length, components);
+    const scale = inputVariable('scale_shift', DataType.float, scaleShape.length, 2);
+    const output = outputVariable('output', inputs[0].dataType, inputShape.length, components);
+    const variables = [x, scale, output];
+    return `
+  ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(...variables)}
+  ${shaderHelper.mainStart()}
+  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+      let outputIndices = ${output.offsetToIndices('global_idx')};
+      let batch = outputIndices[0];
+      let channel = outputIndices[1];
+      let scale_shift = ${scale.getByIndices('vec2<u32>(batch, channel)')};
+      let value = ${x.getByOffset('global_idx')} * ${output.type.value}(scale_shift.x) + ${output.type.value}(scale_shift.y);
+      ${output.setByOffset('global_idx', 'value')};
+  }`;
+  };
+
+  context.compute(
+    {
+      name: 'InstanceNormalization',
+      shaderCache: { hint: `${components}`, inputDependencies },
+      getRunData: () => ({
+        outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+        dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+        programUniforms: [
+          { type: DataType.uint32, data: outputSize },
+          ...createTensorShapeVariables(inputShape, scaleShape, inputShape),
+        ],
+      }),
+      getShaderSource,
+    },
+    { inputs: [inputs[0], channelScaleShift] },
+  );
 };
 
 const createInstanceNormNHWCProgramInfo = (
@@ -217,10 +185,20 @@ const createInstanceNormNHWCProgramInfo = (
     { type: DataType.uint32, data: Math.floor(C / components) },
   ];
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-  // first compute mean
+
+  // 1. transpose x from NHWC to NCHW
+  const transposedXPerm = [0, xShape.length - 1];
+  for (let i = 0; i < xShape.length - 2; i++) {
+    transposedXPerm.push(i + 1);
+  }
+  const transposedX = context.compute(createTransposeProgramInfo(context.inputs[0], transposedXPerm), {
+    inputs: [context.inputs[0]],
+    outputs: [-1],
+  })[0];
+  // 2. compute channel scale and channel shift.
   const channelScaleShift = computeChannelScaleShift(
     context,
-    inputs[0],
+    transposedX,
     inputs[1],
     inputs[2],
     N,
@@ -283,6 +261,6 @@ export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAt
   if (attributes.format === 'NHWC') {
     createInstanceNormNHWCProgramInfo(context, context.inputs, attributes);
   } else {
-    context.compute(createInstanceNormProgramInfo(context.inputs, attributes));
+    createInstanceNormProgramInfo(context, context.inputs, attributes);
   }
 };
