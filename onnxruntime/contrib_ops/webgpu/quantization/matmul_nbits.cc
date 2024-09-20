@@ -51,18 +51,18 @@ ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits);
 
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
   const std::string qDqDataType = QuantizedDataType(a.NumComponents());
-  const bool has_zero_points = Inputs().size() == 4;
   const int output_element_number = y.NumComponents() * SafeInt<int>(output_number_);
   std::ostringstream prepare_scale_and_zero_point;
   prepare_scale_and_zero_point.imbue(std::locale::classic());
   prepare_scale_and_zero_point << "var col_index = col * " << y.NumComponents() << ";\n";
-  if (has_zero_points) {
+  if (has_zero_points_) {
+    const auto& zero_points = shader.AddInput("zero_points", ShaderUsage::UseUniform);
     prepare_scale_and_zero_point << "let zero_point_bytes_per_col = (n_blocks_per_col + 1) / 2;\n"
                                  << "var zero_point_byte_count: u32;\n"
                                  << "var zero_point_word_index: u32;\n"
@@ -70,21 +70,22 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                  << "let zero_point_nibble_offset: u32 = block & 0x1u;\n"
                                  << "var zero_point_bits_offset: u32;\n"
                                  << "var zero_point_word: u32;\n";
-  } else {
-    prepare_scale_and_zero_point << "let zero_point = output_element_t(8.0);\n";
-  }
-  for (int c = 0; c < output_element_number; c++) {
-    prepare_scale_and_zero_point << "let scale" << c << " = " << scales.GetByOffset("col_index * n_blocks_per_col + block") << ";\n";
-    if (has_zero_points) {
-      const auto& zero_points = shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    for (int c = 0; c < output_element_number; c++) {
+      prepare_scale_and_zero_point << "let scale" << c << " = " << scales.GetByOffset("col_index * n_blocks_per_col + block") << ";\n";
       prepare_scale_and_zero_point << "zero_point_byte_count = col_index * zero_point_bytes_per_col + (block >> 0x1u);\n"
                                    << "zero_point_word_index = zero_point_byte_count >> 0x2u;\n"
                                    << "zero_point_byte_offset = zero_point_byte_count & 0x3u;\n"
                                    << "zero_point_bits_offset = (zero_point_byte_offset << 3) + (zero_point_nibble_offset << 2);\n"
                                    << "zero_point_word = " << zero_points.GetByOffset("zero_point_word_index") << " >> zero_point_bits_offset;\n"
                                    << "let zero_point" << c << " = output_element_t((zero_point_word) & 0xFu);\n";
+      prepare_scale_and_zero_point << "col_index += 1;\n";
     }
-    prepare_scale_and_zero_point << "col_index += 1;\n";
+  } else {
+    prepare_scale_and_zero_point << "let zero_point = output_element_t(8.0);\n";
+    for (int c = 0; c < output_element_number; c++) {
+      prepare_scale_and_zero_point << "let scale" << c << " = " << scales.GetByOffset("col_index * n_blocks_per_col + block") << ";\n";
+      prepare_scale_and_zero_point << "col_index += 1;\n";
+    }
   }
 
   std::ostringstream prepare_b_data;
@@ -106,8 +107,12 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   process_one_word << "var input_offset = " << a.IndicesToOffset("input_a_indices_t(batch, row, word_offset)") << ";\n"
                    << "var a_data: " << qDqDataType << ";\n "
                    << "for (var j: u32 = 0; j < " << (8 / a.NumComponents()) << "; j++) {\n"
-                   << "  a_data[j] = " << a.GetByOffset("input_offset") << ";\n"
-                   << "  input_offset++;\n"
+                   << "  if (word_offset + j < uniforms.input_a_shape[2]) {\n"
+                   << "    a_data[j] = " << a.GetByOffset("input_offset") << ";\n"
+                   << "    input_offset++;\n"
+                   << "  } else {\n"
+                   << "    a_data[j] = input_a_value_t(0);\n"
+                   << "  }\n"
                    << "}\n";
   for (int c = 0; c < output_element_number; c++) {
     process_one_word << "b_value = " << "b" << c << "_data";
@@ -120,7 +125,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                      << "b_quantized_values = " << qDqDataType << "(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
                      << "b_dequantized_values = ";
     if (a.NumComponents() == 1) {
-      if (has_zero_points) {
+      if (has_zero_points_) {
         process_one_word << qDqDataType << "((b_quantized_values[0] - zero_point" << c << ") * scale" << c << ", "
                          << "(b_quantized_values[1] - zero_point" << c << ") * scale" << c << ", "
                          << "(b_quantized_values[2] - zero_point" << c << ") * scale" << c << ", "
@@ -142,7 +147,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       process_one_word << "(b_quantized_values - " << qDqDataType << "(";
       for (int i = 0; i < 8; i++) {
-        if (has_zero_points) {
+        if (has_zero_points_) {
           process_one_word << "zero_point" << c;
         } else {
           process_one_word << "zero_point";
@@ -188,14 +193,13 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              "let row = output_indices[1];\n"
                              "let batch = output_indices[0];\n"
                              "let n_blocks_per_col = uniforms.input_b_shape[1];\n"
-                             "let blob_size_in_words = uniforms.input_b_shape[2] * ",
-                             b.NumComponents(),
+                             "let blob_size = uniforms.input_b_shape[2]"
                              ";\n"
                              "for (var block = local_id.x; block < n_blocks_per_col; block += workgroup_size) {\n"
                              "  var word_offset = block * uniforms.block_size / ",
                              a.NumComponents(), ";\n",
                              prepare_scale_and_zero_point.str(),
-                             "  for (var word: u32 = 0; word < blob_size_in_words; word += ", b.NumComponents(), ") {\n",
+                             "  for (var word: u32 = 0; word < blob_size; word += 1) {\n",
                              prepare_b_data.str(),
                              "    for (var i: u32 = 0; i < ", b.NumComponents(), "; i++) {\n",
                              process_one_word.str(),
@@ -210,8 +214,10 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              ") {\n"
                              "  var output_value = output_value_t(0);\n"
                              "  var workgroup_shared_offset = local_id.x;\n"
-                             "  let block_num = min(workgroup_size, n_blocks_per_col);\n"
-                             "  for (var b = 0u; b < block_num; b++) {\n"
+                             "  let blocks_num = min(",
+                             shared_memory_size,
+                             ", n_blocks_per_col);\n"
+                             "  for (var b = 0u; b < blocks_num; b++) {\n"
                              "    output_value += workgroup_shared[workgroup_shared_offset];\n"
                              "    workgroup_shared_offset += ",
                              output_number_,
@@ -257,20 +263,23 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_a = getMaxComponents(K);
   const uint32_t components_b = getMaxComponents(blob_size_in_words);
   const uint32_t components = getMaxComponents(N);
-  const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;
+  // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
+  // const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;
+  const uint32_t output_number = 1;
 
   TensorShape reshaped_a_shape{batch_count, M, K / components_a};
   TensorShape reshaped_b_shape{N, n_blocks_per_col, blob_size_in_words / components_b};
   TensorShape reshaped_y_shape{batch_count, M, N / components};
 
-  MatMulNBitsProgram program{output_number};
+  const bool has_zero_points = zero_points != nullptr;
+  MatMulNBitsProgram program{output_number, has_zero_points};
   program
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, SafeInt<int>(components_a)}, {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, SafeInt<int>(components_b)}, {scales, ProgramTensorMetadataDependency::None}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, SafeInt<int>(components)})
       .SetDispatchGroupSize(data_size / components / output_number)
       .AddUniformVariable({block_size})
       .CacheHint(std::to_string(output_number));
-  if (zero_points != nullptr) {
+  if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None});
   }
   return context.RunProgram(program);

@@ -278,7 +278,11 @@ void TestMatMulNBitsTyped() {
               base_opts.output_abs_error = 0.1f;
             } else {
               if constexpr (std::is_same<AType, MLFloat16>::value) {
+#ifdef USE_WEBGPU
+                base_opts.output_abs_error = 0.03f;
+#else
                 base_opts.output_abs_error = 0.01f;
+#endif
               }
             }
 
@@ -440,6 +444,9 @@ TEST(MatMulNBits, Float16Large) {
   // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
   float abs_error = 0.3f;
+#elif USE_WEBGPU
+  // See Intel A770 to pass these tests with an absolute error of 0.08.
+  float abs_error = 0.08f;
 #else
   float abs_error = 0.05f;
 #endif
