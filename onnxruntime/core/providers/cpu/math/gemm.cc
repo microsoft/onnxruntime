@@ -156,8 +156,8 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
 
   if (K == 0) {
     if (beta == 0 || c_data == nullptr) {
-      auto output_span = gsl::make_span(y_data, SafeInt<size_t>(M) * N);
-      std::fill(output_span.begin(), output_span.end(), T{});
+      EigenMatrixMapRowMajor<T> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
+      dest.setZero();
     }
     return;
   }
@@ -437,9 +437,9 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
           y_data,
           static_cast<size_t>(N),
           thread_pool);
-    } else {
-      auto output_span = Y->MutableDataAsSpan<float>();
-      std::fill(output_span.begin(), output_span.end(), onnxruntime::MLFloat16::Zero);
+    } else if (beta_ == 0 || c_data == nullptr) {
+      EigenMatrixMapRowMajor<float> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
+      dest.setZero();
     }
   }
 
