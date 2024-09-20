@@ -116,6 +116,27 @@ class ModelBuilder {
     return AddConstantImpl(op_type, value_type, value, shape);
   }
 
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const uint8_t> value,
+                               int input_dtype, std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    switch (input_dtype) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+        gsl::span<const float> value_v((const float*)(value.data()), value.size() / sizeof(float));
+        return AddConstant(op_type, value_type, value_v, shape);
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        gsl::span<const MLFloat16> value_v((const MLFloat16*)(value.data()), value.size() / sizeof(MLFloat16));
+        return AddConstant(op_type, value_type, value_v, shape);
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        gsl::span<const int64_t> value_v((const int64_t*)(value.data()), value.size() / sizeof(int64_t));
+        return AddConstant(op_type, value_type, value_v, shape);
+      }
+      default:
+        ORT_ENFORCE(false, "unspported data type");
+        break;
+    }
+  }
+
   template <typename T>
   std::string_view AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
                                std::optional<gsl::span<const int64_t>> shape = std::nullopt) {

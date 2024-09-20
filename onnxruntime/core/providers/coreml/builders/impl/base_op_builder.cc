@@ -17,8 +17,10 @@ namespace coreml {
 // filter suppported ones.
 static std::set<std::string> Float16Ops = {
     "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
-    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool", "Clip", "DepthToSpace", "Resize", "Slice",
-    "GlobalMaxPool", "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
+    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
+    "Clip", "DepthToSpace", "Resize", "Slice", "Conv",
+    "ConvTranspose", "GlobalMaxPool",
+    "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
 
 namespace {
 // TODO, move this to shared_library

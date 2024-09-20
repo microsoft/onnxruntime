@@ -75,7 +75,6 @@ void TestUnaryFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
   ORT_UNUSED_PARAMETER(op_name);
   ORT_UNUSED_PARAMETER(lhs_dim);
   ORT_UNUSED_PARAMETER(lhs_values);
-  ORT_UNUSED_PARAMETER(rhs_dim);
   ORT_UNUSED_PARAMETER(out_dim);
   ORT_UNUSED_PARAMETER(out_values);
   ORT_UNUSED_PARAMETER(opset);
