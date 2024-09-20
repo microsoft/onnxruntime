@@ -201,14 +201,6 @@ void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, p
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
 
-// bugbug
-template <>
-void GemmEx<MLFloat16, ThreadPool>(CBLAS_TRANSPOSE, CBLAS_TRANSPOSE, ptrdiff_t, ptrdiff_t, ptrdiff_t,
-                                   MLFloat16, const MLFloat16*, int, const MLFloat16*, int, MLFloat16,
-                                   MLFloat16*, int, ThreadPool*) {
-  ;
-}
-
 template <typename T, class Provider>
 void Gemv(CBLAS_TRANSPOSE TransA,
           int M,
