@@ -107,6 +107,44 @@ The last command will generate a fat-binary for both CPU architectures.
 
 Note: unit tests will be skipped due to the incompatible CPU instruction set when doing cross-compiling.
 
+### AIX
+In AIX, you can build ONNX runtime using  IBM Open XL compiler tool chain.
+
+Minimum required OS version is 7.2 and below steps are for 64bit building.
+You need to have 17.1.2 compiler PTF5 (17.1.2.5) version .  After cloning the onnxruntime repo, export below environment settings 
+```bash
+ulimit -m unlimited
+ulimit -d unlimited
+ulimit -n 2000
+ulimit -f unlimited
+export OBJECT_MODE=64
+export BUILD_TYPE="Release"
+export CC="/opt/IBM/openxlC/17.1.2/bin/ibm-clang" 
+export CXX="/opt/IBM/openxlC/17.1.2/bin/ibm-clang++_r"
+export CFLAGS="-pthread -m64 -D_ALL_SOURCE -mcmodel=large  -Wno-deprecate-lax-vec-conv-all  -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare "
+export CXXFLAGS=" -pthread -m64 -D_ALL_SOURCE -mcmodel=large -Wno-deprecate-lax-vec-conv-all -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare"
+export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -L/opt/freeware/lib/pthread -L/opt/freeware/lib64 -L/opt/freeware/lib -lpthread "
+export LIBPATH="$PWD/build/Linux/$BUILD_TYPE/"
+
+```
+To initiate build, run the below command
+```bash
+./build.sh \
+--config $BUILD_TYPE\
+  --build_shared_lib \
+  --skip_submodule_sync \
+  --cmake_extra_defines CMAKE_INSTALL_PREFIX=$PWD/install \
+  --parallel   \
+  --allow_running_as_root 
+```
+
+* If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX. 
+* It is possible that in AIX 7.2 if you don’t have Open XL tool-chain installed, then some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets. 
+* --parallel option in build option. 
+  As name suggest, this option is for parallel building and resource intensive option. So, if  your system is not having good amount of memory , then this option can be skipped. As per our understanding, use this option if you have 60GB RAM in your system. 
+* --allow_running_as_root  is needed if root user is triggering the build.
+    
+
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs. The "--config" parameter has four valid values: Debug, Release, RelWithDebInfo and MinSizeRel. Compared to "Release", "RelWithDebInfo" not only has debug info, it also disables some inlines to make the binary easier to debug. Thus RelWithDebInfo is slower than Release.
@@ -131,13 +169,14 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 ### Architectures
 {: .no_toc }
 
-|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE | RISCV64 |
-|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|:-------:|
-|Windows    | YES          | YES          |  YES         | YES          | NO      | NO      |
-|Linux      | YES          | YES          |  YES         | YES          | YES     | YES     |
-|macOS      | NO           | YES          |  NO          | NO           | NO      | NO      |
-|Android      | NO           | NO          |  YES          | YES           | NO      | NO      |
-|iOS      | NO           | NO          |  NO          | YES           | NO      | NO      |
+|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE | RISCV64 | PPC64BE |
+|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|:-------:| :------:|
+|Windows    | YES          | YES          |  YES         | YES          | NO      | NO      | NO      |
+|Linux      | YES          | YES          |  YES         | YES          | YES     | YES     | NO      |
+|macOS      | NO           | YES          |  NO          | NO           | NO      | NO      | NO      |
+|Android      | NO           | NO          |  YES          | YES           | NO      | NO      | NO     |
+|iOS      | NO           | NO          |  NO          | YES           | NO      | NO      |  NO     |
+|AIX        | NO           | NO          |  NO          | NO           | NO      | NO      |  YES     |
 
 ### Build Environments(Host)
 {: .no_toc }
