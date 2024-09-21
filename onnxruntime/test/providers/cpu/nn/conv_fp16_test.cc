@@ -38,9 +38,9 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     const std::string& err_str = "",
                     int opset = 11) {
 #if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-// a `return` after tester will make binary crash
+  // a `return` after tester will make binary crash
   if (!attributes.activation.empty()) {
-      return;
+    return;
   }
 #endif
   std::unique_ptr<OpTester> tester;
