@@ -598,7 +598,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   const size_t scales_size = static_cast<size_t>(scales->Shape().Size());
   std::vector<float> scales_data_v(scales_size + addr_aligner.extra_bytes_);
-  const float* aligned_scales = addr_aligner.GetAlignedAddress(scales_data_v.data());
+  float* aligned_scales = addr_aligner.GetAlignedAddress(scales_data_v.data());
   MlasConvertHalfToFloatBuffer(scales_data, aligned_scales, scales_size);
 
   const size_t batch_count = helper.OutputOffsets().size();

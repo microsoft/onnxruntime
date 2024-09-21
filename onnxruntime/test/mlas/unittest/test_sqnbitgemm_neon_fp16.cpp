@@ -17,7 +17,7 @@ Abstract:
 #include <vector>
 
 #include "test_util.h"
-#include "mlasi.h"
+#include "core/mlas/lib/mlasi.h"
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
