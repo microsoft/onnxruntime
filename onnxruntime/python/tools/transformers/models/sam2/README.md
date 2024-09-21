@@ -54,11 +54,38 @@ To see all parameters, run the following command:
 python3 convert_to_onnx.py  -h
 ```
 
+## Optimize ONNX
+
+To optimize the onnx models for CPU with float32 data type:
+```bash
+python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp32
+```
+
+To optimize the onnx models for GPU with float16 data type:
+```bash
+python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp16 --use_gpu
+```
+
+Another option is to use optimizer.py like the following:
+```
+cd ../..
+python optimizer.py --input models/sam2/sam2_onnx_models/sam2_hiera_large_image_encoder.onnx \
+                    --output models/sam2/sam2_onnx_models/sam2_hiera_large_image_encoder_fp16_gpu.onnx \
+                    --use_gpu --model_type sam2 --float16
+```
+The optimizer.py could be helpful when you have SAM2 onnx models that is exported by other tools.
+
 ## Run Demo
+
 The exported ONNX models can run on a CPU. The demo will output sam2_demo.png.
 ```bash
 curl https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/notebooks/images/truck.jpg > truck.jpg
 python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --demo
+```
+
+It is able to run demo on optimized model as well. For example,
+```bash
+python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp16 --use_gpu --demo
 ```
 
 ## Limitations
