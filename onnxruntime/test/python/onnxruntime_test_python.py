@@ -1870,6 +1870,54 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(expected_val.shape(), value.shape())
             np.testing.assert_allclose(expected_val.numpy(), value.numpy())
 
+    def test_run_with_adapter(self):
+        adapter_path = get_name("lora/two_params_lora_model.onnx_adapter")
+        model_path = get_name("lora/two_params_lora_model.onnx")
+
+        expected_output = np.array(
+            [
+                [154.0, 176.0, 198.0, 220.0],
+                [154.0, 176.0, 198.0, 220.0],
+                [154.0, 176.0, 198.0, 220.0],
+                [154.0, 176.0, 198.0, 220.0],
+            ],
+            dtype=np.float32,
+        )
+
+        adapter = onnxrt.LoraAdapter()
+        adapter.Load(adapter_path)
+
+        run_options = onnxrt.RunOptions()
+        run_options.set_adapter_active(adapter)
+        session = onnxrt.InferenceSession(model_path)
+
+        inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
+
+        outputs = session.run(None, inputs, run_options)
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(np.allclose(outputs[0], expected_output))
+
+    def test_run_base_model(self):
+        model_path = get_name("lora/two_params_lora_model.onnx")
+
+        expected_output = np.array(
+                [[28., 32., 36., 40.],
+                [28., 32., 36., 40.],
+                [28., 32., 36., 40.],
+                [28., 32., 36., 40.]],
+            dtype=np.float32,
+        )
+
+        run_options = onnxrt.RunOptions()
+        session = onnxrt.InferenceSession(model_path)
+
+        inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
+
+        outputs = session.run(None, inputs, run_options)
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(np.allclose(outputs[0], expected_output))
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

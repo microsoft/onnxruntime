@@ -476,6 +476,17 @@ Return Value:
                     }
                 }
 
+                //
+                // Check if the processor supports AVX-VNNI-INT8
+                //
+                if ((Cpuid7_1[3] & 0x10) != 0) {
+                    this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2Vnni;
+                    this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchAvx2Vnni;
+                    this->GemmS8S8Kernel = MlasGemmS8S8KernelAvx2Vnni;
+                    this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
+                    this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
+                }
+
 #ifndef __APPLE__
 #if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
                 //

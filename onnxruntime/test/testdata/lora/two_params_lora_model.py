@@ -5,8 +5,8 @@ import onnx
 
 import onnxruntime as ort
 
-model_path = "C:/dev/ort_main/onnxruntime/test/testdata/lora/two_params_lora_model.onnx"
-adapter_path = "C:/dev/ort_main/onnxruntime/test/testdata/lora/two_params_lora_model.onnx_adapter"
+model_path = "two_params_lora_model.onnx"
+adapter_path = "two_params_lora_model.onnx_adapter"
 
 
 def create_model(model_path: os.PathLike):
@@ -140,6 +140,7 @@ def run_with_adapter(model_path: os.PathLike, adapter_path: os.PathLike):
     inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
 
     outputs = session.run(None, inputs, run_options)
+
     print(outputs)
 
 

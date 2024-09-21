@@ -2041,7 +2041,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  auto [begin, end] = adapter->GetParamIterators();
                  for (; begin != end; ++begin) {
                    const auto& [name, param] = *begin;
-                   std::cout << name << ':';
                    feeds.insert(std::make_pair(name, param.GetMapped()));
                  }
                }
