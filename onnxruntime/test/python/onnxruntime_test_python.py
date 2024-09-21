@@ -1894,9 +1894,29 @@ class TestInferenceSession(unittest.TestCase):
         inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
 
         outputs = session.run(None, inputs, run_options)
-        print("Run with adapter output:")
         self.assertEqual(len(outputs), 1)
         self.assertTrue(np.allclose(outputs[0], expected_output))
+
+    def test_run_base_model(self):
+        model_path = get_name("lora/two_params_lora_model.onnx")
+
+        expected_output = np.array(
+                [[28., 32., 36., 40.],
+                [28., 32., 36., 40.],
+                [28., 32., 36., 40.],
+                [28., 32., 36., 40.]],
+            dtype=np.float32,
+        )
+
+        run_options = onnxrt.RunOptions()
+        session = onnxrt.InferenceSession(model_path)
+
+        inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
+
+        outputs = session.run(None, inputs, run_options)
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(np.allclose(outputs[0], expected_output))
+
 
 
 if __name__ == "__main__":
