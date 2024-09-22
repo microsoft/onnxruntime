@@ -21,8 +21,6 @@ namespace Dml
         // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
         const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
 
-        virtual void SetResidency(bool value) = 0;
-
         void* Alloc(size_t size) final;
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) = 0;
         void Free(void* p) final;

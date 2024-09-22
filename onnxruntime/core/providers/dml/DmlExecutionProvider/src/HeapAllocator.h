@@ -17,13 +17,10 @@ namespace Dml
         ComPtr<ID3D12Resource> AllocateBuffer(uint64_t size);
         bool TryReleaseBuffer(const ComPtr<ID3D12Resource>& buffer);
 
-        void SetResidency(bool value);
         std::vector<ComPtr<IUnknown>> Clear();
 
     private:
         static const uint64_t m_blockSize;
-
-        bool m_isResident = true;
 
         ComPtr<ID3D12Device> m_device;
         ComPtr<ID3D12CommandQueue> m_queue;

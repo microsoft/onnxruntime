@@ -30,9 +30,6 @@ namespace Dml
             D3D12_RESOURCE_STATES initialState,
             std::unique_ptr<DmlSubAllocator>&& subAllocator);
 
-        // Sets the residency of allocated GPU memory
-        virtual void SetResidency(bool value) override;
-
     public: // onnxruntime::IAllocator
         using DmlBufferAllocator::Alloc;
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) override;

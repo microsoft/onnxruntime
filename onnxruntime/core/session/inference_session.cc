@@ -2141,26 +2141,6 @@ common::Status InferenceSession::Initialize() {
 #pragma warning(pop)
 #endif
 
-common::Status InferenceSession::Evict() {
-  Status status = Status::OK();
-
-  ORT_TRY {
-    LOGS(*session_logger_, INFO) << "Evicting session.";
-    std::lock_guard<onnxruntime::OrtMutex> lock(session_mutex_);
-
-    for (auto& provider : execution_providers_)
-    {
-      ORT_THROW_IF_ERROR(provider->Evict());
-    }
-  }
-  ORT_CATCH(...) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Evict()");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-  }
-
-  return status;
-}
-
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
@@ -2550,10 +2530,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
         return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
       }
 
-      for (auto& provider : execution_providers_) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(provider->MakeResident());
-      }
-
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart();
 
@@ -2891,7 +2867,6 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
 }
 
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
-
   {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     if (!is_inited_) {

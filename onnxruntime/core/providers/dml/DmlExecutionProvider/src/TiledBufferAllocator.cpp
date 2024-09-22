@@ -30,24 +30,13 @@ namespace Dml
     {
     }
 
-    void TiledBufferAllocator::SetResidency(bool value)
+    void TiledBufferAllocator::Clear()
     {
-        m_pooledAllocator.SetResidency(value);
-
-#ifdef DML_USE_HEAP_ALLOCATOR_FOR_UNPOOLED_MEMORY
-        m_unpooledAllocator.SetResidency(value);
-#else
-        m_unpooledAllocator->SetResidency(value);
-#endif
-
-        if (!value)
+        auto resources = m_pooledAllocator.Clear();
+        for (auto& resource : resources)
         {
-            auto resources = m_pooledAllocator.Clear();
-            for (auto& resource : resources)
-            {
-                m_resourceIds.erase(uintptr_t(resource.Get()));
-                m_context->QueueReference(resource.Get());
-            }
+            m_resourceIds.erase(uintptr_t(resource.Get()));
+            m_context->QueueReference(resource.Get());
         }
     }
 

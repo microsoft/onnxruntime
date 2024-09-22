@@ -68,30 +68,6 @@ namespace Dml
         return true;
     }
 
-    void HeapAllocator::SetResidency(bool value)
-    {
-        m_isResident = value;
-
-        std::vector<ID3D12Pageable*> pageables;
-        pageables.reserve(m_heaps.size());
-
-        for (auto& heap : m_heaps)
-        {
-            ComPtr<ID3D12Pageable> pageable;
-            ORT_THROW_IF_FAILED(heap.Heap.As(&pageable));
-            pageables.push_back(pageable.Get());
-        }
-
-        if (value)
-        {
-            ORT_THROW_IF_FAILED(m_device->MakeResident(UINT(pageables.size()), pageables.data()));
-        }
-        else
-        {
-            ORT_THROW_IF_FAILED(m_device->Evict(UINT(pageables.size()), pageables.data()));
-        }
-    }
-
     std::vector<ComPtr<IUnknown>> HeapAllocator::Clear()
     {
         std::vector<ComPtr<IUnknown>> results;
