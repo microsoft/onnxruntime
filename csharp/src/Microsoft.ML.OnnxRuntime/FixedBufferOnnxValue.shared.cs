@@ -76,9 +76,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// 
         /// var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
         ///
-        /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateFromMemory<Half>(memInfo,
+        /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateFromMemory{Half}(memInfo,
         ///                         input, TensorElementType.Float16, input_shape, input.Length * sizeof(ushort))
-        /// using(var fixedBufferOutput = FixedBufferOnnxvalue.CreateFromMemory<Half>(memInfo,
+        /// using(var fixedBufferOutput = FixedBufferOnnxvalue.CreateFromMemory{Half}(memInfo,
         ///                               output, TensorElementType.Float16, output_shape, output.Length * sizeof(ushort))
         /// {
         ///    FixedBufferOnnxvalue[] inputValues = new FixedBufferOnnxvalue[]{fixedBufferInput};

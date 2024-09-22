@@ -412,11 +412,12 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   eval_user_input_count_ = eval_user_input_names.size();
   eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
 
-  // Keep a copy of the eval model path to be able to later export the model for inferencing.
+  // Keep a copy of the eval model path or buffer to be able to later export the model for inferencing.
   // The inference model will be reconstructed from the eval model.
-  // TODO(askhade): Find a fix to export model for inference when the eval model is loaded from a buffer.
   if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
     eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
+  } else if (std::holds_alternative<gsl::span<const uint8_t>>(model_identifiers.eval_model)) {
+    eval_model_buffer_ = std::get<gsl::span<const uint8_t>>(model_identifiers.eval_model);
   }
 }
 
@@ -658,11 +659,17 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
                                          gsl::span<const std::string> graph_output_names) const {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot export the model with a nominal state. Please load the model parameters first.");
-  ORT_RETURN_IF(!eval_sess_ || !eval_model_path_.has_value(),
+  ORT_RETURN_IF(!eval_sess_ || (!eval_model_path_.has_value() && !eval_model_buffer_.has_value()),
                 "Eval model was not provided. Cannot export a model for inferencing.");
 
   ONNX_NAMESPACE::ModelProto eval_model;
-  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
+  if (eval_model_path_.has_value()) {
+    ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
+  } else if (eval_model_buffer_.has_value()) {
+    int eval_model_buffer_size = static_cast<int>(eval_model_buffer_.value().size());
+    const void* eval_model_buffer_ptr = static_cast<const void*>(eval_model_buffer_.value().data());
+    ORT_THROW_IF_ERROR(Model::LoadFromBytes(eval_model_buffer_size, eval_model_buffer_ptr, eval_model));
+  }
 
   // Clone the eval mode into an inference onnxruntime::Model.
   std::shared_ptr<Model> inference_model;

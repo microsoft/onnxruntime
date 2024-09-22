@@ -17,7 +17,7 @@ set BUILD_DIR=%ROOT%build_jsep
 :arg1
 if ["%~1"]==["d"] (
     set CONFIG=Debug
-    set CONFIG_EXTRA_FLAG=--enable_wasm_debug_info --enable_wasm_profiling
+    set CONFIG_EXTRA_FLAG=--enable_wasm_debug_info --enable_wasm_profiling --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1
     goto :arg2
 )
 if ["%~1"]==["r"] (

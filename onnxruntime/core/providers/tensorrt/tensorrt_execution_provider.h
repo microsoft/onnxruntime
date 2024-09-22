@@ -175,7 +175,6 @@ struct TensorrtFuncState {
   bool int8_calibration_cache_available = false;
   bool dla_enable = false;
   int dla_core = 0;
-  size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
@@ -290,7 +289,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
   size_t min_subgraph_size_ = 1;
-  size_t max_workspace_size_ = 1 << 30;  // 1GB
+  size_t max_workspace_size_ = 0;
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
   bool dla_enable_ = false;

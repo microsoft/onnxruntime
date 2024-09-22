@@ -11,6 +11,7 @@
 #include <string>
 #include <condition_variable>
 #include <mutex>
+#include <map>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
@@ -20,10 +21,15 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+struct ov_tensor_data_t {
+  OVTensorPtr tensor_ptr;
+  bool copy_needed;
+};
+
 class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
-  BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+  BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
                GlobalContext& global_context,
                const SubGraphContext& subgraph_context,
                EPCtxHandler& ep_ctx_handle);
@@ -60,6 +66,9 @@ class BasicBackend : public IBackend {
 #if defined IO_BUFFER_ENABLED
   OVRemoteContextPtr remote_context_;
 #endif
+
+  using ort_tensor_key_t = std::pair<const void*, const std::string>;
+  std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
 };
 
 class InferRequestsQueue {

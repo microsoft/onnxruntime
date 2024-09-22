@@ -108,12 +108,6 @@ struct BinaryElementwisePreparation {
   }
 };
 
-Status ComputeOutputShape(
-    const std::string& node_name,
-    const TensorShape& lhs_shape,
-    const TensorShape& rhs_shape,
-    TensorShape& out_shape);
-
 Status BinaryElementwiseBroadcastPrepare(
     const Tensor* lhs_tensor,
     const Tensor* rhs_tensor,

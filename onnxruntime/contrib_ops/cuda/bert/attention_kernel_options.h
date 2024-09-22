@@ -21,7 +21,7 @@ struct AttentionKernelDebugInfo {
 
 class AttentionKernelOptions {
  public:
-  void InitializeOnce(int sdpa_kernel, bool use_build_flag);
+  void InitializeOnce(int sdpa_kernel, bool use_build_flag, bool check_cudnn_version = false);
 
   bool UseFlashAttention() const { return use_flash_attention_; }
   bool UseEfficientAttention() const { return use_efficient_attention_; }
@@ -40,7 +40,7 @@ class AttentionKernelOptions {
  protected:
   void Print() const;
 
-  void Initialize(int value, bool use_build_flag);
+  void Initialize(int value, bool use_build_flag, bool check_cudnn_version);
 
  private:
   bool use_flash_attention_{true};

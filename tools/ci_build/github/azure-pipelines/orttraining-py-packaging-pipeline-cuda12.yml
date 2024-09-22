@@ -13,4 +13,4 @@ stages:
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
     debug_build: false
-    build_pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    build_pool_name: 'onnxruntime-Ubuntu-2204-Training-CPU'

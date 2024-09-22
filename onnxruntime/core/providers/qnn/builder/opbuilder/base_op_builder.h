@@ -95,6 +95,14 @@ class BaseOpBuilder : public IOpBuilder {
                       const logging::Logger& logger,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
+  Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
+                          const QnnQuantParamsWrapper& input0_qparams,
+                          const QnnQuantParamsWrapper& input1_qparams,
+                          std::vector<uint32_t>&& bias_shape,
+                          const std::string& bias_name,
+                          const logging::Logger& logger,
+                          std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
   Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   const logging::Logger& logger,
@@ -122,6 +130,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Exp", QNN_OP_ELEMENT_WISE_EXP},
         {"Floor", QNN_OP_ELEMENT_WISE_FLOOR},
         {"Gather", QNN_OP_GATHER},
+        {"GatherElements", QNN_OP_GATHER_ELEMENTS},
         {"Greater", QNN_OP_ELEMENT_WISE_GREATER},
         {"GreaterOrEqual", QNN_OP_ELEMENT_WISE_GREATER_EQUAL},
         {"Less", QNN_OP_ELEMENT_WISE_LESS},

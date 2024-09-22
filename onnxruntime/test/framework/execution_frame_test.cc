@@ -59,6 +59,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -67,7 +68,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
@@ -143,6 +144,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -151,7 +153,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
@@ -215,6 +217,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -223,7 +226,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
@@ -287,6 +290,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   // 1. prepare input
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -295,7 +299,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
@@ -402,10 +406,11 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
   SessionOptions so;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(),
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm, DefaultLoggingManager().DefaultLogger(),
                      profiler, so);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));

@@ -10,7 +10,8 @@ New-Item -Path $nuget_artifacts_dir -ItemType directory
 
 ## .zip files
 # unzip directly
-Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.zip |
+# exclude the iOS xcframework as we need to leave that zipped up to preserve symlinks
+Get-ChildItem -Path $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\* -Include *.zip -Exclude onnxruntime_ios_xcframework.*.zip |
 Foreach-Object {
  $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
  Write-Output $cmd
@@ -33,6 +34,23 @@ Foreach-Object {
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }
+
+# process iOS xcframework
+$xcframeworks = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime_ios_xcframework.*.zip
+if ($xcframeworks.Count -eq 1) {
+  $xcframework = $xcframeworks[0]
+  $target_dir = "$nuget_artifacts_dir\onnxruntime-ios-xcframework"
+  # remove version info from filename and use required filename format
+  $target_file = "$target_dir\onnxruntime.xcframework.zip"
+  New-Item -Path $target_dir -ItemType directory
+
+  Write-Output "Copy-Item $($xcframework.FullName) $target_file"
+  Copy-Item $xcframework.FullName $target_file
+}
+elseif ($xcframeworks.Count -gt 1) {
+  Write-Error "Expected at most one onnxruntime_ios_xcframework*.zip file but got: [$xcframeworks]"
+}
+
 
 # copy android AAR.
 # for full build of onnxruntime Android AAR, there should only be one .aar file

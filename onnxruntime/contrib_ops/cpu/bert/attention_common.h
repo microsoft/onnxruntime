@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {
@@ -46,6 +47,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
+  AttentionKernel_CudnnFlashAttention,
   AttentionKernel_Default
 };
 
@@ -68,7 +70,8 @@ struct AttentionParameters {
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
-  bool broadcast_res_pos_bias;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   float mask_filter_value;
   float scale;
   bool use_tf32;
@@ -88,8 +91,8 @@ struct PackedAttentionParameters {
   int num_heads;
   float scale;
   int token_count;
-  bool has_relative_position_bias;
-  bool broadcast_res_pos_bias;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   bool use_tf32;
 };
 
@@ -99,6 +102,7 @@ struct GroupQueryAttentionParameters {
   int sequence_length;          // sequence length of input query, key, value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
+  int total_sequence_length;    // maximum total sequence length (past_sequence_length + sequence_length) among keys
   int hidden_size;
   int num_heads;
   int head_size;
@@ -110,10 +114,13 @@ struct GroupQueryAttentionParameters {
   int local_window_size;
   bool kv_share_buffer;
   bool is_packed_qkv;
-  bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
+  bool is_first_prompt;       // indicates whether this is first decoding step
   bool do_rotary;
   bool rotary_interleaved;
+  bool use_smooth_softmax;
   float scale;
+  float softcap;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
   int zeros_count;

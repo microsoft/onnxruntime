@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -12,7 +13,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* relative_position_bias,
+                                  const Tensor* attention_bias,
                                   void* parameters,
                                   const Tensor* past_seq_len) const {
   // Abbreviation and Meanings:
@@ -37,7 +38,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
-  //   relative_position_bias            : (B, N, S, T) or NULL
+  //   attention_bias          : (B or 1, N or 1, S, T) or NULL
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
@@ -49,9 +50,9 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   // When a model is pruned (like some attention heads are removed in Q/K/V), input_hidden_size could be larger
   // than hidden dimension of Q, K and V.
 
-  if (past != nullptr && relative_position_bias != nullptr) {
-    // past is used on GPT-2 model with past state, we don't have a case for relative position bias yet
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention cannot have both past and relative_position_bias");
+  if (past != nullptr && attention_bias != nullptr) {
+    // past is used on GPT-2 model with past state, we don't have a case for attention bias yet
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention cannot have both past and attention_bias");
   }
 
   const auto& dims = input_shape.GetDims();
@@ -191,39 +192,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
-  bool broadcast_res_pos_bias = false;
-  if (relative_position_bias != nullptr) {
-    const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
+  gsl::span<const int64_t> attention_bias_dims;
+  if (attention_bias != nullptr) {
+    attention_bias_dims = attention_bias->Shape().GetDims();
 
-    if (relative_position_bias_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                             relative_position_bias_dims.size());
-    }
-
-    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
-                             relative_position_bias_dims[0]);
-    }
-    if (relative_position_bias_dims[0] == 1) {
-      broadcast_res_pos_bias = true;
-    }
-    if (relative_position_bias_dims[1] != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                             relative_position_bias_dims[1]);
-    }
-    if (relative_position_bias_dims[2] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                             relative_position_bias_dims[2]);
-    }
-    if (relative_position_bias_dims[3] != total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
-                             relative_position_bias_dims[3]);
-    }
+    ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
+        attention_bias_dims, batch_size, num_heads_, sequence_length, total_sequence_length));
   }
 
   if (past != nullptr && past_present_share_buffer_) {
@@ -257,7 +231,8 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->mask_filter_value = mask_filter_value_;
     output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
-    output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
+    output_parameters->broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+    output_parameters->broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
     output_parameters->qkv_format = Q_K_V_BNSH;
   }
 
@@ -329,7 +304,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* relative_position_bias,
+                                  const Tensor* attention_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
@@ -337,7 +312,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, relative_position_bias, parameters, past_seq_len);
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, attention_bias, parameters, past_seq_len);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,

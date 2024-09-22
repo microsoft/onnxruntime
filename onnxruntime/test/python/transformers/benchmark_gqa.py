@@ -37,6 +37,7 @@ def plot_prompt_performance(
     head_size: int,
     max_seq_len: int,
     local_window_size: Optional[int] = None,
+    use_smooth_softmax: bool = False,
 ):
     import triton
 
@@ -55,6 +56,7 @@ def plot_prompt_performance(
                 "kv_num_heads": kv_num_heads,
                 "head_size": head_size,
                 "local_window_size": local_window_size,
+                "use_smooth_softmax": use_smooth_softmax,
             },
         )
     ]
@@ -68,6 +70,7 @@ def plot_prompt_performance(
         kv_num_heads: int,
         head_size: int,
         local_window_size: Optional[int] = None,
+        use_smooth_softmax: bool = False,
         device="cuda",
     ):
         warmup = 15
@@ -82,6 +85,7 @@ def plot_prompt_performance(
             kv_num_heads=kv_num_heads,
             head_size=head_size,
             local_window_size=local_window_size if provider in ["ort_gqa_local", "ort_gqa_local_packed"] else -1,
+            use_smooth_softmax=use_smooth_softmax,
             device=device,
             is_packed_qkv=provider in ["ort_gqa_packed", "ort_gqa_local_packed"],
         )
@@ -103,6 +107,7 @@ def plot_token_performance(
     head_size: int,
     max_seq_len: int,
     local_window_size: Optional[int] = None,
+    use_smooth_softmax: bool = False,
 ):
     import triton
 
@@ -121,6 +126,7 @@ def plot_token_performance(
                 "kv_num_heads": kv_num_heads,
                 "head_size": head_size,
                 "local_window_size": local_window_size,
+                "use_smooth_softmax": use_smooth_softmax,
             },
         )
     ]
@@ -134,6 +140,7 @@ def plot_token_performance(
         kv_num_heads: int,
         head_size: int,
         local_window_size: Optional[int] = None,
+        use_smooth_softmax: bool = False,
         device="cuda",
     ):
         warmup = 15
@@ -150,6 +157,7 @@ def plot_token_performance(
             local_window_size=local_window_size if provider in ["ort_gqa_local", "ort_gqa_local_packed"] else -1,
             do_rotary=True,  # Most models use rotary positional embeddings
             is_packed_qkv=provider in ["ort_gqa_packed", "ort_gqa_local_packed"],
+            use_smooth_softmax=use_smooth_softmax,
             device=device,
         )
 
@@ -186,26 +194,29 @@ def run_performance_test(sm: int):
 
     for num_heads, head_size, kv_num_heads, max_seq_len, local_window_size, model_name in configures:
         for batch_size in [1, 4]:
-            plot_prompt_performance(
-                sm=sm,
-                batch_size=batch_size,
-                num_heads=num_heads,
-                kv_num_heads=kv_num_heads,
-                head_size=head_size,
-                max_seq_len=min(threshold, max_seq_len),
-                local_window_size=local_window_size,
-                model_name=model_name,
-            )
-            plot_token_performance(
-                sm=sm,
-                batch_size=batch_size,
-                num_heads=num_heads,
-                kv_num_heads=kv_num_heads,
-                head_size=head_size,
-                max_seq_len=min(threshold, max_seq_len),
-                local_window_size=local_window_size,
-                model_name=model_name,
-            )
+            for use_smooth_softmax in [False, True]:
+                plot_prompt_performance(
+                    sm=sm,
+                    batch_size=batch_size,
+                    num_heads=num_heads,
+                    kv_num_heads=kv_num_heads,
+                    head_size=head_size,
+                    max_seq_len=min(threshold, max_seq_len),
+                    local_window_size=local_window_size,
+                    use_smooth_softmax=use_smooth_softmax,
+                    model_name=model_name,
+                )
+                plot_token_performance(
+                    sm=sm,
+                    batch_size=batch_size,
+                    num_heads=num_heads,
+                    kv_num_heads=kv_num_heads,
+                    head_size=head_size,
+                    max_seq_len=min(threshold, max_seq_len),
+                    local_window_size=local_window_size,
+                    use_smooth_softmax=use_smooth_softmax,
+                    model_name=model_name,
+                )
 
 
 if __name__ == "__main__":

@@ -125,7 +125,8 @@ RUN pip install \
     sentencepiece \
     wget \
     dill==0.3.4 \
-    pytorch_lightning==1.6.0 \
+    pytorch_lightning==2.3.3 \
+    tensorboard \
     pytest-xdist \
     pytest-rerunfailures \
     ml_dtypes==0.3.0 \

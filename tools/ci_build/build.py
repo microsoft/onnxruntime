@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 import argparse
@@ -460,6 +461,12 @@ def parse_arguments():
         action="store_true",
         help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only.",
     )
+    # Dependency search with vcpkg
+    parser.add_argument(
+        "--use_vcpkg",
+        action="store_true",
+        help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
+    )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
@@ -645,9 +652,7 @@ def parse_arguments():
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test")
     parser.add_argument(
         "--use_acl",
-        nargs="?",
-        const="ACL_1905",
-        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002", "ACL_2308"],
+        action="store_true",
         help="Build with ACL for ARM architectures.",
     )
     parser.add_argument("--acl_home", help="Path to ACL home dir")
@@ -999,6 +1004,7 @@ def generate_build_tree(
         # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
+        "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
@@ -1045,11 +1051,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
-        "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
-        "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
-        "-Donnxruntime_USE_ACL_1908=" + ("ON" if args.use_acl == "ACL_1908" else "OFF"),
-        "-Donnxruntime_USE_ACL_2002=" + ("ON" if args.use_acl == "ACL_2002" else "OFF"),
-        "-Donnxruntime_USE_ACL_2308=" + ("ON" if args.use_acl == "ACL_2308" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
@@ -2276,10 +2277,10 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
-        elif use_azure:
-            args.append("--use_azure")
         elif use_qnn:
             args.append("--use_qnn")
+        elif use_azure:
+            args.append("--use_azure")
 
         run_subprocess(args, cwd=cwd)
 

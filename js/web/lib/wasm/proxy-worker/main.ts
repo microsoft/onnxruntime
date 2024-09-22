@@ -64,8 +64,8 @@
 //
 declare global {
   type HTMLImageElement = unknown;
-  type HTMLScriptElement = {src?: string};
-  const document: undefined|{currentScript?: HTMLScriptElement};
+  type HTMLScriptElement = { src?: string };
+  const document: undefined | { currentScript?: HTMLScriptElement };
 }
 
 /**
@@ -83,10 +83,19 @@ declare global {
  * This file will be always compiling into ESM format.
  */
 
-import type {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages.js';
-import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initEp, initRuntime, releaseSession, run} from '../wasm-core-impl.js';
-import {initializeWebAssembly} from '../wasm-factory.js';
-import {scriptSrc} from '../wasm-utils-import.js';
+import type { OrtWasmMessage, SerializableTensorMetadata } from '../proxy-messages.js';
+import {
+  createSession,
+  copyFromExternalBuffer,
+  endProfiling,
+  extractTransferableBuffers,
+  initEp,
+  initRuntime,
+  releaseSession,
+  run,
+} from '../wasm-core-impl.js';
+import { initializeWebAssembly } from '../wasm-factory.js';
+import { scriptSrc } from '../wasm-utils-import.js';
 
 const WORKER_NAME = 'ort-wasm-proxy-worker';
 const isProxyWorker = globalThis.self?.name === WORKER_NAME;
@@ -94,90 +103,92 @@ const isProxyWorker = globalThis.self?.name === WORKER_NAME;
 if (isProxyWorker) {
   // Worker thread
   self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
-    const {type, in : message} = ev.data;
+    const { type, in: message } = ev.data;
     try {
       switch (type) {
         case 'init-wasm':
-          initializeWebAssembly(message!.wasm)
-              .then(
-                  () => {
-                    initRuntime(message!).then(
-                        () => {
-                          postMessage({type});
-                        },
-                        err => {
-                          postMessage({type, err});
-                        });
-                  },
-                  err => {
-                    postMessage({type, err});
-                  });
+          initializeWebAssembly(message!.wasm).then(
+            () => {
+              initRuntime(message!).then(
+                () => {
+                  postMessage({ type });
+                },
+                (err) => {
+                  postMessage({ type, err });
+                },
+              );
+            },
+            (err) => {
+              postMessage({ type, err });
+            },
+          );
           break;
         case 'init-ep': {
-          const {epName, env} = message!;
-          initEp(env, epName)
-              .then(
-                  () => {
-                    postMessage({type});
-                  },
-                  err => {
-                    postMessage({type, err});
-                  });
+          const { epName, env } = message!;
+          initEp(env, epName).then(
+            () => {
+              postMessage({ type });
+            },
+            (err) => {
+              postMessage({ type, err });
+            },
+          );
           break;
         }
         case 'copy-from': {
-          const {buffer} = message!;
+          const { buffer } = message!;
           const bufferData = copyFromExternalBuffer(buffer);
-          postMessage({type, out: bufferData} as OrtWasmMessage);
+          postMessage({ type, out: bufferData } as OrtWasmMessage);
           break;
         }
         case 'create': {
-          const {model, options} = message!;
-          createSession(model, options)
-              .then(
-                  sessionMetadata => {
-                    postMessage({type, out: sessionMetadata} as OrtWasmMessage);
-                  },
-                  err => {
-                    postMessage({type, err});
-                  });
+          const { model, options } = message!;
+          createSession(model, options).then(
+            (sessionMetadata) => {
+              postMessage({ type, out: sessionMetadata } as OrtWasmMessage);
+            },
+            (err) => {
+              postMessage({ type, err });
+            },
+          );
           break;
         }
         case 'release':
           releaseSession(message!);
-          postMessage({type});
+          postMessage({ type });
           break;
         case 'run': {
-          const {sessionId, inputIndices, inputs, outputIndices, options} = message!;
-          run(sessionId, inputIndices, inputs, outputIndices, new Array(outputIndices.length).fill(null), options)
-              .then(
-                  outputs => {
-                    if (outputs.some(o => o[3] !== 'cpu')) {
-                      postMessage({type, err: 'Proxy does not support non-cpu tensor location.'});
-                    } else {
-                      postMessage(
-                          {type, out: outputs} as OrtWasmMessage,
-                          extractTransferableBuffers([...inputs, ...outputs] as SerializableTensorMetadata[]));
-                    }
-                  },
-                  err => {
-                    postMessage({type, err});
-                  });
+          const { sessionId, inputIndices, inputs, outputIndices, options } = message!;
+          run(sessionId, inputIndices, inputs, outputIndices, new Array(outputIndices.length).fill(null), options).then(
+            (outputs) => {
+              if (outputs.some((o) => o[3] !== 'cpu')) {
+                postMessage({ type, err: 'Proxy does not support non-cpu tensor location.' });
+              } else {
+                postMessage(
+                  { type, out: outputs } as OrtWasmMessage,
+                  extractTransferableBuffers([...inputs, ...outputs] as SerializableTensorMetadata[]),
+                );
+              }
+            },
+            (err) => {
+              postMessage({ type, err });
+            },
+          );
           break;
         }
         case 'end-profiling':
           endProfiling(message!);
-          postMessage({type});
+          postMessage({ type });
           break;
         default:
       }
     } catch (err) {
-      postMessage({type, err} as OrtWasmMessage);
+      postMessage({ type, err } as OrtWasmMessage);
     }
   };
 }
 
-export default isProxyWorker ?
-    null :
-    (urlOverride?: string) =>
-        new Worker(urlOverride ?? scriptSrc!, {type: BUILD_DEFS.IS_ESM ? 'module' : 'classic', name: WORKER_NAME});
+export default isProxyWorker
+  ? null
+  : (urlOverride?: string) =>
+      new Worker(urlOverride ?? scriptSrc!, { type: BUILD_DEFS.IS_ESM ? 'module' : 'classic', name: WORKER_NAME });

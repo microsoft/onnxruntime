@@ -721,7 +721,7 @@ Q4Int8GemmR1xC1BlkLen32Avx512(
                     accumulate_blklen32_r1c1blk4_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
                 }
                 else {
-                    accumulate_blklen32_r1c1blk4_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
+                    accumulate_blklen32_r1c1blk4_avx512(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
                 }
 
                 QuantAPtr += BlkLen32 * PerAccuBlk4;

@@ -83,14 +83,12 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-latest'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - template: download-deps.yml
 
@@ -107,12 +105,9 @@ stages:
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
-        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
-          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        pushd $(Build.BinariesDirectory)/artifacts_staging
-        zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
-          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        pushd $(Build.BinariesDirectory)/ios_framework/framework_out
+        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
+          onnxruntime.xcframework
         popd
       displayName: "Build Apple xcframework"
 
@@ -495,6 +490,9 @@ stages:
   - Linux_C_API_Packaging_CPU
   - Linux_C_API_Packaging_GPU
   - MacOS_C_API_Package_Publish
+  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job: Nodejs_Packaging
@@ -782,7 +780,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-latest
+    AgentPool : macOS-13
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -818,4 +816,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-latest'
+    PoolName: 'macOS-13'

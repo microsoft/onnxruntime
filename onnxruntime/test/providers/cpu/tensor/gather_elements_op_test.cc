@@ -42,9 +42,15 @@ void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   output_data.resize(output_size);
   std::srand(static_cast<unsigned>(std::time(0)));
   for (size_t i = 0; i < indices_size; ++i) {
+#if defined(USE_QNN)
+    // Negative index not possible.
+    indices_data[i] =
+        static_cast<TIndex>(static_cast<int64_t>(std::rand()) % input_dims[axis]);
+#else
     // Negative index possible.
     indices_data[i] =
         static_cast<TIndex>((static_cast<int64_t>(std::rand()) % (input_dims[axis] * 2)) - input_dims[axis]);
+#endif
   }
   for (size_t i = 0; i < output_size; ++i) {
     int64_t input_offset = 0;
@@ -382,9 +388,10 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
+  // skip QNN because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
-            kTensorrtExecutionProvider, kDmlExecutionProvider});
+            kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(GatherElementsOpTest, BigIndices) {

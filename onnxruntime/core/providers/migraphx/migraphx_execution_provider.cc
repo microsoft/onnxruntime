@@ -17,6 +17,7 @@
 #include "migraphx_allocator.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_inc.h"
+#include <hip/hip_version.h>
 
 #include "migraphx_stream_handle.h"
 
@@ -181,6 +182,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
 
+  // Allow for exhaustive tune during compile
+  const std::string exhaustive_tune_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kExhaustiveTune);
+  if (!exhaustive_tune_env.empty()) {
+    exhaustive_tune_ = (std::stoi(exhaustive_tune_env) == 0 ? false : true);
+  }
+
   metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 
   LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
@@ -189,6 +196,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", dump_model_ops: " << dump_model_ops_
+                        << ", exhaustive_tune: " << exhaustive_tune_
                         << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
                         << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
@@ -315,22 +323,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "ConvInteger") {
-    if (node->InputDefs()[0]->Shape()->dim_size() != 4) {
-      return true;
-    }
-
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
-    // only support int8 type
+    // only support int8 and uint8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
 
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+        (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
   } else if (optype == "Expand") {
@@ -372,18 +372,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "MatMulInteger") {
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
-    // only support int8 type
+    // only support int8 and uint8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
 
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+        (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
   } else if (optype == "NonZero") {
@@ -455,7 +451,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
         return true;
       }
     }
-
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
@@ -1193,6 +1188,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
         migraphx::compile_options co;
         co.set_fast_math(false);
+        co.set_exhaustive_tune_flag(exhaustive_tune_);
         LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
         prog.compile(t_, co);
         LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
@@ -1299,7 +1295,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (!input_shape_match) {
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
           LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+#ifndef ENABLE_TRAINING_CORE
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
           cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());
+#endif
+#endif
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
 
           // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1353,6 +1353,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
           migraphx::compile_options co;
           co.set_fast_math(false);
+          co.set_exhaustive_tune_flag(exhaustive_tune_);
           prog.compile(t, co);
 
           save_compiled_model(prog, mgx_state->save_compiled_mode, mgx_state->save_compiled_path);

@@ -199,7 +199,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
                                   mask_index,
                                   nullptr,  // past
-                                  nullptr,  // relative_position_bias
+                                  nullptr,  // attention_bias
                                   nullptr,  // parameters
                                   device_prop.maxThreadsPerBlock));
 

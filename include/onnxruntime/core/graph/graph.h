@@ -571,6 +571,13 @@ class Node {
             gsl::span<NodeArg* const> output_args,
             const NodeAttributes* attributes,
             std::string_view domain);
+  void Init(std::string_view name,
+            std::string_view op_type,
+            std::string_view description,
+            gsl::span<NodeArg* const> input_args,
+            gsl::span<NodeArg* const> output_args,
+            NodeAttributes&& attributes,
+            std::string_view domain);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -955,6 +962,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                const std::string& domain = kOnnxDomain);
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
                 std::initializer_list<NodeArg*> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
@@ -1139,16 +1153,48 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
+  // Options to align external initializer offset.
+  // For models running on CPU, ORT will try to use mmap to load external initializers.
+  // To use mmap, external initializer need to be offset aligned.
+  // ORT saves external initializers into signle data file, each initializer is accessed with
+  // offset(start position of initializer) and length(byte length of initializer) of the data file.
+  // To use mmap, each offset need to be aligned which means offset need to divisible by
+  // allocation granularity(64KB for windows and 4K for other OSes).
+  // With align_offset to true, ORT will align offset for large initializer when
+  // save ONNX model with external data file.
+  struct OffsetAlignmentInfo {
+    // Offset will always be page aligned and allocation granularity aligned for mmap support.
+    // This is done by padding previous tensor data with zeros keeping same length.
+    bool align_offset = false;
+    // Alignment threshold for size of data.
+    // Having a low threshold will waste file space for small initializers.
+    // Only when tensor's data size is > the page_align_threshold it will be force aligned.
+    // Default to 1MB.
+    int64_t align_threshold = 1048576;
+    // The allocation Granularity for mmap() support.
+    // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
+    int64_t allocation_granularity = 65536;
+  };
+
   /** Gets the GraphProto representation of this Graph
   @param external_file_path File path of the binary file to use for initializers.
   @param model_file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
+  @param align_info offset alignment info.
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
-                                                                  size_t initializer_size_threshold) const;
+                                                                  size_t initializer_size_threshold,
+                                                                  const OffsetAlignmentInfo& align_info) const;
+
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                  const std::filesystem::path& model_file_path,
+                                                                  size_t initializer_size_threshold) const {
+    OffsetAlignmentInfo default_options;
+    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options);
+  }
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;

@@ -34,8 +34,6 @@ class Model {
   onnxruntime::common::Status Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                       const InlinedHashMap<std::string, OnnxTensorData>& outputs);
 
-  bool IsScalarOutput(const std::string& output_name) const;
-
   // Mutex for exclusive lock to this model object.
   OrtMutex& GetMutex() { return mutex_; }
 
@@ -65,8 +63,6 @@ class Model {
   emscripten::val wnn_inputs_ = emscripten::val::object();
   emscripten::val wnn_outputs_ = emscripten::val::object();
 
-  InlinedHashSet<std::string> scalar_outputs_;
-
   std::vector<std::string> inputs_;
   std::vector<std::string> outputs_;
 
@@ -81,10 +77,6 @@ class Model {
 
   void SetInputOutputInfo(InlinedHashMap<std::string, OnnxTensorInfo>&& input_output_info) {
     input_output_info_ = std::move(input_output_info);
-  }
-
-  void SetScalarOutputs(InlinedHashSet<std::string>&& scalar_outputs) {
-    scalar_outputs_ = std::move(scalar_outputs);
   }
 
   void AllocateInputOutputBuffers();

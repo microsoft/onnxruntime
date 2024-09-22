@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <set>
@@ -655,7 +656,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
     if (enable_acl) {
 #ifdef USE_ACL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena ? 1 : 0));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, false));
 #else
       fprintf(stderr, "ACL is not supported in this build");
       return -1;
@@ -827,7 +828,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
         ORT_TSTR("sce_none_weights_expanded"),
-        ORT_TSTR("convtranspose_3d")};
+        ORT_TSTR("convtranspose_3d"),
+        ORT_TSTR("gather_elements_negative_indices")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 

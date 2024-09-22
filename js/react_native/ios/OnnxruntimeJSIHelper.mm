@@ -9,27 +9,27 @@
 
 RCT_EXPORT_MODULE()
 
-- (void)setBridge:(RCTBridge *)bridge {
+- (void)setBridge:(RCTBridge*)bridge {
   _bridge = bridge;
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
-  RCTCxxBridge *cxxBridge = (RCTCxxBridge *)_bridge;
+  RCTCxxBridge* cxxBridge = (RCTCxxBridge*)_bridge;
   if (cxxBridge == nil) {
     return @false;
   }
 
   using namespace facebook;
 
-  auto jsiRuntime = (jsi::Runtime *)cxxBridge.runtime;
+  auto jsiRuntime = (jsi::Runtime*)cxxBridge.runtime;
   if (jsiRuntime == nil) {
     return @false;
   }
-  auto &runtime = *jsiRuntime;
+  auto& runtime = *jsiRuntime;
 
   auto resolveArrayBuffer = jsi::Function::createFromHostFunction(
       runtime, jsi::PropNameID::forUtf8(runtime, "jsiOnnxruntimeResolveArrayBuffer"), 1,
-      [](jsi::Runtime &runtime, const jsi::Value &thisArg, const jsi::Value *args, size_t count) -> jsi::Value {
+      [](jsi::Runtime& runtime, const jsi::Value& thisArg, const jsi::Value* args, size_t count) -> jsi::Value {
         if (count != 1) {
           throw jsi::JSError(runtime, "jsiOnnxruntimeResolveArrayBuffer(..) expects one argument (object)!");
         }
@@ -39,12 +39,12 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
         auto size = data.getProperty(runtime, "size").asNumber();
         auto offset = data.getProperty(runtime, "offset").asNumber();
 
-        RCTBlobManager *blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+        RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
         if (blobManager == nil) {
           throw jsi::JSError(runtime, "RCTBlobManager is not initialized");
         }
 
-        NSString *blobIdStr = [NSString stringWithUTF8String:blobId.c_str()];
+        NSString* blobIdStr = [NSString stringWithUTF8String:blobId.c_str()];
         auto blob = [blobManager resolve:blobIdStr offset:(long)offset size:(long)size];
 
         jsi::Function arrayBufferCtor = runtime.global().getPropertyAsFunction(runtime, "ArrayBuffer");
@@ -58,21 +58,21 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
 
   auto storeArrayBuffer = jsi::Function::createFromHostFunction(
       runtime, jsi::PropNameID::forUtf8(runtime, "jsiOnnxruntimeStoreArrayBuffer"), 1,
-      [](jsi::Runtime &runtime, const jsi::Value &thisArg, const jsi::Value *args, size_t count) -> jsi::Value {
+      [](jsi::Runtime& runtime, const jsi::Value& thisArg, const jsi::Value* args, size_t count) -> jsi::Value {
         if (count != 1) {
           throw jsi::JSError(runtime, "jsiOnnxruntimeStoreArrayBuffer(..) expects one argument (object)!");
         }
 
         auto arrayBuffer = args[0].asObject(runtime).getArrayBuffer(runtime);
         auto size = arrayBuffer.length(runtime);
-        NSData *data = [NSData dataWithBytesNoCopy:arrayBuffer.data(runtime) length:size freeWhenDone:NO];
+        NSData* data = [NSData dataWithBytesNoCopy:arrayBuffer.data(runtime) length:size freeWhenDone:NO];
 
-        RCTBlobManager *blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+        RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
         if (blobManager == nil) {
           throw jsi::JSError(runtime, "RCTBlobManager is not initialized");
         }
 
-        NSString *blobId = [blobManager store:data];
+        NSString* blobId = [blobManager store:data];
 
         jsi::Object result(runtime);
         auto blobIdString = jsi::String::createFromUtf8(runtime, [blobId cStringUsingEncoding:NSUTF8StringEncoding]);

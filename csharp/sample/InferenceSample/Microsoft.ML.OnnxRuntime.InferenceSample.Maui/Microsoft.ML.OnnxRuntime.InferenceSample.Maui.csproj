@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<!-- note net6.0-maccatalyst is not supported currently. requires a new native build to be added. -->
-		<TargetFrameworks>net8.0-android;net8.0-ios</TargetFrameworks>
+		<TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
 		<OutputType>Exe</OutputType>
 		<RootNamespace>Microsoft.ML.OnnxRuntime.InferenceSample.Maui</RootNamespace>
@@ -13,8 +12,8 @@
 		<!-- Display name -->
 		<ApplicationTitle>InferenceSample_Maui</ApplicationTitle>
 
-		<!-- App Identifier -->
-		<ApplicationId>com.microsoft.ml.onnxruntime.inferencesample.maui</ApplicationId>
+		<!-- App Identifier. MUST be short or you'll get a confusing deployment error on Windows -->
+		<ApplicationId>ORT.InferenceSample.MAUI</ApplicationId>
 		<ApplicationIdGuid>58af3884-1c25-42b7-b78b-30a65fb3cf69</ApplicationIdGuid>
 
 		<!-- Versions -->
@@ -64,6 +63,11 @@
 
 		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
+		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
 	</ItemGroup>
 
 </Project>

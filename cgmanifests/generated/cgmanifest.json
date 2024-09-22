@@ -146,7 +146,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
+          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -216,7 +216,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f161f95883b4ebd8cb789de5efc67b73c0a6e694",
+          "commitHash": "62bdde2a04fcd53c2409cb895ee18db445b7e755",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -360,6 +360,16 @@
           "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
         },
         "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]

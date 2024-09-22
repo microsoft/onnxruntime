@@ -1035,6 +1035,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   // std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "cuda") {
+#ifdef ENABLE_TRAINING_CORE
+    // cudnn frontend exception in orttraining-linux-gpu-ci-pipeline.
+    broken_tests->insert({"keras_lotus_resnet3D", "Temporarily disabled pending investigation", {}});
+#endif
 #ifdef _WIN32
     broken_tests->insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests->insert({"bidaf", "this test fails with new image since Aug 25."});
