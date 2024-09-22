@@ -48,7 +48,7 @@ void LoraAdapter::InitializeParamsValues() {
   }
 
   const auto* params = adapter_->parameters();
-  InlinedHashMap<std::string, Param> params_values;
+  std::unordered_map<std::string, Param> params_values;
   params_values.reserve(params->size());
   for (const auto* param : *params) {
     auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
@@ -58,6 +58,7 @@ void LoraAdapter::InitializeParamsValues() {
       params_values.emplace(std::move(name), std::move(lora_param));
     } else {
       Param lora_param(std::move(ort_value));
+      params_values.emplace(std::move(name), std::move(lora_param));
     }
   }
   params_values_.swap(params_values);

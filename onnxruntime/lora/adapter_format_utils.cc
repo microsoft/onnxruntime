@@ -121,7 +121,7 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
 }
 
 // XXX: Figure out how to implement DML copy.
-static void CopyOnDevice(const Tensor& src, Tensor& dst) {
+static void CopyOnDevice([[maybe_unused]] const Tensor& src, Tensor& dst) {
   const auto& mem_info = dst.Location();
 
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {

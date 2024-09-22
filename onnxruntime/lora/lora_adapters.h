@@ -15,6 +15,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <unordered_map>
 
 namespace onnxruntime {
 namespace lora {
@@ -64,8 +65,8 @@ class LoraAdapter {
     OrtValue ort_value_device_;
   };
 
-  using param_const_iterator = InlinedHashMap<std::string, Param>::const_iterator;
-  using param_iterator = InlinedHashMap<std::string, Param>::iterator;
+  using param_const_iterator = std::unordered_map<std::string, Param>::const_iterator;
+  using param_iterator = std::unordered_map<std::string, Param>::iterator;
 
   /// <summary>
   /// Obtain a range of the iterators
@@ -170,7 +171,7 @@ class LoraAdapter {
 
   AllocatorPtr device_allocator_;
   const adapters::Adapter* adapter_{nullptr};
-  InlinedHashMap<std::string, Param> params_values_;
+  std::unordered_map<std::string, Param> params_values_;
 };
 
 }  // namespace lora
