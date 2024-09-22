@@ -138,6 +138,11 @@ namespace Dml
         return allocInfo.Detach();
     }
 
+    DmlAllocatorType BucketizedBufferAllocator::Type() const
+    {
+        return DmlAllocatorType::Bucketized;
+    }
+
     void BucketizedBufferAllocator::FreeResource(void* p, uint64_t pooledResourceId)
     {
         AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);

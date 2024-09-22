@@ -25,3 +25,4 @@ static const char* const kOrtSessionOptionsConfigEnableGraphSerialization = "ep.
 static const char* const kOrtSessionOptionsConfigEnableGraphCapture = "ep.dml.enable_graph_capture";
 static const char* const kOrtSessionOptionsConfigEnableCpuSyncSpinning = "ep.dml.enable_cpu_sync_spinning";
 static const char* const kOrtSessionOptionsConfigDisableMemoryArena = "ep.dml.disable_memory_arena";
+static const char* const kOrtSessionOptionsPreferredMemoryAllocatorType = "ep.dml.preferred_memory_allocator_type";

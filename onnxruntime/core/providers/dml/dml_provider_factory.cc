@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <vector>
+#include <charconv>
 
 #define INITGUID
 #include <guiddef.h>
@@ -30,6 +31,7 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/src/ErrorHandling.h"
 #include "DmlExecutionProvider/src/GraphicsUnknownHelper.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "DmlExecutionProvider/src/DmlBufferAllocator.h"
 #include "core/platform/env.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #include "core/providers/dml/DmlExecutionProvider/src/ExecutionContext.h"
@@ -40,6 +42,16 @@ static bool ConfigValueIsTrue(std::string&& config_value)
 {
   std::transform(config_value.begin(), config_value.end(), config_value.begin(), [](char ch) { return static_cast<char>(std::tolower(ch)); });
   return config_value == "true" || config_value == "1";
+}
+
+static int ConfigValueAsNumber(std::string&& config_value)
+{
+  int result = 0;
+  if (std::from_chars(config_value.c_str(), config_value.c_str() + config_value.length(), result).ec != std::errc(0))
+  {
+    ORT_THROW_HR(E_INVALIDARG);
+  }
+  return result;
 }
 
 struct DMLProviderFactory : IExecutionProviderFactory {
@@ -57,6 +69,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
     graph_capture_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphCapture, "0"));
     cpu_sync_spinning_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableCpuSyncSpinning, "0"));
     disable_memory_arena_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableMemoryArena, "0"));
+    allocator_type_ = ::Dml::DmlAllocatorType(ConfigValueAsNumber(config_options.GetConfigOrDefault(kOrtSessionOptionsPreferredMemoryAllocatorType, "0")));
   }
 
   ~DMLProviderFactory() override {}
@@ -73,6 +86,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   bool cpu_sync_spinning_enabled_ = false;
   bool disable_memory_arena_ = false;
   bool python_api_ = false;
+  ::Dml::DmlAllocatorType allocator_type_ = ::Dml::DmlAllocatorType::Default;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
@@ -93,7 +107,7 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
     execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
   }
 
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_, disable_memory_arena_);
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_, disable_memory_arena_, allocator_type_);
   return provider;
 }
 

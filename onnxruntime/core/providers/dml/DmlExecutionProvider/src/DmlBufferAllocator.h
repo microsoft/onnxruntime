@@ -25,6 +25,8 @@ namespace Dml
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) = 0;
         void Free(void* p) final;
 
+        virtual DmlAllocatorType Type() const = 0;
+
     protected:
         using onnxruntime::IAllocator::IAllocator;
 
