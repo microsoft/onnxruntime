@@ -2750,7 +2750,7 @@ static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
 /// <summary>
 /// Try to remove empty DQ -> Q pair that results from moving a Transpose downstream or a Transpose being canceled out.
 /// (DQ -> Q -> consumer node) => consumer node
-/// (producer node -> DQ -> Q -> graph output) => producer node -> graph output
+/// (parent node -> DQ -> Q -> graph output) => parent node -> graph output
 /// </summary>
 /// <param name="ctx">Optimizer context</param>
 /// <param name="q_node">QuantizeLinear node</param>
@@ -2782,14 +2782,7 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
   const size_t num_q_consumers = q_consumers->nodes.size();
   const bool q_has_single_consumer = q_consumers->comprehensive && (num_q_consumers == 1);
 
-  auto remove_dq_q_nodes = [&ctx, &dq_node, &q_node]() {
-    // disconnect other nodes and remove
-    dq_node.SetInput(0, "");
-    q_node.SetInput(0, "");
-    ctx.graph.RemoveNode(dq_node);
-    ctx.graph.RemoveNode(q_node);
-  };
-
+  // (DQ -> Q -> consumer node) => consumer node
   if (q_has_single_consumer) {
     std::unique_ptr<api::NodeRef> q_consumer_node = std::move(q_consumers->nodes[0]);
 
@@ -2801,9 +2794,17 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
       }
     }
 
-    remove_dq_q_nodes();
+    // disconnect other nodes and remove
+    dq_node.SetInput(0, "");
+    q_node.SetInput(0, "");
+    ctx.graph.RemoveNode(dq_node);
+    ctx.graph.RemoveNode(q_node);
+
     return true;
-  } else if (num_q_consumers == 0 && ctx.graph.IsGraphOutput(q_output)) {
+  }
+
+  // (parent node -> DQ -> Q -> graph output) => (parent node -> graph output)
+  if (num_q_consumers == 0 && ctx.graph.IsGraphOutput(q_output)) {
     // Get the DQ's parent node.
     std::string_view dq_input = dq_node.Inputs()[0];
     auto dq_parent_node = ctx.graph.GetNodeProducingOutput(dq_input);
@@ -2824,10 +2825,15 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
       return false;
     }
 
-    // Move the Q's output to the node before the DQ.
+    // Move Q's output to come out of DQ's parent node instead.
+    dq_node.SetInput(0, "");  // Disconnect DQ from its parent first.
     ctx.graph.MoveOutput(q_node, 0, *dq_parent_node, dq_parent_output_index);
 
-    remove_dq_q_nodes();
+    // Disconnect Q and remove both DQ and Q from the graph.
+    q_node.SetInput(0, "");
+    ctx.graph.RemoveNode(dq_node);
+    ctx.graph.RemoveNode(q_node);
+
     return true;
   }
 
