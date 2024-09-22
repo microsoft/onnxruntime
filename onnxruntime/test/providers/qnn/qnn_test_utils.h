@@ -33,16 +33,37 @@ struct QuantParams {
   float scale;
   QType zero_point;
 
+  inline std::pair<float, float> CalcRminRmax() const {
+    constexpr double qmin = static_cast<double>(std::numeric_limits<QType>::min());
+    constexpr double qmax = static_cast<double>(std::numeric_limits<QType>::max());
+    const double qrange = (qmax - qmin);
+    const double rrange = this->scale * qrange;
+    const double rmin = -(static_cast<double>(this->zero_point) - qmin) * this->scale;
+    const double rmax = rrange + rmin;
+
+    return {static_cast<float>(rmin), static_cast<float>(rmax)};
+  }
+
+  inline bool IsSymmetric() const {
+    constexpr double qmin = static_cast<double>(std::numeric_limits<QType>::min());
+    constexpr double qmax = static_cast<double>(std::numeric_limits<QType>::max());
+    double init_zero_point = (qmin + qmax) / 2.0;
+    const QType symm_zero_point = static_cast<QType>(RoundHalfToEven(
+        std::max(static_cast<float>(qmin), static_cast<float>(std::min(qmax, init_zero_point)))));
+
+    return this->zero_point == symm_zero_point;
+  }
+
   static QuantParams<QType> Compute(float rmin, float rmax, bool symmetric = false) {
     return Compute(
         rmin,
         rmax,
-        static_cast<float>(std::numeric_limits<QType>::min()),
-        static_cast<float>(std::numeric_limits<QType>::max()),
+        std::numeric_limits<QType>::min(),
+        std::numeric_limits<QType>::max(),
         symmetric);
   }
 
-  static QuantParams<QType> Compute(float rmin, float rmax, float qmin, float qmax, bool symmetric = false) {
+  static QuantParams<QType> Compute(float rmin, float rmax, QType qmin, QType qmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -56,25 +77,32 @@ struct QuantParams {
       rmin = -abs_max;
     }
 
-    float qmin_flt = qmin;
-    float qmax_flt = qmax;
-    const float scale = (rmax - rmin) / (qmax_flt - qmin_flt);
-    float initial_zero_point = 0.0f;
+    const double qmin_dbl = qmin;
+    const double qmax_dbl = qmax;
+    const double scale = (rmax - rmin) / (qmax_dbl - qmin_dbl);
+    double initial_zero_point = 0.0;
 
     if (symmetric) {
       // Symmetric uses same formula for zero-point as asymmetric, but we can cancel out terms for
       // increased numerical accuracy.
-      initial_zero_point = (qmin_flt + qmax_flt) / 2.0f;
+      initial_zero_point = (qmin_dbl + qmax_dbl) / 2.0;
     } else {
-      initial_zero_point = qmin_flt - (rmin / scale);
+      initial_zero_point = qmin_dbl - (rmin / scale);
     }
 
-    const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin_flt,
-                                                                         std::min(qmax_flt, initial_zero_point))));
+    const QType zero_point = static_cast<QType>(RoundHalfToEven(
+        std::max(static_cast<float>(qmin_dbl), static_cast<float>(std::min(qmax_dbl, initial_zero_point)))));
 
-    return QuantParams<QType>{scale, zero_point};
+    return QuantParams<QType>{static_cast<float>(scale), zero_point};
   }
 };
+
+// Utitity that converts quantization parameters from one type to another (e.g., uint8 to uint16).
+template <typename SrcQType, typename DstQType>
+inline QuantParams<DstQType> ConvertQuantParams(QuantParams<SrcQType> src_qparams) {
+  std::pair<float, float> src_rmin_rmax = src_qparams.CalcRminRmax();
+  return QuantParams<DstQType>::Compute(src_rmin_rmax.first, src_rmin_rmax.second, src_qparams.IsSymmetric());
+}
 
 // Signature for function that builds a QDQ model.
 // The parameter `output_qparams` contains quantization parameters that *can* be used for the QDQ model output.

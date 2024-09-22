@@ -170,9 +170,9 @@ static bool IsDQQConversion(const GraphViewer& graph_viewer, const Node& dq_node
     return false;
   }
 
-  // check Q/DQ have same scale type and different zero point type
-  return (dq_zp_tensor_proto->data_type() != q_zp_tensor_proto->data_type()) &&
-         (dq_scale_tensor_proto->data_type() == q_scale_tensor_proto->data_type());
+  // Check that the Q/DQ have same scale type.
+  // The zero-point types can either be the same or different, so no need to check.
+  return (dq_scale_tensor_proto->data_type() == q_scale_tensor_proto->data_type());
 }
 
 }  // namespace qnn
