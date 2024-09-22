@@ -60,7 +60,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
-  set(onnxruntime_cpu_neural_speed_srcs 
+  set(onnxruntime_cpu_neural_speed_srcs
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"
@@ -266,7 +266,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-  install(TARGETS onnxruntime_providers
+  install(TARGETS onnxruntime_providers EXPORT ${PROJECT_NAME}Targets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

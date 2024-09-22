@@ -18,6 +18,6 @@ else ()
         )
     endif()
 
-    FetchContent_Populate(eigen)
+    onnxruntime_fetchcontent_makeavailable(eigen)
     set(eigen_INCLUDE_DIRS  "${eigen_SOURCE_DIR}")
 endif()
