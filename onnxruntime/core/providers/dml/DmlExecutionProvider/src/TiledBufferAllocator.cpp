@@ -40,6 +40,11 @@ namespace Dml
         }
     }
 
+    DmlAllocatorType TiledBufferAllocator::Type() const
+    {
+        return DmlAllocatorType::Tiled;
+    }
+
     void* TiledBufferAllocator::Alloc(size_t size, AllocatorPoolingMode poolingMode)
     {
         // For some reason lotus likes requesting 0 bytes of memory

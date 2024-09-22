@@ -29,6 +29,8 @@ namespace Dml
 
         void Clear();
 
+        virtual DmlAllocatorType Type() const override;
+
     private:
         ComPtr<ID3D12Device> m_device;
         D3D12_HEAP_PROPERTIES m_heapProperties;

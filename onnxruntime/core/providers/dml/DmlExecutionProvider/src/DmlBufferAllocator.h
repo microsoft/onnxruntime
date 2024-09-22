@@ -4,6 +4,13 @@
 
 namespace Dml
 {
+    enum class DmlAllocatorType
+    {
+        Default = 0,
+        Bucketized,
+        Tiled
+    };
+
     class CPUAllocator : public onnxruntime::IAllocator
     {
     public:
@@ -24,6 +31,8 @@ namespace Dml
         void* Alloc(size_t size) final;
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) = 0;
         void Free(void* p) final;
+
+        virtual DmlAllocatorType Type() const = 0;
 
     protected:
         using onnxruntime::IAllocator::IAllocator;

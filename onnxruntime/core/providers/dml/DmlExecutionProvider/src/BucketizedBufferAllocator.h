@@ -34,6 +34,8 @@ namespace Dml
         using DmlBufferAllocator::Alloc;
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) override;
 
+        virtual DmlAllocatorType Type() const override;
+
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
 
