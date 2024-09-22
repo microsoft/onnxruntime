@@ -5014,8 +5014,8 @@ TEST(TransposeOptimizerTests, RemoveEmptyDQQAtGraphOutput) {
     ASSERT_STATUS_OK(graph.Resolve());
 
     // Use this hack to save model for viewing if needed
-    ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
-                                 ToPathString("updated_model_empty_dqq_graph_output.onnx")));
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("updated_model_empty_dqq_graph_output.onnx")));
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     EXPECT_EQ(op_to_count["Transpose"], 0) << "2 pre-existing Transposes at the I/O cancel. ";
