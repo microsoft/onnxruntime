@@ -4,6 +4,13 @@
 
 namespace Dml
 {
+    enum class DmlAllocatorType
+    {
+        Default = 0,
+        Bucketized,
+        Tiled
+    };
+
     class CPUAllocator : public onnxruntime::IAllocator
     {
     public:
