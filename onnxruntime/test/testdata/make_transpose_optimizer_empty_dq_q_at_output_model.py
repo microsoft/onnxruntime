@@ -89,9 +89,9 @@ def make_model(model_path: str):
     nodes.append(tp1_node)
 
     # Q_3 to graph output
-    nodes.append(onnx.helper.make_node(
-        "QuantizeLinear", ["tp1_out", "scale_inv_255", "zp_0"], ["output0"], name="q3_node"
-    ))
+    nodes.append(
+        onnx.helper.make_node("QuantizeLinear", ["tp1_out", "scale_inv_255", "zp_0"], ["output0"], name="q3_node")
+    )
 
     graph = onnx.helper.make_graph(
         nodes,
