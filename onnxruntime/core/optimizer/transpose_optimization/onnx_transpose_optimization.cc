@@ -2749,8 +2749,9 @@ static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
 
 /// <summary>
 /// Try to remove empty DQ -> Q pair that results from moving a Transpose downstream or a Transpose being canceled out.
-/// (DQ -> Q -> consumer node) => consumer node
-/// (parent node -> DQ -> Q -> graph output) => parent node -> graph output
+/// Handles the following scenarios:
+///   - (DQ -> Q -> consumer node) => consumer node
+///   - (parent node -> DQ -> Q -> graph output) => parent node -> graph output
 /// </summary>
 /// <param name="ctx">Optimizer context</param>
 /// <param name="q_node">QuantizeLinear node</param>
@@ -2784,12 +2785,12 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
 
   // (DQ -> Q -> consumer node) => consumer node
   if (q_has_single_consumer) {
-    std::unique_ptr<api::NodeRef> q_consumer_node = std::move(q_consumers->nodes[0]);
+    std::unique_ptr<api::NodeRef> single_consumer_node = std::move(q_consumers->nodes[0]);
 
     // connect Q consumer to DQ input
-    for (size_t j_idx = 0, j_end = q_consumer_node->Inputs().size(); j_idx < j_end; ++j_idx) {
-      if (q_consumer_node->Inputs()[j_idx] == q_node.Outputs()[0]) {
-        q_consumer_node->SetInput(j_idx, dq_node.Inputs()[0]);
+    for (size_t j_idx = 0, j_end = single_consumer_node->Inputs().size(); j_idx < j_end; ++j_idx) {
+      if (single_consumer_node->Inputs()[j_idx] == q_node.Outputs()[0]) {
+        single_consumer_node->SetInput(j_idx, dq_node.Inputs()[0]);
         // break; in theory the Q might be providing multiple inputs.
       }
     }

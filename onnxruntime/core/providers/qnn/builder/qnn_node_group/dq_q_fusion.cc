@@ -170,8 +170,10 @@ static bool IsDQQConversion(const GraphViewer& graph_viewer, const Node& dq_node
     return false;
   }
 
-  // Check that the Q/DQ have same scale type.
-  // The zero-point types can either be the same or different, so no need to check.
+  // For scale, ensure that the Q/DQ have same scale type.
+  //
+  // For zero-point: we previously only fused (DQ -> Q) into a Convert op if the quantization types differed.
+  // However, a single Convert op is faster than (DQ -> Q), so we should always fuse regardless of the zero-point type.
   return (dq_scale_tensor_proto->data_type() == q_scale_tensor_proto->data_type());
 }
 
