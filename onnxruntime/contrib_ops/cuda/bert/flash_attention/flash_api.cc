@@ -31,11 +31,14 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* out,
                       void* cu_seqlens_q_d,
                       void* cu_seqlens_k_d,
+                      void* seqused_k,
                       void* p_d,
                       void* softmax_lse_d,
                       float softmax_scale,
+                      float softcap,
                       bool is_causal,
                       bool is_bf16,
+                      bool use_smooth_softmax,
                       bool kv_bsnh = true,
                       int window_size_left = -1,
                       int window_size_right = -1) {
@@ -46,6 +49,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.o_ptr = out;
 
   params.is_bf16 = is_bf16;
+  params.smooth_softmax = use_smooth_softmax;
 
   // All stride are in elements, not bytes.
   if (kv_bsnh) {
@@ -82,6 +86,7 @@ void set_params_fprop(Flash_fwd_params& params,
 
   params.cu_seqlens_q = static_cast<int*>(cu_seqlens_q_d);
   params.cu_seqlens_k = static_cast<int*>(cu_seqlens_k_d);
+  params.seqused_k = static_cast<int*>(seqused_k);
 
   // P = softmax(QK^T)
   params.p_ptr = p_d;
@@ -90,6 +95,11 @@ void set_params_fprop(Flash_fwd_params& params,
   params.softmax_lse_ptr = softmax_lse_d;
 
   // Set the dimensions.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4267)  // Ignore conversion from 'size_t' to 'int', possible loss of data
+#pragma warning(disable : 4244)  // Ignore conversion from 'double' to 'float', possible loss of data
+#endif
   params.b = batch_size;
   params.h = num_heads;
   params.h_k = num_heads_k;
@@ -102,10 +112,18 @@ void set_params_fprop(Flash_fwd_params& params,
   params.d_rounded = head_size_rounded;
 
   // Set the different scale values.
-  params.scale_softmax = softmax_scale;
-  params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+  if (softcap > 0.0) {
+    params.softcap = softmax_scale / softcap;
+    params.scale_softmax = softcap;
+    params.scale_softmax_log2 = softcap * M_LOG2E;
+  } else {
+    // Remove potential NaN
+    params.softcap = 0.0;
+    params.scale_softmax = softmax_scale;
+    params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+  }
 
-  // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API seperates
+  // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API separates
   // local and causal, meaning when we have local window size
   params.is_causal = is_causal;
   if (is_causal && (window_size_left >= 0 || window_size_right != 0)) {
@@ -117,30 +135,34 @@ void set_params_fprop(Flash_fwd_params& params,
   if (window_size_left >= 0 && window_size_right < 0) {
     window_size_right = seqlen_k;
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
   params.window_size_left = window_size_left;
   params.window_size_right = window_size_right;
 
   params.is_seqlens_k_cumulative = true;
 }
 
-size_t get_softmax_lse_size(int seqlen, int batch_size, int num_heads) {
+size_t get_softmax_lse_size(size_t seqlen, size_t batch_size, size_t num_heads) {
   size_t bytes = sizeof(float) * batch_size * num_heads * seqlen;
   return bytes;
 }
 
-size_t get_softmax_lse_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q) {
+size_t get_softmax_lse_accum_size(size_t num_splits, size_t batch_size, size_t num_heads, size_t seqlen_q) {
   size_t bytes = sizeof(float) * num_splits * batch_size * seqlen_q * num_heads;
   return bytes;
 }
 
-size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q, int head_size_rounded) {
+size_t get_out_accum_size(size_t num_splits, size_t batch_size, size_t num_heads,
+                          size_t seqlen_q, size_t head_size_rounded) {
   size_t bytes = sizeof(float) * num_splits * batch_size * seqlen_q * num_heads * head_size_rounded;
   return bytes;
 }
 
 void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split_kernel = false) {
   FP16_SWITCH(!params.is_bf16, [&] {
-    FWD_HEADDIM_SWITCH(params.d, [&] {
+    HEADDIM_SWITCH(params.d, [&] {
       if (params.num_splits <= 1 && !force_split_kernel) {  // If we don't set it num_splits == 0
         run_mha_fwd_<elem_type, kHeadDim>(params, stream);
       } else {
@@ -156,15 +178,15 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split
 // splits as that would incur more HBM reads/writes.
 // So we find the best efficiency, then find the smallest number of splits that gets 85%
 // of the best efficiency.
-int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs,
-                         int max_splits) {
+size_t num_splits_heuristic(size_t batch_size, size_t seqlen_q, size_t seqlen_k, size_t num_heads,
+                            size_t head_size, size_t num_SMs, size_t max_splits) {
   // This needs to match with run_mha_fwd_splitkv_dispatch
-  const int block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
-  const int num_n_blocks = (seqlen_k + block_n - 1) / block_n;
+  const size_t block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
+  const size_t num_n_blocks = (seqlen_k + block_n - 1) / block_n;
   // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
   // In any case we don't expect seqlen_q to be larger than 64 for inference.
-  const int num_m_blocks = (seqlen_q + 64 - 1) / 64;
-  int batch_nheads_mblocks = batch_size * num_heads * num_m_blocks;
+  const size_t num_m_blocks = (seqlen_q + 64 - 1) / 64;
+  size_t batch_nheads_mblocks = batch_size * num_heads * num_m_blocks;
   // If we have enough to almost fill the SMs, then just use 1 split
   if (batch_nheads_mblocks >= 0.8f * num_SMs) {
     return 1;
@@ -173,15 +195,15 @@ int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_hea
   float max_efficiency = 0.f;
   std::vector<float> efficiency;
   efficiency.reserve(max_splits);
-  auto ceildiv = [](int a, int b) { return (a + b - 1) / b; };
+  auto ceildiv = [](size_t a, size_t b) { return (a + b - 1) / b; };
   // Some splits are not eligible. For example, if we have 64 blocks and choose 11 splits,
   // we'll have 6 * 10 + 4 blocks. If we choose 12 splits, we'll have 6 * 11 + (-2) blocks
   // (i.e. it's 11 splits anyway).
   // So we check if the number of blocks per split is the same as the previous num_splits.
-  auto is_split_eligible = [&ceildiv, &num_n_blocks](int num_splits) {
+  auto is_split_eligible = [&ceildiv, &num_n_blocks](size_t num_splits) {
     return num_splits == 1 || ceildiv(num_n_blocks, num_splits) != ceildiv(num_n_blocks, num_splits - 1);
   };
-  for (int num_splits = 1; num_splits <= max_splits; num_splits++) {
+  for (size_t num_splits = 1; num_splits <= max_splits; num_splits++) {
     if (!is_split_eligible(num_splits)) {
       efficiency.push_back(0.f);
     } else {
@@ -194,7 +216,7 @@ int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_hea
       efficiency.push_back(eff);
     }
   }
-  for (int num_splits = 1; num_splits <= max_splits; num_splits++) {
+  for (size_t num_splits = 1; num_splits <= max_splits; num_splits++) {
     if (!is_split_eligible(num_splits)) {
       continue;
     }
@@ -207,24 +229,38 @@ int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_hea
 }
 
 // Returns (num_splits, softmax_lse_accum bytes, out_accum bytes)
-std::tuple<int, int, int> get_num_splits_and_buffer_sizes(int batch_size, int seqlen_q, int seqlen_k, int num_heads,
-                                                          int head_size, int num_SMs) {
-  int max_splits = 128;
+std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t seqlen_q, size_t seqlen_k,
+                                                                   size_t num_heads, size_t head_size, size_t num_SMs) {
+  size_t max_splits = 128;
   // split kv buffers
-  int num_splits = num_splits_heuristic(batch_size, seqlen_q, seqlen_k, num_heads, head_size,
-                                        num_SMs, max_splits);
+  size_t num_splits = num_splits_heuristic(batch_size, seqlen_q, seqlen_k, num_heads, head_size,
+                                           num_SMs, max_splits);
   if (num_splits > 1) {
     // softmax_lse_accum buffer
-    int softmax_lse_accum_bytes = get_softmax_lse_accum_size(num_splits, batch_size, num_heads, seqlen_q);
+    size_t softmax_lse_accum_bytes = get_softmax_lse_accum_size(num_splits, batch_size, num_heads, seqlen_q);
     // out_accum buffer
-    auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-    const int head_size_rounded = round_multiple(head_size, 32);
-    int out_accum_bytes = get_out_accum_size(num_splits, batch_size, num_heads, seqlen_q, head_size_rounded);
+    auto round_multiple = [](size_t x, size_t m) { return (x + m - 1) / m * m; };
+    const size_t head_size_rounded = round_multiple(head_size, 32);
+    size_t out_accum_bytes = get_out_accum_size(num_splits, batch_size, num_heads, seqlen_q, head_size_rounded);
     return {num_splits, softmax_lse_accum_bytes, out_accum_bytes};
   } else {
     return {0, 0, 0};
   }
 }
+
+// void set_params_alibi(Flash_fwd_params &params, void* alibi_slopes, int batch_size, int num_heads){
+//     if (alibi_slopes != nullptr) {
+//         // TORCH_CHECK(alibi_slopes.dtype() == torch::kFloat32, "ALiBi slopes must have dtype fp32");
+//         // CHECK_DEVICE(alibi_slopes);
+//         // TORCH_CHECK(alibi_slopes.stride(-1) == 1, "ALiBi slopes tensor must have contiguous last dimension");
+//         // TORCH_CHECK(alibi_slopes.sizes() == torch::IntArrayRef({num_heads})
+//                              || alibi_slopes.sizes() == torch::IntArrayRef({batch_size, num_heads}));
+//         params.alibi_slopes_ptr = alibi_slopes;
+//         params.alibi_slopes_batch_stride = alibi_slopes.dim() == 2 ? num_heads : 0; // TODO: flag for bool
+//     } else {
+//         params.alibi_slopes_ptr = nullptr;
+//     }
+// }
 
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
@@ -240,8 +276,10 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int seqlen_q,
                int seqlen_k,
                float softmax_scale,
+               const float softcap,
                bool is_causal,
                bool is_bf16,
+               bool use_smooth_softmax,
                int num_splits,
                void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
@@ -262,11 +300,14 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    /*cu_seqlens_q*/ nullptr,
                    /*cu_seqlens_k*/ nullptr,
-                   nullptr,
+                   /*seqused_k=*/nullptr,
+                   /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
+                   softcap,
                    is_causal,
                    is_bf16,
+                   use_smooth_softmax,
                    kv_bsnh,
                    local_window_size,
                    is_causal ? 0 : -1);
@@ -289,6 +330,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
     params.oaccum_ptr = nullptr;
   }
 
+  params.alibi_slopes_ptr = nullptr;
+
   run_mha_fwd(params, stream);
   return Status::OK();
 }
@@ -301,6 +344,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       void* out,          // half (total_q, num_heads, head_size)
                       int* cu_seqlens_q,  // int (batch_size + 1)
                       int* cu_seqlens_k,  // int (batch_size + 1)
+                      void* seqused_k,    // batch_size; If given, use this many elements of each batch element's keys.
+                      int* block_table,   // batch_size x max_num_blocks_per_seq
                       void* softmax_lse,  // float (batch_size, num_heads, max_seqlen_q)
                       int batch_size,
                       int num_heads,
@@ -309,12 +354,16 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int max_seqlen_q,
                       int max_seqlen_k,
                       float softmax_scale,
+                      const float softcap,
                       bool is_causal,
-                      bool is_bf16) {
+                      bool is_bf16,
+                      int max_num_blocks_per_seq,
+                      int page_block_size) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
+  const bool paged_KV = block_table != nullptr;
 
   Flash_fwd_params params;
   set_params_fprop(params,
@@ -326,11 +375,14 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
-                   nullptr,
+                   seqused_k,
+                   /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
+                   softcap,
                    is_causal,
                    is_bf16,
+                   false,
                    true,
                    -1,
                    is_causal ? 0 : -1);
@@ -340,11 +392,25 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   params.oaccum_ptr = nullptr;
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
+  params.alibi_slopes_ptr = nullptr;
+  if (paged_KV) {
+    params.block_table = block_table;  // TODO(aciddelgado): cast to int pointer
+    params.block_table_batch_stride = max_num_blocks_per_seq;
+    // params.num_blocks = num_blocks;
+    params.page_block_size = page_block_size;
+    params.k_batch_stride = page_block_size * num_heads_k * head_size;
+    params.v_batch_stride = page_block_size * num_heads_k * head_size;
+  } else {
+    params.block_table = nullptr;
+    params.block_table_batch_stride = 0;
+    // params.num_blocks = 0;
+    params.page_block_size = 1;
+  }
   run_mha_fwd(params, stream);
   return Status::OK();
 }
 
-bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k) {
+bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k) {
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
   return (is_sm8x || is_sm90) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
@@ -364,6 +430,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* seqlens_k_,   // batch_size
                        void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
                        void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
+                       int* block_table,   // batch_size x max_num_blocks_per_seq
                        int batch_size,
                        int num_heads,
                        int num_heads_k,
@@ -373,19 +440,24 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_k_new,
                        int rotary_dim,
                        const float softmax_scale,
+                       const float softcap,
                        bool is_causal,
                        bool is_bf16,
+                       bool use_smooth_softmax,
                        bool past_bsnh,  // otherwise bnsh
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                        int local_window_size,
                        bool is_rotary_interleaved,
-                       bool is_packed_qkv) {
+                       bool is_packed_qkv,
+                       int max_num_blocks_per_seq,
+                       int page_block_size) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-  const int head_size_rounded = round_multiple(head_size, 32);
+  const int head_size_rounded = head_size <= 192 ? round_multiple(head_size, 32) : 256;
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
+  const bool paged_KV = block_table != nullptr;
 
   // In kv-cache case, seqlen_k_max as kv sequence length
   Flash_fwd_params params;
@@ -398,11 +470,14 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    q, kcache, vcache, out,
                    /*cu_seqlens_q_d=*/nullptr,
                    /*cu_seqlens_k_d=*/nullptr,
+                   /*seqused_k=*/nullptr,
                    /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
+                   softcap,
                    is_causal,
                    is_bf16,
+                   use_smooth_softmax,
                    past_bsnh,
                    local_window_size,
                    is_causal ? 0 : -1);
@@ -459,6 +534,21 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   } else {
     params.softmax_lseaccum_ptr = nullptr;
     params.oaccum_ptr = nullptr;
+  }
+
+  params.alibi_slopes_ptr = nullptr;
+  if (paged_KV) {
+    params.block_table = block_table;  // TODO(aciddelgado): cast to int pointer
+    params.block_table_batch_stride = max_num_blocks_per_seq;
+    // params.num_blocks = num_blocks;
+    params.page_block_size = page_block_size;
+    params.k_batch_stride = page_block_size * num_heads_k * head_size;
+    params.v_batch_stride = page_block_size * num_heads_k * head_size;
+  } else {
+    params.block_table = nullptr;
+    params.block_table_batch_stride = 0;
+    // params.num_blocks = 0;
+    params.page_block_size = 1;
   }
 
   // Only split kernel supports appending to KV cache

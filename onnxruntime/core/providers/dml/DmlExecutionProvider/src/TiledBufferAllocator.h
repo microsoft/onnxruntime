@@ -19,7 +19,7 @@ namespace Dml
         };
 
     public:
-        TiledBufferAllocator(ID3D12Device* device, std::shared_ptr<ExecutionContext> context,
+        TiledBufferAllocator(ID3D12Device* device, ExecutionContext* context,
                              const D3D12_HEAP_PROPERTIES& heapProps, D3D12_HEAP_FLAGS heapFlags,
                              D3D12_RESOURCE_FLAGS resourceFlags, D3D12_RESOURCE_STATES initialState,
                              std::unique_ptr<DmlSubAllocator>&& subAllocator);
@@ -35,7 +35,7 @@ namespace Dml
         D3D12_HEAP_FLAGS m_heapFlags;
         D3D12_RESOURCE_FLAGS m_resourceFlags;
         D3D12_RESOURCE_STATES m_initialState;
-        std::shared_ptr<ExecutionContext> m_context;
+        ExecutionContext* m_context;
 
         HeapAllocator m_pooledAllocator;
 

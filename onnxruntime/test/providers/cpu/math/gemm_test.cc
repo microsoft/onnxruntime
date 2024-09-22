@@ -366,7 +366,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBroadcast) {
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
 
     std::unordered_set<std::string> excluded_providers;
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
     excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
 
@@ -405,7 +405,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTrans) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                              static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
   test.Config(run_with_tunable_op)
@@ -431,7 +431,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTransB) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
     test.Config(run_with_tunable_op)
@@ -461,7 +461,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTransB_1) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
     test.Config(run_with_tunable_op)
@@ -491,7 +491,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmAlpha) {
   // test.AddOutput<TypeParam>("Y", {2, 3},
   //                   {5.0f, 5.0f, 5.0f,
   //                    -5.0f, -5.0f, -5.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
@@ -516,7 +516,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBeta) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f),
                              static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
@@ -564,7 +564,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmAlphaBeta) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f),
                              static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-3.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
@@ -641,6 +641,46 @@ TYPED_TEST(GemmOpTypedTests, GemmEmptyTensor) {
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
+
+TYPED_TEST(GemmOpTypedTests, ZeroKWithBias) {
+  OpTester test("Gemm", 13);
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<TypeParam>("A", {4, 0}, {});
+  test.AddInput<TypeParam>("B", {0, 4}, {});
+  test.AddInput<TypeParam>("C", {4}, std::vector<TypeParam>(4, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(1.0f)));
+
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, ZeroKWithNoBias) {
+  OpTester test("Gemm", 13);
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", .0f);
+
+  test.AddInput<TypeParam>("A", {4, 0}, {});
+  test.AddInput<TypeParam>("B", {0, 4}, {});
+  test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(0.0f)));
+
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
 TYPED_TEST(GemmOpTypedTests, MissingBias) {
   OpTester test("Gemm", 11);
 

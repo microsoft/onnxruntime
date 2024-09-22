@@ -268,7 +268,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     }
 
     ONNX_NAMESPACE::TensorProto split_initializer_proto;
-    split_initializer_proto.set_name(graph.GenerateNodeName("splits"));
+    split_initializer_proto.set_name(graph.GenerateNodeArgName("splits"));
     split_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     split_initializer_proto.add_dims(static_cast<int64_t>(split_values.size()));
     split_initializer_proto.mutable_int64_data()->Add(split_values.begin(), split_values.end());

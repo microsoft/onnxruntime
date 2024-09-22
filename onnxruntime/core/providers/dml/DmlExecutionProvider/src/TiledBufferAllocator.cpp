@@ -8,7 +8,7 @@
 
 namespace Dml
 {
-    TiledBufferAllocator::TiledBufferAllocator(ID3D12Device* device, std::shared_ptr<ExecutionContext> context,
+    TiledBufferAllocator::TiledBufferAllocator(ID3D12Device* device, ExecutionContext* context,
                                                const D3D12_HEAP_PROPERTIES& heapProps, D3D12_HEAP_FLAGS heapFlags,
                                                D3D12_RESOURCE_FLAGS resourceFlags, D3D12_RESOURCE_STATES initialState,
                                                std::unique_ptr<DmlSubAllocator>&& subAllocator) :

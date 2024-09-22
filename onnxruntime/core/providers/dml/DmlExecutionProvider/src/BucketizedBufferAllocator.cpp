@@ -28,7 +28,7 @@ namespace Dml
 
     BucketizedBufferAllocator::BucketizedBufferAllocator(
         ID3D12Device* device,
-        std::shared_ptr<ExecutionContext> context,
+        ExecutionContext* context,
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
@@ -164,12 +164,16 @@ namespace Dml
         }
         else
         {
-            // Free the underlying allocation once queued work has completed.
-#ifdef _GAMING_XBOX
-            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
-#else
-            m_context->QueueReference(allocInfo->GetResource());
-#endif
+            if (!m_context->IsClosed())
+            {
+                // Free the underlying allocation once queued work has completed.
+    #ifdef _GAMING_XBOX
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+    #else
+                m_context->QueueReference(allocInfo->GetResource());
+    #endif
+            }
+
             allocInfo->DetachResourceWrapper();
         }
 
@@ -199,5 +203,4 @@ namespace Dml
           m_pool.clear();
         }
     }
-
 } // namespace Dml

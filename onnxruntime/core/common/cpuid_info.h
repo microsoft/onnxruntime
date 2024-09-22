@@ -61,7 +61,7 @@ class CPUIDInfo {
 
   /**
    * @brief Some ARMv8 power efficient core has narrower 64b load/store
-   *        that needs specialized optimiztion in kernels
+   *        that needs specialized optimization in kernels
    * @return whether the indicated core has narrower load/store device
    */
   bool IsCoreArmv8NarrowLd(uint32_t coreId) const {
@@ -73,7 +73,7 @@ class CPUIDInfo {
 
   /**
    * @brief Some ARMv8 power efficient core has narrower 64b load/store
-   *        that needs specialized optimiztion in kernels
+   *        that needs specialized optimization in kernels
    * @return whether the current core has narrower load/store device
    */
   bool IsCurrentCoreArmv8NarrowLd() const {
@@ -118,15 +118,18 @@ class CPUIDInfo {
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
 
-#ifdef CPUIDINFO_ARCH_X86
+#if defined(CPUIDINFO_ARCH_X86)
 
   void X86Init();
-#elif defined(CPUIDINFO_ARCH_ARM)
-  // Now the following var is only used in ARM build, but later one we may expand the usage.
-  bool pytorch_cpuinfo_init_{false};
-#endif
 
-#ifdef __linux__
+#elif defined(CPUIDINFO_ARCH_ARM)
+
+#if defined(CPUINFO_SUPPORTED)
+  // Now the following var is only used in ARM build, but later on we may expand the usage.
+  bool pytorch_cpuinfo_init_{false};
+#endif  // defined(CPUINFO_SUPPORTED)
+
+#if defined(__linux__)
 
   void ArmLinuxInit();
 
@@ -134,7 +137,13 @@ class CPUIDInfo {
 
   void ArmWindowsInit();
 
-#endif /* (arm or arm64) and windows */
+#elif defined(__APPLE__)
+
+  void ArmAppleInit();
+
+#endif
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
 };
 
 }  // namespace onnxruntime

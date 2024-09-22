@@ -438,7 +438,7 @@ final class OnnxRuntime {
   /**
    * Extracts the providers array from the C API, converts it into an EnumSet.
    *
-   * <p>Throws IllegalArgumentException if a provider isn't recognised (note this exception should
+   * <p>Throws IllegalArgumentException if a provider isn't recognized (note this exception should
    * only happen during development of ONNX Runtime, if it happens at any other point, file an issue
    * on <a href="https://github.com/microsoft/onnxruntime">GitHub</a>).
    *

@@ -782,6 +782,27 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializers(con
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& file_names,
+                                                                                              const std::vector<char*>& buffer_array,
+                                                                                              const std::vector<size_t>& file_lengths) {
+  const size_t inputs_num = file_names.size();
+  if (inputs_num != buffer_array.size()) {
+    ORT_CXX_API_THROW("Expecting names and buffer_array to have the same length", ORT_INVALID_ARGUMENT);
+  }
+  if (inputs_num != file_lengths.size()) {
+    ORT_CXX_API_THROW("Expecting names and file_lengths to have the same length", ORT_INVALID_ARGUMENT);
+  }
+  std::vector<const ORTCHAR_T*> names_ptr;
+  names_ptr.reserve(inputs_num);
+  for (size_t i = 0; i < inputs_num; ++i) {
+    names_ptr.push_back(file_names[i].c_str());
+  }
+  ThrowOnError(GetApi().AddExternalInitializersFromFilesInMemory(this->p_, names_ptr.data(), buffer_array.data(),
+                                                                 file_lengths.data(), inputs_num));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA(this->p_, &provider_options));
   return *this;
@@ -1965,7 +1986,9 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
     TensorTypeAndShapeInfo type_shape_info(info);
     auto integer_shape = type_shape_info.GetShape();
     std::vector<const char*> symbolic_shape(integer_shape.size(), {});
-    type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+    if (!integer_shape.empty()) {
+      type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+    }
     Shape shape;
     for (size_t ith = 0; ith < integer_shape.size(); ++ith) {
       if (symbolic_shape[ith] && std::string{symbolic_shape[ith]}.size() > 0) {
@@ -1979,9 +2002,10 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
   }
 }
 
-inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape) {
+inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape, ONNXTensorElementDataType type) {
   OrtTensorTypeAndShapeInfo* info = {};
   ORT_CXX_RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetTensorElementType(info, type));
 
   using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
 
@@ -1994,7 +2018,7 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
 
   for (const auto dim : shape) {
     if (dim.IsInt()) {
-      integer_dims.push_back(dim.IsInt());
+      integer_dims.push_back(dim.AsInt());
       symbolic_dims.push_back("");
     } else {
       if (!dim.AsSym() || std::string{dim.AsSym()}.empty()) {
@@ -2024,6 +2048,9 @@ inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_n
   int64_t i = {};
   size_t out = {};
   // first call to get the bytes needed
+  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
+  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
+  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
   auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, &i, sizeof(i), &out);
   if (status) {
     size_t num_i = out / sizeof(int64_t);
@@ -2031,6 +2058,9 @@ inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_n
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, ints.data(), out, &out));
     return ints;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {i};
   }
 }
@@ -2048,6 +2078,9 @@ inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* at
   float f = {};
   size_t out = {};
   // first call to get the bytes needed
+  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
+  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
+  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
   auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, &f, sizeof(f), &out);
   if (status) {
     size_t num_f = out / sizeof(float);
@@ -2055,6 +2088,9 @@ inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* at
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, floats.data(), out, &out));
     return floats;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {f};
   }
 }
@@ -2079,6 +2115,9 @@ inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* 
   char c = {};
   size_t out = {};
   // first call to get the bytes needed
+  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
+  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
+  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
   auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRINGS, &c, sizeof(char), &out);
   if (status) {
     std::vector<char> chars(out, '\0');
@@ -2095,6 +2134,9 @@ inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* 
     }
     return strings;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {std::string{c}};
   }
 }

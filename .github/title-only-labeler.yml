@@ -1,0 +1,4 @@
+ep:CUDA: '/\bcuda\b/i'
+ep:TensorRT: '/(\btensor\s*rt\b|\btrt\b)/i'
+platform:windows: '/(\bwindows\b|\bwinrt\b|\bwinml\b)/i'
+quantization: '/(quant|\bqdq\b)/i'

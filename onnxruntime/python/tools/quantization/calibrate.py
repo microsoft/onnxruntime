@@ -128,6 +128,9 @@ class TensorsData:
     def values(self):
         return self.data.values()
 
+    def items(self):
+        return self.data.items()
+
 
 class CalibrationMethod(Enum):
     MinMax = 0
@@ -155,6 +158,12 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
             raise StopIteration
         return result
 
+    def __len__(self):
+        raise NotImplementedError
+
+    def set_range(self, start_index: int, end_index: int):
+        raise NotImplementedError
+
 
 class CalibraterBase:
     def __init__(
@@ -164,13 +173,15 @@ class CalibraterBase:
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
+        per_channel=False,
     ):
         """
         :param model_path: ONNX model to calibrate. It should be a model file path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param symmetric: make range of tensor symmetric (central point is 0).
-        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb.
+        :param per_channel: whether to compute ranges per each channel.
         """
         if isinstance(model_path, str):
             self.model = load_model_with_shape_infer(Path(model_path))
@@ -183,6 +194,7 @@ class CalibraterBase:
         self.augmented_model_path = augmented_model_path
         self.symmetric = symmetric
         self.use_external_data_format = use_external_data_format
+        self.per_channel = per_channel
 
         self.augment_model = None
         self.infer_session = None
@@ -274,6 +286,7 @@ class MinMaxCalibrater(CalibraterBase):
         moving_average=False,
         averaging_constant=0.01,
         max_intermediate_outputs=None,
+        per_channel=False,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -284,6 +297,7 @@ class MinMaxCalibrater(CalibraterBase):
         :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
         :param averaging_constant: constant smoothing factor to use when computing the moving average.
         :param max_intermediate_outputs: maximum number of intermediate outputs before an intermediate range is computed.
+        :param per_channel: whether to compute ranges per each channel.
         """
         super().__init__(
             model_path,
@@ -291,6 +305,7 @@ class MinMaxCalibrater(CalibraterBase):
             augmented_model_path=augmented_model_path,
             symmetric=symmetric,
             use_external_data_format=use_external_data_format,
+            per_channel=per_channel,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -310,8 +325,14 @@ class MinMaxCalibrater(CalibraterBase):
         """
         tensors, _ = self.select_tensors_to_calibrate(self.model)
         reshape_shape_name = str(uuid.uuid4())
-        reshape_shape = numpy_helper.from_array(np.array([1], dtype=np.int64), reshape_shape_name)
+        reshape_shape = numpy_helper.from_array(np.array([-1], dtype=np.int64), reshape_shape_name)
         self.model.graph.initializer.append(reshape_shape)
+
+        def get_op_version(op_type, model):
+            for opset_import in model.opset_import:
+                if onnx.defs.has(op_type, opset_import.domain):
+                    return opset_import.version
+            raise RuntimeError(f"Model does not contain a version for '{op_type}'.")
 
         def add_reduce_min_max(tensor_name, reduce_op_name):
             # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
@@ -332,7 +353,6 @@ class MinMaxCalibrater(CalibraterBase):
                 name=intermediate_output,
             )
 
-            self.model.graph.node.extend([reduce_node, reshape_node])
             value_infos = {vi.name: vi for vi in self.model.graph.value_info}
             value_infos.update({o.name: o for o in self.model.graph.output})
             value_infos.update({i.name: i for i in self.model.graph.input})
@@ -343,7 +363,22 @@ class MinMaxCalibrater(CalibraterBase):
                     f"Unable to guess tensor type for tensor {tensor_name!r}, "
                     f"running shape inference before quantization may resolve this issue."
                 )
-            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [1]))
+
+            # Include axes in reduce_op when per_channel, always keeping axis=1
+            if self.per_channel:
+                tensor_rank = len(value_infos[tensor_name].type.tensor_type.shape.dim)
+                reduced_axes = [0, *range(2, tensor_rank)]
+                # Depending on opset version, axes in ReduceMin/ReduceMax are in attribute or inputs
+                if get_op_version(reduce_op_name, self.model) < 18:
+                    reduce_node.attribute.append(helper.make_attribute("axes", reduced_axes))
+                else:
+                    reduce_axes_name = str(uuid.uuid4())
+                    reduce_axes = numpy_helper.from_array(np.array(reduced_axes, dtype=np.int64), reduce_axes_name)
+                    reduce_node.input.append(reduce_axes_name)
+                    self.model.graph.initializer.append(reduce_axes)
+
+            self.model.graph.node.extend([reduce_node, reshape_node])
+            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [None]))
 
         for tensor in tensors:
             add_reduce_min_max(tensor, "ReduceMin")
@@ -383,13 +418,31 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items():
-            if self.moving_average:
-                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
-                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+            # Handling for structured data types with TensorData
+            if isinstance(value, TensorData):
+                old_min = value.range_value[0]
+                old_max = value.range_value[1]
             else:
-                min_value = min(value[0], new_range[key][0])
-                max_value = max(value[1], new_range[key][1])
-            new_range[key] = (min_value, max_value)
+                old_min, old_max = value
+
+            if isinstance(new_range[key], TensorData):
+                new_min = new_range[key].range_value[0]
+                new_max = new_range[key].range_value[1]
+            else:
+                new_min, new_max = new_range[key]
+
+            if self.moving_average:
+                min_value = old_min + self.averaging_constant * (new_min - old_min)
+                max_value = old_max + self.averaging_constant * (new_max - old_max)
+            else:
+                min_value = min(old_min, new_min)
+                max_value = max(old_max, new_max)
+
+            # If structured as TensorData, wrap the result accordingly
+            if isinstance(value, TensorData) or isinstance(new_range[key], TensorData):
+                new_range[key] = TensorData(lowest=min_value, highest=max_value)
+            else:
+                new_range[key] = (min_value, max_value)
 
         return new_range
 
@@ -430,7 +483,7 @@ class MinMaxCalibrater(CalibraterBase):
                 max_value_array = np.max(merged_added_output_dict[added_output_names[i + 1]], axis=0)
 
             if self.symmetric:
-                max_absolute_value = max(np.abs(min_value_array), np.abs(max_value_array))
+                max_absolute_value = np.max([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
                 pairs.append(tuple([-max_absolute_value, max_absolute_value]))
             else:
                 pairs.append(tuple([min_value_array, max_value_array]))
@@ -512,16 +565,29 @@ class HistogramCalibrater(CalibraterBase):
         """
         Entropy Calibrator collects operators' tensors as well as generates tensor histogram for each operator.
         """
+        input_names_set = {node_arg.name for node_arg in self.infer_session.get_inputs()}
+        output_names = [node_arg.name for node_arg in self.infer_session.get_outputs()]
+
         while True:
             inputs = data_reader.get_next()
             if not inputs:
                 break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            outputs = self.infer_session.run(None, inputs)
+
+            # Copy np.ndarray only for graph outputs that are also graph inputs to workaround bug:
+            # https://github.com/microsoft/onnxruntime/issues/21922
+            fixed_outputs = []
+            for output_index, output in enumerate(outputs):
+                if output_names[output_index] in input_names_set:
+                    fixed_outputs.append(copy.copy(output))
+                else:
+                    fixed_outputs.append(output)
+
+            self.intermediate_outputs.append(fixed_outputs)
 
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
-        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
             dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
@@ -733,13 +799,11 @@ class HistogramCollector(CalibrationDataCollector):
         for tensor, data_arr in name_to_arr.items():
             if isinstance(data_arr, list):
                 for arr in data_arr:
-                    if not isinstance(arr, np.ndarray):
-                        raise ValueError(f"Unexpected type {type(arr)} for tensor={tensor!r}")
-                dtypes = set(a.dtype for a in arr)
-                if len(dtypes) != 1:
-                    raise ValueError(
-                        f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
-                    )
+                    assert isinstance(arr, np.ndarray), f"Unexpected type {type(arr)} for tensor={tensor!r}"
+                dtypes = set(a.dtype for a in data_arr)
+                assert (
+                    len(dtypes) == 1
+                ), f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
                 data_arr_np = np.asarray(data_arr)
             elif not isinstance(data_arr, np.ndarray):
                 raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
@@ -761,7 +825,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -783,7 +847,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist[: len(old_hist)] += old_hist
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
@@ -1025,7 +1089,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i
-            end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
+            end_index = min(zero_bin_index + i + 1, num_bins)
 
             thresholds[i - num_half_quantized_bin] = (hist_edges[start_index], hist_edges[end_index])
 
@@ -1099,6 +1163,7 @@ def create_calibrator(
         moving_average = extra_options.get("moving_average", False)
         averaging_constant = extra_options.get("averaging_constant", 0.01)
         max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
+        per_channel = extra_options.get("per_channel", False)
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -1108,6 +1173,7 @@ def create_calibrator(
             moving_average=moving_average,
             averaging_constant=averaging_constant,
             max_intermediate_outputs=max_intermediate_outputs,
+            per_channel=per_channel,
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm

@@ -23,7 +23,9 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) << 32 | static_cast<uint64_t>(key.node_id));
+      // unordered_map has poor performance on Windows when inserting consecutive keys.
+      // keys are usually inserted with key.node_id being incremented at each iteration.
+      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) | static_cast<uint64_t>(key.node_id) << 32);
     }
   };
 };
@@ -326,11 +328,10 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
-  TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
-                                                          const int64_t& n_targets_or_classes,
-                                                          POST_EVAL_TRANSFORM post_transform,
-                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                                                                post_transform, base_values) {}
+  TreeAggregatorMax(size_t n_trees,
+                    const int64_t& n_targets_or_classes,
+                    POST_EVAL_TRANSFORM post_transform,
+                    const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, post_transform, base_values) {}
 
   // 1 output
 

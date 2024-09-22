@@ -18,6 +18,9 @@ struct RotaryParameters {
   int rotary_embedding_dim;  // Rotary embedding dimension.
   int num_heads;             // num_heads = hidden_size / head_size
   int max_sequence_length;   // Sequence length used by cos/sin cache
+  int head_stride;           // Head stride
+  int seq_stride;            // Sequence stride
+  int batch_stride;          // Batch stride
   int position_ids_format;   // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
   bool transposed;           // Whether the input tensor has been transposed into (batch, num_heads, seq_len, hidden)
 };
@@ -116,6 +119,23 @@ Status CheckInputs(const T* input,
                            "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }
 
+  num_heads = num_heads > 0 ? num_heads : static_cast<int>(hidden_size / head_size);
+  // Calculate stride values
+  int head_stride;
+  int seq_stride;
+  int batch_stride;
+  if (transposed) {
+    // Transposed input tensor shape is [batch, n_heads, seq_len, head_size]
+    seq_stride = head_size;
+    head_stride = sequence_length * seq_stride;
+    batch_stride = num_heads * head_stride;
+  } else {
+    // Default input tensor shape is [batch, seq_len, hidden_size]
+    head_stride = head_size;
+    seq_stride = num_heads * head_stride;
+    batch_stride = sequence_length * seq_stride;
+  }
+
   // Set rotary parameters
   if (parameters != nullptr) {
     RotaryParameters* output_parameters = reinterpret_cast<RotaryParameters*>(parameters);
@@ -123,8 +143,11 @@ Status CheckInputs(const T* input,
     output_parameters->sequence_length = sequence_length;
     output_parameters->hidden_size = hidden_size;
     output_parameters->head_size = head_size;
-    output_parameters->num_heads = num_heads > 0 ? num_heads : static_cast<int>(hidden_size / head_size);
+    output_parameters->num_heads = num_heads;
     output_parameters->max_sequence_length = max_sequence_length;
+    output_parameters->head_stride = head_stride;
+    output_parameters->seq_stride = seq_stride;
+    output_parameters->batch_stride = batch_stride;
     output_parameters->position_ids_format = position_ids_format;
     output_parameters->transposed = transposed;
     output_parameters->rotary_embedding_dim = rotary_embedding_dim > 0 ? rotary_embedding_dim : head_size;

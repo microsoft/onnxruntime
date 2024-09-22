@@ -38,13 +38,14 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // 2. Otherwise, we add Argmax layer normally
   if (node.GetOutputEdgesCount() == 1) {
     auto it = node.OutputEdgesBegin();
-    const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
+    const auto* next_node_in_partition = graph_viewer.GetNode(it->GetNode().Index());
     // If Argmax's successive node is a Cast from int64 to int32 output
-    // The 'cast to' type is checked in operator supported related, omit the check here
-    if (succ_node->OpType() == "Cast") {
+    // The 'cast to' type is checked when determining operator support (see CastOpBuilder::IsOpSupportedImpl())
+    //   so we omit the check here
+    if (next_node_in_partition != nullptr && next_node_in_partition->OpType() == "Cast") {
       // Skip the cast's input/argmax's output
       *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-      *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
+      *layer->mutable_output()->Add() = next_node_in_partition->OutputDefs()[0]->Name();
       model_builder.AddLayer(std::move(layer));
       return Status::OK();
     }

@@ -192,6 +192,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<float>* p) override { return p->Run(); }
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) override { return p->Run(); }
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) override { return p->Run(); }
+  void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
+                                              gsl::span<const int64_t> input_dims,
+                                              InlinedVector<float>& scales) const override {
+    p->AdjustOutputSizeAsPolicy(output_dims, input_dims, scales);
+  }
 
 #ifndef DISABLE_CONTRIB_OPS
   Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) override {
@@ -220,12 +225,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
-                                    const Tensor* relative_position_bias,
+                                    const Tensor* attention_bias,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
-                                                  relative_position_bias,
+                                                  attention_bias,
                                                   parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
@@ -293,12 +298,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
   Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
   Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
-
-  void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
-                                              gsl::span<const int64_t> input_dims,
-                                              InlinedVector<float>& scales) const override {
-    p->AdjustOutputSizeAsPolicy(output_dims, input_dims, scales);
-  }
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

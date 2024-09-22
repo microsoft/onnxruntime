@@ -228,7 +228,7 @@ const NnApi LoadNnApi() {
   nnapi.ASharedMemory_create = getASharedMemory_create();
 #else
   // Mock ASharedMemory_create only if libneuralnetworks.so was successfully
-  // loaded. This ensures identical behaviour on platforms which use this
+  // loaded. This ensures identical behavior on platforms which use this
   // implementation, but don't have libneuralnetworks.so library, and
   // platforms which use nnapi_implementation_disabled.cc stub.
   if (libneuralnetworks != nullptr) {

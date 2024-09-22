@@ -109,19 +109,11 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ORT_IGNORE_RETURN_VALUE(GetShape(b, b_shape, logger));
   int64_t b0 = -1, b1 = -1;
 
-  // ML Program MatMul supports N-D input
   if (model_builder.CreateMLProgram() && is_matmul) {
-    if (b_shape.size() == 1) {
-      // B is treated as {b_shape[0], 1} according to the numpy rules.
-      b0 = b_shape[0];
-      b1 = 1;
-    } else {
-      // last 2 dims are used
-      b0 = b_shape[b_shape.size() - 2];
-      b1 = b_shape[b_shape.size() - 1];
-    }
+    // ML Program MatMul supports N-D input, however we don't use the 'K' or 'N' values calculated below for it
+    // so we don't need to update b0 or b1.
   } else {
-    // we only support 2D input
+    // we only support 2D input for all other combinations
     b0 = b_shape[0];
     b1 = b_shape[1];
   }
@@ -182,7 +174,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       model_builder.AddOperation(std::move(gemm_op));
     } else {
       // CoreML implementation is the same as ONNX MatMul.
-      // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.linear.matmul
       auto matmul_op = model_builder.CreateOperation(node, "matmul");
       AddOperationInput(*matmul_op, "x", a.Name());
       AddOperationInput(*matmul_op, "y", b.Name());
@@ -268,14 +259,28 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   }
 
   if (is_matmul) {
+    const auto a_rank = a_shape.size();
+    const auto b_rank = b_shape.size();
+
     if (input_params.create_mlprogram) {
-      // ML Program matmul op has numpy semantics the same as the ONNX spec so we can use directly
+      // ML Program matmul op has numpy semantics the same as the ONNX spec, so we can use directly.
+      // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.linear.matmul
+      //
+      // There does appear to be a bug in handling one of the inputs being 1D, so for now skip these.
+      // See https://github.com/apple/coremltools/issues/2263
+      //
+      // If required for perf we could manually do the shape alterations the spec documents (convert input to 2D,
+      // and remove extra dimension from output), as the 2D input is correctly handled by CoreML matmul.
+      if ((a_rank == 1 && b_rank > 1) || (a_rank > 1 && b_rank == 1)) {
+        LOGS(logger, VERBOSE) << "Skipping due to bug in CoreML ML Program when one of the inputs is 1D.";
+        return false;
+      }
     } else {
       // we could potentially support 1D and 3D if required. beyond 3D the dims that merge diverge.
       // https://github.com/apple/coremltools/blob/1931758aae383c83daddfc56f11a24a9d2bf4b87/coremltools/converters/onnx/_operators.py#L1607
       // https://github.com/apple/coremltools/blob/1931758aae383c83daddfc56f11a24a9d2bf4b87/coremltools/converters/mil/backend/nn/op_mapping.py#L1374
       // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#innerproductlayerparams
-      if (a_shape.size() != 2 || b_shape.size() != 2) {
+      if (a_rank != 2 || b_rank != 2) {
         LOGS(logger, VERBOSE) << "a and b inputs must be 2D. ";
         return false;
       }

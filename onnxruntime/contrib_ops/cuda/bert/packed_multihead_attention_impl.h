@@ -17,7 +17,8 @@ struct PackedMultiHeadAttentionData {
   const T* key;
   const T* value;
   const T* bias;
-  const T* relative_position_bias;
+  const T* attention_bias;
+
   const int32_t* token_offset;
   const int32_t* cumulative_sequence_length;
 

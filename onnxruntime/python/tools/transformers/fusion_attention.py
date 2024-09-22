@@ -672,7 +672,7 @@ class FusionAttention(Fusion):
                 q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads
             )
             mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
-        elif type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
+        elif type(k_matmul) is NodeProto and type(v_matmul) is NodeProto:
             if self.disable_multi_head_attention_bias:
                 mha_inputs.extend([q_add.output[0], k_matmul.output[0], v_add.output[0]])
             else:
@@ -691,6 +691,9 @@ class FusionAttention(Fusion):
             return None
 
         # Add bias to inputs for MHA
+        # Bias for cross attention is not fully supported in DMMHA and cpu MHA kernels since they assume
+        # bias has been added to key and value when they are in BNSH format, so only bias for query is used.
+        # Need add checks if we found such assumption is not true.
         if not self.disable_multi_head_attention_bias:
             bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, mha_node_name)
             mha_inputs.append(bias_name)

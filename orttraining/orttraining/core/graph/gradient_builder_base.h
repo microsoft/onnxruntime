@@ -225,7 +225,9 @@ class GradientBuilderBase {
   }
 
   int OnnxOpSetVersion() const {
-    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ? graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
+    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end()
+               ? graph_->DomainToVersionMap().at(kOnnxDomain)
+               : -1;
   }
 
   template <typename T>

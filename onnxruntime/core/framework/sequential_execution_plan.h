@@ -106,7 +106,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // types of steps:
   // 1. Kernel Launch
   // 2. Activate notification
-  // 3. Wait on a notificaiton
+  // 3. Wait on a notification
   class ExecutionStep {
    public:
     ExecutionStep(NodeIndex node_index) : node_index_(node_index) {}
@@ -122,7 +122,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
    protected:
     NodeIndex node_index_;
   };
-  // LogicStream is a sequence of execution steps that can be executed independetly.
+  // LogicStream is a sequence of execution steps that can be executed independently.
   // The steps within a sequence are executed in order, and happened on the same device.
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
@@ -160,7 +160,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::vector<size_t> notification_owners;
   // key: notification index.
   // value:  {stream_idx, step_idx}
-  // giving a notificaiton, we used this map to figure out what is the downstream steps it need to trigger.
+  // giving a notification, we used this map to figure out what is the downstream steps it need to trigger.
   InlinedHashMap<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
 
   size_t num_barriers{0};

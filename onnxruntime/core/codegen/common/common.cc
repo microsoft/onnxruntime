@@ -159,7 +159,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
     ORT_THROW_IF_ERROR(node.ForEachWithIndex(node.ImplicitInputDefs(), process_input_fn));
 
     // Handle outouts
-    // two cases are considerd as outputs
+    // two cases are considered as outputs
     // 1. Output NodeArg is not used by any Node
     // 2. Output NodeArg is used by at least one Node out of this subgraph.
     //    Note a NodeArg can be used by Nodes in and out of the subgraph at the same time.

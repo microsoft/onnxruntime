@@ -1036,7 +1036,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
   std::vector<int64_t> index_dims{8};
   std::vector<int64_t> weight_dims{2};
   std::vector<int64_t> dX_dims{8, 2};
-  // Set run_cpu_baseline_seperately = True because CPU kernel did not support multiple type support
+  // Set run_cpu_baseline_separately = True because CPU kernel did not support multiple type support
   // for input and output.
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
                                                             dX_dims, "mean", -1, 5e-2, false /*has_bias*/);

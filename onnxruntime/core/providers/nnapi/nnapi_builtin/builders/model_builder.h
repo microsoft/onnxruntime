@@ -134,7 +134,7 @@ class ModelBuilder {
   std::unordered_set<std::string> operands_;
   std::unordered_set<std::string> fused_activations_;
 
-  std::unordered_set<std::string> skipped_initializers_;
+  std::unordered_map<std::string, int> initializer_usage_;
 
   // All activation nodes (Relu, Relu1, Relu6) as a map <const NodeUnit*, activation_code>
   std::unordered_map<const NodeUnit*, int32_t> activation_node_units_;

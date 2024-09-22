@@ -41,11 +41,11 @@
             ],
             "dims": [1, 2, 8],
             "type": "float32"
-          },
-          {
-            "data": null,
-            "type": "float32"
           }
+          // {
+          //   "data": null,
+          //   "type": "float32"
+          // }
         ]
       }
     ]

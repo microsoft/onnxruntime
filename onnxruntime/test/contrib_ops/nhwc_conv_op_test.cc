@@ -30,7 +30,8 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
                     bool use_float16,
                     bool weight_is_initializer = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  // NHWC implementation doesn't handle W in NHWC layout if it's not an initializer
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && weight_is_initializer;
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
 

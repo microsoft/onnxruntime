@@ -4,16 +4,16 @@
 'use strict';
 
 import webpack from 'webpack';
-import {resolve} from 'node:path';
-import {DEFAULT_ES_VERSION, addCopyrightBannerPlugin} from '../webpack.shared.mjs';
+import { resolve } from 'node:path';
+import { DEFAULT_ES_VERSION, addCopyrightBannerPlugin } from '../webpack.shared.mjs';
 
 function buildConfig({
-  suffix = '.js',                  // '.js', '.min.js', ...
-  format = 'umd',                  // 'umd', 'commonjs'
-  target = 'web',                  // 'web', 'node'
-  esVersion = DEFAULT_ES_VERSION,  // 'es5', 'es6', ...
-  mode = 'production',             // 'development', 'production'
-  devtool = 'source-map'           // 'inline-source-map', 'source-map'
+  suffix = '.js', // '.js', '.min.js', ...
+  format = 'umd', // 'umd', 'commonjs'
+  target = 'web', // 'web', 'node'
+  esVersion = DEFAULT_ES_VERSION, // 'es5', 'es6', ...
+  mode = 'production', // 'development', 'production'
+  devtool = 'source-map', // 'inline-source-map', 'source-map'
 }) {
   // output file name
   const filename = `ort-common${suffix}`;
@@ -29,24 +29,28 @@ function buildConfig({
     output: {
       path: resolve('./dist'),
       filename,
-      library: {name: exportName, type: format},
+      library: { name: exportName, type: format },
     },
     resolve: {
       extensions: ['.ts', '.js'],
-      extensionAlias: {'.js': ['.ts', '.js']},
+      extensionAlias: { '.js': ['.ts', '.js'] },
     },
     plugins: [
-      new webpack.WatchIgnorePlugin({paths: [/\.js$/, /\.d\.ts$/]}),
+      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       addCopyrightBannerPlugin(mode, 'common', esVersion),
     ],
     module: {
-      rules: [{
-        test: /\.ts$/,
-        use: [{
-          loader: 'ts-loader',
-          options: {compilerOptions: {target: esVersion}},
-        }]
-      }]
+      rules: [
+        {
+          test: /\.ts$/,
+          use: [
+            {
+              loader: 'ts-loader',
+              options: { compilerOptions: { target: esVersion } },
+            },
+          ],
+        },
+      ],
     },
     mode,
     devtool,
@@ -55,9 +59,9 @@ function buildConfig({
 
 export default (env, argv) => {
   return [
-    buildConfig({suffix: '.es5.min.js', target: 'web', esVersion: 'es5'}),
-    buildConfig({suffix: '.min.js'}),
-    buildConfig({mode: 'development', devtool: 'inline-source-map'}),
+    buildConfig({ suffix: '.es5.min.js', target: 'web', esVersion: 'es5' }),
+    buildConfig({ suffix: '.min.js' }),
+    buildConfig({ mode: 'development', devtool: 'inline-source-map' }),
     buildConfig({
       suffix: '.node.cjs',
       target: 'node',

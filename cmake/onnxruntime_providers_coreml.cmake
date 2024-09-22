@@ -126,10 +126,12 @@ endif()
 if (APPLE)
   file(GLOB
     onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/objc_str_utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/objc_str_utils.mm"
   )
 else()
   # add the Model implementation that uses the protobuf types but excludes any actual CoreML dependencies

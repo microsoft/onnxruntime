@@ -348,7 +348,7 @@ def test_get_input_output_names():
 
 
 # Fails in ONNX 1.16.0 due to potential shape inference bug for custom ops.
-# Potential ONNX fix: https://github.com/onnx/onnx/pull/6049
+# Potential ONNX fix: https://github.com/onnx/onnx/pull/6080
 # Error log: LookupError: The provided name onnx::linear.output::171 is not a graph value info or a graph output.
 @pytest.mark.skipif(
     pv.Version(onnx.__version__) == pv.Version("1.16.0"), reason="Shape inference bug for custom ops in ONNX 1.16.0"

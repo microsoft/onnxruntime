@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, InferenceSessionHandler, SessionHandler} from 'onnxruntime-common';
+import { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } from 'onnxruntime-common';
 
-import {Binding, binding} from './binding';
+import { Binding, binding } from './binding';
 
 class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
 
-  constructor(pathOrBuffer: string|Uint8Array, options: InferenceSession.SessionOptions) {
+  constructor(pathOrBuffer: string | Uint8Array, options: InferenceSession.SessionOptions) {
     this.#inferenceSession = new binding.InferenceSession();
     if (typeof pathOrBuffer === 'string') {
       this.#inferenceSession.loadModel(pathOrBuffer, options);
@@ -33,8 +33,11 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     // TODO: implement profiling
   }
 
-  async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
-      Promise<SessionHandler.ReturnType> {
+  async run(
+    feeds: SessionHandler.FeedsType,
+    fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions,
+  ): Promise<SessionHandler.ReturnType> {
     return new Promise((resolve, reject) => {
       setImmediate(() => {
         try {
@@ -53,8 +56,10 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createInferenceSessionHandler(
+    pathOrBuffer: string | Uint8Array,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSessionHandler> {
     return new Promise((resolve, reject) => {
       setImmediate(() => {
         try {

@@ -33,19 +33,21 @@
   )
 
 
-  if (onnxruntime_CUDA_MINIMAL)
-    set(onnxruntime_providers_cuda_shared_srcs "")
-  else()
+  if (NOT onnxruntime_CUDA_MINIMAL)
     file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
     )
+  else()
+    set(onnxruntime_providers_cuda_cu_srcs
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
+        )
   endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
-  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     if (NOT onnxruntime_ENABLE_ATEN)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
@@ -153,7 +155,7 @@
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-      option(onnxruntime_NVCC_THREADS "Number of threads that NVCC can use for compilation." 1)
+      set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
 
@@ -175,6 +177,10 @@
       endif()
     endif()
 
+    if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
+    endif()
+
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
     if (onnxruntime_ENABLE_TRAINING_OPS)
       onnxruntime_add_include_to_target(${target} onnxruntime_training)
@@ -191,12 +197,16 @@
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart
-              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-      if(onnxruntime_CUDNN_HOME)
-          target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-          target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      include(cudnn_frontend) # also defines CUDNN::*
+      if (onnxruntime_USE_CUDA_NHWC_OPS)
+        if(CUDNN_MAJOR_VERSION GREATER 8)
+          add_compile_definitions(ENABLE_CUDA_NHWC_OPS)
+        else()
+          message( WARNING "To compile with NHWC ops enabled please compile against cuDNN 9 or newer." )
+        endif()
       endif()
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
+              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
@@ -283,8 +293,15 @@
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
-
+  # Cannot use glob because the file cuda_provider_options.h should not be exposed out.
+  set(ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_context.h"
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_resource.h"
+      )
+  set_target_properties(onnxruntime_providers_cuda PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS}")
   install(TARGETS onnxruntime_providers_cuda
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

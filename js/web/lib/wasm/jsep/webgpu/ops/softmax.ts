@@ -5,13 +5,20 @@
 // performance limitations when the reduced axis is long. Need to add
 // a optimized codepath for this.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo } from '../types';
 
-import {getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
+import {
+  getMaxComponents,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+  sumVector,
+  tensorTypeToWsglStorageType,
+} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -55,9 +62,10 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
   const output = outputVariable('result', input.dataType, input.dims, components);
   const valueType = x.type.value;
   // 6.2.4 in wgsl spec
-  const threadMaxDecl = tensorTypeToWsglStorageType(input.dataType) === 'f32' ?
-      `var threadMax = ${valueType}(-3.402823e+38f);` :
-      `var threadMax = ${valueType}(-65504.0h);`;
+  const threadMaxDecl =
+    tensorTypeToWsglStorageType(input.dataType) === 'f32'
+      ? `var threadMax = ${valueType}(-3.402823e+38f);`
+      : `var threadMax = ${valueType}(-65504.0h);`;
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       var<workgroup> rowMaxShared : ${valueType};
       var<workgroup> rowSumShared : ${valueType};
@@ -133,11 +141,11 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }`;
   return {
     name: 'Softmax',
-    shaderCache: {hint: `${components}`, inputDependencies: ['type']},
+    shaderCache: { hint: `${components}`, inputDependencies: ['type'] },
     getRunData: () => ({
-      outputs: [{dims: shape, dataType: input.dataType}],
-      dispatchGroup: {x: rows},
-      programUniforms: [{type: DataType.int32, data: packedCols}]
+      outputs: [{ dims: shape, dataType: input.dataType }],
+      dispatchGroup: { x: rows },
+      programUniforms: [{ type: DataType.int32, data: packedCols }],
     }),
     getShaderSource,
   };
@@ -149,4 +157,4 @@ export const softmax = (context: ComputeContext, attributes: SoftmaxAttributes):
 };
 
 export const parseSoftmaxAttributes = (attributes: Record<string, unknown>): SoftmaxAttributes =>
-    createAttributeWithCacheKey({axis: attributes.axis as number});
+  createAttributeWithCacheKey({ axis: attributes.axis as number });

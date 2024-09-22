@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -31,18 +32,14 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.19.2.240210
+  default: 2.26.0.240828
 
 jobs:
 - job: Build_QNN_EP
-  pool: onnxruntime-qnn-ubuntu-2004-cpu
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   timeoutInMinutes: 30
   workspace:
     clean: all
-
-  variables:
-    - name: QNN_SDK_ROOT
-      value: /data/qnnsdk/${{parameters.QnnSdk}}
 
   steps:
   - task: UsePythonVersion@0
@@ -50,23 +47,24 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
+  - script: |
+      env | grep ANDROID
+    displayName: View Android ENVs
+
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
 
-  - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
-    displayName: set Android ENVs
+  - template: templates/jobs/download_linux_qnn_sdk.yml
+    parameters:
+      QnnSDKVersion: ${{ parameters.QnnSdk }}
 
   - script: |
       set -e -x
       rm -rf /tmp/scripts
-      cp -r tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts /tmp
+      cp -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts /tmp
       /tmp/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
       python3 tools/ci_build/build.py \
         --config Release \
@@ -78,7 +76,7 @@ jobs:
         --android_api=31 \
         --parallel \
         --use_qnn \
-        --qnn_home $(QNN_SDK_ROOT) \
+        --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
         --skip_tests --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc
     displayName: Build QNN EP

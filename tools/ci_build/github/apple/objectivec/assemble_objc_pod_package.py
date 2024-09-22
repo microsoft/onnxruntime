@@ -17,6 +17,7 @@ from package_assembly_utils import (  # noqa: E402
     copy_repo_relative_to_dir,
     filter_files,
     gen_file_from_template,
+    get_podspec_values,
     load_json_config,
 )
 
@@ -103,8 +104,6 @@ def get_pod_config_file(package_variant: PackageVariant):
     """
     if package_variant == PackageVariant.Full:
         return _script_dir / "onnxruntime-objc.config.json"
-    elif package_variant == PackageVariant.Mobile:
-        return _script_dir / "onnxruntime-mobile-objc.config.json"
     elif package_variant == PackageVariant.Training:
         return _script_dir / "onnxruntime-training-objc.config.json"
     else:
@@ -149,12 +148,14 @@ def assemble_objc_pod_package(
     def path_patterns_as_variable_value(patterns: list[str]):
         return ", ".join([f'"{pattern}"' for pattern in patterns])
 
+    (ios_deployment_target, macos_deployment_target, _) = get_podspec_values(framework_info)
+
     variable_substitutions = {
         "C_POD_NAME": c_pod_config["name"],
         "DESCRIPTION": pod_config["description"],
         "INCLUDE_DIR_LIST": path_patterns_as_variable_value(include_dirs),
-        "IOS_DEPLOYMENT_TARGET": framework_info["iphonesimulator"]["APPLE_DEPLOYMENT_TARGET"],
-        "MACOSX_DEPLOYMENT_TARGET": framework_info.get("macosx", {}).get("APPLE_DEPLOYMENT_TARGET", ""),
+        "IOS_DEPLOYMENT_TARGET": ios_deployment_target,
+        "MACOSX_DEPLOYMENT_TARGET": macos_deployment_target,
         "LICENSE_FILE": license_file,
         "NAME": pod_name,
         "PUBLIC_HEADER_FILE_LIST": path_patterns_as_variable_value(pod_files["public_header_files"]),
@@ -184,7 +185,7 @@ def parse_args():
     parser.add_argument(
         "--staging-dir",
         type=pathlib.Path,
-        default=pathlib.Path("./onnxruntime-mobile-objc-staging"),
+        default=pathlib.Path("./objc-staging"),
         help="Path to the staging directory for the Objective-C pod files.",
     )
     parser.add_argument("--pod-version", required=True, help="Objective-C pod version.")

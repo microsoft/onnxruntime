@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 

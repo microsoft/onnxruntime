@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
@@ -48,17 +49,11 @@ struct OrtStatus {
 #endif
 
 #ifdef USE_OPENVINO
-#if OPENVINO_CONFIG_CPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+#if OPENVINO_CONFIG_CPU
+#define BACKEND_OPENVINO "-OPENVINO_CPU"
 
-#elif OPENVINO_CONFIG_CPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP16"
-
-#elif OPENVINO_CONFIG_GPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
-
-#elif OPENVINO_CONFIG_GPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
+#elif OPENVINO_CONFIG_GPU
+#define BACKEND_OPENVINO "-OPENVINO_GPU"
 
 #elif OPENVINO_CONFIG_NPU
 #define BACKEND_OPENVINO "-OPENVINO_NPU"
@@ -71,7 +66,11 @@ struct OrtStatus {
 
 #elif OPENVINO_CONFIG_HETERO
 #define BACKEND_OPENVINO "-OPENVINO_HETERO"
+
+#elif OPENVINO_DISABLE_NPU_FALLBACK
+#define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
 #endif
+
 #else
 #define BACKEND_OPENVINO ""
 #endif
@@ -441,7 +440,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(

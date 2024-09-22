@@ -16,14 +16,15 @@
 
 namespace onnxruntime {
 
+namespace {
+
+constexpr const char* kFlagAndPrintDensityFuncName =
+    "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity";
+}  // namespace
+
 Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                             const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter InsertGatherBeforeSceLoss");
-
-  if (sparse_label_input_names_.size() == 0) {
-    LOG_DEBUG_INFO(logger, "Exit InsertGatherBeforeSceLoss, no sparse label input names.");
-    return Status::OK();
-  }
 
   GraphViewer graph_viewer(graph);
   [[maybe_unused]] size_t handled_sce_node_count = 0;  // For summary
@@ -48,7 +49,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     const NodeArg* label_input_arg = node.InputDefs()[1];
 
     // Check whether this SCE node is handled or not.
-    const Node* labels_producer = graph.GetProducerNode(label_input_arg->Name());
+    Node* labels_producer = graph.GetMutableProducerNode(label_input_arg->Name());
     // Skip if already inserted a ShrunkenGather node.
     if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
                                *labels_producer, "ShrunkenGather", {1}, kMSDomain)) {
@@ -57,18 +58,28 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       continue;
     }
 
-    // Label input can be a graph input or from a Reshape node taking a graph input as its data input.
-    if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
-                               *labels_producer, "Reshape", {1, 5, 13, 14}, kOnnxDomain)) {
-      label_input_arg = labels_producer->InputDefs()[0];
-    }
-    // Then check if the label input is graph input and in the sparse label input list.
-    if (!graph.IsInputsIncludingInitializers(label_input_arg) ||
-        std::find(sparse_label_input_names_.begin(), sparse_label_input_names_.end(),
-                  label_input_arg->Name()) == sparse_label_input_names_.end()) {
+    if (labels_producer == nullptr ||
+        !graph_utils::IsSupportedOptypeVersionAndDomain(*labels_producer, "PythonOp", {1}, kMSDomain) ||
+        static_cast<std::string>(labels_producer->GetAttributes().at("func_name").s()) !=
+            kFlagAndPrintDensityFuncName) {
       LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to labels input is not a graph input or not in the sparse label input list.");
+                                 ") due to labels input is not produced by a PythonOp node with flag " +
+                                 kFlagAndPrintDensityFuncName + ".");
       continue;
+    } else if (!print_density_) {
+      if (graph_utils::CanRemoveNode(graph, *labels_producer, logger)) {
+        if (graph_utils::RemoveNode(graph, *labels_producer)) {
+          modified = true;
+        } else {
+          LOG_DEBUG_INFO(logger, "Failed to remove node " + labels_producer->Name() +
+                                     "(" + labels_producer->OpType() + ")");
+          continue;
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "Can not remove node " + labels_producer->Name() +
+                                   "(" + labels_producer->OpType() + ")");
+        continue;
+      }
     }
 
     // Check shape requirements.

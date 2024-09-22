@@ -25,7 +25,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Identity", op_registrations);
     CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
-    CreateUnaryOpBuilder("Not", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
@@ -81,9 +80,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
-  {  // Quantize/Dequantize
+  {  // Dropout
+    CreateDropoutOpBuilder("Dropout", op_registrations);
+  }
+
+  {  // DequantizeLinear/QuantizeLinear/DynamicQuantizeLinear
+    CreateQDQOpBuilder("DequantizeLinear", op_registrations);
+    CreateQDQOpBuilder("QuantizeLinear", op_registrations);
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
-    CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);
   }
 
   {  // Expand
@@ -104,12 +108,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGemmOpBuilder("MatMulInteger", op_registrations);
   }
 
+  {  // GRU
+    CreateGruOpBuilder("GRU", op_registrations);
+  }
+
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
     CreateLogicalOpBuilder("LessOrEqual", op_registrations);
+    CreateLogicalOpBuilder("Not", op_registrations);
   }
 
   {  // Max/Min
@@ -182,6 +191,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
+  {  // Trilu
+    CreateTriangularOpBuilder("Trilu", op_registrations);
+  }
   return op_registrations;
 }
 

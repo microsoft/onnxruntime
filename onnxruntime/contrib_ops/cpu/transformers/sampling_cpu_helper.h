@@ -61,7 +61,7 @@ Status Sample(AllocatorPtr& allocator,
               transformers::ISamplingState<T>* sampling_state,
               transformers::IGreedySearchState<T>* greedy_state,
               const transformers::IGenerationParameters* parameters,
-              const transformers::IConsoleDumper* dumper) {
+              const IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
 
   gsl::span<T>& sorted_scores = sampling_state->sorted_scores;
@@ -152,7 +152,7 @@ Status Sample(AllocatorPtr& allocator,
                                                         1,
                                                         generator,
                                                         *sampled_idx));
-  // TODO: update presense_mask()
+  // TODO: update presence_mask()
 #ifdef DEBUG_GENERATION
   dumper->Print("sampled_idx", *sampled_idx);
 #endif

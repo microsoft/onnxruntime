@@ -31,7 +31,7 @@ namespace logging {
 
 class EtwSink : public ISink {
  public:
-  EtwSink() = default;
+  EtwSink() : ISink(SinkType::EtwSink) {}
   ~EtwSink() = default;
 
   constexpr static const char* kEventName = "ONNXRuntimeLogEvent";
@@ -47,6 +47,11 @@ class EtwSink : public ISink {
 };
 
 class EtwRegistrationManager {
+  enum class InitializationStatus { NotInitialized,
+                                    Initializing,
+                                    Initialized,
+                                    Failed };
+
  public:
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
@@ -71,6 +76,8 @@ class EtwRegistrationManager {
 
   void RegisterInternalCallback(const EtwInternalCallback& callback);
 
+  void UnregisterInternalCallback(const EtwInternalCallback& callback);
+
  private:
   EtwRegistrationManager();
   ~EtwRegistrationManager();
@@ -90,11 +97,11 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
-  std::vector<EtwInternalCallback> callbacks_;
+  std::vector<const EtwInternalCallback*> callbacks_;
   OrtMutex callbacks_mutex_;
   mutable OrtMutex provider_change_mutex_;
   OrtMutex init_mutex_;
-  bool initialized_ = false;
+  InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;

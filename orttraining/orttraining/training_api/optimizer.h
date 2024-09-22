@@ -166,7 +166,7 @@ struct Optimizer {
 
   int32_t group_count_{0};
 
-  bool delay_optimizer_state_contruction_{false};
+  bool delay_optimizer_state_construction_{false};
 };
 
 }  // namespace api

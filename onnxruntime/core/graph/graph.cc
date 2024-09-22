@@ -11,7 +11,7 @@
 #include <queue>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
@@ -98,7 +98,8 @@ static Status MergeShapeInfo(const std::string& output_name,
 #endif
   }
   ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
-    // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
+    // if this model was not created with the latest onnx version, allow the shape inferencing failure
+    // (strict == false).
     // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
     // older models in case later changes to the ONNX shape inferencing or ORT break them.
     if (!strict) {
@@ -114,7 +115,8 @@ static Status MergeShapeInfo(const std::string& output_name,
       }
 #if !defined(DISABLE_OPTIONAL_TYPE)
       else if (utils::HasOptionalTensorType(source)) {
-        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source),
+                                       *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
       }
 #endif
 
@@ -401,7 +403,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& input_tensor_elem_type = input_tensor_type.elem_type();
       const auto& current_tensor_elem_type = current_type.tensor_type().elem_type();
 
-      ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types));
+      ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type,
+                                              override_types));
 
       if (utils::HasShape(input_tensor_type)) {
         if (utils::HasShape(current_type)) {
@@ -420,7 +423,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
 
-      ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types));
+      ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type,
+                                              override_types));
 
       if (utils::HasShape(input_tensor_type)) {
         if (utils::HasShape(current_type)) {
@@ -440,7 +444,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
       // Check for homogeneity within optional type
       if (is_input_type_optional_tensor_type != is_current_type_optional_tensor_type) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(current_type),
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ",
+                               ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(current_type),
                                " . Got: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(input_type));
       }
 
@@ -453,7 +458,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
         const auto& input_tensor_elem_type = input_tensor_type.elem_type();
         const auto& current_tensor_elem_type = optional_current_type.tensor_type().elem_type();
 
-        ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types));
+        ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type,
+                                                override_types));
 
         if (utils::HasShape(optional_input_type.tensor_type())) {
           if (utils::HasShape(optional_current_type.tensor_type())) {
@@ -560,7 +566,7 @@ void Node::SetPriority(int priority) noexcept {
   priority_ = priority;
 }
 
-const Path& Node::ModelPath() const noexcept {
+const std::filesystem::path& Node::ModelPath() const noexcept {
   return graph_->ModelPath();
 }
 
@@ -909,6 +915,42 @@ void Node::Init(std::string_view name,
     }
   }
 }
+void Node::Init(std::string_view name,
+                std::string_view op_type,
+                std::string_view description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                std::string_view domain) {
+  name_ = name;
+  op_type_ = op_type;
+  description_ = description;
+  definitions_.input_defs.assign(input_args.begin(), input_args.end());
+  definitions_.output_defs.assign(output_args.begin(), output_args.end());
+  domain_ = domain;
+  can_be_saved_ = true;
+  priority_ = 0;
+  if (kOnnxDomainAlias == domain_) {
+    domain_ = kOnnxDomain;
+  }
+
+  // Set each arg count as 1 by default.
+  // It could be adjusted when resolving the node with its operator
+  // information.
+  definitions_.input_arg_count.assign(input_args.size(), 1);
+
+  attributes_ = std::move(attributes);
+
+  for (auto& name_to_attr : attributes_) {
+    if (utils::HasGraph(name_to_attr.second)) {
+#if !defined(ORT_MINIMAL_BUILD)
+      CreateSubgraph(name_to_attr.first);
+#else
+      ORT_THROW("Creating node with a subgraph via AddNode is not supported in this build.");
+#endif
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1193,6 +1235,15 @@ Graph::Graph(const Model& owning_model,
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
+    if constexpr (endian::native != endian::little) {
+      const AttributeProto& attrib = node.attribute(0);
+      if (attrib.type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+        const TensorProto& sparse_values = node.attribute(0).sparse_tensor().values();
+        if ((!(sparse_values.has_raw_data())) && tensor->has_raw_data()) {
+          onnxruntime::utils::ConvertRawDataInTensorProto(tensor);
+        }
+      }
+    }
     ORT_ENFORCE(status.IsOK(), status.ToString());
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
@@ -1203,7 +1254,8 @@ Graph::Graph(const Model& owning_model,
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
       auto p = sparse_tensor_names_.emplace(tensor->name());
-      ORT_ENFORCE(p.second, "Duplicate constant node sparse initializer name: '", tensor->name(), "' Model is invalid.");
+      ORT_ENFORCE(p.second, "Duplicate constant node sparse initializer name: '", tensor->name(),
+                  "' Model is invalid.");
     }
 #endif
   }
@@ -1533,8 +1585,10 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
     *dst_arg_pointer = src_arg;
   }
 
-  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
-  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
+  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index],
+                                                                                   src_arg_slot, dst_arg_slot));
+  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index],
+                                                                                  src_arg_slot, dst_arg_slot));
 }
 
 void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
@@ -1573,13 +1627,15 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     ORT_THROW("Argument mismatch when removing edge.");
   }
 
-  nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
-  nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
+  nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index],
+                                                                                 src_arg_slot, dst_arg_slot));
+  nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index],
+                                                                                  src_arg_slot, dst_arg_slot));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
-GSL_SUPPRESS(es.84)  // ignoring return value from unordered_map::insert causes noisy complaint
+GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
@@ -1879,7 +1935,484 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   }
 }
 
-GSL_SUPPRESS(es.84)  // noisy warning about ignoring return value from insert(...)
+#ifdef ENABLE_TRAINING
+
+namespace {
+
+/**
+ * @brief The data struct to store the group of nodes.
+ *
+ * The group contains a set of nodes, its execution depends on either of backward input leaf nodes,
+ * graph inputs/initializers or other group node's output.
+ */
+struct GroupNode {
+  GroupNode(const InlinedVector<const Node*>& node_list) {
+    nodes = node_list;
+
+    InlinedHashSet<const NodeArg*> intermediate_args;
+    for (const Node* node : nodes) {
+      for (const NodeArg* arg : node->InputDefs()) {
+        if (intermediate_args.find(arg) == intermediate_args.end()) {
+          input_args.push_back(arg);
+        }
+      }
+
+      for (const NodeArg* arg : node->OutputDefs()) {
+        intermediate_args.insert(arg);
+      }
+
+      if (node->GetOutputEdgesCount() == 0) {
+        for (const NodeArg* arg : node->OutputDefs()) {
+          output_args.push_back(arg);
+        }
+
+        continue;
+      }
+
+      for (auto output_edge_it = node->OutputEdgesBegin(); output_edge_it != node->OutputEdgesEnd();
+           ++output_edge_it) {
+        const Node* output_node = &output_edge_it->GetNode();
+        // Only if the output arg is used by nodes outside the group, then it is an output arg.
+        if (std::find(nodes.begin(), nodes.end(), output_node) == nodes.end()) {
+          output_args.push_back(node->OutputDefs()[output_edge_it->GetSrcArgIndex()]);
+        }
+      }
+    }
+  }
+
+  bool is_outputted{false};
+
+  InlinedVector<const NodeArg*> input_args;
+  InlinedVector<const NodeArg*> output_args;
+
+  InlinedVector<const Node*> nodes;
+};
+
+struct NodeCompareByMaxDistance {
+  explicit NodeCompareByMaxDistance(const InlinedHashMap<NodeIndex, int>& max_distance)
+      : max_distance_(max_distance) {}
+  bool operator()(const Node* n1, const Node* n2) const {
+    if (max_distance_.at(n1->Index()) != max_distance_.at(n2->Index())) {
+      // The longer distance node should be executed first.
+      return max_distance_.at(n1->Index()) < max_distance_.at(n2->Index());
+    }
+
+    return n1->Index() < n2->Index();
+  }
+
+ private:
+  const InlinedHashMap<NodeIndex, int>& max_distance_;
+};
+
+void SortForwardNodesByReverseDFS(const Graph* graph,
+                                  const InlinedVector<const Node*>& forward_output_nodes,
+                                  const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                  InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                                  std::vector<NodeIndex>& node_orders) {
+  // Note 1: YieldOp is the separator of forward and backward nodes.
+  // Note 2: While it is also possible some nodes not contributing to the forward output nodes will be
+  //   executed before YieldOp, for example, if one forward node's output is used by Shape/Size, then
+  //   the Shape/Size node should be executed before YieldOp to release the memory as soon as possible.
+  InlinedVector<size_t> nodes_in_degree;
+  std::queue<const Node*> to_visit;
+  nodes_in_degree.resize(graph->MaxNodeIndex(), 0);
+  for (auto& node : graph->Nodes()) {
+    size_t input_edge_count = node.GetInputEdgesCount();
+    nodes_in_degree[node.Index()] = input_edge_count;
+    if (input_edge_count == 0) {
+      to_visit.push(&node);
+    }
+  }
+
+  InlinedHashMap<NodeIndex, int> max_distance;
+  max_distance.reserve(graph->NumberOfNodes());
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.front();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    for (auto output_edge_it = current->OutputEdgesBegin();
+         output_edge_it != current->OutputEdgesEnd();
+         ++output_edge_it) {
+      const Node* out_node = &output_edge_it->GetNode();
+      max_distance[out_node->Index()] = std::max(max_distance[out_node->Index()],
+                                                 max_distance[current->Index()] + 1);
+      auto& node_in_degree = nodes_in_degree[out_node->Index()];
+      node_in_degree--;
+      if (node_in_degree == 0) {
+        to_visit.push(out_node);
+      }
+    }
+  }
+
+  // Reverse DFS from forward output nodes to find all "forward" nodes.
+  // The forward nodes are ordered by Reverse DFS tranverse.
+  graph->ReverseDFSFrom(
+      forward_output_nodes,
+      nullptr,
+      [&nodes_to_execute_before_yieldop, &node_orders](const Node* n) {
+        nodes_to_execute_before_yieldop.insert(n);
+        node_orders.push_back(n->Index());
+      },
+      NodeCompareByMaxDistance(max_distance));
+
+  for (const auto& parent_to_children_pair : shape_size_parents) {
+    const NodeIndex& parent_index = parent_to_children_pair.first;
+    if (nodes_to_execute_before_yieldop.find(graph->GetNode(parent_index)) == nodes_to_execute_before_yieldop.end()) {
+      continue;
+    }
+
+    for (const NodeIndex& shape_size_node_index : parent_to_children_pair.second) {
+      const Node* shape_size_node = graph->GetNode(shape_size_node_index);
+      // If the Shape/Size is already in the node_orders, then skip it.
+      if (nodes_to_execute_before_yieldop.find(shape_size_node) != nodes_to_execute_before_yieldop.end()) {
+        continue;
+      }
+
+      auto it = std::find(node_orders.begin(), node_orders.end(), parent_index);
+      ORT_ENFORCE(it != node_orders.end(), "Cannot find the parent node in the node orders.");
+
+      node_orders.insert(it + 1, shape_size_node_index);
+      nodes_to_execute_before_yieldop.insert(shape_size_node);
+    }
+  }
+}
+
+void PrepareToFindBranchGraph(const Graph* graph,
+                              std::function<bool(const Node*)> is_forward_node,
+                              InlinedVector<const Node*>& branch_graph_input_nodes,
+                              InlinedVector<size_t>& backward_node_in_degree,
+                              std::queue<const Node*>& to_visit) {
+  for (auto& node : graph->Nodes()) {
+    // Ignore forward.
+    if (is_forward_node(&node)) {
+      continue;
+    }
+
+    if (node.OpType() == "YieldOp") {
+      backward_node_in_degree[node.Index()] = 0;
+      to_visit.push(&node);
+      continue;
+    }
+
+    size_t input_edge_count = node.GetInputEdgesCount();
+    backward_node_in_degree[node.Index()] = input_edge_count;
+
+    // A shortcut: input_edge_count could be 0 if it takes graph input directly.
+    if (input_edge_count == 0) {
+      branch_graph_input_nodes.push_back(&node);
+      continue;
+    }
+
+    for (auto input_edge_it = node.InputEdgesBegin(); input_edge_it != node.InputEdgesEnd(); ++input_edge_it) {
+      const Node* input_node = &input_edge_it->GetNode();
+      // If the input edge connect to forward nodes, then we remove the in_degree of the node.
+      if (is_forward_node(input_node)) {
+        input_edge_count--;
+      }
+    }
+
+    backward_node_in_degree[node.Index()] = input_edge_count;
+    if (input_edge_count == 0) {
+      branch_graph_input_nodes.push_back(&node);
+    }
+  }
+}
+
+void FindBranchGraph(
+    const InlinedVector<const Node*>& branch_graph_input_nodes,
+    const InlinedVector<size_t>& backward_node_in_degree,
+    InlinedVector<const Node*>& branch_graph,
+    InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers,
+    InlinedVector<const NodeArg*>& branch_subgraph_outputs) {
+  // Loop through the branch_graph_input_nodes to find the branch subgraphs by its output edges in BFS,
+  // and find the maximum self_contained subgraph taking the branch_graph_input_nodes as input nodes.
+  std::queue<const Node*> to_visit_queue;
+  InlinedVector<size_t> in_degree_copy = backward_node_in_degree;
+
+  // Add all nodes in branch_graph_input_nodes to the queue
+  for (auto branch_input_node : branch_graph_input_nodes) {
+    to_visit_queue.push(branch_input_node);
+    branch_graph.push_back(branch_input_node);
+  }
+
+  while (!to_visit_queue.empty()) {
+    const Node* current = to_visit_queue.front();
+    to_visit_queue.pop();
+
+    if (!current) continue;
+
+    for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
+      auto& node_in_degree = in_degree_copy[node_it->Index()];
+      node_in_degree--;
+
+      if (node_in_degree == 0) {
+        to_visit_queue.push(&*node_it);
+        branch_graph.push_back(&*node_it);
+      }
+    }
+  }
+
+  // At this point, branch_graph is a big subgraph that contains all the nodes that are purely
+  // triggered by the branch_graph_input_nodes, other graph input/initializers and leaf nodes (for example Constant).
+  for (const Node* n : branch_graph) {
+    if (n->GetOutputEdgesCount() == 0) {
+      // In case the node connect to graph outputs or nothings, append all outputs as the branch subgraph outputs.
+      for (auto output_def : n->OutputDefs()) {
+        branch_subgraph_outputs.push_back(output_def);
+      }
+      continue;
+    }
+
+    for (auto output_it = n->OutputEdgesBegin(); output_it != n->OutputEdgesEnd(); ++output_it) {
+      const Node* output_node = &output_it->GetNode();
+      const size_t dest_in_port = output_it->GetDstArgIndex();
+      if (std::find(branch_graph.begin(), branch_graph.end(), output_node) == branch_graph.end()) {
+        branch_subgraph_consumers.push_back({output_node, dest_in_port});
+        branch_subgraph_outputs.push_back(n->OutputDefs()[output_it->GetSrcArgIndex()]);
+      }
+    }
+  }
+}
+
+void TagNodeToAssociatedOutputs(const Graph* graph,
+                                const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                                const InlinedVector<const NodeArg*>& branch_subgraph_outputs,
+                                const InlinedVector<const Node*>& branch_graph,
+                                InlinedVector<GroupNode>& group_node_collection,
+                                InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
+  // Reverse DFS from branch graph outputs (e.g. branch_subgraph_outputs) to tag each nodes:
+  // If one node N contributes to a graph output A, then we will tag A to N.
+  // If the node N contributes to multiple graph outputs A, B, C, then we will tag the A, B, C to N.
+  InlinedHashMap<const Node*, std::set<const NodeArg*>> node_to_its_associated_outputs;
+  node_to_its_associated_outputs.reserve(branch_graph.size());
+  InlinedHashSet<const Node*> handled_branch_subgraph_end_nodes;
+  for (const auto& output_arg : branch_subgraph_outputs) {
+    const Node* end_node = graph->GetProducerNode(output_arg->Name());
+    handled_branch_subgraph_end_nodes.insert(end_node);
+
+    InlinedVector<const Node*> end_nodes{end_node};
+    graph->ReverseDFSFrom(
+        end_nodes,
+        nullptr,
+        [&node_to_its_associated_outputs, &output_arg](const Node* n) {
+          node_to_its_associated_outputs[n].insert(output_arg);
+        },
+        nullptr,
+        [&nodes_to_execute_before_yieldop](const Node*, const Node* to) -> bool {
+          if (nodes_to_execute_before_yieldop.find(to) != nodes_to_execute_before_yieldop.end()) {
+            return true;  // Skip forward nodes.
+          }
+
+          return false;
+        });
+  }
+
+  // Cluster the nodes in the branch_graph based on the associated outputs.
+  InlinedHashMap<std::set<const NodeArg*>, InlinedVector<const Node*>> associated_outputs_to_nodes;
+  associated_outputs_to_nodes.reserve(node_to_its_associated_outputs.size());
+  for (const auto& node : branch_graph) {
+    const std::set<const NodeArg*>& associated_outputs = node_to_its_associated_outputs[node];
+    associated_outputs_to_nodes[associated_outputs].push_back(node);
+  }
+
+  // Finalize the subgraph inputs/output information.
+  group_node_collection.reserve(associated_outputs_to_nodes.size());
+  for (auto& [associated_outputs, nodes] : associated_outputs_to_nodes) {
+    group_node_collection.push_back(nodes);
+
+    // Flatten the key into NodeArg* for better search.
+    GroupNode& grouped_node = group_node_collection.back();
+    for (const auto& output_arg : grouped_node.output_args) {
+      output_arg_to_grouped_node.insert({output_arg, &grouped_node});
+    }
+  }
+}
+
+void UpdateBackwardInDegree(InlinedVector<size_t>& backward_node_in_degree,
+                            InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers) {
+  // For each GroupNode, its execution is non-blocking main critical path rooting from YieldOp.
+  // The only dependencies of a GroupNode is either graph input/initializer/forward nodes, or
+  // the output nodes of another GroupNode.
+  // So we treat those GroupNode(s) as a single unit that can be executed anytime when it is
+  // firstly needed by the main critipath path.
+  for (auto& [output_node, dest_in_port] : branch_subgraph_consumers) {
+    ORT_ENFORCE(backward_node_in_degree[output_node->Index()] > 0);
+    backward_node_in_degree[output_node->Index()]--;
+  }
+}
+
+void OutputGroupedNodes(const Graph* graph,
+                        const NodeArg* output_arg,
+                        const InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node,
+                        std::vector<NodeIndex>& node_orders,
+                        InlinedVector<NodeIndex>& topo_order) {
+  ORT_ENFORCE(output_arg_to_grouped_node.find(output_arg) != output_arg_to_grouped_node.end(),
+              "output_arg_to_grouped_node does not contain output_arg named ", output_arg->Name());
+
+  GroupNode* grouped_node = output_arg_to_grouped_node.at(output_arg);
+
+  if (grouped_node->is_outputted) {
+    return;
+  }
+
+  for (const NodeArg* input_arg : grouped_node->input_args) {
+    if (!input_arg->Exists()) {
+      continue;
+    }
+
+    auto it = output_arg_to_grouped_node.find(input_arg);
+    if (it != output_arg_to_grouped_node.end() && !it->second->is_outputted) {
+      OutputGroupedNodes(graph, input_arg, output_arg_to_grouped_node, node_orders, topo_order);
+    }
+  }
+
+  for (const Node* n : grouped_node->nodes) {
+    node_orders.push_back(n->Index());
+    topo_order.push_back(n->Index());
+  }
+
+  grouped_node->is_outputted = true;
+}
+
+}  // namespace
+
+void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
+                                           const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                           std::vector<NodeIndex>& node_orders) const {
+  /// Firstly, sort the forward nodes with customized ReverseDFS.
+
+  const size_t num_nodes = NumberOfNodes();
+  InlinedVector<const Node*> forward_output_nodes;
+  forward_output_nodes.reserve(yield_op->GetInputEdgesCount());
+  for (auto input_it = yield_op->InputNodesBegin(); input_it != yield_op->InputNodesEnd(); ++input_it) {
+    forward_output_nodes.push_back(&*input_it);
+  }
+
+  // Create a hash map (paired with node_orders) for cheaper search.
+  InlinedHashSet<const Node*> nodes_to_execute_before_yieldop;
+  nodes_to_execute_before_yieldop.reserve(num_nodes);
+
+  SortForwardNodesByReverseDFS(this, forward_output_nodes,
+                               shape_size_parents,
+                               nodes_to_execute_before_yieldop,
+                               node_orders);
+
+  /// Secondly, sort the backward nodes with customized Kahn's algorithm.
+
+  size_t num_of_backward_nodes = num_nodes - node_orders.size();
+  InlinedVector<size_t> backward_node_in_degree(MaxNodeIndex(), 0);
+  InlinedVector<NodeIndex> topo_order;
+  topo_order.reserve(num_of_backward_nodes);
+  std::queue<const Node*> to_visit;
+
+  auto is_forward_op = [&nodes_to_execute_before_yieldop](const Node* n) -> bool {
+    return nodes_to_execute_before_yieldop.find(n) != nodes_to_execute_before_yieldop.end();
+  };
+
+  InlinedVector<const Node*> branch_graph_input_nodes;
+  branch_graph_input_nodes.reserve(num_of_backward_nodes);
+
+  PrepareToFindBranchGraph(this,
+                           is_forward_op,
+                           branch_graph_input_nodes,
+                           backward_node_in_degree,
+                           to_visit);
+
+  InlinedVector<const Node*> branch_graph;
+  branch_graph.reserve(num_of_backward_nodes);
+  InlinedVector<std::pair<const Node*, size_t>> branch_subgraph_consumers;
+  InlinedVector<const NodeArg*> branch_subgraph_outputs;
+  FindBranchGraph(branch_graph_input_nodes,
+                  backward_node_in_degree,
+                  branch_graph,
+                  branch_subgraph_consumers,
+                  branch_subgraph_outputs);
+
+  // Cluster the nodes in the branch_graph based on the associated outputs.
+  InlinedVector<GroupNode> group_node_collection;
+  InlinedHashMap<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
+  TagNodeToAssociatedOutputs(this,
+                             nodes_to_execute_before_yieldop,
+                             branch_subgraph_outputs,
+                             branch_graph,
+                             group_node_collection,
+                             output_arg_to_grouped_node);
+
+  UpdateBackwardInDegree(backward_node_in_degree, branch_subgraph_consumers);
+
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.front();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    for (auto input_edge_it = current->InputEdgesBegin(); input_edge_it != current->InputEdgesEnd();
+         ++input_edge_it) {
+      const NodeArg* input_arg = current->InputDefs()[input_edge_it->GetDstArgIndex()];
+      if (!input_arg->Exists()) {
+        continue;
+      }
+
+      auto it = output_arg_to_grouped_node.find(input_arg);
+      if (it != output_arg_to_grouped_node.end() && !it->second->is_outputted) {
+        OutputGroupedNodes(this, input_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      }
+    }
+
+    node_orders.push_back(current->Index());
+
+    for (auto output_edge_it = current->OutputEdgesBegin(); output_edge_it != current->OutputEdgesEnd();
+         ++output_edge_it) {
+      const Node* out_node = &output_edge_it->GetNode();
+      auto& node_in_degree = backward_node_in_degree[out_node->Index()];
+      node_in_degree--;
+      if (node_in_degree == 0) {
+        to_visit.push(out_node);
+      }
+    }
+
+    topo_order.push_back(current->Index());
+  }
+
+  // For the group nodes that are not outputted, we need to output them.
+  // Hitting this code path means some nodes are consuming outputs of forward nodes, and their outputs
+  // are not used by main branch backward nodes.
+  InlinedVector<std::pair<const NodeArg*, GroupNode*>>
+      left_output_arg_to_grouped_node_vector;  // To ensure deterministic order.
+  left_output_arg_to_grouped_node_vector.reserve(output_arg_to_grouped_node.size());
+  for (auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
+    if (!grouped_node->is_outputted) {
+      left_output_arg_to_grouped_node_vector.push_back({output_arg, grouped_node});
+    }
+  }
+
+  if (!left_output_arg_to_grouped_node_vector.empty()) {
+    // Sort to ensure deterministic order.
+    std::sort(left_output_arg_to_grouped_node_vector.begin(), left_output_arg_to_grouped_node_vector.end(),
+              [](const std::pair<const NodeArg*, GroupNode*>& a, const std::pair<const NodeArg*, GroupNode*>& b) {
+                return a.first->Name() < b.first->Name();
+              });
+    for (const auto& pair : left_output_arg_to_grouped_node_vector) {
+      const NodeArg* output_arg = pair.first;
+      GroupNode* grouped_node = pair.second;
+      if (!grouped_node->is_outputted) {
+        OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      }
+    }
+  }
+
+  if (num_of_backward_nodes != topo_order.size()) {
+    ORT_THROW("Some nodes for backward are not included in the topological sort: " +
+              std::to_string(num_of_backward_nodes) + " vs " +
+              std::to_string(topo_order.size()));
+  }
+}
+
+#endif  // ENABLE_TRAINING
+
+GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)
 Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   nodes_in_topological_order_.clear();
   std::unordered_set<NodeIndex> downstream_nodes;  // nodes downstream of the node we're currently checking
@@ -1952,7 +2485,8 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
       const NodeIndex idx = iter->Index();
       // the input to this node is also downstream of this node
       if (downstream_nodes.find(idx) != downstream_nodes.end()) {
-        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
+                      "This is an invalid model. Error: the graph is not acyclic.");
         return status;
       }
 
@@ -1967,7 +2501,8 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     return Status::OK();
   }
 
-  return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+  return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
+                "This is an invalid model. Error: the graph is not acyclic.");
 }
 
 bool FullyDefinedType(const TypeProto& type_proto) {
@@ -2010,11 +2545,13 @@ bool FullyDefinedType(const TypeProto& type_proto) {
 // parameters are the Graph instance for the subgraph, the input types from the control flow node that contains
 // the subgraph, and the vector to write the output from the inferencing.
 using SubgraphInferencingFunc =
-    std::function<Status(const Node&, Graph&, const std::vector<const TypeProto*>&, std::vector<const TypeProto*>&, const Graph::ResolveOptions&)>;
+    std::function<Status(const Node&, Graph&, const std::vector<const TypeProto*>&, std::vector<const TypeProto*>&,
+                         const Graph::ResolveOptions&)>;
 
 class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
  public:
-  GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func, const Graph::ResolveOptions& options)
+  GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func,
+                      const Graph::ResolveOptions& options)
       : node_(node), graph_(graph), inferencing_func_(inferencing_func), options_(options) {
   }
 
@@ -2243,7 +2780,7 @@ Status Graph::UpdateShapeInference(Node& node) {
 }
 
 // Implementation of type-inference and type-checking for a single node
-GSL_SUPPRESS(f.23)  // spurious warning about inferred_type never being checked for null
+GSL_SUPPRESS(f .23)  // spurious warning about inferred_type never being checked for null
 Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const ResolveOptions& options) {
   auto& node_name = node.Name();
 
@@ -2319,7 +2856,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                            ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
+                            ") of Optype (" + op.Name() + ") bound to different types (" +
+                            *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
                             " in node (" + node_name + ").");
           return status;
@@ -2453,7 +2991,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
 #endif
-        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, strict_shape_type_inference_, logger_);
+        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target,
+                                     strict_shape_type_inference_, logger_);
         if (!status.IsOK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
         }
@@ -2548,7 +3087,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
-  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  // ONNX expects a UTF-8 string here.
+  ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -2583,9 +3123,17 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       {
         auto status = Status::OK();
         ORT_TRY {
-          NodeProto node_proto;
-          node.ToProto(node_proto);
-          checker::check_node(node_proto, ctx, lsc);
+          // if this is first Graph::Resolve call, we may have a NodeProto that was set on the Node so we can skip
+          // the ToProto call.
+          if (const NodeProto* orig_node_proto = node.GetOriginalNodeProto(); orig_node_proto) {
+            checker::check_node(*orig_node_proto, ctx, lsc);
+            // clear original as we don't know if the node will be modified once the Graph::Resolve completes.
+            node.SetOriginalNodeProto(nullptr);
+          } else {
+            NodeProto node_proto;
+            node.ToProto(node_proto);
+            checker::check_node(node_proto, ctx, lsc);
+          }
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
@@ -2690,7 +3238,7 @@ Status Graph::VerifyInputAndInitializerNames() {
   }
 
   for (auto& initializer_pair : name_to_initial_tensor_) {
-    GSL_SUPPRESS(es.84)
+    GSL_SUPPRESS(es .84)
     inputs_and_initializers.insert(initializer_pair.first);
     // Initializers are expected to be included in inputs (according to ONNX spec).
     // onnxruntime relaxes this constraint. No duplicate-name check here.
@@ -2740,27 +3288,6 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch(options));
 
   return Status::OK();
-}
-
-void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
-  for (auto& node : Nodes()) {
-    for (auto& subgraph : node.MutableSubgraphs()) {
-      subgraphs.push_back(subgraph.get());
-      subgraph->FindAllSubgraphs(subgraphs);
-    }
-  }
-}
-
-Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
-  auto status = func(*this);
-  ORT_RETURN_IF_ERROR(status);
-
-  for (auto& subgraph : subgraphs) {
-    status = func(*subgraph);
-    ORT_RETURN_IF_ERROR(status);
-  }
-
-  return status;
 }
 
 Status Graph::Resolve(const ResolveOptions& options) {
@@ -2875,6 +3402,39 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
 }
+
+void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
+  for (auto& node : Nodes()) {
+    for (auto& subgraph : node.MutableSubgraphs()) {
+      subgraphs.push_back(subgraph.get());
+      subgraph->FindAllSubgraphs(subgraphs);
+    }
+  }
+}
+
+Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
+  auto status = func(*this);
+  ORT_RETURN_IF_ERROR(status);
+
+  for (auto& subgraph : subgraphs) {
+    status = func(*subgraph);
+    ORT_RETURN_IF_ERROR(status);
+  }
+
+  return status;
+}
+
+Status Graph::RemovedUnusedInitializersOrtFormat() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  auto cleanup_func = [](Graph& graph) {
+    graph.CleanUnusedInitializersAndNodeArgs(nullptr);
+    return Status::OK();
+  };
+
+  auto result = ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
+  return result;
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {
@@ -2885,7 +3445,7 @@ const std::string& Graph::Description() const noexcept {
   return graph_proto_->doc_string();
 }
 
-const Path& Graph::ModelPath() const {
+const std::filesystem::path& Graph::ModelPath() const {
   return owning_model_.ModelPath();
 }
 
@@ -2926,7 +3486,8 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
     SetGraphResolveNeeded();
   } else {
 #if !defined(DISABLE_SPARSE_TENSORS)
-    ORT_ENFORCE(sparse_tensor_names_.count(tensor_name) == 0, "sparse_tensor_names_ not in sync with name_to_initial_tensor_");
+    ORT_ENFORCE(sparse_tensor_names_.count(tensor_name) == 0,
+                "sparse_tensor_names_ not in sync with name_to_initial_tensor_");
 #endif
   }
 
@@ -2962,7 +3523,8 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
     return true;
   };
 
-  ORT_RETURN_IF_NOT(!is_external || utils::HasExternalData(old_initializer), "Trying to replace non-external initializer with external data");
+  ORT_RETURN_IF_NOT(!is_external || utils::HasExternalData(old_initializer),
+                    "Trying to replace non-external initializer with external data");
 
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
@@ -2995,6 +3557,61 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
     ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), true));
     LOGS(logger_, INFO) << "Replaced external initializer: " << name;
   }
+  return Status::OK();
+}
+
+Status Graph::InjectExternalInitializersFromFilesInMemory(
+    const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files) {
+  for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
+    if (tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL) {
+      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
+
+      const auto& external_file = external_data_info->GetRelPath();
+      onnxruntime::FileOffsetType file_offset = external_data_info->GetOffset();
+      const size_t external_data_length = external_data_info->GetLength();
+      SafeInt<size_t> tensor_byte_size;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &tensor_byte_size));
+      ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
+                        "TensorProto: ", tensor_name, " external data size mismatch. Computed size: ",
+                        *&tensor_byte_size, ", external_data.length: ", external_data_length);
+
+      SafeInt<FileOffsetType> end_of_read(file_offset);
+      end_of_read += tensor_byte_size;
+
+      auto external_file_pos = external_initializer_files.find(external_file);
+      ORT_RETURN_IF(external_file_pos == external_initializer_files.end(),
+                    "External file: ", ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(external_file),
+                    " not found from the table user provided.");
+      auto external_file_length = external_file_pos->second.second;
+
+      ORT_RETURN_IF(file_offset < 0 || end_of_read > narrow<FileOffsetType>(external_file_length),
+                    "External initializer: ", tensor_name,
+                    " offset: ", file_offset, " size to read: ", external_data_length,
+                    " given file_length: ", external_file_length, " are out of bounds or can not be read in full.");
+      char* external_file_buffer = static_cast<char*>(external_file_pos->second.first);
+      char* tensor_buffer = external_file_buffer + file_offset;
+
+      const auto& old_initializer = *(tensor_proto);
+      auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+      // use cheaper pointer comparison to find old entry
+      auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
+                                      &old_initializer);
+
+      // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+      ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
+                  "graph_proto_ is not in sync with name_to_initial_tensor_");
+      (**existing_entry).clear_data_location();
+      const DataTypeImpl* const type =
+          DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
+      TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
+      auto tensor = Tensor(type, tensor_shape, tensor_buffer,
+                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
+      **existing_entry = std::move(new_tensor_proto);
+    }
+  }
+
   return Status::OK();
 }
 #endif  // DISABLE_EXTERNAL_INITIALIZERS
@@ -3123,13 +3740,25 @@ Node& Graph::AddNode(const NodeProto& node_proto,
     attributes[attr.name()] = attr;
   }
 
-  return AddNode(node_proto.name(),
-                 node_proto.op_type(),
-                 node_proto.doc_string(),
-                 input_defs,
-                 output_defs,
-                 &attributes,
-                 node_proto.domain());
+  Node& new_node = AddNode(node_proto.name(),
+                           node_proto.op_type(),
+                           node_proto.doc_string(),
+                           input_defs,
+                           output_defs,
+                           &attributes,
+                           node_proto.domain());
+
+  // Perf optimization: temporarily set NodeProto in Node so we don't need to call Node::ToProto prior to
+  // calling onnx::check_node
+  // NOTE: We don't handle a node with kOnnxDomainAlias. The entry in schema_registry_ uses kOnnxDomain,
+  // and that's what onnx::check_node uses during validation.
+  // The Node ctor automatically converts kOnnxDomainAlias to kOnnxDomain to handle this.
+  // node_proto is const so we can't do the same here.
+  if (node_proto.domain() != kOnnxDomainAlias) {
+    new_node.SetOriginalNodeProto(&node_proto);
+  }
+
+  return new_node;
 }
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -3144,6 +3773,12 @@ SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std:
 
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
+  if constexpr (endian::native != endian::little) {
+    auto& tens = GetAllInitializedTensors();
+    for (auto& [name, tensor_p] : tens) {
+      utils::ConvertRawDataInTensorProto(const_cast<TensorProto*>(tensor_p));
+    }
+  }
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
   auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);
 
@@ -3324,6 +3959,35 @@ Node& Graph::AddNode(const std::string& name,
   return *node;
 }
 
+Node& Graph::AddNode(const std::string& name,
+                     const std::string& op_type,
+                     const std::string& description,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
+                     NodeAttributes&& attributes,
+                     const std::string& domain) {
+  InlinedVector<NodeArg*> inputs;
+  InlinedVector<NodeArg*> outputs;
+  inputs.resize(input_args.size());
+  outputs.resize(output_args.size());
+  int i = 0;
+  for (auto input_arg : input_args) {
+    inputs[i++] = &GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+  }
+  i = 0;
+  for (auto output_arg : output_args) {
+    outputs[i++] = &GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+  }
+
+  const gsl::not_null<Node*> node = AllocateNode();
+  node->Init(name, op_type, description, inputs, outputs, std::move(attributes), domain);
+  if (0 != op_type.compare(kNoOp)) {
+    GraphProtoSyncNeeded(true);
+  }
+
+  return *node;
+}
+
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
   if (nullptr == node) {
@@ -3420,21 +4084,18 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
-ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                       const PathString& destination_file_path,
-                                                                       size_t initializer_size_threshold) const {
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                       const std::filesystem::path& model_file_path,
+                                                                       size_t initializer_size_threshold,
+                                                                       const OffsetAlignmentInfo& align_info) const {
   GraphProto result;
   ToGraphProtoInternal(result);
+  ORT_ENFORCE(external_file_path.is_relative());
+  // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could
+  // be empty. Else, save external data file in same directory as the model.
+  const std::filesystem::path modified_external_file_path = model_file_path.parent_path() / external_file_path;
 
-  Path parent_path = Path::Parse(destination_file_path).ParentPath();
-  Path external_file_path = Path::Parse(ToPathString(external_file_name));
-  // Check if parent_path is relative path (length = 0)
-  if (parent_path.ToPathString().length()) {
-    // Save external data file in same directory as model
-    external_file_path = parent_path.Append(external_file_path);
-  }
-
-  std::ofstream external_stream(external_file_path.ToPathString(), std::ofstream::out | std::ofstream::binary);
+  std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
@@ -3464,6 +4125,27 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
         continue;
       }
 
+      // update external_offset for alignment
+      // need to do padding before write actual tensor data as we do offset alignment at the begin of
+      // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+      // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+      // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+      if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
+        // Align to the larger of the page size or the allocation granularity
+        int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
+        // Align to the next page or alloc granularity boundary
+        int64_t new_external_offset = static_cast<int64_t>(
+                                          std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                      alignment_factor;
+
+        // padding tensor with zeros for alignment
+        for (int64_t index = external_offset; index != new_external_offset; ++index) {
+          external_stream << '0';
+        }
+
+        external_offset = new_external_offset;
+      }
+
       for (size_t index = 0; index != tensor_bytes_size; ++index) {
         external_stream << raw_data[index];
       }
@@ -3471,7 +4153,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
       ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
       location->set_key("location");
-      location->set_value(external_file_name);
+      location->set_value(ToUTF8String(external_file_path.native()));
       ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
       offset->set_key("offset");
       offset->set_value(std::to_string(external_offset));
@@ -3511,7 +4193,13 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  for (const auto* value_info : value_info_) {
+  // Before adding value info to GraphProto, sort its unordered values so that across multiple calls
+  // to this function, its values are consistently written to the GraphProto
+  auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) { return v1->Name() < v2->Name(); };
+  std::vector<const NodeArg*> value_info_sorted{value_info_.begin(), value_info_.end()};
+  std::sort(value_info_sorted.begin(), value_info_sorted.end(), sort_predicate);
+
+  for (const auto* value_info : value_info_sorted) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
@@ -3533,6 +4221,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
@@ -3664,8 +4355,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     }
   }
 }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 void Graph::ComputeOverridableInitializers() {
   graph_overridable_initializers_.clear();
@@ -3692,7 +4382,7 @@ void Graph::ComputeOverridableInitializers() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-GSL_SUPPRESS(es.84)  // warning about ignoring return value from insert(...)
+GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
 Status Graph::SetGraphInputsOutputs() {
   // If loaded from a model file, we start from the specified inputs and
   // outputs set earlier by InitializeStateFromModelFileGraphProto().
@@ -3878,7 +4568,7 @@ Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
 }
 
 // calling private ctor
-GSL_SUPPRESS(r.11)
+GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
   ORT_ENFORCE(nodes_.size() < static_cast<unsigned int>(std::numeric_limits<int>::max()));
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
@@ -3891,7 +4581,7 @@ gsl::not_null<Node*> Graph::AllocateNode() {
   return gsl::not_null<Node*>{node};
 }
 
-// TODO: Does this need (and maybe AllocateNode) to be threadsafe so nodes_ and num_of_nodes_ managed more carefully?
+// TODO(s): Does this need (and maybe AllocateNode) to be threadsafe so nodes_ and num_of_nodes_ managed more carefully?
 bool Graph::ReleaseNode(NodeIndex index) {
   if (index >= nodes_.size()) {
     return false;
@@ -4008,13 +4698,13 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto dst_idx = input_edge.GetDstArgIndex();
 
       // if this input is an input of the fused node add an edge for that
-      if (dst_idx < (int)node->InputDefs().size()) {
+      if (dst_idx < static_cast<int>(node->InputDefs().size())) {
         auto it = input_indexes.find(node->InputDefs()[dst_idx]->Name());
         if (it != input_indexes.cend()) {
           AddEdge(producer_idx, new_node_idx, src_idx, it->second);
         }
       } else {
-        int dst_implicit_input_idx = dst_idx - (int)node->InputDefs().size();
+        int dst_implicit_input_idx = dst_idx - static_cast<int>(node->InputDefs().size());
         ORT_ENFORCE(dst_implicit_input_idx < (int)node->ImplicitInputDefs().size());
         auto it = input_indexes.find(node->ImplicitInputDefs()[dst_implicit_input_idx]->Name());
         if (it != input_indexes.cend()) {
@@ -4458,7 +5148,8 @@ Status Graph::InlineFunction(Node& callnode) {
   // Remove output edges. Requirement for RemoveNode() below.
   auto output_edges = callnode.GetRelationships().output_edges;  // copy so RemoveEdge doesn't invalidate iterator
   for (const auto& output_edge : output_edges) {
-    RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+    RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(),
+               output_edge.GetDstArgIndex());
   }
 
   // create a uniq_identifier to append to every node name and intermediate input\outputs

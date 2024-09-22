@@ -10,12 +10,16 @@ class Graph(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsGraph(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = Graph()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsGraph(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def GraphBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -207,21 +211,110 @@ class Graph(object):
             return obj
         return None
 
-def GraphStart(builder): builder.StartObject(9)
-def GraphAddInitializers(builder, initializers): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(initializers), 0)
-def GraphStartInitializersVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddNodeArgs(builder, nodeArgs): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(nodeArgs), 0)
-def GraphStartNodeArgsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddNodes(builder, nodes): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(nodes), 0)
-def GraphStartNodesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddMaxNodeIndex(builder, maxNodeIndex): builder.PrependUint32Slot(3, maxNodeIndex, 0)
-def GraphAddNodeEdges(builder, nodeEdges): builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(nodeEdges), 0)
-def GraphStartNodeEdgesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddInputs(builder, inputs): builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(inputs), 0)
-def GraphStartInputsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddOutputs(builder, outputs): builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(outputs), 0)
-def GraphStartOutputsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddSparseInitializers(builder, sparseInitializers): builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(sparseInitializers), 0)
-def GraphStartSparseInitializersVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def GraphAddRuntimeOptimizations(builder, runtimeOptimizations): builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(runtimeOptimizations), 0)
-def GraphEnd(builder): return builder.EndObject()
+def GraphStart(builder):
+    builder.StartObject(9)
+
+def Start(builder):
+    GraphStart(builder)
+
+def GraphAddInitializers(builder, initializers):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(initializers), 0)
+
+def AddInitializers(builder, initializers):
+    GraphAddInitializers(builder, initializers)
+
+def GraphStartInitializersVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartInitializersVector(builder, numElems: int) -> int:
+    return GraphStartInitializersVector(builder, numElems)
+
+def GraphAddNodeArgs(builder, nodeArgs):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(nodeArgs), 0)
+
+def AddNodeArgs(builder, nodeArgs):
+    GraphAddNodeArgs(builder, nodeArgs)
+
+def GraphStartNodeArgsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartNodeArgsVector(builder, numElems: int) -> int:
+    return GraphStartNodeArgsVector(builder, numElems)
+
+def GraphAddNodes(builder, nodes):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(nodes), 0)
+
+def AddNodes(builder, nodes):
+    GraphAddNodes(builder, nodes)
+
+def GraphStartNodesVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartNodesVector(builder, numElems: int) -> int:
+    return GraphStartNodesVector(builder, numElems)
+
+def GraphAddMaxNodeIndex(builder, maxNodeIndex):
+    builder.PrependUint32Slot(3, maxNodeIndex, 0)
+
+def AddMaxNodeIndex(builder, maxNodeIndex):
+    GraphAddMaxNodeIndex(builder, maxNodeIndex)
+
+def GraphAddNodeEdges(builder, nodeEdges):
+    builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(nodeEdges), 0)
+
+def AddNodeEdges(builder, nodeEdges):
+    GraphAddNodeEdges(builder, nodeEdges)
+
+def GraphStartNodeEdgesVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartNodeEdgesVector(builder, numElems: int) -> int:
+    return GraphStartNodeEdgesVector(builder, numElems)
+
+def GraphAddInputs(builder, inputs):
+    builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(inputs), 0)
+
+def AddInputs(builder, inputs):
+    GraphAddInputs(builder, inputs)
+
+def GraphStartInputsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartInputsVector(builder, numElems: int) -> int:
+    return GraphStartInputsVector(builder, numElems)
+
+def GraphAddOutputs(builder, outputs):
+    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(outputs), 0)
+
+def AddOutputs(builder, outputs):
+    GraphAddOutputs(builder, outputs)
+
+def GraphStartOutputsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartOutputsVector(builder, numElems: int) -> int:
+    return GraphStartOutputsVector(builder, numElems)
+
+def GraphAddSparseInitializers(builder, sparseInitializers):
+    builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(sparseInitializers), 0)
+
+def AddSparseInitializers(builder, sparseInitializers):
+    GraphAddSparseInitializers(builder, sparseInitializers)
+
+def GraphStartSparseInitializersVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartSparseInitializersVector(builder, numElems: int) -> int:
+    return GraphStartSparseInitializersVector(builder, numElems)
+
+def GraphAddRuntimeOptimizations(builder, runtimeOptimizations):
+    builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(runtimeOptimizations), 0)
+
+def AddRuntimeOptimizations(builder, runtimeOptimizations):
+    GraphAddRuntimeOptimizations(builder, runtimeOptimizations)
+
+def GraphEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return GraphEnd(builder)

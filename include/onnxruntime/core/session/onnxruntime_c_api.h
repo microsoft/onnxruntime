@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 18
+#define ORT_API_VERSION 20
 
 #ifdef __cplusplus
 extern "C" {
@@ -196,7 +196,10 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,    // Non-IEEE floating-point format based on IEEE754 single-precision
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,      // Non-IEEE floating-point format based on IEEE754 single-precision
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ   // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
+  // Int4 types were introduced in ONNX 1.16. See https://onnx.ai/onnx/technical/int4.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,  // maps to a pair of packed uint4 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4    // maps to a pair of packed int4 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -267,7 +270,7 @@ typedef enum OrtOpAttrType {
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
-  typedef struct Ort##X Ort##X;
+  typedef struct Ort##X Ort##X
 
 /** \addtogroup Global
  * ONNX Runtime C API
@@ -470,13 +473,13 @@ typedef struct OrtCUDAProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
+   *   This option can be overridden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
    */
   int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
+   *   This option can be overridden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
 
@@ -559,13 +562,13 @@ typedef struct OrtROCMProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
+   *   This option can be overridden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
    */
   int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
+   *   This option can be overridden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
 
@@ -614,6 +617,11 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
+  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
+  const char* migraphx_save_model_path;              // migraphx model path name
+  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
+  const char* migraphx_load_model_path;              // migraphx model path name
+  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -1847,8 +1855,8 @@ struct OrtApi {
    * and not present, the function returns success and out is set to nullptr.
    *
    * \param[in] context ::OrtKernelContext instance
-   * \param[in] input index. See KernelContext_GetInputCount for boundaries check.
-   * \param[in, out] returns a ptr to OrtValue if the input is present
+   * \param[in] index See KernelContext_GetInputCount for boundaries check.
+   * \param[out] out OrtValue if the input is present otherwise is set nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -1861,8 +1869,10 @@ struct OrtApi {
    * and not present, the function returns success and out is set to nullptr.
    *
    * \param[in] context ::OrtKernelContext instance
-   * \param[in] output index. See KernelContext_GetOutputCount for boundaries check.
-   * \param[in, out] returns a ptr to OrtValue if the output is present
+   * \param[in] index See KernelContext_GetOutputCount for boundaries check.
+   * \param[in] dim_values output dimensions
+   * \param[in] dim_count number of dimensions
+   * \param[out] out a ptr to OrtValue to output otherwise set to nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2789,7 +2799,7 @@ struct OrtApi {
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
    * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
-   *  It is not an allocation limit, it is only a limit for extention when requested byte is less than the limit.
+   *  It is not an allocation limit, it is only a limit for extension when requested byte is less than the limit.
    *  When requested bytes is more than the limit, allocator will still return as requested.
    *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
    *  Ultimately, the allocation size is determined by the allocation memory request.
@@ -2937,7 +2947,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#cc
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="trt_max_workspace_size" and value="2147483648"
    *
@@ -3433,7 +3443,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtCUDAProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="device_id" and value="0"
    *
@@ -3506,15 +3516,15 @@ struct OrtApi {
    * \param[in] options
    * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
    * \param[in] initializers Array of ::OrtValue type
-   * \param[in] initializers_num Number of elements in the initializer_names and initializers
+   * \param[in] num_initializers Number of elements in the initializer_names and initializers
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.12.
    */
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
-                  _In_reads_(input_len) const char* const* initializer_names,
-                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+                  _In_reads_(num_initializers) const char* const* initializer_names,
+                  _In_reads_(num_initializers) const OrtValue* const* initializers, size_t num_initializers);
 
   /** \brief: Create attribute of onnxruntime operator
    *
@@ -3618,6 +3628,7 @@ struct OrtApi {
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
+   *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
@@ -3643,6 +3654,9 @@ struct OrtApi {
        Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
          - "0": Default. With fp32 precision.
          - "1": With fp16 precision.
+       "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
+         - "0": Default. Disabled.
+         - "1": Enabled.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -4457,13 +4471,14 @@ struct OrtApi {
    * E.g. a cuda stream or a cublas handle
    *
    * \param context - Kernel context
-   * \param resouce_version - Version of the resource
+   * \param resource_version - Version of the resource
    * \param resource_id - Type of resource
    * \param resource - A pointer to returned resource
    *
    * \since Version 1.16.
    */
-  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version,
+                  _In_ int resource_id, _Outptr_ void** resource);
 
   /** \brief Set user logging function
    *
@@ -4518,10 +4533,10 @@ struct OrtApi {
   ORT_API2_STATUS(ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr);
 
   /**
-   * Set type and shape info of an ouput
+   * Set type and shape info of an output
    *
    * \param[in] context
-   * \param[in] index The index of the ouput
+   * \param[in] index The index of the output
    * \param[out] info Type shape info of the output
    *
    * \since Version 1.17.
@@ -4630,6 +4645,31 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+  /** \brief Replace initialized Tensors with external data with the provided files in memory
+   *
+   * The function will find the initialized TensorProtos with external data in the graph with the provided
+   * external file names and the file content in memory. The API gets the external file name, offset, data length
+   * from TensorProto, and locate the tensor data from the file in memory buffer.
+   * It creates a Tensor to replace the existing Tensor in graph. The replacement
+   * will occur before any of the optimizations take place. The data will be copied into the graph
+   * since TensorProto can't refer to the user provided buffers.
+   *
+   * \param[in] options
+   * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
+   *            which holds the external initializers.
+   * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
+   *            The buffer can be freed after session creation.
+   * \param[in] external_initializer_file_lengths Array of size_t to indicate the length of file content
+   * \param[in] num_external_initializer_files Number of external files
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
+                  _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* external_initializer_file_names,
+                  _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
+                  _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
+                  size_t num_external_initializer_files);
 
   /** \brief Evict execution provider resources of the session
    * \note Call this to release memory while a session is unused.

@@ -31,8 +31,9 @@ Status DynamicQuantizaLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
-  output_array = model_builder.GetBuilder().call<emscripten::val>("dynamicQuantizeLinear", input);
+  output_array = model_builder.GetBuilder().call<emscripten::val>("dynamicQuantizeLinear", input, options);
 
   for (size_t i = 0, count = output_array["length"].as<size_t>(); i < count; i++) {
     model_builder.AddOperand(node.OutputDefs()[i]->Name(), std::move(output_array[i]));

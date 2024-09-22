@@ -77,6 +77,7 @@ ignore = [
     "G004", # FIXME: Enable when the rule can be autofixed
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
+    "N813", # Allow importing camelcase names in lowercase
     "N999", # Module names
     "NPY002", # np.random.Generator may not always fit our use cases
     "PERF203", # "try-except-in-loop" only affects Python <3.11, and the improvement is minor; can have false positives
@@ -84,6 +85,7 @@ ignore = [
     "PYI041", # May create confusion
     "PYI024", # May create confusion
     "SIM102", # We don't perfer always combining if branches
+    "SIM103", # Do not collapse if-else
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
     "SIM116", # Don't use dict lookup to replace if-else
@@ -100,6 +102,8 @@ unfixable = [
 # Eventually this list should become empty.
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
 "tools/nuget/generate_nuspec_for_native_nuget.py" = ["ISC003"] # Too many errors to fix
+"onnxruntime/contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_triton.py" = ["N806"]  # use of Q, K and V in triton script
+"onnxruntime/contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_triton.py" = ["N806"]  # use of Q, K and V in triton script
 "onnxruntime/test/python/quantization/test_op_gemm.py" = ["N806"]  # use of A for a matrix
 "onnxruntime/test/python/quantization/op_test_utils.py" = ["N806", "PERF203", "RUF012"]  # use of A for a matrix
 "orttraining/orttraining/python/training/ort_triton/kernel/_flash_attn.py" = ["N806", "PLW2901", "ISC001", "E731"]  # Long triton code from other repo.

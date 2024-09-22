@@ -19,10 +19,7 @@ module.exports = {
   // So we exclusionlist them at the root, and alias them to the versions in example's node_modules
   resolver: {
     exclusionlistRE: exclusionlist(
-      modules.map(
-        (m) =>
-          new RegExp(`^${escape(path.join(root, 'node_modules', m))}\\/.*$`)
-      )
+      modules.map((m) => new RegExp(`^${escape(path.join(root, 'node_modules', m))}\\/.*$`)),
     ),
 
     extraNodeModules: modules.reduce((acc, name) => {

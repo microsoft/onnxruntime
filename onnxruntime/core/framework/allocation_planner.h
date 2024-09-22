@@ -53,7 +53,7 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
   SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order, bool enable_memory_reuse)
       : execution_mode_(execution_mode),
-        exection_order_(execution_order),
+        execution_order_(execution_order),
         enable_memory_reuse_(enable_memory_reuse) {
   }
 
@@ -63,13 +63,13 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 
   bool IsParallelExecutionEnabled() const override { return execution_mode_ == ExecutionMode::ORT_PARALLEL; }
 
-  ExecutionOrder GetExecutionOrder() const override { return exection_order_; }
+  ExecutionOrder GetExecutionOrder() const override { return execution_order_; }
 
   bool GetEnableMemoryReuse() const override { return enable_memory_reuse_; }
 
  private:
   ExecutionMode execution_mode_ = ExecutionMode::ORT_SEQUENTIAL;
-  ExecutionOrder exection_order_ = ExecutionOrder::DEFAULT;
+  ExecutionOrder execution_order_ = ExecutionOrder::DEFAULT;
   bool enable_memory_reuse_ = true;
 };
 

@@ -26,6 +26,6 @@ class EliminateIdentity : public RewriteRule {
   bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
 
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
-};  // namespace onnxruntime
+};
 
 }  // namespace onnxruntime

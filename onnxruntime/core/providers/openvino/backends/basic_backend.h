@@ -11,6 +11,7 @@
 #include <string>
 #include <condition_variable>
 #include <mutex>
+#include <map>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
@@ -20,21 +21,29 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+struct ov_tensor_data_t {
+  OVTensorPtr tensor_ptr;
+  bool copy_needed;
+};
+
 class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
-  BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+  BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
                GlobalContext& global_context,
-               const SubGraphContext& subgraph_context);
+               const SubGraphContext& subgraph_context,
+               EPCtxHandler& ep_ctx_handle);
 
   void Infer(OrtKernelContext* context) override;
+  ov::CompiledModel& GetOVCompiledModel() override {
+    return exe_network_.Get();
+  }
 
  private:
-  bool ImportBlob(std::string hw_target, bool npu_status);
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
-  void EnableCaching();
+  void EnableCaching(ov::AnyMap& device_config);
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
@@ -49,13 +58,17 @@ class BasicBackend : public IBackend {
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
   mutable std::mutex compute_lock_;
-  std::shared_ptr<OVNetwork> ie_cnn_network_;
+  std::shared_ptr<const OVNetwork> ie_cnn_network_;
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
+  bool is_ep_ctx_graph_{false};
 #if defined IO_BUFFER_ENABLED
   OVRemoteContextPtr remote_context_;
 #endif
+
+  using ort_tensor_key_t = std::pair<const void*, const std::string>;
+  std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
 };
 
 class InferRequestsQueue {

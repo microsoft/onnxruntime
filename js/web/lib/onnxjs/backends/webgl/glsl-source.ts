@@ -33,11 +33,11 @@ const GLSL_ES_3_0: Glsl = {
   outputDeclaration: 'out vec4 outputColor;',
 };
 
-export function getGlsl(version: 1|2) {
+export function getGlsl(version: 1 | 2) {
   return version === 1 ? GLSL_ES_2_0 : GLSL_ES_3_0;
 }
 
-export function getVertexShaderSource(version: 1|2): string {
+export function getVertexShaderSource(version: 1 | 2): string {
   const glsl = getGlsl(version);
   return `${glsl.version}
       precision highp float;
@@ -53,7 +53,7 @@ export function getVertexShaderSource(version: 1|2): string {
       }`;
 }
 
-export function getFragShaderPreamble(version: 1|2): string {
+export function getFragShaderPreamble(version: 1 | 2): string {
   const glsl = getGlsl(version);
   return `${glsl.version}
     precision highp float;
@@ -90,7 +90,7 @@ export function getFragShaderPreamble(version: 1|2): string {
     `;
 }
 
-export function getDefaultFragShaderMain(version: 1|2, outputShapeLength: number): string {
+export function getDefaultFragShaderMain(version: 1 | 2, outputShapeLength: number): string {
   const glsl = getGlsl(version);
   return `
   void main() {

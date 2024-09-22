@@ -10,3 +10,21 @@ index 3987eac9..5e5462f1 100644
 +  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLATBUFFERS_CXX_FLAGS} -Wno-error=stringop-overflow")
  endif()
  message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+diff --git a/include/flatbuffers/flatbuffers.h b/include/flatbuffers/flatbuffers.h
+index bc828a31..3d3effe8 100644
+--- a/include/flatbuffers/flatbuffers.h
++++ b/include/flatbuffers/flatbuffers.h
+@@ -213,7 +213,12 @@ inline const char * const *ElementaryTypeNames() {
+ // We're explicitly defining the signedness since the signedness of integer
+ // bitfields is otherwise implementation-defined and causes warnings on older
+ // GCC compilers.
+-struct TypeCode {
++
++struct
++#if defined(_AIX) && defined(__clang__)
++__attribute__((packed))
++#endif
++TypeCode {
+   // ElementaryType
+   unsigned short base_type : 4;
+   // Either vector (in table) or array (in struct)

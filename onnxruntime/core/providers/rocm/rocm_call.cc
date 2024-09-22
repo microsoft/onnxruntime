@@ -104,7 +104,7 @@ std::conditional_t<THRW, void, Status> RocmCall(
       if (gethostname(hostname, HOST_NAME_MAX) != 0)
         strcpy(hostname, "?");
 #endif
-      int currentHipDevice;
+      int currentHipDevice = -1;
       ORT_IGNORE_RETURN_VALUE(hipGetDevice(&currentHipDevice));  // void to silence nodiscard
       ORT_IGNORE_RETURN_VALUE(hipGetLastError());                // clear last ROCM error; void to silence nodiscard
       static char str[1024];
@@ -143,6 +143,8 @@ template Status RocmCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const 
 template void RocmCall<hiprandStatus_t, true>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg, const char* file, const int line);
 template Status RocmCall<hipfftResult, false>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg, const char* file, const int line);
 template void RocmCall<hipfftResult, true>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg, const char* file, const int line);
+template Status RocmCall<rsmi_status_t, false>(rsmi_status_t retCode, const char* exprString, const char* libName, rsmi_status_t successCode, const char* msg, const char* file, const int line);
+template void RocmCall<rsmi_status_t, true>(rsmi_status_t retCode, const char* exprString, const char* libName, rsmi_status_t successCode, const char* msg, const char* file, const int line);
 
 #ifdef ORT_USE_NCCL
 template Status RocmCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg, const char* file, const int line);

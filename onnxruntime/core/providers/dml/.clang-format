@@ -1,3 +1,28 @@
 # Readability matters. Prevent syntax noise in pull requests for people who
 # accidentally leave enabled the auto-formatting options in Visual Studio.
-DisableFormat: true
+# DisableFormat: true
+
+Language: Cpp
+IndentWidth: 4
+UseTab: Never
+NamespaceIndentation: All
+BreakBeforeBraces: Allman
+ColumnLimit: 120
+AllowShortIfStatementsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: false
+BreakConstructorInitializers: AfterColon
+Cpp11BracedListStyle: false
+EmptyLineAfterAccessModifier: Never
+EmptyLineBeforeAccessModifier: Always
+IndentAccessModifiers: false
+PackConstructorInitializers: Never
+PointerAlignment: Left
+QualifierAlignment: Left
+ReferenceAlignment: Left
+SeparateDefinitionBlocks: Always
+SortUsingDeclarations: Lexicographic
+Standard: c++17
+BracedInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+IndentPPDirectives: BeforeHash

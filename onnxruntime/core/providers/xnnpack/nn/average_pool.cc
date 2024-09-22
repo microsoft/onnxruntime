@@ -15,7 +15,6 @@ namespace onnxruntime {
 namespace xnnpack {
 namespace {
 Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
-                           int64_t C,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            struct xnn_operator*& p,
                            const OpQuantParam& quant_param,
@@ -42,7 +41,6 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    input_padding_bottom, input_padding_left,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
-                                                   C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                    foutput_min, foutput_max, flags, &p);
   } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
     const float output_scale = quant_param[1].first[0];
@@ -53,7 +51,6 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    input_padding_bottom, input_padding_left,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
-                                                   C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                    quant_param[0].second,
                                                    quant_param[0].first[0],
                                                    quant_param[1].second,
@@ -209,7 +206,7 @@ AveragePool::AveragePool(const OpKernelInfo& info)
     ORT_THROW("unsupported AveragePool in XnnpackEP, we have FLOAT|UINT8, but got ", stype);
   }
   struct xnn_operator* p;
-  auto ret = CreateXnnpackKernel(pool_attrs_, C, clip_min_max_, p,
+  auto ret = CreateXnnpackKernel(pool_attrs_, clip_min_max_, p,
                                  quant_param, avgpool_type_);
   ORT_ENFORCE(ret.IsOK(), ret.ErrorMessage());
   op0_.reset(p);
@@ -222,6 +219,7 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   int64_t N = X_shape[0];
   int64_t H = X_shape[1];
   int64_t W = X_shape[2];
+  int64_t C = X_shape[3];
 
   // set the N dim to the correct value
   TensorShapeVector output_dims{output_dims_};
@@ -247,7 +245,7 @@ Status AveragePool::Compute(OpKernelContext* context) const {
                         ? xnn_reshape_average_pooling2d_nhwc_f32
                         : xnn_reshape_average_pooling2d_nhwc_qu8;
 
-  auto status = reshape_fn(op0_.get(), N, H, W,
+  auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
                            &workspace_size, &workspace_alignment,
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);

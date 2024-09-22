@@ -3,7 +3,7 @@
 
 #include "core/providers/resource.h"
 
-#define ORT_CUDA_RESOUCE_VERSION 3
+#define ORT_CUDA_RESOURCE_VERSION 3
 
 enum CudaResource : int {
   cuda_stream_t = cuda_resource_offset,  // 10000
@@ -19,4 +19,5 @@ enum CudaResource : int {
   enable_skip_layer_norm_strict_mode_t,
   prefer_nhwc_t,
   use_tf32_t,
+  fuse_conv_bias_t
 };
