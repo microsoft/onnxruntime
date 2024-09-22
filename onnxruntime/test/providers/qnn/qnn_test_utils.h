@@ -34,22 +34,22 @@ struct QuantParams {
   QType zero_point;
 
   inline std::pair<float, float> CalcRminRmax() const {
-    constexpr double qmin = static_cast<double>(std::numeric_limits<QType>::min());
-    constexpr double qmax = static_cast<double>(std::numeric_limits<QType>::max());
-    const double qrange = (qmax - qmin);
-    const double rrange = this->scale * qrange;
-    const double rmin = -(static_cast<double>(this->zero_point) - qmin) * this->scale;
-    const double rmax = rrange + rmin;
+    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
+    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
+    const float qrange = (qmax - qmin);
+    const float rrange = this->scale * qrange;
+    const float rmin = -(static_cast<float>(this->zero_point) - qmin) * this->scale;
+    const float rmax = rrange + rmin;
 
-    return {static_cast<float>(rmin), static_cast<float>(rmax)};
+    return {rmin, rmax};
   }
 
   inline bool IsSymmetric() const {
-    constexpr double qmin = static_cast<double>(std::numeric_limits<QType>::min());
-    constexpr double qmax = static_cast<double>(std::numeric_limits<QType>::max());
-    double init_zero_point = (qmin + qmax) / 2.0;
+    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
+    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
+    float init_zero_point = (qmin + qmax) / 2.0;
     const QType symm_zero_point = static_cast<QType>(RoundHalfToEven(
-        std::max(static_cast<float>(qmin), static_cast<float>(std::min(qmax, init_zero_point)))));
+        std::max(qmin, std::min(qmax, init_zero_point))));
 
     return this->zero_point == symm_zero_point;
   }
@@ -77,23 +77,23 @@ struct QuantParams {
       rmin = -abs_max;
     }
 
-    const double qmin_dbl = qmin;
-    const double qmax_dbl = qmax;
-    const double scale = (rmax - rmin) / (qmax_dbl - qmin_dbl);
-    double initial_zero_point = 0.0;
+    const float qmin_flt = qmin;
+    const float qmax_flt = qmax;
+    const float scale = (rmax - rmin) / (qmax_flt - qmin_flt);
+    float initial_zero_point = 0.0f;
 
     if (symmetric) {
       // Symmetric uses same formula for zero-point as asymmetric, but we can cancel out terms for
       // increased numerical accuracy.
-      initial_zero_point = (qmin_dbl + qmax_dbl) / 2.0;
+      initial_zero_point = (qmin_flt + qmax_flt) / 2.0f;
     } else {
-      initial_zero_point = qmin_dbl - (rmin / scale);
+      initial_zero_point = qmin_flt - (rmin / scale);
     }
 
-    const QType zero_point = static_cast<QType>(RoundHalfToEven(
-        std::max(static_cast<float>(qmin_dbl), static_cast<float>(std::min(qmax_dbl, initial_zero_point)))));
+    const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin_flt,
+                                                                         std::min(qmax_flt, initial_zero_point))));
 
-    return QuantParams<QType>{static_cast<float>(scale), zero_point};
+    return QuantParams<QType>{scale, zero_point};
   }
 };
 
