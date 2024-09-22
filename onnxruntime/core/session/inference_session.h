@@ -330,19 +330,6 @@ class InferenceSession {
    */
   [[nodiscard]] common::Status Initialize();
 
-  /**
-   * Notifies the execution provider that the current session will be not used for a while,
-   * so it may reclaim some of the allocated memory if it is required for another purpose.
-   *
-   * This API can be best used when running multiple large models in a sequence repeatedly,
-   * as the data can be moved between system and video memory significantly faster than recreating the session.
-   *
-   * Running the session again will cancel the effect of this call.
-   *
-   * @return OK if success
-   */
-  [[nodiscard]] common::Status Evict();
-
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
                                    gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                                    std::vector<OrtValue>* p_fetches,

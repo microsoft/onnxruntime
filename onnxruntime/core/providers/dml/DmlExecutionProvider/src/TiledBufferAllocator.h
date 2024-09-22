@@ -24,10 +24,10 @@ namespace Dml
                              D3D12_RESOURCE_FLAGS resourceFlags, D3D12_RESOURCE_STATES initialState,
                              std::unique_ptr<DmlSubAllocator>&& subAllocator);
 
-        virtual void SetResidency(bool value) override;
-
         using DmlBufferAllocator::Alloc;
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) override;
+
+        void Clear();
 
     private:
         ComPtr<ID3D12Device> m_device;

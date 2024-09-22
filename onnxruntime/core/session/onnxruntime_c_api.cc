@@ -765,11 +765,6 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
   return nullptr;
 }
 
-static ORT_STATUS_PTR EvictSession(_In_ onnxruntime::InferenceSession* session) {
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->Evict());
-  return nullptr;
-}
-
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
@@ -807,24 +802,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
-    });
-  }
-
-  return status;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::EvictSession, _In_ OrtSession* session) {
-  API_IMPL_BEGIN
-
-  OrtStatus* status = nullptr;
-
-  ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(::EvictSession(reinterpret_cast<onnxruntime::InferenceSession*>(session)));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -2753,8 +2730,6 @@ static constexpr OrtApi ort_api_1_to_20 = {
     &OrtApis::KernelInfoGetAllocator,
     &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
-
-    &OrtApis::EvictSession
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
