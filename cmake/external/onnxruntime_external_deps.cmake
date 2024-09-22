@@ -295,7 +295,7 @@ if(NOT TARGET Boost::mp11)
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
+set(JSON_Install ON CACHE INTERNAL "")
 
 onnxruntime_fetchcontent_declare(
     nlohmann_json
@@ -420,7 +420,7 @@ if(NOT safeint_SOURCE_DIR)
   # use fetch content rather than makeavailable because safeint only includes unconditional test targets
   FetchContent_Populate(safeint)
 endif()
-add_library(safeint_interface INTERFACE)
+add_library(safeint_interface IMPORTED INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
@@ -433,7 +433,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR 
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
-set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
+set(FLATBUFFERS_INSTALL ON CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
