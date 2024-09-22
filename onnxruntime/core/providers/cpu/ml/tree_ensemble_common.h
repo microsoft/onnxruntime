@@ -974,7 +974,7 @@ class TreeEnsembleCommonV5 : public TreeEnsembleCommon<IOType, ThresholdType, IO
                                const std::vector<uint8_t>& nodes_modes);
 
   int64_t transformInputOneTree(
-      const int64_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
+      const size_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
       // input
       const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
       const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
@@ -1124,7 +1124,7 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::getMembershipValuesById(
 
 template <typename IOType, typename ThresholdType>
 int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
-    const int64_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
+    const size_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
     // input
     const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
     const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
@@ -1141,7 +1141,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
   nodes_treeids_old.push_back(curr_treeid);
 
   if (is_leaf) {
-    nodes_modes_old.push_back(static_cast<int64_t>(NODE_MODE_V5::LEAF));
+    nodes_modes_old.push_back(static_cast<uint8_t>(NODE_MODE_V5::LEAF));
     target_class_ids_old.push_back(leaf_targetids[curr_id]);
     target_class_nodeids_old.push_back(curr_nodeid);
     target_class_treeids_old.push_back(curr_treeid);
@@ -1171,21 +1171,21 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
   }
 
   // unroll `BRANCH_MEMBER` to a chain of `BRANCH_EQ`
-  if (nodes_modes[curr_id] == static_cast<int64_t>(NODE_MODE_V5::BRANCH_MEMBER)) {
-    nodes_modes_old.push_back(static_cast<int64_t>(NODE_MODE_V5::BRANCH_EQ));
+  if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER)) {
+    nodes_modes_old.push_back(static_cast<uint8_t>(NODE_MODE_V5::BRANCH_EQ));
     nodes_values_as_tensor_old.push_back(membership_values_by_id[curr_id][curr_membership_value_id]);
   } else {
     nodes_modes_old.push_back(nodes_modes[curr_id]);
     nodes_values_as_tensor_old.push_back(nodes_splits[curr_id]);
   }
 
-  int64_t falsenodeid_id = nodes_falsenodeids_old.size();
+  size_t falsenodeid_id = nodes_falsenodeids_old.size();
   nodes_falsenodeids_old.push_back(0);  // change after pushing truenode subtree
 
   int64_t true_nodeid = curr_nodeid + 1;
   nodes_truenodeids_old.push_back(true_nodeid);
   true_nodeid = transformInputOneTree(
-      nodes_truenodeids[curr_id], curr_treeid, true_nodeid, 0, nodes_trueleafs[curr_id],
+      onnxruntime::narrow<size_t>(nodes_truenodeids[curr_id]), curr_treeid, true_nodeid, 0U, nodes_trueleafs[curr_id] != 0,
       leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
       nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
       nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
@@ -1200,7 +1200,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
   // so in that case we are only moving the pointer for `membership_values`
   //
   // otherwise, the `falsenode_id` is pointing to the real falsenode subtree
-  if (nodes_modes[curr_id] == static_cast<int64_t>(NODE_MODE_V5::BRANCH_MEMBER) && curr_membership_value_id < membership_values_by_id[curr_id].size()) {
+  if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER) && curr_membership_value_id < membership_values_by_id[curr_id].size()) {
     false_nodeid = transformInputOneTree(
         curr_id, curr_treeid, false_nodeid, curr_membership_value_id + 1, false,
         leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
@@ -1210,7 +1210,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
         target_class_treeids_old, target_class_weights_as_tensor_old);
   } else {
     false_nodeid = transformInputOneTree(
-        nodes_falsenodeids[curr_id], curr_treeid, false_nodeid, 0, nodes_falseleafs[curr_id],
+        onnxruntime::narrow<size_t>(nodes_falsenodeids[curr_id]), curr_treeid, false_nodeid, 0U, nodes_falseleafs[curr_id] != 0,
         leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
         nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
         nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
@@ -1234,9 +1234,10 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputAllTrees(
     std::vector<int64_t>& nodes_treeids_old, std::vector<int64_t>& nodes_truenodeids_old, std::vector<ThresholdType>& nodes_values_as_tensor_old,
     std::vector<int64_t>& target_class_ids_old, std::vector<int64_t>& target_class_nodeids_old, std::vector<int64_t>& target_class_treeids_old,
     std::vector<ThresholdType>& target_class_weights_as_tensor_old) {
-  int curr_treeid = 0;
-  for (const auto& tree_root : tree_roots) {
-    transformInputOneTree(tree_root, curr_treeid, 0, 0, nodes_falsenodeids[tree_root] == nodes_truenodeids[tree_root],
+  int64_t curr_treeid = 0;
+  for (const int64_t& tree_root : tree_roots) {
+    size_t tree_root_size_t = onnxruntime::narrow<size_t>(tree_root);
+    transformInputOneTree(tree_root_size_t, curr_treeid, 0, 0U, nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t],
                           leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
                           nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
                           nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
