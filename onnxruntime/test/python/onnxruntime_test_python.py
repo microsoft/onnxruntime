@@ -1901,10 +1901,7 @@ class TestInferenceSession(unittest.TestCase):
         model_path = get_name("lora/two_params_lora_model.onnx")
 
         expected_output = np.array(
-                [[28., 32., 36., 40.],
-                [28., 32., 36., 40.],
-                [28., 32., 36., 40.],
-                [28., 32., 36., 40.]],
+            [[28.0, 32.0, 36.0, 40.0], [28.0, 32.0, 36.0, 40.0], [28.0, 32.0, 36.0, 40.0], [28.0, 32.0, 36.0, 40.0]],
             dtype=np.float32,
         )
 
@@ -1916,7 +1913,6 @@ class TestInferenceSession(unittest.TestCase):
         outputs = session.run(None, inputs, run_options)
         self.assertEqual(len(outputs), 1)
         self.assertTrue(np.allclose(outputs[0], expected_output))
-
 
 
 if __name__ == "__main__":

@@ -4449,7 +4449,7 @@ TEST(CApiTest, RunWithLoraAdapter) {
 }
 
 TEST(CApiTest, RunBaseLoraModel) {
-  constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model_optimized.onnx");
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model.onnx");
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
   constexpr const std::array<int64_t, 2> input_shape = {4, 4};
   std::vector<float> input_x(16);
