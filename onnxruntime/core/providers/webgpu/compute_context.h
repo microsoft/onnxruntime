@@ -106,6 +106,10 @@ class ComputeContext {
     return webgpu_context_.Run(*this, program);
   }
 
+  inline OpKernelContext& GetKernelContext() {
+    return kernel_context_;
+  }
+
   //
   // Push error scope.
   //

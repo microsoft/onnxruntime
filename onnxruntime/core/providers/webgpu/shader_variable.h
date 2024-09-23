@@ -69,6 +69,8 @@ class ShaderIndicesHelper {
 
   inline int NumComponents() const { return num_components_; }
 
+  inline int Rank() const { return rank_; }
+
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
   inline std::string OffsetToIndices(std::string_view offset_expr) const;
