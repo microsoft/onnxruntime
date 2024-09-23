@@ -193,9 +193,9 @@ stages:
         ls node_modules
         mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
         mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-        npm install --no-save ./onnxruntime-common.tgz
+        npm install ./onnxruntime-common.tgz
         ls node_modules/onnxruntime*
-        npm install --no-save ./onnxruntime-react-native.tgz
+        npm install ./onnxruntime-react-native.tgz
         ls node_modules/onnxruntime*
 
 
