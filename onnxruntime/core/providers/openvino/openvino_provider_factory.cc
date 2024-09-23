@@ -50,7 +50,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-
   bool so_disable_cpu_fallback = config_options_.GetConfigOrDefault("session.disable_cpu_ep_fallback", "0") == "1";
   bool so_export_ep_ctx_blob = config_options_.GetConfigOrDefault("ep.context_enable", "0") == "1";
   bool so_epctx_embed_mode = config_options_.GetConfigOrDefault("ep.context_embed_mode", "1") == "1";
@@ -65,7 +64,8 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
             auto parent_path = file_path.parent_path();
             if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
                 !std::filesystem::create_directory(parent_path)) {
-              ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
+              ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + \
+                         file_path.parent_path().generic_string() + " \n");
             }
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + cache_dir_ + " \n");
@@ -93,11 +93,11 @@ struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-      typedef std::pair<const ProviderOptions*, const ConfigOptions&> buffer_t;
-      const buffer_t* buffer = reinterpret_cast<const buffer_t*>(void_params);
-
-      auto& provider_options_map = *buffer->first;
-      const ConfigOptions& config_options = buffer->second;
+    // Extract the void_params into ProviderOptions and ConfigOptions
+    typedef std::pair<const ProviderOptions*, const ConfigOptions&> ConfigBuffer;
+    const ConfigBuffer* buffer = reinterpret_cast<const ConfigBuffer*>(void_params);
+    auto& provider_options_map = *buffer->first;
+    const ConfigOptions& config_options = buffer->second;
 
     std::string device_type = "";            // [device_type]: Overrides the accelerator hardware type and precision
                                              //   with these values at runtime.
@@ -298,7 +298,7 @@ struct OpenVINO_Provider : Provider {
                                                      context,
                                                      enable_opencl_throttling,
                                                      disable_dynamic_shapes,
-                                                     enable_qdq_optimizer,  
+                                                     enable_qdq_optimizer,
                                                      config_options);
   }
 
