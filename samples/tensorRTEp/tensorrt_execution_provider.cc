@@ -1435,7 +1435,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                 }
             }
 
-
             if (all_subgraphs_are_supported) {
                 for (const auto& group : supported_nodes_vector) {
                     if (!group.first.empty()) {
@@ -2269,29 +2268,32 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     }
   }
 
+  const char* node_name = nullptr;
+  api_->OrtNode_GetName(fused_node, &node_name);
+
   // Load INT8 calibration table
+  std::unordered_map<std::string, float> dynamic_range_map;
   if (int8_enable_ && int8_calibration_cache_available_) {
     const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
-    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map_)) {
+    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map)) {
       throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
     }
   }
+  dynamic_range_map_[node_name] = dynamic_range_map;
 
   // Set precision flags
-  const char* node_name = nullptr;
-  api_->OrtNode_GetName(fused_node, &node_name);
-  trt_node_name_with_precision_ = node_name;
+  std::string trt_node_name_with_precision(node_name);
   if (fp16_enable_ && int8_enable_) {
     trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-    trt_node_name_with_precision_ += "_fp16_int8";
+    trt_node_name_with_precision += "_fp16_int8";
     //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
   } else if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-    trt_node_name_with_precision_ += "_fp16";
+    trt_node_name_with_precision += "_fp16";
     //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
   } else if (int8_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    trt_node_name_with_precision_ += "_int8";
+    trt_node_name_with_precision += "_int8";
     //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
   }
 
@@ -2311,10 +2313,11 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
         trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
         trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
         trt_config->setDLACore(dla_core_);
-        trt_node_name_with_precision_ += "_dlacore" + std::to_string(dla_core_);
+        trt_node_name_with_precision += "_dlacore" + std::to_string(dla_core_);
       }
     }
   }
+  trt_node_name_with_precision_[node_name] = trt_node_name_with_precision;
 
   // enable sparse weights
   if (sparsity_enable_) {
@@ -2387,14 +2390,16 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
 
   std::string cache_path = "";
+  std::string cache_suffix = "";
   // Customize cache prefix if assigned
   if (!cache_prefix_.empty()) {
     // Generate cache suffix in case user would like to customize cache prefix
-    cache_suffix_ = "_" + GetCacheSuffix(node_name, trt_node_name_with_precision_);
-    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix_;
+    cache_suffix = "_" + GetCacheSuffix(node_name, trt_node_name_with_precision);
+    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
   } else {
-    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision_);
+    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
   }
+  cache_suffix_[node_name] = cache_suffix;
 
   std::string cache_hw_compat = "_sm" + compute_capability_;
   // Enable hardware compatility mode if assigned
@@ -2485,7 +2490,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
-          if (!SetDynamicRange(*trt_network, dynamic_range_map_)) {
+          if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
             return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not set INT8 dynamic range for fused node: " + std::string(node_name)).c_str());
           }
         }
@@ -2692,12 +2697,12 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
           &(this_->parsers_[context->node_name]), &(this_->engines_[context->node_name]), &(this_->contexts_[context->node_name]),
           &(this_->networks_[context->node_name]), this_->input_info_[context->node_name], this_->output_info_[context->node_name],
           this_->input_shape_ranges_[context->node_name], /*&tensorrt_mu_,*/ this_->fp16_enable_, this_->int8_enable_, this_->int8_calibration_cache_available_,
-          this_->dla_enable_, this_->dla_core_, &(this_->max_workspace_size_), this_->trt_node_name_with_precision_,
+          this_->dla_enable_, this_->dla_core_, &(this_->max_workspace_size_), this_->trt_node_name_with_precision_[context->node_name],
           this_->engine_cache_enable_, this_->cache_path_, this_->runtime_.get(), this_->profiles_[context->node_name],
-          this_->context_memory_sharing_enable_, &(this_->max_ctx_mem_size_), this_->dynamic_range_map_, this_->engine_decryption_enable_,
+          this_->context_memory_sharing_enable_, &(this_->max_ctx_mem_size_), this_->dynamic_range_map_[context->node_name], this_->engine_decryption_enable_,
           this_->engine_decryption_, this_->engine_encryption_, this_->timing_cache_enable_, this_->global_cache_path_, this_->force_timing_cache_match_,
           this_->detailed_build_log_, this_->build_heuristics_enable_, this_->sparsity_enable_, this_->builder_optimization_level_,
-          this_->auxiliary_streams_, !(this_->tactic_sources_.empty()), tactics, this_->cuda_graph_enable_, this_->cache_prefix_, this_->cache_suffix_, this_->engine_hw_compatible_};
+          this_->auxiliary_streams_, !(this_->tactic_sources_.empty()), tactics, this_->cuda_graph_enable_, this_->cache_prefix_, this_->cache_suffix_[context->node_name], this_->engine_hw_compatible_};
     *state = p.release();
     return 0;
   };
