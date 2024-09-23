@@ -32,10 +32,10 @@ private:
             src[i] = static_cast<unsigned short>(i);
         }
 
-        MlasCastF16ToF32KernelNeon(src, dest, count);
+        MlasCastF16ToF32KernelNeon(src.data(), dest.data(), count);
 
         for (size_t i = 0; i < count; i++) {
-            ASSERT_EQ(dest[i], MLAS_FP16(src[i]).ToFloat());
+            ASSERT_EQ(dest[i], MLAS_FP16::FromBits(src[i]).ToFloat());
         }
     }
 
@@ -47,10 +47,10 @@ private:
             src[i] = static_cast<float>(i);
         }
 
-        MlasCastF32ToF16KernelNeon(src, dest, count);
+        MlasCastF32ToF16KernelNeon(src.data(), dest.data(), count);
 
         for (size_t i = 0; i < count; i++) {
-            ASSERT_EQ(MLAS_FP16(dest[i]).ToFloat(), src[i]);
+            ASSERT_EQ(MLAS_FP16::FromBits(dest[i]).ToFloat(), src[i]);
         }
     }
 
