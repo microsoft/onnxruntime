@@ -108,7 +108,7 @@ auto verify_load = [](const lora::LoraAdapter& adapter) {
     ASSERT_NE(tensor.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
 
     const auto shape = tensor.Shape().GetDims();
-    ASSERT_EQ(2, shape.size());
+    ASSERT_EQ(2U, shape.size());
     ASSERT_EQ(8, shape[0]);
     ASSERT_EQ(4, shape[1]);
 
