@@ -347,12 +347,6 @@ __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
 template <>
 __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (float)b)); }
 
-#define ISNAN_HALF(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~MLFloat16::kSignMask) \
-                            > MLFloat16::kPositiveInfinityBits
-
-#define ISNAN_BFLOAT16(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~BFloat16::kSignMask) \
-                                > BFloat16::kPositiveInfinityBits
-
 template <typename T>
 __device__ __inline__ T _Min(T a, T b) { return a < b ? a : b; }
 
@@ -368,13 +362,15 @@ __device__ __inline__ double _Min(double a, double b) {
 
 template <>
 __device__ __inline__ half _Min(half a, half b) {
-  return ISNAN_HALF(a) ? a : (ISNAN_HALF(b) ? b : (a < b ? a : b));
+  return __hmin_nan(a, b);
 }
 
+#if CUDA_VERSION >= 11000
 template <>
 __device__ __inline__ BFloat16 _Min(BFloat16 a, BFloat16 b) {
-  return ISNAN_BFLOAT16(a) ? a : (ISNAN_BFLOAT16(b) ? b : (a < b ? a : b));
+  return BFloat16(__hmin_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
 }
+#endif
 
 template <typename T>
 __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
@@ -391,16 +387,15 @@ __device__ __inline__ double _Max(double a, double b) {
 
 template <>
 __device__ __inline__ half _Max(half a, half b) {
-  return ISNAN_HALF(a) ? a : (ISNAN_HALF(b) ? b : (a > b ? a : b));
+  return __hmax_nan(a, b);
 }
 
+#if CUDA_VERSION >= 11000
 template <>
 __device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
-  return ISNAN_BFLOAT16(a) ? a : (ISNAN_BFLOAT16(b) ? b : (a > b ? a : b));
+  return BFloat16(__hmax_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
 }
-
-#undef ISNAN_HALF
-#undef ISNAN_BFLOAT16
+#endif
 
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
