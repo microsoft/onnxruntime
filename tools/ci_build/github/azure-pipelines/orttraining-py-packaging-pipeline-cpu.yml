@@ -25,3 +25,4 @@ stages:
     enable_windows_arm64_qnn: false
     enable_windows_arm64ec_qnn: false
     enable_windows_x64_qnn: false
+    enable_linux_x64_qnn: false

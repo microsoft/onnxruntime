@@ -748,7 +748,7 @@ static Status MinMaxMLFloat16(const OpKernel& inst, OpKernelContext* context) {
 
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
-        auto num_elements = per_iter_bh.NumOutputElements();
+        auto num_elements = per_iter_bh.EigenInput1<MLFloat16>().rows();
 
         const auto* input_1 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput1<MLFloat16>().data());
         ConstEigenVectorArrayMap<Eigen::half> input_1_vec_map(input_1, num_elements);
@@ -763,7 +763,7 @@ static Status MinMaxMLFloat16(const OpKernel& inst, OpKernelContext* context) {
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        auto num_elements = per_iter_bh.NumOutputElements();
+        auto num_elements = per_iter_bh.EigenInput0<MLFloat16>().rows();
 
         const auto* input_0 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput0<MLFloat16>().data());
         ConstEigenVectorArrayMap<Eigen::half> input_0_vec_map(input_0, num_elements);
@@ -778,7 +778,7 @@ static Status MinMaxMLFloat16(const OpKernel& inst, OpKernelContext* context) {
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        auto num_elements = per_iter_bh.NumOutputElements();
+        auto num_elements = per_iter_bh.EigenInput0<MLFloat16>().rows();
 
         const auto* input_0 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput0<MLFloat16>().data());
         ConstEigenVectorArrayMap<Eigen::half> input_0_vec_map(input_0, num_elements);

@@ -54,7 +54,7 @@ stages:
     displayName: "Set common variables"
 
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     timeoutInMinutes: 5
 

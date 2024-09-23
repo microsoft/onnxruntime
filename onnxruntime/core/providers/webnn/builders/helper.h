@@ -206,6 +206,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Pad", "pad"},
     {"Pow", "pow"},
     {"PRelu", "prelu"},
+    {"QuantizeLinear", "quantizeLinear"},
     {"Reciprocal", "reciprocal"},
     {"ReduceL1", "reduceL1"},
     {"ReduceL2", "reduceL2"},
