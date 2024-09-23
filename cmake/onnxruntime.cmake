@@ -96,8 +96,6 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   endif()
 
   if(onnxruntime_USE_WEBGPU)
-    # TODO: Dawn includes all these. TBD if we need any others. As we're not doing anything graphical we may not.
-    # Cocoa (MacOS only), Foundation, IOKit
     list(APPEND _weak_frameworks "\\\"QuartzCore\\\"")
     list(APPEND _weak_frameworks "\\\"IOSurface\\\"")
     list(APPEND _weak_frameworks "\\\"Metal\\\"")

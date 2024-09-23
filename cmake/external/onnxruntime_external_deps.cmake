@@ -686,11 +686,6 @@ if (onnxruntime_USE_WEBGPU)
 endif()
 
 set(onnxruntime_LINK_DIRS)
-if(onnxruntime_USE_SNPE)
-  include(external/find_snpe.cmake)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
-endif()
-
 if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
 
@@ -700,6 +695,11 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   include(cuDNN)
+endif()
+
+if(onnxruntime_USE_SNPE)
+  include(external/find_snpe.cmake)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)
