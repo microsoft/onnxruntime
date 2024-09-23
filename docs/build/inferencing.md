@@ -123,7 +123,7 @@ export CC="/opt/IBM/openxlC/17.1.2/bin/ibm-clang"
 export CXX="/opt/IBM/openxlC/17.1.2/bin/ibm-clang++_r"
 export CFLAGS="-pthread -m64 -D_ALL_SOURCE -mcmodel=large  -Wno-deprecate-lax-vec-conv-all  -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare "
 export CXXFLAGS=" -pthread -m64 -D_ALL_SOURCE -mcmodel=large -Wno-deprecate-lax-vec-conv-all -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare"
-export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -L/opt/freeware/lib/pthread -L/opt/freeware/lib64 -L/opt/freeware/lib -lpthread "
+export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -lpthread"
 export LIBPATH="$PWD/build/Linux/$BUILD_TYPE/"
 
 ```
@@ -141,7 +141,7 @@ To initiate build, run the below command
 * If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX. 
 * It is possible that in AIX 7.2 if you don’t have Open XL tool-chain installed, then some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets. 
 * --parallel option in build option. 
-  As name suggest, this option is for parallel building and resource intensive option. So, if  your system is not having good amount of memory , then this option can be skipped. As per our understanding, use this option if you have 60GB RAM in your system. 
+  As name suggest, this option is for parallel building and resource intensive option. So, if  your system is not having good amount of memory , then this option can be skipped. As per our understanding, use this option if you have 60GB+ RAM in your system. 
 * --allow_running_as_root  is needed if root user is triggering the build.
     
 
