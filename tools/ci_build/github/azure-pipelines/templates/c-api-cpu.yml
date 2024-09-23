@@ -240,6 +240,7 @@ stages:
       parameters:
         JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         WorkingDirectory: '$(Build.SourcesDirectory)'
+        EnableGpgSigning: true
 
     - task: CopyFiles@2
       displayName: 'Copy Java Files to Artifact Staging Directory'

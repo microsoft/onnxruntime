@@ -5,6 +5,10 @@ parameters:
   - name: WorkingDirectory
     type: string
 
+  - name: EnableGpgSigning
+    type: boolean
+    default: true
+
 steps:
   - task: AzureKeyVault@2
     displayName: 'Get GPG signing key'
@@ -19,7 +23,7 @@ steps:
     inputs:
       targetType: filePath
       filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_maven_signing.ps1
-      arguments: '${{ parameters.JarFileDirectory }} ${{ parameters.WorkingDirectory }}'
+      arguments: '${{ parameters.EnableGpgSigning }} ${{ parameters.JarFileDirectory }} ${{ parameters.WorkingDirectory }}'
       workingDirectory: '$(Build.BinariesDirectory)'
       failOnStderr: true
       showWarnings: true

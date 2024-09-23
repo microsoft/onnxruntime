@@ -1,5 +1,11 @@
-$jar_file_directory = $Args[0]
-$working_directory = $Args[1]
+$enable_signing = $Args[0]
+$jar_file_directory = $Args[1]
+$working_directory = $Args[2]
+
+if ($enable_signing -eq "false") {
+    Write-Host "GPG signing is disabled."
+    exit 0
+}
 
 $gpg_path = "C:\Program Files (x86)\gnupg\bin\gpg.exe"
 $passphrase_file = Join-Path -Path $working_directory -ChildPath "passphrase.txt"
