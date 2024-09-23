@@ -29,7 +29,7 @@ Atrribures:
 
 |Attributes           |Data type|Description                                                                                               |
 |---------------------|---------|----------------------------------------------------------------------------------------------------------|
-|main_context         |int64    |1 (default): This node points to an EP context content that contains the graph referred to by this node.<br/>0: The node does not point to any EP context content. Expect to get the graph from node with this field is 1.<br/>Qualcomm QNN supports 1 single context contains multiple graphs. The EPContext node with main_context=1 refers to the real context. And the context contains graphs that are referred by other nodes with main_context=0.|
+|main_context         |int64    |1 (default): This node points to an EP context content that contains the graph referred to by this node.<br/>0: The node does not point to any EP context content. Expect to get the graph from node with this field is 1.<br/>Some EPs support 1 single context contains multiple graphs. The EPContext node with main_context=1 refers to the real context. And the context contains graphs that are referred by other nodes with main_context=0.|
 |ep_cache_context     |string   |Payload of the EP context if embed_mode=1, or path to the context file if embed_mode=0.<br/>The path is a relative path to the Onnx model file. It can be a file name, or subfolder/filename|
 |embed_mode           |int64    |1(default): ep_cache_context contains the payload of context content.<br/>0: ep_cache_context is the context binary file path.|
 |ep_sdk_version       |string   |Optional. SDK version that used to generate the node.                                                     |
