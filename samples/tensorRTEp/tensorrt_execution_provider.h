@@ -344,13 +344,13 @@ private:
   OrtStatusPtr CreateNodeComputeInfoFromPrecompiledEngine(const OrtGraphViewer* graph_body_viewer, const OrtNode* fused_node,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,
-                                                    OrtNodeComputeInfo** node_compute_funcs);
+                                                    OrtNodeComputeInfo* node_compute_funcs);
 
   OrtStatusPtr CreateNodeComputeInfoFromGraph(const OrtGraphViewer* graph_body_viewer,
                                         const OrtNode* fused_node,
                                         std::unordered_map<std::string, size_t>& input_map,
                                         std::unordered_map<std::string, size_t>& output_map,
-                                        OrtNodeComputeInfo** node_compute_funcs);
+                                        OrtNodeComputeInfo* node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const { return false; };
 

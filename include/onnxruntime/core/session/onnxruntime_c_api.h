@@ -763,7 +763,7 @@ typedef struct OrtExecutionProvider {
                            extra_param_for_create_state_func{nullptr}, extra_param_for_compute_func{nullptr} {}
 #endif
   void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
-  OrtStatusPtr(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
+  OrtStatusPtr(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo* node_compute_info);
   void(ORT_API_CALL* RegisterKernels)(OrtKernelRegistry* kernel_registry);
   bool(ORT_API_CALL* CanCopy)(const OrtDevice* source, const OrtDevice* target);
   OrtStatusPtr(ORT_API_CALL* CopyTensor)(const void* src, OrtMemoryInfoDeviceType source_device_type, OrtMemoryType source_mem_type, void* dst, OrtMemoryInfoDeviceType target_device_type, size_t count, void* stream);

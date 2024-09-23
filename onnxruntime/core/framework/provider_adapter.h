@@ -92,7 +92,7 @@ public:
     std::vector<OrtNodeComputeInfo> cache;
     cache.resize(count);
     OrtNodeComputeInfo* cache_data = cache.data();
-    OrtStatus* ret = ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, &cache_data);
+    OrtStatus* ret = ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, cache_data);
     if (ret != nullptr) return ToStatus(ret);
     node_compute_funcs.reserve(count);
     for (size_t i = 0; i < count; i++) {

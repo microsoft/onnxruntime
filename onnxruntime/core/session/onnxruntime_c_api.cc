@@ -2482,7 +2482,7 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetOrtNode, const OrtGraphViewer* graph, s
 ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Out_ size_t* len, _Outptr_ const OrtNode*** consumers) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   std::vector<const ::onnxruntime::Node*> consumer_nodes = graph_viewer->GetConsumerNodes(input_name);
-  len = new size_t (consumer_nodes.size());
+  *len = consumer_nodes.size();
   *consumers = new const OrtNode* [*len];
   for (size_t i = 0; i < consumer_nodes.size(); i++) (*consumers)[i] = reinterpret_cast<const OrtNode*>(consumer_nodes[i]);
 

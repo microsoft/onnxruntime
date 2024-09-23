@@ -171,27 +171,29 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/faster_rcnn/faster_rcnn_R_50_FPN_1x.onnx", so, &session));
 
-//    OrtMemoryInfo* memory_info = nullptr;
-//    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
-//
-//    const int input_cnt = 3 * 800 * 1088;
-//    int64_t input_data[input_cnt];
-//    for (int i = 0; i < input_cnt; i++) input_data[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // [0, 1)
-//    const size_t input_len = input_cnt * sizeof(float);
-//    const int64_t input_shape[] = {3, 800, 1088};
-//    OrtValue* input_tensor = nullptr;
-//    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-//
-//    const char* input_names[] = {"image"};
-//    const char* output_names[] = {"6379", "6381", "6383"};
+    OrtMemoryInfo* memory_info = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
 
-//    OrtValue* output_tensor = nullptr;
-//    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, sizeof(input_names)/sizeof(input_names[0]), output_names, sizeof(output_names)/sizeof(output_names[0]), &output_tensor));
-//
-//    float* output_tensor_data = nullptr;
-//    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_tensor_data));
-//    std::cout<<"Result:\n";
-//    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+    const int input_cnt = 3 * 800 * 1088;
+    float* input_data = new float [input_cnt];
+    for (int i = 0; i < input_cnt; i++) input_data[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // [0, 1)
+    const size_t input_len = input_cnt * sizeof(float);
+    const int64_t input_shape[] = {3, 800, 1088};
+    OrtValue* input_tensor = nullptr;
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+
+    const char* input_names[] = {"image"};
+    const char* output_names[] = {"6379", "6381", "6383"};
+
+    size_t output_count = sizeof(output_names)/sizeof(output_names[0]);
+    std::vector<OrtValue*> output_tensors(output_count, nullptr);
+    //OrtValue* output_tensor = nullptr;
+    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, sizeof(input_names)/sizeof(input_names[0]), output_names, output_count, output_tensors.data()));
+
+    float* output_tensor_data = nullptr;
+    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensors[0], (void**)&output_tensor_data));
+    std::cout<<"Result:\n";
+    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
 // ./TestOutTreeEp c/k/t/tc/otc relu/resnet/rcnn

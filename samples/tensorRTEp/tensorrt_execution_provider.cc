@@ -936,7 +936,10 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     std::unordered_map<std::string, size_t> node_to_index_map;
     std::unordered_map<size_t, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
-    std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
+    std::unordered_set<size_t> non_trt_node_index;
+    for (size_t i = 0; i < node_count; ++i) {
+      non_trt_node_index.insert(nodes_index[i]);
+    }
     size_t id = 0;
     int subgraph_index = 0;
     for (const auto& group : supported_nodes_vector) {
@@ -1481,7 +1484,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         }
     };
 
-    OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) -> OrtStatusPtr {
+    OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo* node_compute_info) -> OrtStatusPtr {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
         TensorrtExecutionProvider* p = static_cast<TensorrtExecutionProvider*>(this_);
         this_->extra_param_for_create_state_func = p;
@@ -2086,7 +2089,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
                                                                  const OrtNode* fused_node,
                                                                  std::unordered_map<std::string, size_t>& input_map,
                                                                  std::unordered_map<std::string, size_t>& output_map,
-                                                                 OrtNodeComputeInfo** node_compute_funcs) {
+                                                                 OrtNodeComputeInfo* node_compute_funcs) {
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
   auto trt_builder = GetBuilder(trt_logger);
   auto network_flags = 0;
@@ -2676,7 +2679,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   }
 
   // Create function state
-  (*node_compute_funcs)->CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
+  node_compute_funcs->CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
     TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
     std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
 
@@ -2700,12 +2703,12 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   };
 
   // Release function state
-  (*node_compute_funcs)->DestroyFunctionStateFunc = [](void* state) {
+  node_compute_funcs->DestroyFunctionStateFunc = [](void* state) {
     delete static_cast<TensorrtFuncState*>(state);
   };
 
   // Create compute function
-  (*node_compute_funcs)->ComputeFunc = [](void* state, void* extra_param, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
+  node_compute_funcs->ComputeFunc = [](void* state, void* extra_param, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
     Ort::KernelContext ctx(context);
     TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
     TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
@@ -3251,7 +3254,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const OrtGraphViewer* graph_body_viewer, const OrtNode* fused_node,
                                                                            std::unordered_map<std::string, size_t>& input_map,
                                                                            std::unordered_map<std::string, size_t>& output_map,
-                                                                           OrtNodeComputeInfo** node_compute_funcs) {
+                                                                           OrtNodeComputeInfo* node_compute_funcs) {
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
@@ -3334,7 +3337,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
   output_info_[fused_node_name].push_back(output_types);
 
   // Create function state
-  (*node_compute_funcs)->CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
+  node_compute_funcs->CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
     TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
     std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
     *p = { context->AllocateFunc,
@@ -3352,12 +3355,12 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
   };
 
   // Release function state
-  (*node_compute_funcs)->DestroyFunctionStateFunc = [](void* state) {
+  node_compute_funcs->DestroyFunctionStateFunc = [](void* state) {
     delete reinterpret_cast<TensorrtShortFuncState*>(state);
   };
 
   // Create compute function
-  (*node_compute_funcs)->ComputeFunc = [](void* state, void* extra_param, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
+  node_compute_funcs->ComputeFunc = [](void* state, void* extra_param, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
     TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
     TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);
     Ort::KernelContext ctx(context);
