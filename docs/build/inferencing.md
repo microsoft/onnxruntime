@@ -108,10 +108,10 @@ The last command will generate a fat-binary for both CPU architectures.
 Note: unit tests will be skipped due to the incompatible CPU instruction set when doing cross-compiling.
 
 ### AIX
-In AIX, you can build ONNX runtime using  IBM Open XL compiler tool chain.
+In AIX, you can build ONNX runtime using IBM Open XL compiler tool chain.
 
 Minimum required OS version is 7.2 and below steps are for 64bit building.
-You need to have 17.1.2 compiler PTF5 (17.1.2.5) version .  After cloning the onnxruntime repo, export below environment settings 
+You need to have 17.1.2 compiler PTF5 (17.1.2.5) version. After cloning the onnxruntime repo, export below environment settings.
 ```bash
 ulimit -m unlimited
 ulimit -d unlimited
@@ -138,9 +138,9 @@ To initiate build, run the below command
   --allow_running_as_root 
 ```
 
-* If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX. 
-* It is possible that in AIX 7.2 if you don’t have Open XL tool-chain installed, then some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets. 
-* --parallel option in build option. 
+* If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX.
+* It is possible that in AIX 7.2 if you don’t have Open XL tool-chain installed, then some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets.
+* --parallel option in build option.
   As name suggest, this option is for parallel building and resource intensive option. So, if  your system is not having good amount of memory , then this option can be skipped. As per our understanding, use this option if you have 60GB+ RAM in your system. 
 * --allow_running_as_root  is needed if root user is triggering the build.
     
