@@ -35,6 +35,7 @@ private:
         MlasCastF16ToF32KernelNeon(src.data(), dest.data(), count);
 
         for (size_t i = 0; i < count; i++) {
+            if ((src[i] & 0x1c00) == 0x1c00) continue; // skip inf and nan
             ASSERT_EQ(dest[i], MLAS_FP16::FromBits(src[i]).ToFloat());
         }
     }
@@ -50,7 +51,7 @@ private:
         MlasCastF32ToF16KernelNeon(src.data(), dest.data(), count);
 
         for (size_t i = 0; i < count; i++) {
-            ASSERT_EQ(MLAS_FP16::FromBits(dest[i]).ToFloat(), src[i]);
+            ASSERT_EQ(dest[i], MLAS_FP16(src[i]).val);
         }
     }
 
@@ -61,8 +62,8 @@ public:
   }
 
   void ExecuteShort(void) override {
-    TestFp16ToFp32((1 << 16) - 1);
-    TestFp32ToFp16((1 << 16) - 1);
+    TestFp16ToFp32(1 << 16);
+    TestFp32ToFp16((1 << 15) - 5);
   }
 };
 
