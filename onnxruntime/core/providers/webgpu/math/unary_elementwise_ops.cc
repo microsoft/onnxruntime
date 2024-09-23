@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <utility>
+#include <limits>
 
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -9,8 +10,8 @@
 namespace onnxruntime {
 namespace webgpu {
 Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("x", ShaderVariable::UseUniform | additional_usage_);
-  const auto& output = shader.AddOutput("y", ShaderVariable::UseUniform);
+  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | additional_usage_);
+  const auto& output = shader.AddOutput("y", ShaderUsage::UseUniform);
   shader.AppendImplementation(additional_impl_);
   shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
                              "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
@@ -98,7 +99,7 @@ WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl, ShaderVariable::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl, ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Erf, 9, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Erf, 13, WebGpuSupportedFloatTypes())
 
@@ -113,7 +114,7 @@ WEBGPU_ELEMENTWISE_KERNEL(Sigmoid, 13, WebGpuSupportedFloatTypes())
 class HardSigmoid final : public UnaryElementwise {
  public:
   HardSigmoid(const OpKernelInfo& info)
-      : UnaryElementwise{info, "HardSigmoid", "hard_sigmoid_v(a)", HardSigmoidImpl, ShaderVariable::UseElementTypeAlias} {
+      : UnaryElementwise{info, "HardSigmoid", "hard_sigmoid_v(a)", HardSigmoidImpl, ShaderUsage::UseElementTypeAlias} {
     // attr[0] is alpha, attr[1] is beta
     info.GetAttrOrDefault("alpha", attr, 0.2f);
     info.GetAttrOrDefault("beta", attr + 1, 0.5f);
@@ -154,7 +155,7 @@ WEBGPU_ELEMENTWISE_KERNEL(Sinh, 9, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Cosh, "cosh(a)")
 WEBGPU_ELEMENTWISE_KERNEL(Cosh, 9, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Tanh, "tanh_v(a)", TanhImpl, ShaderVariable::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_IMPL(Tanh, "tanh_v(a)", TanhImpl, ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Tanh, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Tanh, 13, WebGpuSupportedFloatTypes())
 
@@ -180,13 +181,16 @@ class Clip final : public UnaryElementwise {
       : UnaryElementwise{info,
                          "Clip",
                          std::is_same_v<T, MLFloat16> ? ClipF16Impl : ClipImpl,
-                         "", ShaderVariable::UseElementTypeAlias} {}
+                         "", ShaderUsage::UseElementTypeAlias} {}
 
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
     const auto* clip_min_tensor = context.Input<Tensor>(1);
     const auto* clip_max_tensor = context.Input<Tensor>(2);
-    const T attr[] = {clip_min_tensor->Data<T>()[0],
-                      clip_max_tensor->Data<T>()[0]};
+
+    const T attr[] = {clip_min_tensor ? clip_min_tensor->Data<T>()[0]
+                                      : std::numeric_limits<T>::lowest(),
+                      clip_max_tensor ? clip_max_tensor->Data<T>()[0]
+                                      : std::numeric_limits<T>::max()};
     if constexpr (std::is_same_v<T, MLFloat16>) {
       // F16: stores span<f16, 2> as a single float
       float encoded_value = *reinterpret_cast<const float*>(attr);
@@ -240,7 +244,7 @@ class LinearUnit : public UnaryElementwise {
              const std::string& expression,
              const std::string& additional_impl,
              float default_alpha)
-      : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderVariable::UseElementTypeAlias} {
+      : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderUsage::UseElementTypeAlias} {
     info.GetAttrOrDefault("alpha", &alpha_, default_alpha);
   }
 
@@ -269,14 +273,14 @@ class Gelu : public UnaryElementwise {
                          "Gelu",
                          info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
                          info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
-                         ShaderVariable::UseValueTypeAlias} {
+                         ShaderUsage::UseValueTypeAlias} {
     cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
   }
 };
 
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Relu, "select(x_value_t(0), a, a > x_value_t(0))", "", ShaderVariable::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_IMPL(Relu, "select(x_value_t(0), a, a > x_value_t(0))", "", ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 13, 13, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Relu, 14, WebGpuSupportedFloatTypes())

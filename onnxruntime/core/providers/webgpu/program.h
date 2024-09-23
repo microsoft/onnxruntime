@@ -165,18 +165,6 @@ inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependen
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 
-// represents the scope of a variable in a shader program.
-//
-// this is not a full list of all possible variable scopes in shader programs.
-// it only includes what are used in WebGPU EP.
-enum class ProgramVariableScope {
-  Input = 0,   // storage buffer variable with access mode "read"
-  Output = 1,  // storage buffer variable with access mode "read_write"
-  Local = 2,   // local variable
-
-  Count  // should always be the last element
-};
-
 // data type of variable
 //
 // this is not a full list of all possible data types in shader programs.
@@ -208,20 +196,9 @@ int NumberOfComponents(ProgramVariableDataType type);
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
 
 struct ProgramInput {
-  ProgramInput(const Tensor* tensor)
-      : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{false},
-        override_shape{} {}
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{true},
-        override_shape{override_shape} {}
+  ProgramInput(const Tensor* tensor);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -231,20 +208,9 @@ struct ProgramInput {
 };
 
 struct ProgramOutput {
-  ProgramOutput(Tensor* tensor)
-      : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{false},
-        override_shape{} {}
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
-      : tensor{tensor},
-        dependency{dependency},
-        var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-        use_override_shape{true},
-        override_shape{override_shape} {}
+  ProgramOutput(Tensor* tensor);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -264,7 +230,11 @@ namespace detail {
 class ProgramWrapper;
 }
 
-struct ProgramMetadata;
+struct ProgramMetadata {
+  gsl::span<const ProgramConstant> constants;
+  gsl::span<const ProgramOverridableConstantDefinition> overridable_constants;
+  gsl::span<const ProgramUniformVariableDefinition> uniform_variables;
+};
 
 class ProgramBase {
  public:
@@ -287,6 +257,10 @@ class ProgramBase {
   ProgramBase& AddOutput(ProgramOutput&& output);
   // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
+  // add a program variable for indices
+  ProgramBase& AddIndices(const TensorShape& shape);
+  // add a program variable for indices
+  ProgramBase& AddIndices(TensorShape&& shape);
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
   ProgramBase& SetDispatchGroupSize(uint32_t x);
@@ -326,32 +300,15 @@ class ProgramBase {
   virtual Status GenerateShaderCode(ShaderHelper& shader) const = 0;
 
   //
-  // abstract methods for getting metadata
-  //
-  // A derived class may contain any of the following static members:
-  //
-  // \code{.cpp}
-  //   // define a list of constant that used in the shader program
-  //   static constexpr const ProgramConstant constants[] = { ... };
-  //
-  //   // define a list of overridable constant that used in the shader program
-  //   static constexpr const ProgramOverridableConstantDefinition overridable_constants[] = { ... };
-  //
-  //   // define a list of uniform variables that used in the shader program
-  //   static constexpr const ProgramUniformVariableDefinition uniform_variables[] = { ... };
-  // \endcode
-  //
-  // If those static members exist, the value of them will be used to generate the metadata.
-  virtual ProgramMetadata GetMetadata() const = 0;
-
-  //
   // Properties Getters
   //
 
   inline const std::string& Name() const { return name_; }
+  inline const ProgramMetadata& Metadata() const { return metadata_; }
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
+  inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
   inline uint32_t DispatchGroupSizeZ() const { return dispatch_group_size_z_; }
@@ -367,12 +324,15 @@ class ProgramBase {
  private:
   // Make the constructor private to prevent direct instantiation or inheritance from this class
   // Use the Program template class as base class to create a new program class
-  explicit ProgramBase(const std::string& name);
+  explicit ProgramBase(const std::string& name, ProgramMetadata&& metadata);
 
   std::string name_;
+  ProgramMetadata metadata_;
+
   std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
   std::vector<ProgramOutput> outputs_;
+  std::vector<TensorShape> indices_;
 
   uint32_t dispatch_group_size_x_;
   uint32_t dispatch_group_size_y_;
@@ -528,19 +488,13 @@ static_assert(!TestTypeCheck<TestClass_StdArray_4>::has_a_with_correct_type);
 
 }  // namespace detail
 
-struct ProgramMetadata {
-  gsl::span<const ProgramConstant> constants;
-  gsl::span<const ProgramOverridableConstantDefinition> overridable_constants;
-  gsl::span<const ProgramUniformVariableDefinition> uniform_variables;
-};
-
 template <typename T>
 class Program : public detail::ProgramWrapper {
  public:
   template <typename... Args>
-  Program(Args&&... args) : detail::ProgramWrapper{std::forward<Args>(args)...} {}
+  Program(Args&&... args) : detail::ProgramWrapper{std::forward<Args>(args)..., GetMetadata()} {}
 
-  virtual ProgramMetadata GetMetadata() const final {
+  static ProgramMetadata GetMetadata() {
     ProgramMetadata metadata;
     if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_constants) {
       constexpr const ProgramConstant* ptr = T::constants.data();

@@ -182,8 +182,60 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   }
 }
 
-ProgramBase::ProgramBase(const std::string& name)
+namespace {
+TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
+  ORT_ENFORCE(shape.NumDimensions() > 0 && shape.GetDims()[shape.NumDimensions() - 1] % component == 0,
+              "Cannot reduce shape ", shape.ToString(), " by component=", component);
+  TensorShape reduced_shape = shape;
+  reduced_shape[reduced_shape.NumDimensions() - 1] /= component;
+  return reduced_shape;
+}
+}  // namespace
+
+ProgramInput::ProgramInput(const Tensor* tensor) : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
+
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{component > 1},
+      override_shape{} {
+  if (use_override_shape) {
+    override_shape = GetReducedShape(tensor->Shape(), component);
+  }
+}
+
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{true},
+      override_shape{override_shape} {}
+
+ProgramOutput::ProgramOutput(Tensor* tensor)
+    : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
+
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{component > 1},
+      override_shape{} {
+  if (use_override_shape) {
+    override_shape = GetReducedShape(tensor->Shape(), component);
+  }
+}
+
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{true},
+      override_shape{override_shape} {}
+
+ProgramBase::ProgramBase(const std::string& name, ProgramMetadata&& metadata)
     : name_{name},
+      metadata_{metadata},
       dispatch_group_size_x_{0},
       dispatch_group_size_y_{0},
       dispatch_group_size_z_{0},
@@ -209,6 +261,16 @@ ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddIndices(const TensorShape& shape) {
+  indices_.emplace_back(shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddIndices(TensorShape&& shape) {
+  indices_.emplace_back(shape);
   return *this;
 }
 

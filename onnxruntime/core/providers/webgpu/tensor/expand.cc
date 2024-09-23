@@ -11,8 +11,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderVariable::UseUniform);
-  const auto& output = shader.AddOutput("output", ShaderVariable::UseUniform);
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size"),
                              "  let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
