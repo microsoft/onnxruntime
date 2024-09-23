@@ -10,19 +10,19 @@ namespace onnxruntime {
 namespace webgpu {
 
 class TileProgram final : public Program<TileProgram> {
-	public:
-	TileProgram() : Program{"Tile"} {}
+ public:
+  TileProgram() : Program{"Tile"} {}
 
-	Status GenerateShaderCode(ShaderHelper& sh) const override;
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-	WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 };
 
 class Tile final : public WebGpuKernel {
-	public:
-	Tile(const OpKernelInfo& info) : WebGpuKernel(info) {}
+ public:
+  Tile(const OpKernelInfo& info) : WebGpuKernel(info) {}
 
-	Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(ComputeContext& context) const override;
 };
 
 }  // namespace webgpu
