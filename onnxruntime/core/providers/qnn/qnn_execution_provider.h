@@ -142,7 +142,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
-  bool enable_HTP_FP16_precision_ = false;
+  bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
