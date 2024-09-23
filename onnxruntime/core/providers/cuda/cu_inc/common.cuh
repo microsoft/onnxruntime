@@ -10,12 +10,9 @@
 #include <math.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -365,12 +362,10 @@ __device__ __inline__ half _Min(half a, half b) {
   return __hmin_nan(a, b);
 }
 
-#if CUDA_VERSION >= 11000
 template <>
 __device__ __inline__ BFloat16 _Min(BFloat16 a, BFloat16 b) {
   return BFloat16(__hmin_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
 }
-#endif
 
 template <typename T>
 __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
@@ -390,12 +385,10 @@ __device__ __inline__ half _Max(half a, half b) {
   return __hmax_nan(a, b);
 }
 
-#if CUDA_VERSION >= 11000
 template <>
 __device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
   return BFloat16(__hmax_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
 }
-#endif
 
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
