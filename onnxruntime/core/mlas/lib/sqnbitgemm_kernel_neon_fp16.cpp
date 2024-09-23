@@ -40,7 +40,7 @@ MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
         float32x4_t fp32v4 = vcvt_f32_f16(fp16v4);
 
         for (size_t j = 0; j < pre_count; ++i, ++j) {
-            vst1q_lane_f32(dest + i, fp32v4, j);
+            vst1q_lane_f32(dest + i, fp32v4, static_cast<int>(j));
         }
     }
 
@@ -62,7 +62,7 @@ MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
 
         for (size_t j = 0; j < post_count; ++i, ++j)
         {
-            vst1q_lane_f32(dest + i, fp32v4, j);
+            vst1q_lane_f32(dest + i, fp32v4, static_cast<int>(j));
         }
     }
 }
@@ -84,7 +84,7 @@ MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
         uint16x4_t u16v4 = vreinterpret_u16_f16(vcvt_f16_f32(fp32v4));
         for (size_t j = 0; j < pre_count; ++i, ++j)
         {
-            vst1_lane_u16(dest + i, u16v4, j);
+            vst1_lane_u16(dest + i, u16v4, static_cast<int>(j));
         }
     }
 
@@ -105,7 +105,7 @@ MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
         uint16x4_t u16v4 = vreinterpret_u16_f16(vcvt_f16_f32(fp32v4));
         for (size_t j = 0; i < count; ++i, ++j)
         {
-            vst1_lane_u16(dest + i, u16v4, j);
+            vst1_lane_u16(dest + i, u16v4, static_cast<int>(j));
         }
     }
 }
