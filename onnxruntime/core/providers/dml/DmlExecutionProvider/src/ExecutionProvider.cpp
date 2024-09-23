@@ -244,7 +244,7 @@ namespace Dml
 
         return std::vector<onnxruntime::AllocatorPtr>{
             m_allocator,
-            std::make_shared<DmlInputBufferAllocator>(0),
+            std::make_shared<DmlInputBufferAllocator>(m_d3d12Device.Get()),
             std::make_shared<onnxruntime::CPUAllocator>(memoryInfo),
         };
     }

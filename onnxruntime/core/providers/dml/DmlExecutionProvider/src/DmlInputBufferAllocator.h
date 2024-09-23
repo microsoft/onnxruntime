@@ -20,14 +20,14 @@ namespace Dml
     class DmlInputBufferAllocator : public onnxruntime::IAllocator
     {
     public:
-        DmlInputBufferAllocator(int device_id) : onnxruntime::IAllocator(
+        DmlInputBufferAllocator(ID3D12Device* d3d12Device) : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_INPUT, 0)
-            ))
+            )),
+            m_d3d12Device(d3d12Device)
         {
-            m_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
         }
 
         void* Alloc(size_t size) final
@@ -35,7 +35,7 @@ namespace Dml
             Microsoft::WRL::ComPtr<ID3D12Resource> resource;
             auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             auto props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-            ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
+            ORT_THROW_IF_FAILED(m_d3d12Device->CreateCommittedResource(
                 &props,
                 D3D12_HEAP_FLAG_NONE,
                 &buffer,
@@ -67,6 +67,6 @@ namespace Dml
         }
 
     private:
-        Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+        Microsoft::WRL::ComPtr<ID3D12Device> m_d3d12Device;
     };
 }
