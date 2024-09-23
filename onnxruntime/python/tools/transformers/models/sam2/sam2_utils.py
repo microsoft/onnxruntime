@@ -4,6 +4,8 @@
 # --------------------------------------------------------------------------
 import logging
 import os
+import sys
+from typing import List, Mapping, Union
 
 import torch
 from sam2.build_sam import build_sam2
@@ -12,7 +14,7 @@ from sam2.modeling.sam2_base import SAM2Base
 logger = logging.getLogger(__name__)
 
 
-def get_model_cfg(model_type) -> str:
+def _get_model_cfg(model_type) -> str:
     assert model_type in ["sam2_hiera_tiny", "sam2_hiera_small", "sam2_hiera_large", "sam2_hiera_base_plus"]
     if model_type == "sam2_hiera_tiny":
         model_cfg = "sam2_hiera_t.yaml"
@@ -25,22 +27,45 @@ def get_model_cfg(model_type) -> str:
     return model_cfg
 
 
-def build_sam2_model(checkpoint_dir: str, model_type: str, device="cpu") -> SAM2Base:
-    sam2_checkpoint = os.path.join(checkpoint_dir, f"{model_type}.pt")
-    model_cfg = get_model_cfg(model_type)
-    sam2_model = build_sam2(model_cfg, sam2_checkpoint, device=device)
+def load_sam2_model(sam2_dir, model_type, device: Union[str, torch.device] = "cpu") -> SAM2Base:
+    checkpoints_dir = os.path.join(sam2_dir, "checkpoints")
+    sam2_config_dir = os.path.join(sam2_dir, "sam2_configs")
+    if not os.path.exists(sam2_dir):
+        raise FileNotFoundError(f"{sam2_dir} does not exist. Please specify --sam2_dir correctly.")
+
+    if not os.path.exists(checkpoints_dir):
+        raise FileNotFoundError(f"{checkpoints_dir} does not exist. Please specify --sam2_dir correctly.")
+
+    if not os.path.exists(sam2_config_dir):
+        raise FileNotFoundError(f"{sam2_config_dir} does not exist. Please specify --sam2_dir correctly.")
+
+    checkpoint_path = os.path.join(checkpoints_dir, f"{model_type}.pt")
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"{checkpoint_path} does not exist. Please download checkpoints under the directory.")
+
+    if sam2_dir not in sys.path:
+        sys.path.append(sam2_dir)
+
+    model_cfg = _get_model_cfg(model_type)
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device=device)
     return sam2_model
 
 
-def get_decoder_onnx_path(dir: str, model_type, multimask_output) -> str:
-    return os.path.join(dir, f"{model_type}_decoder" + ("_multi" if multimask_output else "") + ".onnx")
+def sam2_onnx_path(output_dir, model_type, component, multimask_output=False, suffix=""):
+    if component == "image_encoder":
+        return os.path.join(output_dir, f"{model_type}_image_encoder{suffix}.onnx")
+    elif component == "mask_decoder":
+        return os.path.join(output_dir, f"{model_type}_mask_decoder{suffix}.onnx")
+    elif component == "prompt_encoder":
+        return os.path.join(output_dir, f"{model_type}_prompt_encoder{suffix}.onnx")
+    else:
+        assert component == "image_decoder"
+        return os.path.join(
+            output_dir, f"{model_type}_image_decoder" + ("_multi" if multimask_output else "") + f"{suffix}.onnx"
+        )
 
 
-def get_image_encoder_onnx_path(dir: str, model_type) -> str:
-    return os.path.join(dir, f"{model_type}_image_encoder.onnx")
-
-
-def encoder_shape_dict(batch_size: int, height: int, width: int):
+def encoder_shape_dict(batch_size: int, height: int, width: int) -> Mapping[str, List[int]]:
     assert height == 1024 and width == 1024, "Only 1024x1024 images are supported."
     return {
         "image": [batch_size, 3, height, width],
@@ -109,7 +134,7 @@ def compare_tensors_with_tolerance(
 
 
 def random_sam2_input_image(batch_size=1, image_height=1024, image_width=1024) -> torch.Tensor:
-    image = torch.randn(batch_size, 3, image_height, image_width).cpu()
+    image = torch.randn(batch_size, 3, image_height, image_width, dtype=torch.float32).cpu()
     return image
 
 

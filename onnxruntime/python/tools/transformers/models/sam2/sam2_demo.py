@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import os
+from typing import Union
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -12,7 +13,9 @@ from matplotlib.patches import Rectangle
 from PIL import Image
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2_image_onnx_predictor import SAM2ImageOnnxPredictor
-from sam2_utils import build_sam2_model
+from sam2_utils import load_sam2_model
+
+import onnxruntime
 
 
 def show_mask(mask, ax, random_color=False, borders=True):
@@ -88,46 +91,72 @@ def show_masks(
 
 
 def get_predictor(
-    checkpoint_dir: str,
-    device: torch.device,
+    sam2_dir: str,
+    device: Union[str, torch.device],
+    dtype: torch.dtype,
     model_type="sam2_hiera_large",
     engine="torch",
-    onnx_directory="sam2_onnx_models",
+    image_encoder_onnx_path: str = "",
+    image_decoder_onnx_path: str = "",
+    image_decoder_multi_onnx_path: str = "",
+    provider: str = "CUDAExecutionProvider",
 ):
-    sam2_model = build_sam2_model(checkpoint_dir, model_type, device=device)
+    sam2_model = load_sam2_model(sam2_dir, model_type, device=device)
     if engine == "torch":
         predictor = SAM2ImagePredictor(sam2_model)
     else:
-        predictor = SAM2ImageOnnxPredictor(sam2_model, onnx_directory=onnx_directory, model_type=model_type)
+        predictor = SAM2ImageOnnxPredictor(
+            sam2_model,
+            image_encoder_onnx_path=image_encoder_onnx_path,
+            image_decoder_onnx_path=image_decoder_onnx_path,
+            image_decoder_multi_onnx_path=image_decoder_multi_onnx_path,
+            provider=provider,
+            device=device,
+            onnx_dtype=dtype,
+        )
     return predictor
 
 
 def run_demo(
-    checkpoint_dir: str,
-    model_type="sam2_hiera_large",
-    engine="torch",
-    onnx_directory="sam2_onnx_models",
-    enable_batch=False,
+    sam2_dir: str,
+    model_type: str = "sam2_hiera_large",
+    engine: str = "torch",
+    dtype: torch.dtype = torch.float32,
+    image_encoder_onnx_path: str = "",
+    image_decoder_onnx_path: str = "",
+    image_decoder_multi_onnx_path: str = "",
+    use_gpu: bool = True,
+    enable_batch: bool = False,
 ):
-    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        assert torch.cuda.is_available()
+        assert "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+        provider = "CUDAExecutionProvider"
+    else:
+        provider = "CPUExecutionProvider"
+
     device = torch.device("cuda" if use_gpu else "cpu")
 
-    if use_gpu:
-        if engine == "torch":
-            # Turn on tfloat32 for Ampere GPUs.
-            if torch.cuda.get_device_properties(0).major >= 8:
-                torch.backends.cuda.matmul.allow_tf32 = True
-                torch.backends.cudnn.allow_tf32 = True
-        elif engine == "ort":
-            import onnxruntime
-
-            assert use_gpu == ("CUDAExecutionProvider" in onnxruntime.get_available_providers())
+    if use_gpu and engine == "torch" and torch.cuda.get_device_properties(0).major >= 8:
+        # Turn on tfloat32 for Ampere GPUs.
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
     np.random.seed(3)
     image = Image.open("truck.jpg")
     image = np.array(image.convert("RGB"))
 
-    predictor = get_predictor(checkpoint_dir, device, model_type, engine, onnx_directory=onnx_directory)
+    predictor = get_predictor(
+        sam2_dir,
+        device,
+        dtype,
+        model_type,
+        engine,
+        image_encoder_onnx_path,
+        image_decoder_onnx_path,
+        image_decoder_multi_onnx_path,
+        provider=provider,
+    )
 
     predictor.set_image(image)
     prefix = f"sam2_demo_{engine}_"
@@ -271,7 +300,7 @@ def run_demo(
     return image_files
 
 
-def show_all_images(left_images, right_images):
+def show_all_images(left_images, right_images, suffix=""):
     # Show images in two rows since display screen is horizontal in most cases.
     fig, axes = plt.subplots(nrows=2, ncols=len(left_images), figsize=(19.20, 10.80))
     for i, (left_img_path, right_img_path) in enumerate(zip(left_images, right_images)):
@@ -289,5 +318,5 @@ def show_all_images(left_images, right_images):
         axes[1, i].set_aspect(right_img.shape[1] / right_img.shape[0])
 
     plt.tight_layout()
-    plt.savefig("sam2_demo.png", format="png", bbox_inches="tight", dpi=1000)
+    plt.savefig(f"sam2_demo{suffix}.png", format="png", bbox_inches="tight", dpi=1000)
     plt.show()
