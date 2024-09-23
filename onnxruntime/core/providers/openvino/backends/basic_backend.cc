@@ -303,33 +303,18 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           FillInputBlob(std::move(graph_input_blob), batch_slice_idx, std::move(input_name), context, subgraph_context_);
         } else {
           auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
-          auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
-          ov_tensor_data_t ov_tensor_key;
-          ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
-          if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
-            ov_tensor_key = it->second;
-          } else {
-            // Does this make sense for both types of allocators?
+          ort_tensor_key_t ort_tensor_key{input_name};
+          auto it = ort_ov_tensor_map.find(ort_tensor_key);
+          if (it != ort_ov_tensor_map.end() || it->second.ort_ptr != tensor.GetTensorRawData()) {
+            ov_tensor_data_t ov_tensor_data;
             auto input = graph_input_info.at(input_idx);
-            if (allocator_name == OpenVINO_RT_NPU) {
-              ov_tensor_key.copy_needed = false;
-              ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
-                                                                      (void*)tensor.GetTensorRawData());
-            } else {
-              ov_tensor_key.copy_needed = true;
-              ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape());
-            }
-            ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_key);
-
-            if (ov_tensor_key.copy_needed) {
-              const char* ort_tensor_data = tensor.GetTensorData<char>();
-              size_t tensor_data_size = ov_tensor_key.tensor_ptr->get_byte_size();
-              auto ort_batch_memory_offset = ort_tensor_data + tensor_data_size * batch_slice_idx;
-              std::memcpy(ov_tensor_key.tensor_ptr->data(), ort_batch_memory_offset, tensor_data_size);
-            }
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
+                                                                     (void*)tensor.GetTensorRawData());
+            ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
+            ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
             try {
-              infer_request->SetTensor(input_name, ov_tensor_key.tensor_ptr);
+              infer_request->SetTensor(input_name, ov_tensor_data.tensor_ptr);
             } catch (const char* msg) {
               ORT_THROW(msg);
             }
@@ -362,23 +347,15 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
                                                    infer_request,
                                                    output_name,
                                                    subgraph_context_.output_names);
-        auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
-
-        ov_tensor_data_t ov_tensor_data;
-        ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
-        if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
-          ov_tensor_data = it->second;
-        } else {
+        ort_tensor_key_t ort_tensor_key{output_name};
+        const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
+        if (it != ort_ov_tensor_map.end() || it->second.ort_ptr != tensor.GetTensorRawData()) {
+          ov_tensor_data_t ov_tensor_data;
           auto output = graph_output_info.at(output_idx);
-          if (allocator_name == OpenVINO_RT_NPU) {
-            ov_tensor_data.copy_needed = false;
-            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
-                                                                     (void*)tensor.GetTensorRawData());
-          } else {
-            ov_tensor_data.copy_needed = true;
-            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape());
-          }
-          ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_data);
+          ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
+          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
+                                                                   (void*)tensor.GetTensorRawData());
+          ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
           try {
             infer_request->SetTensor(output_name, ov_tensor_data.tensor_ptr);
@@ -555,25 +532,6 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         } else {
           size_t batch_slice = 0;
           FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
-        }
-      } else {
-        size_t batch_size = 1;
-        Ort::UnownedValue output_tensor =
-            GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
-        auto allocator_name = output_tensor.GetTensorMemoryInfo().GetAllocatorName();
-        ov_tensor_data_t ov_tensor_data;
-        ort_tensor_key_t ort_tensor_key{output_tensor.GetTensorRawData(), allocator_name};
-        if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
-          ov_tensor_data = it->second;
-        } else {
-          ORT_THROW(log_tag + "Expected all outputs to have associated OV::Tensor's");
-        }
-
-        if (ov_tensor_data.copy_needed) {
-          auto ort_tensor_data = output_tensor.GetTensorMutableData<char>();
-          size_t tensor_data_size = ov_tensor_data.tensor_ptr->get_byte_size();
-          auto ort_batch_memory_offset = ort_tensor_data /*+ tensor_data_size * batch_size*/;
-          std::memcpy(ort_batch_memory_offset, ov_tensor_data.tensor_ptr->data(), tensor_data_size);
         }
       }
     }
