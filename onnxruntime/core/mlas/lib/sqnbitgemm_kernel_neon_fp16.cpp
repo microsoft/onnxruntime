@@ -24,6 +24,27 @@ Abstract:
 // The cmake condition is equivalent to MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64.
 // Therefore omit the MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64 macro in this file.
 
+MLAS_FORCEINLINE
+size_t
+StoreFp32Lane(float* dest, float32x4_t src, size_t count)
+{
+    if (count == 3) {
+        vst1q_lane_f32(dest + 0, src, 0);
+        vst1q_lane_f32(dest + 1, src, 1);
+        vst1q_lane_f32(dest + 2, src, 2);
+        return 3;
+    } else if (count == 2) {
+        vst1q_lane_f32(dest + 0, src, 0);
+        vst1q_lane_f32(dest + 1, src, 1);
+        return 2;
+    } else if (count == 1) {
+        vst1q_lane_f32(dest + 0, src, 0);
+        return 1;
+    }
+
+    return 0;
+}
+
 void
 // TODO(fajin): test unrolling
 MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
@@ -39,9 +60,7 @@ MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
         std::memcpy(&fp16v4, src, pre_count * sizeof(unsigned short));
         float32x4_t fp32v4 = vcvt_f32_f16(fp16v4);
 
-        for (size_t j = 0; j < pre_count; ++i, ++j) {
-            vst1q_lane_f32(dest + i, fp32v4, static_cast<int>(j));
-        }
+        i = StoreFp32Lane(dest, fp32v4, pre_count);
     }
 
     // aligned src
@@ -60,11 +79,29 @@ MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
         std::memcpy(&fp16v4, src + i, post_count * sizeof(unsigned short));
         float32x4_t fp32v4 = vcvt_f32_f16(fp16v4);
 
-        for (size_t j = 0; j < post_count; ++i, ++j)
-        {
-            vst1q_lane_f32(dest + i, fp32v4, static_cast<int>(j));
-        }
+        StoreFp32Lane(dest + i, fp32v4, post_count);
     }
+}
+
+MLAS_FORCEINLINE
+size_t
+StoreU16Lane(unsigned short* dest, uint16x4_t src, size_t count)
+{
+    if (count == 3) {
+        vst1_lane_u16(dest + 0, src, 0);
+        vst1_lane_u16(dest + 1, src, 1);
+        vst1_lane_u16(dest + 2, src, 2);
+        return 3;
+    } else if (count == 2) {
+        vst1_lane_u16(dest + 0, src, 0);
+        vst1_lane_u16(dest + 1, src, 1);
+        return 2;
+    } else if (count == 1) {
+        vst1_lane_u16(dest + 0, src, 0);
+        return 1;
+    }
+
+    return 0;
 }
 
 void
@@ -82,10 +119,8 @@ MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
         float32x4_t fp32v4;
         std::memcpy(&fp32v4, src, pre_count * sizeof(float));
         uint16x4_t u16v4 = vreinterpret_u16_f16(vcvt_f16_f32(fp32v4));
-        for (size_t j = 0; j < pre_count; ++i, ++j)
-        {
-            vst1_lane_u16(dest + i, u16v4, static_cast<int>(j));
-        }
+
+        i = StoreU16Lane(dest, u16v4, pre_count);
     }
 
     // aligned src
@@ -103,9 +138,7 @@ MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
         float32x4_t fp32v4;
         std::memcpy(&fp32v4, src + i, post_count * sizeof(float));
         uint16x4_t u16v4 = vreinterpret_u16_f16(vcvt_f16_f32(fp32v4));
-        for (size_t j = 0; i < count; ++i, ++j)
-        {
-            vst1_lane_u16(dest + i, u16v4, static_cast<int>(j));
-        }
+
+        StoreU16Lane(dest + i, u16v4, post_count);
     }
 }
