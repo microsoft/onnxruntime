@@ -251,14 +251,27 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
   bool is_quantized_tensor = node_unit.Outputs()[0].quant_param.has_value();
   if (is_quantized_tensor) {
     float scale;
-    uint8_t zero_point;
     int64_t num_of_elements = 1;
-    concurrency::ThreadPool* thread_pool = nullptr;
-    GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
     unpacked_data.resize(1);
-    ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
-    quantize_param = QnnQuantParamsWrapper(scale, static_cast<int32_t>(zero_point));
-    qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
+    concurrency::ThreadPool* thread_pool = nullptr;
+    const std::string* dtype = node_unit.Outputs()[0].node_arg.Type();
+    if (*dtype == "tensor(uint8)") {
+      uint8_t zero_point;
+      qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
+      GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
+      ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
+      quantize_param = QnnQuantParamsWrapper(scale, static_cast<int32_t>(zero_point));
+    } else if (*dtype == "tensor(int8)") {
+      int8_t zero_point;
+      int8_t data[1];
+      qnn_data_type = QNN_DATATYPE_SFIXED_POINT_8;
+      GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
+      ParQuantizeLinearStd(&tensor_data.alpha, data, num_of_elements, scale, zero_point, thread_pool);
+      unpacked_data[0] = static_cast<uint8_t>(data[0]);
+      quantize_param = QnnQuantParamsWrapper(scale, static_cast<int32_t>(zero_point));
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported Quantized Type for LeakyRelu alpha attribute.");
+    }
   } else {
     const auto& inputs = node_unit.Inputs();
     TensorInfo input_info = {};
