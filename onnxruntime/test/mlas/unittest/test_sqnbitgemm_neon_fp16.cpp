@@ -70,7 +70,7 @@ public:
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
-    count += MlasDirectShortExecuteTests<MlasSQNBitGemmNeonFp16Test>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasNeonFp16CastTest>::RegisterShortExecute();
   }
   return count;
 });
