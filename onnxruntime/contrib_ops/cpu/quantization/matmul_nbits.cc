@@ -412,7 +412,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     MlasConvertHalfToFloatBuffer(bias_data, &bias_data_v[0], bias_data_v.size());
   }
 
-  std::vector<float> C_v(static_cast<size_t>(y->Shape().Size()));
+  auto c_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(y->Shape().Size()));
 
   InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
@@ -427,12 +427,12 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].QuantBScale = tmp_scales_data_ptr.get();
     data[i].QuantBZeroPoint = zero_points_data;
     data[i].Bias = bias_data != nullptr ? &bias_data_v[0] : nullptr;
-    data[i].C = &C_v[0] + helper.OutputOffsets()[i];
+    data[i].C = c_data_ptr.get() + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
   MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                       thread_pool);
-  MlasConvertFloatToHalfBuffer(&C_v[0], y_data, C_v.size());
+  MlasConvertFloatToHalfBuffer(c_data_ptr.get(), y_data, y->Shape().Size());
   return Status::OK();
 }
 
