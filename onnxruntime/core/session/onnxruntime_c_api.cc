@@ -857,17 +857,25 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   auto output_span = gsl::make_span(output, output_names_len);
 
   Status status;
-  if (run_options != nullptr && !run_options->active_adapters_.empty()) {
-    InlinedVector<const char*> input_names_with_lora;
-    InlinedVector<const OrtValue*> input_with_lora;
+  if (run_options != nullptr) {
+    if (!run_options->active_adapters_.empty()) {
+      InlinedVector<const char*> input_names_with_lora;
+      InlinedVector<const OrtValue*> input_with_lora;
 
-    CheckAndAdjustForLora(*run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
+      CheckAndAdjustForLora(*run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
 
-    status = session->Run(*run_options,
-                          input_names_span,
-                          input_span,
-                          output_name_span,
-                          output_span);
+      status = session->Run(*run_options,
+                            input_names_span,
+                            input_span,
+                            output_name_span,
+                            output_span);
+    } else {
+      status = session->Run(*run_options,
+                            input_names_span,
+                            input_span,
+                            output_name_span,
+                            output_span);
+    }
   } else {
     const RunOptions default_run_options;
     status = session->Run(default_run_options,
