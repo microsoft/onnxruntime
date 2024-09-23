@@ -123,6 +123,8 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
 static Status CopyOnDevice([[maybe_unused]] const Tensor& src, Tensor& dst) {
   const auto& mem_info = dst.Location();
 
+  ORT_RETURN_IF(mem_info.device.Type() == OrtDevice::CPU, "Destination must not be on CPU");
+
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
 #ifdef USE_CUDA
     auto ret = cudaMemcpy(dst.MutableDataRaw(), src.DataRaw(), src.SizeInBytes(), cudaMemcpyHostToDevice);
