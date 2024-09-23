@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -10,6 +11,7 @@ import ai.onnxruntime.providers.OrtCUDAProviderOptions;
 import ai.onnxruntime.providers.OrtFlags;
 import ai.onnxruntime.providers.OrtTensorRTProviderOptions;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -90,6 +92,31 @@ public class OrtSession implements AutoCloseable {
     this(
         createSession(
             OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
+        allocator);
+  }
+
+  /**
+   * Creates a session reading the model from the supplied byte buffer.
+   *
+   * <p>Must be a direct byte buffer.
+   *
+   * @param env The environment.
+   * @param modelBuffer The model protobuf as a byte buffer.
+   * @param allocator The allocator to use.
+   * @param options Session configuration options.
+   * @throws OrtException If the model was corrupted or some other error occurred in native code.
+   */
+  OrtSession(
+      OrtEnvironment env, ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
+      throws OrtException {
+    this(
+        createSession(
+            OnnxRuntime.ortApiHandle,
+            env.getNativeHandle(),
+            modelBuffer,
+            modelBuffer.position(),
+            modelBuffer.remaining(),
+            options.getNativeHandle()),
         allocator);
   }
 
@@ -513,6 +540,15 @@ public class OrtSession implements AutoCloseable {
   private static native long createSession(
       long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
 
+  private static native long createSession(
+      long apiHandle,
+      long envHandle,
+      ByteBuffer modelBuffer,
+      int bufferPos,
+      int bufferSize,
+      long optsHandle)
+      throws OrtException;
+
   private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
 
   private native String[] getInputNames(long apiHandle, long nativeHandle, long allocatorHandle)
@@ -907,6 +943,20 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Set whether to use deterministic compute.
+     *
+     * <p>Default is false. If set to true, this will enable deterministic compute for GPU kernels
+     * where possible. Note that this most likely will have a performance cost.
+     *
+     * @param value Should the compute be deterministic?
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setDeterministicCompute(boolean value) throws OrtException {
+      checkClosed();
+      setDeterministicCompute(OnnxRuntime.ortApiHandle, nativeHandle, value);
+    }
+
+    /**
      * Disables the per session thread pools. Must be used in conjunction with an environment
      * containing global thread pools.
      *
@@ -1181,12 +1231,12 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds the ARM Compute Library as an execution backend.
      *
-     * @param useArena If true use the arena memory allocator.
+     * @param enableFastMath Enable fast math mode in ACL.
      * @throws OrtException If there was an error in native code.
      */
-    public void addACL(boolean useArena) throws OrtException {
+    public void addACL(boolean enableFastMath) throws OrtException {
       checkClosed();
-      addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+      addACL(OnnxRuntime.ortApiHandle, nativeHandle, enableFastMath);
     }
 
     /**
@@ -1291,6 +1341,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
+    private native void setDeterministicCompute(
+        long apiHandle, long nativeHandle, boolean isDeterministic) throws OrtException;
+
     private native void addFreeDimensionOverrideByName(
         long apiHandle, long nativeHandle, String dimensionName, long dimensionValue)
         throws OrtException;
@@ -1354,7 +1407,8 @@ public class OrtSession implements AutoCloseable {
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
         throws OrtException;
 
-    private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+    private native void addACL(long apiHandle, long nativeHandle, boolean enableFastMath)
+        throws OrtException;
 
     private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;
