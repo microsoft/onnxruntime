@@ -49,7 +49,7 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params);
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params);
-std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params);
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params, const SessionOptions* session_options = nullptr);
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider();
