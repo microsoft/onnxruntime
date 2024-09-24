@@ -94,16 +94,16 @@ pip install skl2onnx
 dotnet add package Microsoft.ML.OnnxRuntime
 ```
 
-#### Install ONNX Runtime GPU (CUDA 11.x)
+#### Install ONNX Runtime GPU (CUDA 12.x)
 
-The default CUDA version for ORT is 11.8
+The default CUDA version for ORT is 12.2
 
 ```bash
 # GPU
 dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 ```
 
-#### Install ONNX Runtime GPU (CUDA 12.x)
+#### Install ONNX Runtime GPU (CUDA 11.8)
 
 1. Project Setup
 
@@ -116,8 +116,8 @@ a nuget.config file to your project in the same directory as your .csproj file.
 <configuration>
     <packageSources>
         <clear/>
-        <add key="onnxruntime-cuda-12"
-             value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/nuget/v3/index.json"/>
+        <add key="onnxruntime-cuda-11"
+             value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/nuget/v3/index.json"/>
     </packageSources>
 </configuration>
 ```
