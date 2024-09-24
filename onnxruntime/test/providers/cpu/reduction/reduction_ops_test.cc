@@ -3175,19 +3175,37 @@ TEST(ReductionOpTest, ReduceProd0DTensor) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(ReductionOpTest, ArgMax) {
+template <typename T>
+class ReductionOpTest : public ::testing::Test {
+};
+
+using ReductionOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(ReductionOpTest, ReductionOpTestTypes);
+
+template <typename T>
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    std::vector<T> inputs_fp16(inputs.size());
+    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
+    return inputs_fp16;
+  }
+}
+
+TYPED_TEST(ReductionOpTest, ArgMax) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
-  test.AddInput<float>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+  test.AddInput<TypeParam>("data", {3, 2, 2},
+                           GetTypedArray<TypeParam>({1.0f, 2.0f,
+                                                     3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                                                     5.0f, 6.0f,
+                                                     7.0f, 8.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
+                                                     9.0f, 10.0f,
+                                                     11.0f, 12.0f}));
   test.AddOutput<int64_t>("reduced", {3, 1, 2},
                           {1, 1,
                            1, 1,

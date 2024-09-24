@@ -127,6 +127,10 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
                             MakeCoreMLExecutionProvider(),
                             feeds,
                             verification_params);
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(COREML_FLAG_CREATE_MLPROGRAM),
+                            feeds,
+                            verification_params);
 #else
   TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
@@ -156,14 +160,25 @@ TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
     ASSERT_EQ(cast_node->GetExecutionProviderType(), kCpuExecutionProvider);
   };
 
-  EPVerificationParams verification_params{};
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
-  verification_params.graph_verifier = &graph_verifier;
+  {
+    EPVerificationParams verification_params{};
+    verification_params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+    verification_params.graph_verifier = &graph_verifier;
 
-  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
-                            MakeCoreMLExecutionProvider(),
-                            feeds,
-                            verification_params);
+    RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                              MakeCoreMLExecutionProvider(),
+                              feeds,
+                              verification_params);
+  }
+  {
+    EPVerificationParams verification_params{};
+    verification_params.ep_node_assignment = ExpectedEPNodeAssignment::None;
+    verification_params.graph_verifier = &graph_verifier;
+    RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                              MakeCoreMLExecutionProvider(COREML_FLAG_CREATE_MLPROGRAM),
+                              feeds,
+                              verification_params);
+  }
 #else
   TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif

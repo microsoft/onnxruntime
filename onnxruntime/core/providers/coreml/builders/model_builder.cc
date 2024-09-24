@@ -14,6 +14,7 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/shape_utils.h"
+#include "core/optimizer/initializer.h"
 
 #if defined(COREML_ENABLE_MLPROGRAM)
 // includes from coremltools-src in _deps
@@ -1003,6 +1004,50 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
   return model->LoadModel();  // load using CoreML API, including compilation
 }
 
+#if defined(COREML_ENABLE_MLPROGRAM)
+std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string_view value_type,
+                                           const ONNX_NAMESPACE::TensorProto& tensor,
+                                           std::optional<gsl::span<const int64_t>> shape) {
+  const auto data_type = tensor.data_type();
+  Initializer unpacked_tensor(tensor);
+  std::string_view ret;
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<float>(), shape ? shape : tensor.dims());
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<MLFloat16>(), shape ? shape : tensor.dims());
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<int64_t>(), shape ? shape : tensor.dims());
+      break;
+    // case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+    //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<int32_t>(), shape?shape:tensor.dims());
+    //   break;
+    // case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+    //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<double>(), shape?shape:tensor.dims());
+    //   break;
+    // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+    //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<int8_t>(), shape?shape:tensor.dims());
+    //   break;
+    // case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<uint8_t>(), shape?shape:tensor.dims());
+    //   break;
+    // case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+    //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<uint32_t>(), shape?shape:tensor.dims());
+    //   break;
+    // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<bool>(), shape?shape:tensor.dims());
+    //   break;
+    default:
+      // un reachable
+      ORT_THROW("AddConstant: Unsupported data type: ", data_type);
+      break;
+  }
+
+  return ret;
+}
+#endif
 // static
 Status ModelBuilder::Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            int32_t coreml_version, uint32_t coreml_flags,

@@ -3,71 +3,96 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
 
-// Disable TensorRT on some of the tests because its parser doesn't support weight as input
+template <typename T>
+class InstanceNormalizationOpTest : public ::testing::Test {
+};
+using InstanceNormalizationOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(InstanceNormalizationOpTest, InstanceNormalizationOpTestTypes);
 
-TEST(InstanceNormalizationOpTest, InstanceNorm) {
-  OpTester test("InstanceNormalization");
-  test.AddAttribute("epsilon", 0.3F);
-
-  vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
-                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
-                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F,
-
-                         2.3667817F, 2.8248506F, 3.7754705F, 5.861325F,
-                         5.058735F, 3.2787242F, 3.6843839F, 9.755121F,
-                         2.7902672F, 7.3974323F, 8.283609F, 8.488337F};
-  vector<int64_t> input_dims = {2, 3, 4};
-  test.AddInput<float>("input", input_dims, input);
-
-  // vector<float> scale = {2.1F, 0.1F, 1.F};
-  vector<float> scale = {1.0F, 1.0F, 1.F};
-  vector<int64_t> scale_dims = {3};
-  test.AddInput<float>("scale", scale_dims, scale);
-
-  // vector<float> B = {2.3F, 1.5F, 0.F};
-  vector<float> B = {0.0F, 0.0F, 0.F};
-  vector<int64_t> B_dims = {3};
-  test.AddInput<float>("B", B_dims, B);
-
-  vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
-                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
-                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F,
-
-                                   -0.92380346F, -0.60808484F, 0.04711878F, 1.48476953F,
-                                   -0.14644464F, -0.82262872F, -0.66852817F, 1.63760153F,
-                                   -1.65898662F, 0.27618144F, 0.64840618F, 0.734399F};
-  test.AddOutput<float>("Y", input_dims, expected_output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+template <typename T>
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    return ToFloat16(inputs);
+  }
 }
 
-TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
-  OpTester test("InstanceNormalization");
-  test.AddAttribute("epsilon", 0.3F);
+// Disable TensorRT on some of the tests because its parser doesn't support weight as input
 
-  vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
-                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
-                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F};
-  vector<int64_t> input_dims = {1, 3, 4};
-  test.AddInput<float>("input", input_dims, input);
+TYPED_TEST(InstanceNormalizationOpTest, InstanceNorm) {
+  auto run_test = [](bool is_initializer) {
+    OpTester test("InstanceNormalization");
+    test.AddAttribute("epsilon", 0.3F);
 
-  vector<float> scale = {1.0F, 1.0F, 1.F};
-  vector<int64_t> scale_dims = {3};
-  test.AddInput<float>("scale", scale_dims, scale);
+    vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                           8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                           7.9195533F, 7.638727F, 8.065445F, 3.8082376F,
 
-  vector<float> B = {0.0F, 0.0F, 0.F};
-  vector<int64_t> B_dims = {3};
-  test.AddInput<float>("B", B_dims, B);
+                           2.3667817F, 2.8248506F, 3.7754705F, 5.861325F,
+                           5.058735F, 3.2787242F, 3.6843839F, 9.755121F,
+                           2.7902672F, 7.3974323F, 8.283609F, 8.488337F};
+    vector<int64_t> input_dims = {2, 3, 4};
+    test.AddInput<TypeParam>("input", input_dims, GetTypedArray<TypeParam>(input));
 
-  vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
-                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
-                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
-  test.AddOutput<float>("Y", input_dims, expected_output);
+    // vector<float> scale = {2.1F, 0.1F, 1.F};
+    vector<float> scale = {1.0F, 1.0F, 1.F};
+    vector<int64_t> scale_dims = {3};
+    test.AddInput<TypeParam>("scale", scale_dims, GetTypedArray<TypeParam>(scale), is_initializer);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    // vector<float> B = {2.3F, 1.5F, 0.F};
+    vector<float> B = {0.0F, 0.0F, 0.F};
+    vector<int64_t> B_dims = {3};
+    test.AddInput<TypeParam>("B", B_dims, GetTypedArray<TypeParam>(B), is_initializer);
+
+    vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                     1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                     0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F,
+
+                                     -0.92380346F, -0.60808484F, 0.04711878F, 1.48476953F,
+                                     -0.14644464F, -0.82262872F, -0.66852817F, 1.63760153F,
+                                     -1.65898662F, 0.27618144F, 0.64840618F, 0.734399F};
+    test.AddOutput<TypeParam>("Y", input_dims, GetTypedArray<TypeParam>(expected_output));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
+}
+
+TYPED_TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
+  auto run_test = [](bool is_initializer) {
+    OpTester test("InstanceNormalization");
+    test.AddAttribute("epsilon", 0.3F);
+
+    vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                           8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                           7.9195533F, 7.638727F, 8.065445F, 3.8082376F};
+    vector<int64_t> input_dims = {1, 3, 4};
+    test.AddInput<TypeParam>("input", input_dims, GetTypedArray<TypeParam>(input));
+
+    vector<float> scale = {1.0F, 1.0F, 1.F};
+    vector<int64_t> scale_dims = {3};
+    test.AddInput<TypeParam>("scale", scale_dims, GetTypedArray<TypeParam>(scale), is_initializer);
+
+    vector<float> B = {0.0F, 0.0F, 0.F};
+    vector<int64_t> B_dims = {3};
+    test.AddInput<TypeParam>("B", B_dims, GetTypedArray<TypeParam>(B), is_initializer);
+
+    vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                     1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                     0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
+    test.AddOutput<TypeParam>("Y", input_dims, GetTypedArray<TypeParam>(expected_output));
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
@@ -105,7 +130,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
 }
 
 // Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   OpTester test("InstanceNormalization");
