@@ -63,22 +63,25 @@ jobs:
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
-            --parallel --use_binskim_compliant_compile_flags \
+            --use_binskim_compliant_compile_flags \
+            --build_java \
             --use_qnn \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --skip_tests
+            --update --build --parallel
         displayName: Build QNN EP
 
       - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \
-            --config Release --use_binskim_compliant_compile_flags \
-            --test \
+            --config Release \
+            --use_binskim_compliant_compile_flags \
+            --build_java \
+            --use_qnn \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
             --skip_submodule_sync \
-            --ctest_path ""
+            --test
         displayName: Run unit tests
 
       - task: CmdLine@2
