@@ -585,7 +585,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_data_v.data(),                                   // quantization scales
+        scales_data_v.data(),                           // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -599,7 +599,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, MLFloat16>(
           tmp_b_data_ptr.get(),                             // dequantized output
           b_data,                                           // quantized input
-          scales_data_v.data(),                                     // quantization scales
+          scales_data_v.data(),                             // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -611,7 +611,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_data_v.data(),                                   // quantization scales
+          scales_data_v.data(),                           // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size

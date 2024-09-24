@@ -22,41 +22,39 @@ Abstract:
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
 class MlasNeonFp16CastTest : public MlasTestBase {
-private:
+ private:
+  void TestFp16ToFp32(size_t count) {
+    std::vector<unsigned short> src(count);
+    std::vector<float> dest(count);
 
-    void TestFp16ToFp32(size_t count) {
-        std::vector<unsigned short> src(count);
-        std::vector<float> dest(count);
-
-        for (size_t i = 0; i < count; i++) {
-            src[i] = static_cast<unsigned short>(i);
-        }
-
-        MlasCastF16ToF32KernelNeon(src.data(), dest.data(), count);
-
-        for (size_t i = 0; i < count; i++) {
-            if ((src[i] & 0x1c00) == 0x1c00) continue; // skip inf and nan
-            ASSERT_EQ(dest[i], MLAS_FP16::FromBits(src[i]).ToFloat());
-        }
+    for (size_t i = 0; i < count; i++) {
+      src[i] = static_cast<unsigned short>(i);
     }
 
-    void TestFp32ToFp16(size_t count) {
-        std::vector<float> src(count);
-        std::vector<unsigned short> dest(count);
+    MlasCastF16ToF32KernelNeon(src.data(), dest.data(), count);
 
-        for (size_t i = 0; i < count; i++) {
-            src[i] = static_cast<float>(i);
-        }
+    for (size_t i = 0; i < count; i++) {
+      if ((src[i] & 0x1c00) == 0x1c00) continue;  // skip inf and nan
+      ASSERT_EQ(dest[i], MLAS_FP16::FromBits(src[i]).ToFloat());
+    }
+  }
 
-        MlasCastF32ToF16KernelNeon(src.data(), dest.data(), count);
+  void TestFp32ToFp16(size_t count) {
+    std::vector<float> src(count);
+    std::vector<unsigned short> dest(count);
 
-        for (size_t i = 0; i < count; i++) {
-            ASSERT_EQ(dest[i], MLAS_FP16(src[i]).val);
-        }
+    for (size_t i = 0; i < count; i++) {
+      src[i] = static_cast<float>(i);
     }
 
+    MlasCastF32ToF16KernelNeon(src.data(), dest.data(), count);
 
-public:
+    for (size_t i = 0; i < count; i++) {
+      ASSERT_EQ(dest[i], MLAS_FP16(src[i]).val);
+    }
+  }
+
+ public:
   static const char* GetTestSuiteName() {
     return "NeonFp16Cast";
   }
@@ -66,7 +64,6 @@ public:
     TestFp32ToFp16((1 << 15) - 5);
   }
 };
-
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
