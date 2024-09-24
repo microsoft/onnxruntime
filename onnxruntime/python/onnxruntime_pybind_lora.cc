@@ -16,7 +16,7 @@
 
 #include "lora/adapter_format_version.h"
 #include "lora/adapter_format_utils.h"
-#include "lora/lora_adapters.h"
+#include "core/session/lora_adapters.h"
 
 #include <string.h>
 

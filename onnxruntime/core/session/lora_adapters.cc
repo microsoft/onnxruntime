@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "lora_adapters.h"
-#include "adapter_format_utils.h"
+#include "lora/adapter_format_utils.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_adapters.h"

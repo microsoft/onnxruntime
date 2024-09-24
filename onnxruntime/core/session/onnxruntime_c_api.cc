@@ -39,7 +39,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/common/string_helper.h"
 
-#include "lora/lora_adapters.h"
+#include "lora_adapters.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"

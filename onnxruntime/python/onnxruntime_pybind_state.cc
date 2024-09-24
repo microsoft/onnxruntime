@@ -32,7 +32,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
-#include "lora/lora_adapters.h"
+#include "core/session/lora_adapters.h"
 
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"

@@ -7,7 +7,7 @@
 
 #include "test/util/include/default_providers.h"
 
-#include "lora/lora_adapters.h"
+#include "core/session/lora_adapters.h"
 #include "lora/adapter_format_version.h"
 #include "lora/adapter_format_utils.h"
 
