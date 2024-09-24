@@ -80,14 +80,33 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "win-qnn | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QnnSDKRootDir) --parallel --use_binskim_compliant_compile_flags'
+      BuildPyArguments: >
+        --config $(BuildConfig)
+        --build_dir $(Build.BinariesDirectory)
+        --cmake_generator "Visual Studio 17 2022"
+        --build_java
+        --use_qnn
+        --qnn_home $(QnnSDKRootDir)
+        --use_binskim_compliant_compile_flags
+        --compile_no_warning_as_error
+        --update --parallel
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'
       BuildConfig: $(BuildConfig)
 
-  - powershell: |
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
+  - powershell: >
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py
+       --config $(BuildConfig)
+       --build_dir $(Build.BinariesDirectory)
+       --cmake_generator "Visual Studio 17 2022"
+       --build_java
+       --use_qnn
+       --qnn_home $(QnnSDKRootDir)
+       --use_binskim_compliant_compile_flags
+       --compile_no_warning_as_error
+       --skip_submodule_sync
+       --test --enable_onnx_tests
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run unit tests'
 
