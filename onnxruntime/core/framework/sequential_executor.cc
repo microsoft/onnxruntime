@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+#include <fstream>
+#include <iostream>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
@@ -15,6 +17,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/framework/print_tensor_utils.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -187,9 +190,13 @@ class SessionScope {
     VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
-#if defined(TRACE_EXECUTION)
-    std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-#endif
+//#if defined(TRACE_EXECUTION)
+    std::ifstream fs("dump.txt");
+    if (fs.is_open()) {
+      std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+      fs.close();
+    }
+//#endif
 #if defined(ORT_MINIMAL_BUILD) || !defined(ORT_MEMORY_PROFILE)
     ORT_UNUSED_PARAMETER(frame);
 #endif
@@ -433,6 +440,113 @@ class KernelScope {
 #endif
 };
 
+void PrintTensorHelper(const Tensor& t, StreamExecutionContext& ctx) {
+  MLDataType dt = t.DataType();
+  if (t.Location().device.Type() == OrtDevice::GPU) {
+    auto cpu_allocator = ctx.GetSessionState().GetAllocator(OrtDevice());
+    const auto& data_transfer_mgr = ctx.GetSessionState().GetDataTransferMgr();
+    Tensor cpu_tensor{dt, t.Shape(), cpu_allocator};
+    Status status = data_transfer_mgr.CopyTensor(t, cpu_tensor);
+    if (status != onnxruntime::Status::OK()) {
+      std::cout << "cannot copy tensor to cpu";
+      return;
+    }
+    switch (dt->AsPrimitiveDataType()->GetDataType()) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        onnxruntime::utils::PrintCpuTensor<float>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        onnxruntime::utils::PrintCpuTensor<bool>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+        onnxruntime::utils::PrintCpuTensor<double>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_STRING:
+        onnxruntime::utils::PrintCpuTensor<std::string>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        onnxruntime::utils::PrintCpuTensor<int8_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        onnxruntime::utils::PrintCpuTensor<uint8_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+        onnxruntime::utils::PrintCpuTensor<int16_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+        onnxruntime::utils::PrintCpuTensor<uint16_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        onnxruntime::utils::PrintCpuTensor<int32_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        onnxruntime::utils::PrintCpuTensor<uint32_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        onnxruntime::utils::PrintCpuTensor<int64_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        onnxruntime::utils::PrintCpuTensor<uint64_t>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        onnxruntime::utils::PrintCpuTensor<MLFloat16>(cpu_tensor);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+        onnxruntime::utils::PrintCpuTensor<BFloat16>(cpu_tensor);
+        break;
+      default:
+        ORT_ENFORCE(false, "Unknown tensor type of ", dt->AsPrimitiveDataType()->GetDataType());
+    }
+  } else {
+    switch (dt->AsPrimitiveDataType()->GetDataType()) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        onnxruntime::utils::PrintCpuTensor<float>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        onnxruntime::utils::PrintCpuTensor<bool>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+        onnxruntime::utils::PrintCpuTensor<double>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_STRING:
+        onnxruntime::utils::PrintCpuTensor<std::string>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        onnxruntime::utils::PrintCpuTensor<int8_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        onnxruntime::utils::PrintCpuTensor<uint8_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+        onnxruntime::utils::PrintCpuTensor<int16_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+        onnxruntime::utils::PrintCpuTensor<uint16_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        onnxruntime::utils::PrintCpuTensor<int32_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        onnxruntime::utils::PrintCpuTensor<uint32_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        onnxruntime::utils::PrintCpuTensor<int64_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        onnxruntime::utils::PrintCpuTensor<uint64_t>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        onnxruntime::utils::PrintCpuTensor<MLFloat16>(t);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+        onnxruntime::utils::PrintCpuTensor<BFloat16>(t);
+        break;
+      default:
+        ORT_ENFORCE(false, "Unknown tensor type of ", dt->AsPrimitiveDataType()->GetDataType());
+    }
+  }
+}
+
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
@@ -461,6 +575,23 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     ORT_THROW("Async Kernel Support is not implemented yet.");
   } else {
     KernelScope kernel_scope(session_scope, kernel_ctx, *p_kernel);
+    std::ifstream fstream("dump.txt");
+    if (fstream.is_open()) {
+      std::cout << "execute node:" << idx << "\n  Inputs (len:" << kernel_ctx.InputCount() << ") :\n";
+      for (int i = 0; i < kernel_ctx.InputCount(); i++) {
+        std::string name = p_kernel->Node().InputDefs()[i]->Name();
+        int global_index = 0;
+        ORT_THROW_IF_ERROR(ctx.GetSessionState().GetOrtValueNameIdxMap().GetIdx(name, global_index));
+        std::cout << i << " Name:" << name << " gIdx:" << global_index << " alloc:" << ctx.GetSessionState().GetExecutionPlan()->allocation_plan[global_index].alloc_kind << "\n";
+        const OrtValue* v = kernel_ctx.GetInputMLValue(i);
+        if (v->IsTensor()) {
+          const Tensor& t = v->Get<Tensor>();
+          std::cout << "i:" << i << " size:" << t.SizeInBytes() << " shape:"<<t.Shape().ToString()<<" element size:"<<t.DataType()->Size()<< "\n";
+          PrintTensorHelper(t, ctx);
+        }
+      }
+      fstream.close();
+    }
     ORT_TRY {
 #ifdef ENABLE_TRAINING
       // AllocateInputsContiguously - is only required for NCCL kernels
@@ -499,6 +630,19 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       ORT_HANDLE_EXCEPTION([&]() {
         status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
       });
+    }
+    std::ifstream fstream2("dump.txt");
+    if (fstream2.is_open()) {
+      std::cout << "  Outputs (len:" << kernel_ctx.OutputCount() << ") :\n";
+      for (int i = 0; i < kernel_ctx.OutputCount(); i++) {
+        const OrtValue* v = kernel_ctx.GetOutputMLValue(i);
+        if (v->IsTensor()) {
+          const Tensor& t = v->Get<Tensor>();
+          std::cout << "i:" << i << " size:" << t.SizeInBytes() << " shape:"<<t.Shape().ToString()<<" element size:"<<t.DataType()->Size()<< "\n";
+          PrintTensorHelper(t, ctx);
+        }
+      }
+      fstream2.close();
     }
   }
   if (!status.IsOK()) {
