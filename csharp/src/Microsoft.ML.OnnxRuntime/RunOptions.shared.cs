@@ -129,6 +129,17 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddRunConfigEntry(handle, utf8Key, utf8Value));
         }
 
+        /// <summary>
+        /// Appends the specified lora adapter to the list of active lora adapters
+        /// for this RunOptions instance. All run calls with this instant will
+        /// make use of the activates Lora Adapters
+        /// </summary>
+        /// <param name="loraAdapter">Lora adapter instance</param>
+        public void SetActiveLoraAdapter(OrtLoraAdapter loraAdapter)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetActiveLoraAdapter(handle, loraAdapter.Handle));
+        }
+
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
