@@ -19,7 +19,7 @@
 #endif
 
 #if __has_include(<onnxruntime/webgpu_provider_factory.h>)
-#define WEBGPUL_EP_AVAILABLE 1
+#define WEBGPU_EP_AVAILABLE 1
 // WebGPU EP doesn't require including the header as it's enabled via AppendExecutionProvider
 #else
 #define WEBGPU_EP_AVAILABLE 0
