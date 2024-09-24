@@ -25,7 +25,7 @@ namespace Dml
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
     // All requested allocation sizes are rounded up to the nearest bucket size, which ensures minimal fragmentation
     // while providing an upper bound on the amount of memory "wasted" with each allocation.
-    class BucketizedBufferAllocator : public onnxruntime::IAllocator
+    class BucketizedBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator
     {
     public:
         ~BucketizedBufferAllocator();
@@ -69,7 +69,7 @@ namespace Dml
         static uint64_t GetBucketSizeFromIndex(gsl::index index);
 
         friend class AllocationInfo;
-        void FreeResource(void* p, uint64_t resourceId);
+        void FreeResource(void* p, uint64_t resourceId) final;
 
         ComPtr<ID3D12Device> m_device;
         D3D12_HEAP_PROPERTIES m_heapProperties;

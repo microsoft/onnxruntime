@@ -17,16 +17,17 @@
 
 namespace Dml
 {
-    class DmlInputBufferAllocator : public onnxruntime::IAllocator
+    class DmlInputBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator
     {
     public:
-        DmlInputBufferAllocator(ID3D12Device* d3d12Device) : onnxruntime::IAllocator(
+        DmlInputBufferAllocator(ID3D12Device* d3d12Device, ExecutionContext* context) : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_INPUT, 0)
             )),
-            m_d3d12Device(d3d12Device)
+            m_d3d12Device(d3d12Device),
+            m_context(context)
         {
         }
 
@@ -51,7 +52,7 @@ namespace Dml
             wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
 
             Microsoft::WRL::ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
-                nullptr,
+                this,
                 0,
                 pooledResourceId,
                 resourceWrapper.Get(),
@@ -66,7 +67,34 @@ namespace Dml
             resource.Attach(static_cast<AllocationInfo*>(ptr));
         }
 
+        void FreeResource(void* p, uint64_t pooledResourceId) final
+        {
+            AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);
+
+            assert(allocInfo != nullptr); // Can't free nullptr
+
+            if (allocInfo->GetOwner() != this)
+            {
+                // This allocation doesn't belong to this allocator!
+                ORT_THROW_HR(E_INVALIDARG);
+            }
+
+            // Free the resource to the pool if its size matches a bucket size
+            if (!m_context->IsClosed())
+            {
+                // Free the underlying allocation once queued work has completed.
+#ifdef _GAMING_XBOX
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+#else
+                m_context->QueueReference(allocInfo->GetResource());
+#endif
+            }
+
+            allocInfo->DetachResourceWrapper();
+        }
+
     private:
         Microsoft::WRL::ComPtr<ID3D12Device> m_d3d12Device;
+        Microsoft::WRL::ComPtr<ExecutionContext> m_context;
     };
 }

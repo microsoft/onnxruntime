@@ -12,12 +12,18 @@ namespace Dml
 {
     class BucketizedBufferAllocator;
 
+    class IDmlBufferAllocator
+    {
+    public:
+        virtual void FreeResource(void* p, uint64_t resourceId) = 0;
+    };
+
     class AllocationInfo : public Microsoft::WRL::RuntimeClass<
         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
     {
     public:
         AllocationInfo(
-            BucketizedBufferAllocator* owner,
+            IDmlBufferAllocator* owner,
             size_t id,
             uint64_t pooledResourceId,
             DmlResourceWrapper* resourceWrapper,
@@ -31,7 +37,7 @@ namespace Dml
 
         ~AllocationInfo();
 
-        BucketizedBufferAllocator* GetOwner() const
+        IDmlBufferAllocator* GetOwner() const
         {
             return m_owner;
         }
@@ -63,7 +69,7 @@ namespace Dml
 
     private:
         // The bucketized buffer allocator must outlive the allocation info
-        BucketizedBufferAllocator* m_owner;
+        IDmlBufferAllocator* m_owner;
         size_t m_allocationId; // For debugging purposes
         uint64_t m_pooledResourceId = 0;
         Microsoft::WRL::ComPtr<DmlResourceWrapper> m_resourceWrapper;
