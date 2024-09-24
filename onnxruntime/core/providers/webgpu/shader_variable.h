@@ -67,6 +67,9 @@ class ShaderIndicesHelper {
  public:
   ShaderIndicesHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
 
+  ShaderIndicesHelper(ShaderIndicesHelper&&) = default;
+  ShaderIndicesHelper& operator=(ShaderIndicesHelper&&) = default;
+
   inline int NumComponents() const { return num_components_; }
 
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
