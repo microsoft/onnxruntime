@@ -61,7 +61,9 @@ Status CheckInputs(const Tensor* query,
     if (head_size % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "head_size must be a multiple of 8. Got head_size % 8 == ",
-                             head_size % 8);
+                             head_size % 8,
+                             " q_hidden_size: ", q_hidden_size,
+                             " num_heads: ", num_heads);
     }
     if (value == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

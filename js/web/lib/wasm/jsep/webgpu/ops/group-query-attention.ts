@@ -68,9 +68,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   const headSize = !packedQKV
     ? Math.floor(hiddenSize / attributes.numHeads)
     : Math.floor(hiddenSize / (attributes.numHeads + 2 * attributes.kvNumHeads!));
-  if (headSize % 8 !== 0) {
-    throw new Error('Head size must be a multiple of 8. Got head_size % 8 = ' + (headSize % 8));
-  }
   if (packedQKV) {
     hiddenSize = headSize * attributes.numHeads;
   }
@@ -146,7 +143,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
 
   const maskType: AttentionMaskType = AttentionMaskType.none;
   let passPastInKv = false;
-  let vHiddenSize = hiddenSize;
+  let vHiddenSize = attributes.kvNumHeads ? headSize * attributes.kvNumHeads : hiddenSize;
   if (value && value.dims.length > 0) {
     if (value.dims.length !== 3 && value.dims.length !== 4) {
       throw new Error('Input "value" is expected to have 3 or 4 dimensions');
@@ -170,7 +167,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     }
   }
   const seqlLens = inputs.length > 4 ? inputs[5] : undefined;
-  if (seqlLens && seqlLens.dims.length !== 1 && seqlLens.dims[0] != batchSize) {
+  if (seqlLens && seqlLens.dims.length !== 1 && seqlLens.dims[0] !== batchSize) {
     throw new Error('Input "seqlens" is expected to have 1 dimension and the same dim 0 as batch_size');
   }
   const totalSequenceLength = -1;
