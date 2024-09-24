@@ -30,7 +30,7 @@ pip install onnxruntime
 
 ### Install ONNX Runtime GPU (CUDA 12.x)
 
-The default CUDA version for ORT is 12.2.
+The default CUDA version for ORT is 12.x.
 
 ```bash
 pip install onnxruntime-gpu
@@ -260,8 +260,8 @@ If using pip, run `pip install --upgrade pip` prior to downloading.
 |[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64),  |
 |[ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly)|CPU (Dev)    | Same as above |
 |[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU (Release)| Windows (x64), Linux (x64, ARM64) |
-|[ort-nightly-gpu for CUDA 11.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
-|[ort-nightly-gpu for CUDA 12.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-12-nightly/PyPI/ort-nightly-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
+|[ort-nightly-gpu for CUDA 11.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-11-nightly/PyPI/ort-nightly-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
+|[ort-nightly-gpu for CUDA 12.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
 
 Before installing nightly package, you will need install dependencies first.
 ```
@@ -270,12 +270,12 @@ python -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 
 Example to install ort-nightly-gpu for CUDA 11.*:
 ```
-python -m pip install ort-nightly-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
+python -m pip install ort-nightly-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-11-nightly/pypi/simple/
 ```
 
 Example to install ort-nightly-gpu for CUDA 12.*:
 ```
-python -m pip install ort-nightly-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple/
+python -m pip install ort-nightly-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
