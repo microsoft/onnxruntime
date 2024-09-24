@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -302,6 +303,28 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseROCMProviderOptions;
         public IntPtr CreateAndRegisterAllocatorV2;
         public IntPtr RunAsync;
+        public IntPtr UpdateTensorRTProviderOptionsWithValue;
+        public IntPtr GetTensorRTProviderOptionsByName;
+        public IntPtr UpdateCUDAProviderOptionsWithValue;
+        public IntPtr GetCUDAProviderOptionsByName;
+        public IntPtr KernelContext_GetResource;
+        public IntPtr SetUserLoggingFunction;
+        public IntPtr ShapeInferContext_GetInputCount;
+        public IntPtr ShapeInferContext_GetInputTypeShape;
+        public IntPtr ShapeInferContext_GetAttribute;
+        public IntPtr ShapeInferContext_SetOutputTypeShape;
+        public IntPtr SetSymbolicDimensions;
+        public IntPtr ReadOpAttr;
+        public IntPtr SetDeterministicCompute;
+        public IntPtr KernelContext_ParallelFor;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO_V2;
+        public IntPtr SessionOptionsAppendExecutionProvider_VitisAI;
+        public IntPtr KernelContext_GetScratchBuffer;
+        public IntPtr KernelInfoGetAllocator;
+        public IntPtr AddExternalInitializersFromFilesInMemory;
+        public IntPtr CreateLoraAdapter;
+        public IntPtr ReleaseLoraAdapter;
+        public IntPtr RunOptionsSetActiveLoraAdapter;
     }
 
     internal static class NativeMethods
@@ -540,6 +563,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
             OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
+            CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
+                typeof(DCreateLoraAdapter));
+            ReleaseLoraAdapter = (DReleaseLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.ReleaseLoraAdapter,
+                typeof(DReleaseLoraAdapter));
+            OrtRunOptionsSetActiveLoraAdapter = (DOrtRunOptionsSetActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
+                api_.RunOptionsSetActiveLoraAdapter, typeof(DOrtRunOptionsSetActiveLoraAdapter));
         }
 
         internal class NativeLib
@@ -562,7 +591,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern ref OrtApiBase OrtGetApiBase();
 #endif
 
-#region Runtime / Environment API
+        #region Runtime / Environment API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtCreateEnv(
@@ -619,9 +648,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */ DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, OrtLoggingLevel custom_log_level);
         public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
-#endregion Runtime / Environment API
+        #endregion Runtime / Environment API
 
-#region Provider Options API
+        #region Provider Options API
 
         /// <summary>
         /// Creates native OrtTensorRTProviderOptions instance
@@ -755,9 +784,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseROCMProviderOptions(IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance);
         public static DOrtReleaseROCMProviderOptions OrtReleaseROCMProviderOptions;
 
-#endregion
+        #endregion
 
-#region Status API
+        #region Status API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/ status);
         public static DOrtGetErrorCode OrtGetErrorCode;
@@ -772,9 +801,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseStatus(IntPtr /*(OrtStatus*)*/ statusPtr);
         public static DOrtReleaseStatus OrtReleaseStatus;
 
-#endregion Status API
+        #endregion Status API
 
-#region InferenceSession API
+        #region InferenceSession API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtCreateSession(
@@ -974,9 +1003,9 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /*(void*)*/ user_data);
         public static DOrtRunAsync OrtRunAsync;
 
-#endregion InferenceSession API
+        #endregion InferenceSession API
 
-#region SessionOptions API
+        #region SessionOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateSessionOptions(out IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
@@ -1261,9 +1290,24 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DSessionOptionsAppendExecutionProvider SessionOptionsAppendExecutionProvider;
 
-#endregion
+    #endregion
 
-#region RunOptions API
+        #region LoraAdapter API
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapter(
+                byte[] adapter_path, // This takes const ORTCHAR_T* use GetPlatformSerializedString
+                IntPtr /* OrtAllocator */ allocator, // optional
+                out IntPtr lora_adapter
+            );
+        public static DCreateLoraAdapter CreateLoraAdapter;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DReleaseLoraAdapter(IntPtr /* OrtLoraAdapter* */ lora_adapter);
+        public static DReleaseLoraAdapter ReleaseLoraAdapter;
+
+    #endregion
+
+    #region RunOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRunOptions(out IntPtr /* OrtRunOptions** */ runOptions);
@@ -1308,6 +1352,12 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsUnsetTerminate(IntPtr /* OrtRunOptions* */ options);
         public static DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetActiveLoraAdapter(
+            IntPtr /* OrtRunOptions* */ options,
+            IntPtr /* OrtLoraAdapter* */ lora_adapter);
+        public static DOrtRunOptionsSetActiveLoraAdapter OrtRunOptionsSetActiveLoraAdapter;
+
         /// <summary>
         /// Add run config entry
         /// </summary>
@@ -1320,9 +1370,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                                       byte[] /* const char* */ configValue);
         public static DOrtAddRunConfigEntry OrtAddRunConfigEntry;
 
-#endregion
+        #endregion
 
-#region ThreadingOptions API
+        #region ThreadingOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateThreadingOptions(out IntPtr /* OrtCreateThreadingOptions** */ threadingOptions);
@@ -1347,9 +1397,9 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtThreadingOptionsSetGlobalSpinControl(IntPtr /* OrtThreadingOptions* */ threadingOptions, int allowSpinning);
         public static DOrtThreadingOptionsSetGlobalSpinControl OrtThreadingOptionsSetGlobalSpinControl;
-#endregion
+        #endregion
 
-#region Allocator / MemoryInfo API
+        #region Allocator / MemoryInfo API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateMemoryInfo(
@@ -1486,9 +1536,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtAllocatorFree OrtAllocatorFree;
 
-#endregion Allocator / MemoryInfo API
+        #endregion Allocator / MemoryInfo API
 
-#region IoBinding API
+        #region IoBinding API
 
         /// <summary>
         /// Create OrtIoBinding instance that is used to bind memory that is allocated
@@ -1676,9 +1726,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtSetLanguageProjection OrtSetLanguageProjection;
 
-#endregion IoBinding API
+        #endregion IoBinding API
 
-#region ModelMetadata API
+        #region ModelMetadata API
 
         /// <summary>
         /// Gets the ModelMetadata associated with an InferenceSession
@@ -1796,9 +1846,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleaseModelMetadata OrtReleaseModelMetadata;
 
-#endregion ModelMetadata API
+        #endregion ModelMetadata API
 
-#region OrtValue API
+        #region OrtValue API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtHasValue(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(int*)*/ hasValue);
@@ -2058,9 +2108,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleaseValue OrtReleaseValue;
 
-#endregion
+        #endregion
 
-#region Misc API
+        #region Misc API
 
         /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
@@ -2100,7 +2150,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
 
-#endregion
+        #endregion
     } // class NativeMethods
 
     // onnxruntime-extensions helpers to make usage simpler.
