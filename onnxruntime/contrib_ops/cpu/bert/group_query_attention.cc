@@ -22,17 +22,17 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                          \
-ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-    GroupQueryAttention,                                                  \
-    kMSDomain,                                                            \
-    1,                                                                    \
-    T,                                                                    \
-    kCpuExecutionProvider,                                                \
-    KernelDefBuilder()                                                    \
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),     \
-    GroupQueryAttention<T>);
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      GroupQueryAttention,                                              \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
+      GroupQueryAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
