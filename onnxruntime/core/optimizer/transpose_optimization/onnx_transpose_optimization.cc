@@ -2826,7 +2826,7 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
       return false;
     }
 
-    // Move Q's output to come out of DQ's parent node instead.
+    // Move Q's output to come out of DQ's parent node so the graph output value name is maintained.
     dq_node.SetInput(0, "");  // Disconnect DQ from its parent first.
     ctx.graph.MoveOutput(q_node, 0, *dq_parent_node, dq_parent_output_index);
 
