@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
-import { ShapeUtil } from '../../util';
 import { createAttributeWithCacheKey } from '../attribute-with-cache-key';
-import { ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
+import { ComputeContext } from '../types';
 
 import {
   applyAttention,
@@ -14,17 +12,8 @@ import {
   AttentionParameters,
   AttentionQkvFormat,
 } from './attention';
-import {
-  createTensorShapeVariables,
-  IndicesHelper,
-  inputVariable,
-  outputVariable,
-  ShaderHelper,
-  UniformsArrayType,
-} from './common';
 import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
 import { createSplitProgramInfo, SplitAttributes } from './split';
-import { createTileProgramInfo } from './tile';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
 
 export const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
@@ -75,7 +64,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   let kvSequenceLength = sequenceLength;
 
   let pastSequenceLength = 0;
-  let maxSequenceLength = 0;
   const packedQKV = !key || key.dims.length === 0;
   const headSize = !packedQKV
     ? Math.floor(hiddenSize / attributes.numHeads)
@@ -88,6 +76,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   }
   const hasPastKey = pastKey && pastKey.dims.length !== 0;
   const hasPastValue = pastValue && pastValue.dims.length !== 0;
+  // Currenly the onnxruntime GQA specification only support key/value BNSH format.
   const isPastkvBSNH =
     hasPastKey &&
     pastKey.dims.length === 4 &&
@@ -107,7 +96,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       throw new Error('Input "past_value" is expected to have 4 dimensions');
     }
     pastSequenceLength = pastKey.dims[2];
-    maxSequenceLength = pastKey.dims[2];
   } else if (hasPastKey || hasPastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
@@ -181,7 +169,12 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       passPastInKv = true;
     }
   }
-  const totalSequenceLength = pastSequenceLength + kvSequenceLength;
+  const seqlLens = inputs.length > 4 ? inputs[5] : undefined;
+  if (seqlLens && seqlLens.dims.length !== 1 && seqlLens.dims[0] != batchSize) {
+    throw new Error('Input "seqlens" is expected to have 1 dimension and the same dim 0 as batch_size');
+  }
+  const totalSequenceLength = -1;
+  const maxSequenceLength = -1;
   const broadcastResPosBias = false;
 
   return {
@@ -208,137 +201,17 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   };
 };
 
-const createConcatProgramInfo = (
-  a: TensorView | undefined,
-  b: TensorView | undefined,
-  dataType: DataType,
-  params: AttentionParameters,
-): ProgramInfo => {
-  const outputShape = [params.batchSize, params.kvNumHeads!, params.totalSequenceLength, params.headSize];
-  const component = 4;
-  const outputSize = ShapeUtil.size(outputShape) / component;
-  const presentSequenceLength = params.totalSequenceLength;
-  const output = outputVariable('present_kv', dataType, outputShape.length, component);
-  const inputA = a ? inputVariable('new_kv', a.dataType, a.dims.length, component) : undefined;
-  const inputB = b ? inputVariable('past_kv', b.dataType, b.dims.length, component) : undefined;
-
-  const H = Math.ceil(params.headSize / component);
-  const dispatch = { x: presentSequenceLength, y: a ? a.dims[0] : b!.dims[0], z: 1 };
-
-  const inputDependencies: ProgramInputTensorInfoDependency[] = b ? ['rank', 'rank'] : ['rank'];
-
-  const programUniforms: ProgramUniform[] = [
-    { type: DataType.uint32, data: outputSize },
-    { type: DataType.uint32, data: params.pastSequenceLength },
-    { type: DataType.uint32, data: params.kvSequenceLength },
-    { type: DataType.uint32, data: params.totalSequenceLength },
-  ];
-
-  const inputs: IndicesHelper[] = [];
-  if (inputA) {
-    programUniforms.push(...createTensorShapeVariables(a!.dims));
-    inputs.push(inputA);
-  }
-  if (inputB) {
-    programUniforms.push(...createTensorShapeVariables(b!.dims));
-    inputs.push(inputB);
-  }
-  programUniforms.push(...createTensorShapeVariables(outputShape));
-  const uniforms: UniformsArrayType = [
-    { name: 'output_size', type: 'u32' },
-    { name: 'past_seqlen', type: 'u32' },
-    { name: 'new_seqlen', type: 'u32' },
-    { name: 'present_seqlen', type: 'u32' },
-  ];
-
-  const pastStr = `      let past_batch_stride = uniforms.past_seqlen * num_heads * H;
-        var past_head_stride = uniforms.past_seqlen * H;
-        let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
-        present_kv[out_offset] = past_kv[in_offset];`;
-  const newStr = `      let new_batch_stride = uniforms.new_seqlen * num_heads * H;
-        let new_row_stride = num_heads * H;
-        let new_head_stride = H;
-        let in_offset = b * new_batch_stride + (s - past_seqlen) * new_row_stride + n * new_head_stride + h;
-        present_kv[out_offset] = new_kv[in_offset];`;
-  const concatStr = b
-    ? `if (s < past_seqlen) {
-        ${pastStr}
-        } else if (s < past_seqlen + uniforms.new_seqlen) {
-        ${newStr}
-        }`
-    : `if (s < past_seqlen + uniforms.new_seqlen) {
-          ${newStr}
-        }`;
-
-  // TODO: handle H * params.kvNumHeads greater than maxComputeInvocationsPerWorkgroup limit.
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
-
-  ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputs, output)}
-  ${shaderHelper.mainStart([H, params.kvNumHeads!, 1])}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-    var indices = ${output.offsetToIndices('global_idx')};
-    let h = local_id.x;
-    let n = local_id.y;
-    let s = workgroup_id.x;
-    let b = workgroup_id.y;
-    let num_heads = ${params.kvNumHeads!}u;
-    let H = ${H}u;
-
-    let present_seqlen = uniforms.present_seqlen;
-    let present_batch_stride = present_seqlen * num_heads * H;
-    var row_stride = H;
-    var present_head_stride = present_seqlen * H;
-
-    let past_seqlen = uniforms.past_seqlen;
-
-    let out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
-    ${concatStr}
-  }`;
-
-  return {
-    name: 'ConcatPastNew',
-    shaderCache: { hint: `${params.kvNumHeads!}${H}${!!b}`, inputDependencies },
-    getRunData: () => ({
-      outputs: [{ dims: outputShape, dataType }],
-      dispatchGroup: dispatch,
-      programUniforms,
-    }),
-    getShaderSource,
-  };
-};
-
 export const parseGroupQueryAttentionAttributes = (attributes: AttentionAttrs): AttentionAttrs =>
   createAttributeWithCacheKey({ ...attributes });
 
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({ perm: [0, 2, 1, 3] });
 
-const maybeExpandAndTransposeToBNSH = (
-  context: ComputeContext,
-  input: TensorView,
-  pastKV: TensorView | undefined,
-  params: AttentionParameters,
-  outputIndex: number,
-) => {
+const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params: AttentionParameters) => {
   let reshapedInput = input;
   const numHeads = params.kvNumHeads!;
-  const nReps = params.nReps!;
-  const nonEmptyPastKV = pastKV && pastKV.dims.length > 0 && ShapeUtil.size(pastKV.dims) > 0;
   if (input.dims.length === 3 && params.kvSequenceLength !== 0) {
     reshapedInput = input.reshape([params.batchSize, params.kvSequenceLength, numHeads, params.headSize]);
     reshapedInput = context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
-      inputs: [reshapedInput],
-      outputs: [nonEmptyPastKV ? -1 : outputIndex],
-    })[0];
-  }
-
-  if (nonEmptyPastKV) {
-    reshapedInput = context.compute(createConcatProgramInfo(reshapedInput, pastKV, pastKV.dataType, params), {
-      inputs: [reshapedInput, pastKV],
-      outputs: [pastKV ? outputIndex : -1],
-    })[0];
-  }
-  if (nReps !== 1) {
-    reshapedInput = context.compute(createTileProgramInfo([reshapedInput], [1, 1, nReps, 1]), {
       inputs: [reshapedInput],
       outputs: [-1],
     })[0];
@@ -362,6 +235,8 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const v = context.inputs[2] && context.inputs[2].dims.length > 0 ? context.inputs[2] : undefined;
   const pastKey = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
   const pastValue = context.inputs[4] && context.inputs[4].dims.length !== 0 ? context.inputs[4] : undefined;
+  const seqLens = context.inputs.length > 4 ? context.inputs[5] : undefined;
+  const totalSequenceLengthInput = context.inputs.length > 5 ? context.inputs[6] : undefined;
   const kvNumHeads = params.kvNumHeads ? params.kvNumHeads : params.numHeads;
   const splitAttributes: SplitAttributes = createAttributeWithCacheKey({
     axis: 2,
@@ -371,7 +246,7 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const [query, key, value] =
     !k && !v
       ? context.compute(createSplitProgramInfo([q], splitAttributes), { inputs: [q], outputs: [-1, -1, -1] })
-      : [q, k, v];
+      : [q, k!, v!];
 
   const Q = maybeTransposeToBNSHAndAddBias(
     context,
@@ -383,7 +258,21 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
     undefined,
     0,
   );
-  const K = maybeExpandAndTransposeToBNSH(context, key!, pastKey, params, 1);
-  const V = maybeExpandAndTransposeToBNSH(context, value!, pastValue, params, 2);
-  applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
+  const reshapedPastKey = pastKey ? maybeTransposeToBNSH(context, pastKey, params) : undefined;
+  const reshapedPastValue = pastValue ? maybeTransposeToBNSH(context, pastValue, params) : undefined;
+  applyAttention(
+    context,
+    Q,
+    key,
+    value,
+    undefined,
+    undefined,
+    reshapedPastKey,
+    reshapedPastValue,
+    undefined,
+    params,
+    attributes,
+    seqLens,
+    totalSequenceLengthInput,
+  );
 };
