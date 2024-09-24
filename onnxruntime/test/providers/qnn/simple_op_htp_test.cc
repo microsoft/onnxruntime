@@ -157,6 +157,8 @@ static void RunOpTest(const std::string& op_type,
 
   if (enable_htp_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";
+  } else {
+    provider_options["enable_htp_fp16_precision"] = "0";  // enabled in QNN EP by default
   }
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
