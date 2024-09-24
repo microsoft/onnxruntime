@@ -1267,13 +1267,13 @@ TEST_F(QnnHTPBackendTests, DQ_Q_ConvertFusion_SameType) {
   QuantParams<uint8_t> out_qparams_u8 = {1.0f, 128};
   QuantParams<uint16_t> out_qparams_u16 = {1.0f, 32768};
 
-  // QNN Convert op converts uint8 to uint8 (noop) at the graph output.
+  // QNN Convert op converts uint8 to uint8 at the graph output. Slightly different scale values.
   RunQnnModelTest(BuildDQQConvertAtOutputTestCase<uint8_t, uint8_t>(input0_def, input1_def, out_qparams_u8),
                   provider_options,
                   21,
                   ExpectedEPNodeAssignment::All);
 
-  // QNN Convert op converts uint16 to uint16 (noop) at the graph output.
+  // QNN Convert op converts uint16 to uint16 at the graph output. Slightly different scale values.
   RunQnnModelTest(BuildDQQConvertAtOutputTestCase<uint16_t, uint16_t>(input0_def, input1_def, out_qparams_u16),
                   provider_options,
                   21,
