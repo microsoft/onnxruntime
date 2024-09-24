@@ -87,7 +87,7 @@ namespace Dml
 
     void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
     {
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Disabled)
+        if (m_defaultRoundingMode == AllocatorRoundingMode::Disabled && roundingMode == AllocatorRoundingMode::Enabled)
         {
             // TODO (pavignol): Remove once it's been confirmed that it won't be used anymore
             printf("LALALALA\n");
