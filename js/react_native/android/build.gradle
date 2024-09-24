@@ -70,6 +70,7 @@ def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFil
 def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
 
 android {
+  namespace 'ai.onnxruntime.reactnative'
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
   defaultConfig {
