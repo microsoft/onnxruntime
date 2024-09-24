@@ -178,9 +178,9 @@ android {
 }
 
 repositories {
-  flatDir {
+    flatDir {
     dir 'libs'
-  }
+    }
 }
 
 dependencies {
