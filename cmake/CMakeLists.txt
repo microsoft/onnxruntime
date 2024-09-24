@@ -371,6 +371,70 @@ if (onnxruntime_USE_ROCM)
     set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
+  # replicate strategy used by pytorch to get ROCM_VERSION
+  # https://github.com/pytorch/pytorch/blob/1a10751731784942dcbb9c0524c1369a29d45244/cmake/public/LoadHIP.cmake#L45-L109
+  # with modification
+  set(ROCM_INCLUDE_DIRS "${onnxruntime_ROCM_HOME}/include")
+  set(PROJECT_RANDOM_BINARY_DIR "${CMAKE_BINARY_DIR}")
+  set(file "${CMAKE_BINARY_DIR}/detect_rocm_version.cc")
+
+  # Find ROCM version for checks
+  # ROCM 5.0 and later will have header api for version management
+  if(EXISTS ${ROCM_INCLUDE_DIRS}/rocm_version.h)
+    file(WRITE ${file} ""
+      "#include <rocm_version.h>\n"
+      )
+  elseif(EXISTS ${ROCM_INCLUDE_DIRS}/rocm-core/rocm_version.h)
+    file(WRITE ${file} ""
+      "#include <rocm-core/rocm_version.h>\n"
+      )
+  else()
+    message(FATAL_ERROR "********************* rocm_version.h couldnt be found ******************\n")
+  endif()
+
+  file(APPEND ${file} ""
+    "#include <cstdio>\n"
+
+    "#ifndef ROCM_VERSION_PATCH\n"
+    "#define ROCM_VERSION_PATCH 0\n"
+    "#endif\n"
+    "#define STRINGIFYHELPER(x) #x\n"
+    "#define STRINGIFY(x) STRINGIFYHELPER(x)\n"
+    "int main() {\n"
+    "  printf(\"%d.%d.%s\", ROCM_VERSION_MAJOR, ROCM_VERSION_MINOR, STRINGIFY(ROCM_VERSION_PATCH));\n"
+    "  return 0;\n"
+    "}\n"
+    )
+
+  try_run(run_result compile_result ${PROJECT_RANDOM_BINARY_DIR} ${file}
+    CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${ROCM_INCLUDE_DIRS}"
+    RUN_OUTPUT_VARIABLE rocm_version_from_header
+    COMPILE_OUTPUT_VARIABLE output_var
+    )
+  # We expect the compile to be successful if the include directory exists.
+  if(NOT compile_result)
+    message(FATAL_ERROR "ROCM: Couldn't determine version from header: " ${output_var})
+  endif()
+  message(STATUS "ROCM: Header version is: " ${rocm_version_from_header})
+  set(ROCM_VERSION_DEV_RAW ${rocm_version_from_header})
+
+  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+).*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
+
+  if (ROCM_VERSION_DEV_MATCH)
+    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
+    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
+    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
+    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
+    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
+  else()
+    message(FATAL_ERROR "Cannot determine ROCm version string")
+  endif()
+  message("\n***** ROCm version from rocm_version.h ****\n")
+  message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
+  message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
+  message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
+  message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
+  message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
   message("\n***** HIP LANGUAGE CONFIG INFO ****\n")
   message("CMAKE_HIP_COMPILER:      ${CMAKE_HIP_COMPILER}")
   message("CMAKE_HIP_ARCHITECTURES: ${CMAKE_HIP_ARCHITECTURES}")
