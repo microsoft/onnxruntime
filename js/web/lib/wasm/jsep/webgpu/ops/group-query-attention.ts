@@ -258,17 +258,15 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
     undefined,
     0,
   );
-  const reshapedPastKey = pastKey ? maybeTransposeToBNSH(context, pastKey, params) : undefined;
-  const reshapedPastValue = pastValue ? maybeTransposeToBNSH(context, pastValue, params) : undefined;
   applyAttention(
     context,
     Q,
-    key,
-    value,
+    maybeTransposeToBNSH(context, key, params),
+    maybeTransposeToBNSH(context, value, params),
     undefined,
     undefined,
-    reshapedPastKey,
-    reshapedPastValue,
+    pastKey,
+    pastValue,
     undefined,
     params,
     attributes,
