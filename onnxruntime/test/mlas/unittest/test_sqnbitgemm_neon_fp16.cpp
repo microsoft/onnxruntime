@@ -61,7 +61,13 @@ class MlasNeonFp16CastTest : public MlasTestBase {
 
   void ExecuteShort(void) override {
     TestFp16ToFp32(1 << 16);
-    TestFp32ToFp16((1 << 15) - 5);
+    TestFp16ToFp32(1);
+    TestFp16ToFp32(4);
+    TestFp16ToFp32(7);
+    TestFp32ToFp16(1 << 16);
+    TestFp32ToFp16(3);
+    TestFp32ToFp16(4);
+    TestFp32ToFp16(6);
   }
 };
 

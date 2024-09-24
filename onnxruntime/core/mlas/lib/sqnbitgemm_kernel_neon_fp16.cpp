@@ -64,7 +64,7 @@ MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
     }
 
     // aligned src
-    for (; i + 4 < count; i += 4)
+    for (; i + 3 < count; i += 4)
     {
         float16x4_t fp16v4_0 = vreinterpret_f16_u16(vld1_u16(src + i));
         float32x4_t fp32v4_0 = vcvt_f32_f16(fp16v4_0);
@@ -124,7 +124,7 @@ MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
     }
 
     // aligned src
-    for (; i + 4 < count; i += 4)
+    for (; i + 3 < count; i += 4)
     {
         float32x4_t fp32v4_0 = vld1q_f32(src + i);
         float16x4_t fp16v4_0 = vcvt_f16_f32(fp32v4_0);
