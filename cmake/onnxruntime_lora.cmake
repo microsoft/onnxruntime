@@ -13,10 +13,6 @@ onnxruntime_add_static_library(onnxruntime_lora ${onnxruntime_lora_srcs})
 onnxruntime_add_include_to_target(onnxruntime_lora onnx flatbuffers::flatbuffers Boost::mp11 ${GSL_TARGET})
 target_link_libraries(onnxruntime_lora onnxruntime_framework)
 
-if(onnxruntime_USE_CUDA)
-   target_link_libraries(onnxruntime_lora CUDA::cudart)
-endif()
-
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_lora PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()

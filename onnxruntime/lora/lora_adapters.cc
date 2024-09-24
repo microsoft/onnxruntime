@@ -52,14 +52,8 @@ void LoraAdapter::InitializeParamsValues() {
   params_values.reserve(params->size());
   for (const auto* param : *params) {
     auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
-    if (device_allocator_) {
-      auto ort_value_ondevice = adapters::utils::CreateOrtValueOnDevice(ort_value, device_allocator_);
-      Param lora_param(std::move(ort_value), std::move(ort_value_ondevice));
-      params_values.emplace(std::move(name), std::move(lora_param));
-    } else {
-      Param lora_param(std::move(ort_value));
-      params_values.emplace(std::move(name), std::move(lora_param));
-    }
+    Param lora_param(std::move(ort_value));
+    params_values.emplace(std::move(name), std::move(lora_param));
   }
   params_values_.swap(params_values);
 }

@@ -120,32 +120,6 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   return std::make_pair(std::move(name), std::move(result));
 }
 
-static Status CopyOnDevice([[maybe_unused]] const Tensor& src, Tensor& dst) {
-  const auto& mem_info = dst.Location();
-
-  ORT_RETURN_IF(mem_info.device.Type() == OrtDevice::CPU, "Destination must not be on CPU");
-
-  if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
-#ifdef USE_CUDA
-    auto ret = cudaMemcpy(dst.MutableDataRaw(), src.DataRaw(), src.SizeInBytes(), cudaMemcpyHostToDevice);
-    ORT_RETURN_IF_NOT(ret == cudaSuccess, "cudaMemcpy failed. Return code: ", ret);
-#else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination provider: ",
-                           mem_info.name, " not available, copy failed");
-#endif
-  }
-  return Status::OK();
-}
-
-OrtValue CreateOrtValueOnDevice(const OrtValue& ort_value_mapped, const AllocatorPtr& device_allocator) {
-  OrtValue result;
-  const auto& src = ort_value_mapped.Get<Tensor>();
-  Tensor on_device(src.DataType(), src.Shape(), device_allocator);
-  ORT_THROW_IF_ERROR(CopyOnDevice(src, on_device));
-  Tensor::InitOrtValue(std::move(on_device), result);
-  return result;
-}
-
 void AdapterFormatBuilder::AddParameter(const std::string& name, TensorDataType data_type,
                                         gsl::span<const int64_t> shape, gsl::span<const uint8_t> data) {
   flatbuffers::Offset<Parameter> fbs_param;
