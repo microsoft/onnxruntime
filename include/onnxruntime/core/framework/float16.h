@@ -318,6 +318,8 @@ class numeric_limits<onnxruntime::MLFloat16> {
   }
 
   static constexpr onnxruntime::MLFloat16 quiet_NaN() noexcept {
+    // The most significant fraction bit shall be 1, and no limitation on other fraction bits.
+    // Note that most frameworks use 0x7E00; while CUDA uses 0x7FFF; .Net System.Half.NaN uses 0xFE00;
     return onnxruntime::MLFloat16::FromBits(0x7E00U);  // Bits: sign(0), exponent(111,11), fraction(10,0000,0000)
   }
 

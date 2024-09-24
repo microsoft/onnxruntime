@@ -259,7 +259,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Float16 NaN
         /// </summary>
-        public static Float16 NaN => new Float16(PositiveQNaNBits);                       //  quiet NaN
+        public static Float16 NaN => new Float16(NegativeQNaNBits);                       // Same as System.Half.NaN
 
         /// <summary>
         /// Float16 Zero value
@@ -903,7 +903,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// BFloat16 NaN
         /// </summary>
-        public static BFloat16 NaN => new BFloat16(PositiveQNaNBits); // quiet NaN
+        public static BFloat16 NaN => new BFloat16(NegativeQNaNBits); // .Net has no BFloat16. Follow Float16 style.
 
         /// <summary>
         /// BFloat16 Positive Zero
