@@ -12,17 +12,17 @@
 #include <onnxruntime/onnxruntime_cxx_api.h>
 
 #if __has_include(<onnxruntime/coreml_provider_factory.h>)
-  #define COREML_EP_AVAILABLE 1
-  #include <onnxruntime/coreml_provider_factory.h>
+#define COREML_EP_AVAILABLE 1
+#include <onnxruntime/coreml_provider_factory.h>
 #else
-  #define COREML_EP_AVAILABLE 0
+#define COREML_EP_AVAILABLE 0
 #endif
 
 #if __has_include(<onnxruntime/webgpu_provider_factory.h>)
-  #define WEBGPUL_EP_AVAILABLE 1
-  // WebGPU EP doesn't require including the header as it's enabled via AddExecutionProvider
+#define WEBGPUL_EP_AVAILABLE 1
+// WebGPU EP doesn't require including the header as it's enabled via AppendExecutionProvider
 #else
-  #define WEBGPU_EP_AVAILABLE 0
+#define WEBGPU_EP_AVAILABLE 0
 #endif
 
 void testSigmoid(const char* modelPath, bool useCoreML = false, bool useWebGPU = false) {
