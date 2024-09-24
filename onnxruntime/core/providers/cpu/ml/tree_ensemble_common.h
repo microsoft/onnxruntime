@@ -1200,7 +1200,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
   // so in that case we are only moving the pointer for `membership_values`
   //
   // otherwise, the `falsenode_id` is pointing to the real falsenode subtree
-  if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER) && curr_membership_value_id < membership_values_by_id[curr_id].size()) {
+  if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER) && curr_membership_value_id + 1 < membership_values_by_id[curr_id].size()) {
     false_nodeid = transformInputOneTree(
         curr_id, curr_treeid, false_nodeid, curr_membership_value_id + 1, false,
         leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
