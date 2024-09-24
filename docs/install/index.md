@@ -46,6 +46,13 @@ For ONNX Runtime GPU package, it is required to install [CUDA](https://developer
 pip install onnxruntime
 ```
 
+#### Install ONNX Runtime GPU (CUDA 12.x)
+The default CUDA version for ORT in pypi is 12.x since 1.19.0.
+
+```bash
+pip install onnxruntime-gpu
+```
+
 #### Install ONNX Runtime GPU (CUDA 11.x)
 For Cuda 11.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview) for 1.19.2 or later.
 
@@ -58,18 +65,10 @@ For older version <= 1.18.1, you can download from pypi with explicit version li
 pip install onnxruntime-gpu==1.18.1
 ```
 
-#### Install ONNX Runtime GPU (CUDA 12.x)
-The default CUDA version for ORT in pypi is 12.x since 1.19.0.
-
-```bash
-pip install onnxruntime-gpu
-```
-
 #### Install ONNX Runtime GPU (ROCm)
-For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.0.0
+For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.0.0. 
 
-To build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm). Alternatively, each major ORT release has a corresponding C/C++ ROCm package, found [here](https://github.com/microsoft/onnxruntime/releases/). 
-
+To build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm).
 
 ### Install ONNX to export the model
 
