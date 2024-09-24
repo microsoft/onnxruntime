@@ -12,10 +12,6 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 
-#ifdef USE_CUDA
-#include "cuda_runtime.h"
-#endif
-
 #include <fstream>
 
 namespace onnxruntime {
