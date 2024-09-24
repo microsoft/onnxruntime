@@ -1136,8 +1136,8 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
   sub_graph->node_index = new size_t [sub_graph->node_index_len];
   sub_graph->meta_def = new OrtMetaDef();
   std::unordered_set<std::string> erased;
-  std::vector<std::string> inputs;
-  std::vector<std::string> outputs;
+  std::unordered_map<std::string, size_t> input_to_order;
+  std::unordered_map<std::string, size_t> output_to_order;
   int input_order = 0;
   int output_order = 0;
 
@@ -1162,14 +1162,14 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
       api_->OrtGraph_GetNodeProducingOutput(graph, input_name, &producer);
       // If the input is not produced by any node, it is a graph input
       if (producer == nullptr) {
-        inputs.push_back(input_name);
+        input_to_order[input_name] = input_order++;
         continue;
       }
       size_t producer_index = 0;
       api_->OrtNode_GetIndex(producer, &producer_index);
       // If the producer node is not in the subgraph, the input is a graph input
       if (node_set.find(producer_index) == node_set.end()) {
-        inputs.push_back(input_name);
+        input_to_order[input_name] = input_order++;
       }
     }
 
@@ -1188,14 +1188,14 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
       api_->OrtGraph_GetNodeProducingOutput(graph, input_name, &producer);
       // If the input is not produced by any node, it is a graph input
       if (producer == nullptr) {
-        inputs.push_back(input_name);
+        input_to_order[input_name] = input_order++;
         continue;
       }
       size_t producer_index = 0;
       api_->OrtNode_GetIndex(producer, &producer_index);
       // If the producer node is not in the subgraph, the input is a graph input
       if (node_set.find(producer_index) == node_set.end()) {
-        inputs.push_back(input_name);
+        input_to_order[input_name] = input_order++;
       }
     }
 
@@ -1206,7 +1206,7 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
       api_->OrtNode_GetIthOutputName(node, j, &output_name);
       // If the output is the graph output, it is a subgraph output
       if (graph_output_names.find(output_name) != graph_output_names.end()) {
-        outputs.push_back(output_name);
+        output_to_order[output_name] = output_order++;
         continue;
       }
       size_t consumer_count = 0;
@@ -1217,11 +1217,20 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
         api_->OrtNode_GetIndex(consumers[k], &consumer_index);
         // If the consumer node is not in the subgraph, the output is a subgraph output
         if (node_set.find(consumer_index) == node_set.end()) {
-          outputs.push_back(output_name);
+          output_to_order[output_name] = output_order++;
           break;
         }
       }
     }
+  }
+
+  //Sort inputs and outputs based on their order
+  std::multimap<int, std::string> ordered_inputs, ordered_outputs;
+  for (const auto& input : input_to_order) {
+    ordered_inputs.insert(std::pair<int, std::string>(input.second, input.first));
+  }
+  for (const auto& output : output_to_order) {
+    ordered_outputs.insert(std::pair<int, std::string>(output.second, output.first));
   }
 
   // Generate unique kernel name for TRT subgraph
@@ -1235,12 +1244,12 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
   strcpy(sub_graph->meta_def->name, meta_def_name.c_str());
 
   // Assign inputs and outputs to subgraph's meta_def
-  sub_graph->meta_def->input_len = inputs.size();
+  sub_graph->meta_def->input_len = ordered_inputs.size();
   sub_graph->meta_def->inputs = new char* [sub_graph->meta_def->input_len];
   i = 0;
-  for (const auto& input : inputs) {
-    sub_graph->meta_def->inputs[i] = new char [input.length() + 1];
-    strcpy(sub_graph->meta_def->inputs[i++], input.c_str());
+  for (const auto& input : ordered_inputs) {
+    sub_graph->meta_def->inputs[i] = new char [input.second.length() + 1];
+    strcpy(sub_graph->meta_def->inputs[i++], input.second.c_str());
   }
 
   sub_graph->meta_def->initializer_len = initializers.size();
@@ -1251,12 +1260,12 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
     strcpy(sub_graph->meta_def->constant_initializers[i++], initializer.c_str());
   }
 
-  sub_graph->meta_def->output_len = outputs.size();
+  sub_graph->meta_def->output_len = ordered_outputs.size();
   sub_graph->meta_def->outputs = new char* [sub_graph->meta_def->output_len];
   i = 0;
-  for (const auto& output : outputs) {
-    sub_graph->meta_def->outputs[i] = new char [output.length() + 1];
-    strcpy(sub_graph->meta_def->outputs[i++], output.c_str());
+  for (const auto& output : ordered_outputs) {
+    sub_graph->meta_def->outputs[i] = new char [output.second.length() + 1];
+    strcpy(sub_graph->meta_def->outputs[i++], output.second.c_str());
   }
 
   sub_graph->meta_def->domain = "com.microsoft";
@@ -1320,7 +1329,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                 size_t subgraph_count = 0;
                 const OrtGraphViewer** subgraphs = nullptr;
                 api->OrtNode_GetSubgraphs(node, &subgraph_count, &subgraphs);
-                if (subgraph_count == 0) {
+                if (subgraph_count != 0) {
                     bool all_subgraphs_are_supported = true;
                     for (size_t i = 0; i < subgraph_count; i++) {
                         // TRT EP should consider the empty subgraph is fully supported by TRT.
