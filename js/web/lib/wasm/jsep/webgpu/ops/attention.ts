@@ -372,8 +372,9 @@ const createAttentionProbsProgramInfo = (
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
   const probsShape = [parameters.batchSize, parameters.numHeads, parameters.sequenceLength, totalSequenceLength];
   const presentKey = outputCount > 1 && pastKey;
+  const kvNumHeads = parameters.kvNumHeads ? parameters.kvNumHeads : parameters.numHeads;
   const presentKeyShape = presentKey
-    ? [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize]
+    ? [parameters.batchSize, kvNumHeads, totalSequenceLength, parameters.headSize]
     : undefined;
   const presentKeySize = presentKey ? ShapeUtil.size(presentKeyShape!) : 0;
   // TODO: handle mask
@@ -407,7 +408,7 @@ const createAttentionProbsProgramInfo = (
   if (attentionBias) {
     inputDependencies.push('type');
   }
-  if (seqLens) {
+  if (seqLens && feedPastKey && presentKey) {
     inputDependencies.push('type');
   }
   const outputs = [{ dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default }];
@@ -426,7 +427,7 @@ const createAttentionProbsProgramInfo = (
       inputVars.push(inputVariable('attention_bias', attentionBias.dataType, attentionBias.dims));
     }
     const seqLensInputVariable = seqLens ? inputVariable('seq_lens', seqLens.dataType, seqLens.dims) : undefined;
-    if (seqLens) {
+    if (seqLens && feedPastKey && presentKey) {
       inputVars.push(seqLensInputVariable!);
     }
     const output = outputVariable('output', q.dataType, probsShape);
@@ -482,13 +483,13 @@ const createAttentionProbsProgramInfo = (
         if (feedPastKey && presentKey) {
           return `
               if (n + local_id.y < past_sequence_length * uniforms.n_reps) {
-                tileK[idx] = past_key[(pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x) / uniforms.n_reps];
+                tileK[idx] = past_key[(pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x) % ${ShapeUtil.size(pastKey.dims)}];
               } else {
                 tileK[idx] =
-                         key[(kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x) / uniforms.n_reps];
+                         key[(kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x) / % ${ShapeUtil.size(key.dims)}];
               }`;
         } else {
-          return 'tileK[idx] = key[(kOffset + local_id.y * uniforms.K + w + local_id.x) / uniforms.n_reps];';
+          return `tileK[idx] = key[(kOffset + local_id.y * uniforms.K + w + local_id.x) % ${ShapeUtil.size(key.dims)}];`;
         }
       })()}
       ${
@@ -555,8 +556,9 @@ const createVxAttentionScoreProgramInfo = (
   const nReps = params.nReps ? params.nReps : 1;
   const repeatedVHiddenSize = params.vHiddenSize * nReps;
   const presentValue = outputCount > 1 && pastValue;
+  const kvNumHeads = params.kvNumHeads ? params.kvNumHeads : params.numHeads;
   const presentValueShape = presentValue
-    ? [params.batchSize, params.numHeads, totalSequenceLength, params.headSize]
+    ? [params.batchSize, kvNumHeads, totalSequenceLength, params.headSize]
     : undefined;
   const presentValueSize = presentValue ? ShapeUtil.size(presentValueShape!) : 0;
   const outputShape = [params.batchSize, params.sequenceLength, repeatedVHiddenSize];
@@ -584,7 +586,7 @@ const createVxAttentionScoreProgramInfo = (
   if (feedPastValue) {
     inputDependencies.push('type');
   }
-  if (seqLens) {
+  if (seqLens && feedPastValue && presentValue) {
     inputDependencies.push('type');
   }
   const outputs = [{ dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default }];
@@ -599,7 +601,7 @@ const createVxAttentionScoreProgramInfo = (
       inputVars.push(inputVariable('past_value', pastValue.dataType, pastValue.dims));
     }
     const seqLensInputVariable = seqLens ? inputVariable('seq_lens', seqLens.dataType, seqLens.dims) : undefined;
-    if (seqLens) {
+    if (seqLens && feedPastValue && presentValue) {
       inputVars.push(seqLensInputVariable!);
     }
     const output = outputVariable('output', probs.dataType, outputShape);
@@ -621,17 +623,17 @@ const createVxAttentionScoreProgramInfo = (
     return `
   const TILE_SIZE = ${TILE_SIZE}u;
   var<workgroup> tileQ: array<${probsHelper.type.value}, ${TILE_SIZE * TILE_SIZE}>;
-  var<workgroup> tileK: array<${probsHelper.type.value}, ${TILE_SIZE * TILE_SIZE}>;
+  var<workgroup> tileV: array<${probsHelper.type.value}, ${TILE_SIZE * TILE_SIZE}>;
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, ...outputVars)}
   ${shaderHelper.mainStart([TILE_SIZE, TILE_SIZE, 1])}
    let headIdx = workgroup_id.z;
    let m = global_id.y;
    let n = global_id.x;
-   let past_sequence_length = ${seqLens ? seqLensInputVariable?.getByOffset('headIdx') : 'uniforms.past_sequence_length'};
    let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
    ${(() => {
      if (feedPastValue && presentValue) {
        return `
+    let past_sequence_length = ${seqLens ? seqLensInputVariable?.getByOffset('headIdx') : 'uniforms.past_sequence_length'};
     let pastValueOffset = headIdx * uniforms.N * past_sequence_length + n;
     let vOffset = headIdx * uniforms.N * uniforms.kv_sequence_length + n;
       `;
@@ -653,9 +655,9 @@ const createVxAttentionScoreProgramInfo = (
           if (feedPastValue && presentValue) {
             return `
         if (w + local_id.y < past_sequence_length * uniforms.n_reps) {
-          tileV[idx] = past_value[(pastValueOffset + (w + local_id.y) * uniforms.N) / uniforms.n_reps];
+          tileV[idx] = past_value[(pastValueOffset + (w + local_id.y) * uniforms.N) % ${ShapeUtil.size(pastValue.dims)}];
         } else {
-          tileV[idx] = v[(vOffset + (w + local_id.y - past_sequence_length) * uniforms.N) / uniforms.n_reps];
+          tileV[idx] = v[(vOffset + (w + local_id.y - past_sequence_length) * uniforms.N) $ % ${ShapeUtil.size(v.dims)}];
         }
       `;
           } else {
@@ -668,7 +670,7 @@ const createVxAttentionScoreProgramInfo = (
           presentValue
             ? `
           if (presentValueOffset + (w + local_id.y) * uniforms.N < uniforms.present_value_size) {
-            present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];
+            present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];
         }`
             : ''
         }
@@ -728,7 +730,7 @@ export const applyAttention = (
   if (attentionBias) {
     inputsK.push(attentionBias);
   }
-  if (seqLens) {
+  if (seqLens && pastKey && pastKey.dims.length > 0 && ShapeUtil.size(pastKey.dims) > 0) {
     inputsK.push(seqLens);
   }
   // Run AttentionProbs
@@ -763,7 +765,7 @@ export const applyAttention = (
   if (outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
     inputsV.push(pastValue);
   }
-  if (seqLens) {
+  if (seqLens && pastKey && pastKey.dims.length > 0 && ShapeUtil.size(pastKey.dims) > 0) {
     inputsV.push(seqLens);
   }
   context.compute(
