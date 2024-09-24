@@ -14,7 +14,7 @@ buildscript {
     }
     dependencies {
         classpath('com.android.tools.build:gradle:8.6.1')
-       classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("com.facebook.react:react-native-gradle-plugin")
     }
 }
 
