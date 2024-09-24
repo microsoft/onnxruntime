@@ -406,8 +406,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(scales->Shape().Size()));
   MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), static_cast<size_t>(scales->Shape().Size()));
 
-  IAllocatorUniquePtr<FLOAT> bias_data_ptr;
-
+  IAllocatorUniquePtr<float> bias_data_ptr;
   if (bias_data != nullptr) {
     bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(bias->Shape().Size()));
     MlasConvertHalfToFloatBuffer(bias_data, bias_data_ptr.get(), static_cast<size_t>(bias->Shape().Size()));
