@@ -80,8 +80,6 @@ project.ext.react = [
     entryFile: "index.tsx",
 ]
 
-apply from: "../../node_modules/react-native/react.gradle"
-
 /**
  * Set this to true to create two separate APKs instead of one:
  *   - An APK that only works on ARM devices
