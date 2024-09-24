@@ -688,6 +688,19 @@ public class InferenceTest {
     runProvider(OrtProvider.DIRECT_ML);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
+  public void testQNN() throws OrtException {
+    // Note: This currently only tests the API call to append the QNN EP. There's some additional
+    // setup required for the model to actually run with the QNN EP and not fall back to the CPU EP.
+    runProvider(OrtProvider.QNN);
+  }
+
+  @Test
+  public void testDumpSystemProperties() {
+    System.getProperties().forEach((k, v) -> System.out.println(k + ":" + v));
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -1985,6 +1998,9 @@ public class InferenceTest {
           break;
         case XNNPACK:
           options.addXnnpack(Collections.emptyMap());
+          break;
+        case QNN:
+          options.addQnn(Collections.emptyMap());
           break;
         case VITIS_AI:
         case RK_NPU:

@@ -1271,16 +1271,16 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
-     * supported. current supported options: {} The maximum number of provider options is set to 128
-     * (see addExecutionProvider's comment). This number is controlled by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is
-     * not enough, please increase it or implementing an incremental way to add more options.
+     * Adds the named execution provider (backend) as an execution backend. This generic function
+     * only allows a subset of execution providers.
      *
-     * @param providerOptions options pass to XNNPACK EP for initialization.
+     * @param providerName The name of the execution provider.
+     * @param providerOptions Configuration options for the execution provider. Refer to the
+     *     specific execution provider's documentation.
      * @throws OrtException If there was an error in native code.
      */
-    public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
+    private void addExecutionProvider(String providerName, Map<String, String> providerOptions)
+        throws OrtException {
       checkClosed();
       String[] providerOptionKey = new String[providerOptions.size()];
       String[] providerOptionVal = new String[providerOptions.size()];
@@ -1291,7 +1291,35 @@ public class OrtSession implements AutoCloseable {
         i++;
       }
       addExecutionProvider(
-          OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", providerOptionKey, providerOptionVal);
+          OnnxRuntime.ortApiHandle,
+          nativeHandle,
+          providerName,
+          providerOptionKey,
+          providerOptionVal);
+    }
+
+    /**
+     * Adds XNNPACK as an execution backend.
+     *
+     * @param providerOptions Configuration options for the XNNPACK backend. Refer to the XNNPACK
+     *     execution provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
+      String xnnpackProviderName = "XNNPACK";
+      addExecutionProvider(xnnpackProviderName, providerOptions);
+    }
+
+    /**
+     * Adds QNN as an execution backend.
+     *
+     * @param providerOptions Configuration options for the QNN backend. Refer to the QNN execution
+     *     provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addQnn(Map<String, String> providerOptions) throws OrtException {
+      String qnnProviderName = "QNN";
+      addExecutionProvider(qnnProviderName, providerOptions);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
@@ -1416,10 +1444,6 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
-    /*
-     * The max length of providerOptionKey and providerOptionVal is 128, as specified by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067 for its location).
-     */
     private native void addExecutionProvider(
         long apiHandle,
         long nativeHandle,
