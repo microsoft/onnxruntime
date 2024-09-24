@@ -6,13 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_neon_fp16.cpp
+    fp16_neon_common.cpp
 
 Abstract:
 
-    This module implements the float/quantized n-bit integer matrix
-    multiplication kernels for ARM NEON specific to
-    input type T1 as float16.
+    This module implements the common kernels for ARM NEON specific to float16.
 
 --*/
 
@@ -64,11 +62,23 @@ MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
     }
 
     // aligned src
-    for (; i + 3 < count; i += 4)
+    for (; i + 7 < count; i += 8)
     {
         float16x4_t fp16v4_0 = vreinterpret_f16_u16(vld1_u16(src + i));
         float32x4_t fp32v4_0 = vcvt_f32_f16(fp16v4_0);
         vst1q_f32(dest + i, fp32v4_0);
+
+        float16x4_t fp16v4_1 = vreinterpret_f16_u16(vld1_u16(src + i + 4));
+        float32x4_t fp32v4_1 = vcvt_f32_f16(fp16v4_1);
+        vst1q_f32(dest + i + 4, fp32v4_1);
+    }
+
+    if (i + 3 < count)
+    {
+        float16x4_t fp16v4_0 = vreinterpret_f16_u16(vld1_u16(src + i));
+        float32x4_t fp32v4_0 = vcvt_f32_f16(fp16v4_0);
+        vst1q_f32(dest + i, fp32v4_0);
+        i += 4;
     }
 
     // Handle trailing unaligned src
@@ -124,11 +134,23 @@ MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
     }
 
     // aligned src
-    for (; i + 3 < count; i += 4)
+    for (; i + 7 < count; i += 8)
     {
         float32x4_t fp32v4_0 = vld1q_f32(src + i);
         float16x4_t fp16v4_0 = vcvt_f16_f32(fp32v4_0);
         vst1_u16(dest + i, vreinterpret_u16_f16(fp16v4_0));
+
+        float32x4_t fp32v4_1 = vld1q_f32(src + i + 4);
+        float16x4_t fp16v4_1 = vcvt_f16_f32(fp32v4_1);
+        vst1_u16(dest + i + 4, vreinterpret_u16_f16(fp16v4_1));
+    }
+
+    if (i + 3 < count)
+    {
+        float32x4_t fp32v4_0 = vld1q_f32(src + i);
+        float16x4_t fp16v4_0 = vcvt_f16_f32(fp32v4_0);
+        vst1_u16(dest + i, vreinterpret_u16_f16(fp16v4_0));
+        i += 4;
     }
 
     // Handle trailing unaligned src
