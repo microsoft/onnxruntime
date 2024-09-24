@@ -728,7 +728,9 @@ export const applyAttention = (
   if (attentionBias) {
     inputsK.push(attentionBias);
   }
-
+  if (seqLens) {
+    inputsK.push(seqLens);
+  }
   // Run AttentionProbs
   const probs = context.compute(
     createAttentionProbsProgramInfo(
@@ -756,10 +758,13 @@ export const applyAttention = (
     { inputs: [probs], outputs: [] },
   );
 
-  // Run AttrionScore
+  // Run AttentionScore
   const inputsV = [probs, v];
   if (outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
     inputsV.push(pastValue);
+  }
+  if (seqLens) {
+    inputsV.push(seqLens);
   }
   context.compute(
     createVxAttentionScoreProgramInfo(
