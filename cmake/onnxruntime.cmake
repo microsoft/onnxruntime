@@ -353,12 +353,12 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
         # make both maccatalyst and other builds do the same thing.
         set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
         add_custom_command(TARGET onnxruntime POST_BUILD
-                          COMMAND ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
+                          COMMAND /usr/bin/ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
                           COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
                           WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       else()
         add_custom_command(TARGET onnxruntime POST_BUILD
-        COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
+        COMMAND /usr/bin/ar ARGS -x $<TARGET_FILE:${_LIB}>
         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       endif()
     endif()
@@ -379,12 +379,12 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
 
   # do the pre-link with `ld -r` to create a single relocatable object with correct symbol visibility
   add_custom_command(TARGET onnxruntime POST_BUILD
-                     COMMAND ld ARGS -r -o ${STATIC_LIB_DIR}/prelinked_objects.o */*.o ../*.a
+                     COMMAND /usr/bin/ld ARGS -r -o ${STATIC_LIB_DIR}/prelinked_objects.o */*.o ../*.a
                      WORKING_DIRECTORY ${STATIC_LIB_TEMP_DIR})
 
   # create the static library
   add_custom_command(TARGET onnxruntime POST_BUILD
-                     COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime prelinked_objects.o
+                     COMMAND /usr/bin/libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime prelinked_objects.o
                      WORKING_DIRECTORY ${STATIC_LIB_DIR})
 
   # Assemble the other pieces of the static framework

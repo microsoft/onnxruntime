@@ -11,7 +11,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-latest'
+      vmImage: 'macOS-13'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
