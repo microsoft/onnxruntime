@@ -108,10 +108,14 @@ The last command will generate a fat-binary for both CPU architectures.
 Note: unit tests will be skipped due to the incompatible CPU instruction set when doing cross-compiling.
 
 ### AIX
-In AIX, you can build ONNX runtime using IBM Open XL compiler tool chain.
+In AIX, you can build ONNX Runtime for 64bit using 
 
-Minimum required OS version is 7.2 and below steps are for 64bit building.
-You need to have 17.1.2 compiler PTF5 (17.1.2.5) version. After cloning the onnxruntime repo, export below environment settings.
+* IBM Open XL compiler tool chain.
+  Minimum required AIX OS version is 7.2. You need to have 17.1.2 compiler PTF5 (17.1.2.5) version.
+* GNU GCC compiler tool chain.
+  Minimum required AIX OS version is 7.3. GCC version 10.3+ is required.
+
+For IBM Open XL, export below environment settings.
 ```bash
 ulimit -m unlimited
 ulimit -d unlimited
@@ -125,7 +129,22 @@ export CFLAGS="-pthread -m64 -D_ALL_SOURCE -mcmodel=large  -Wno-deprecate-lax-ve
 export CXXFLAGS=" -pthread -m64 -D_ALL_SOURCE -mcmodel=large -Wno-deprecate-lax-vec-conv-all -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare"
 export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -lpthread"
 export LIBPATH="$PWD/build/Linux/$BUILD_TYPE/"
-
+```
+For GCC, export below environment settings.
+```bash
+ulimit -m unlimited
+ulimit -d unlimited
+ulimit -n 2000
+ulimit -f unlimited
+export OBJECT_MODE=64
+export BUILD_TYPE="Release"
+export CC="/opt/freeware/bin/gcc" 
+export CXX="/opt/freeware/bin/g++"
+export CPPFLAGS="-I/opt/freeware/include"
+export CFLAGS="-maix64 -pthread  ${CPPFLAGS} -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx   -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
+export CXXFLAGS="-maix64 -pthread ${CPPFLAGS} -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx  -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
+export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/  -L/opt/freeware/lib/pthread -L/opt/freeware/lib64 -L/opt/freeware/lib -lpthread -Wl,-bbigtoc -lpython3.9"
+export LIBPATH="$PWD/build/Linux/$BUILD_TYPE"
 ```
 To initiate build, run the below command
 ```bash
@@ -139,7 +158,7 @@ To initiate build, run the below command
 ```
 
 * If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX.
-* It is possible that in AIX 7.2 if you don’t have Open XL tool-chain installed, then some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets.
+* In case of IBM Open XL compiler tool chain, It is possible that in AIX 7.2 some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets.
 * --parallel option in build option.
   As name suggest, this option is for parallel building and resource intensive option. So, if  your system is not having good amount of memory , then this option can be skipped. As per our understanding, use this option if you have 60GB+ RAM in your system. 
 * --allow_running_as_root  is needed if root user is triggering the build.
