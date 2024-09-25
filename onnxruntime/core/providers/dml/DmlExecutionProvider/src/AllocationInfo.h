@@ -23,7 +23,7 @@ namespace Dml
     {
     public:
         AllocationInfo(
-            IDmlBufferAllocator* owner,
+            std::shared_ptr<IDmlBufferAllocator> owner,
             size_t id,
             uint64_t pooledResourceId,
             DmlResourceWrapper* resourceWrapper,
@@ -39,7 +39,7 @@ namespace Dml
 
         IDmlBufferAllocator* GetOwner() const
         {
-            return m_owner;
+            return m_owner.lock().get();
         }
 
         ID3D12Resource* GetResource() const
@@ -69,7 +69,7 @@ namespace Dml
 
     private:
         // The bucketized buffer allocator must outlive the allocation info
-        IDmlBufferAllocator* m_owner;
+        std::weak_ptr<IDmlBufferAllocator>  m_owner;
         size_t m_allocationId; // For debugging purposes
         uint64_t m_pooledResourceId = 0;
         Microsoft::WRL::ComPtr<DmlResourceWrapper> m_resourceWrapper;

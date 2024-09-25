@@ -17,7 +17,7 @@
 
 namespace Dml
 {
-    class DmlUnpooledBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator
+    class DmlUnpooledBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator, public std::enable_shared_from_this<DmlUnpooledBufferAllocator>
     {
     public:
         DmlUnpooledBufferAllocator(ID3D12Device* d3d12Device, ExecutionContext* context, OrtDevice::MemoryType memoryType) : onnxruntime::IAllocator(
@@ -30,6 +30,8 @@ namespace Dml
             m_context(context)
         {
         }
+
+        virtual ~DmlUnpooledBufferAllocator() = default;
 
         void* Alloc(size_t size) final
         {
@@ -54,7 +56,7 @@ namespace Dml
             wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
 
             Microsoft::WRL::ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
-                this,
+                shared_from_this(),
                 0,
                 pooledResourceId,
                 resourceWrapper.Get(),

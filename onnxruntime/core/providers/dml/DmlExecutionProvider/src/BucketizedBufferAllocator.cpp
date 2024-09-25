@@ -13,14 +13,16 @@ namespace Dml
 {
     AllocationInfo::~AllocationInfo()
     {
-        if (m_owner)
+        auto owner = m_owner.lock();
+        if (owner)
         {
-            m_owner->FreeResource(this, m_pooledResourceId);
+            owner->FreeResource(this, m_pooledResourceId);
         }
     }
 
     BucketizedBufferAllocator::~BucketizedBufferAllocator()
     {
+        m_pool.clear();
 #ifdef PRINT_OUTSTANDING_ALLOCATIONS
         if (!m_outstandingAllocationsById.empty())
         {
@@ -122,7 +124,7 @@ namespace Dml
         assert(resourceWrapper != nullptr);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
-            this,
+            shared_from_this(),
             ++m_currentAllocationId,
             resourceId,
             resourceWrapper.Get(),

@@ -25,10 +25,10 @@ namespace Dml
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
     // All requested allocation sizes are rounded up to the nearest bucket size, which ensures minimal fragmentation
     // while providing an upper bound on the amount of memory "wasted" with each allocation.
-    class BucketizedBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator
+    class BucketizedBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator, public std::enable_shared_from_this<BucketizedBufferAllocator>
     {
     public:
-        ~BucketizedBufferAllocator();
+        virtual ~BucketizedBufferAllocator();
 
         // Constructs a BucketizedBufferAllocator which allocates D3D12 committed resources with the specified heap properties,
         // resource flags, and initial resource state.
