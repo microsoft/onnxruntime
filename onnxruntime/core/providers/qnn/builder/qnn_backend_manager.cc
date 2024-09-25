@@ -1179,8 +1179,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
 #endif
 
   if (!tracelogging_provider_ep_enabled) {
-    // QNN issue, the version number not correct, ticket created
-    // if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
+    if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
     outfile << event_data_extended.v1.timestamp << ","
             << message << ","
             << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
@@ -1189,7 +1188,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
             << ","
             << eventLevel << ","
             << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
-    //}
+    }
   } else {
 #ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
