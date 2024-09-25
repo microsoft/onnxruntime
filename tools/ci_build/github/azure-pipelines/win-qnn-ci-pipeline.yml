@@ -85,15 +85,15 @@ jobs:
       set "ORT_JAVA_TEST_QNN_EP_BACKEND_PATH=$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnCpu.dll"
 
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
-       --config $(BuildConfig) ^
-       --build_dir $(Build.BinariesDirectory) ^
-       --cmake_generator "Visual Studio 17 2022" ^
-       --build_java ^
-       --use_qnn ^
-       --qnn_home $(QnnSDKRootDir) ^
-       --use_binskim_compliant_compile_flags ^
-       --skip_submodule_sync ^
-       --test --enable_onnx_tests
+        --config $(BuildConfig) ^
+        --build_dir $(Build.BinariesDirectory) ^
+        --cmake_generator "Visual Studio 17 2022" ^
+        --build_java ^
+        --use_qnn ^
+        --qnn_home $(QnnSDKRootDir) ^
+        --use_binskim_compliant_compile_flags ^
+        --skip_submodule_sync ^
+        --test --enable_onnx_tests
     displayName: 'Run unit tests'
 
   # Comment out QnnCpu tests because QNN SDK 2.22 CPU backend crashes when executing MatMuls.
