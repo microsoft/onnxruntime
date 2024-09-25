@@ -1594,7 +1594,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
 
         set(CUSTOM_OP_LIBRARY_DST_FILE_NAME
-            $<IF:${WIN32},$<TARGET_FILE_NAME:custom_op_library>,$<TARGET_LINKER_FILE_NAME:custom_op_library>>)
+            $<IF:$<BOOL:${WIN32}>,$<TARGET_FILE_NAME:custom_op_library>,$<TARGET_LINKER_FILE_NAME:custom_op_library>>)
 
         add_custom_command(TARGET custom_op_library POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
