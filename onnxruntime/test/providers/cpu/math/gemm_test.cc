@@ -25,7 +25,7 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
-// Only CUDA and ROCM/CoreML kernel has float 16 support
+// Only CUDA, ROCM and CoreML kernels have float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
