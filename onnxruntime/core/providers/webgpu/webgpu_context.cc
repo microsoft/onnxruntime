@@ -33,6 +33,9 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequestAdapterOptions req_adapter_options = {};
       wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       req_adapter_options.nextInChain = &adapter_toggles_desc;
+#ifdef WIN32
+      req_adapter_options.backendType = wgpu::BackendType::D3D12;
+#endif
 
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
       adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
