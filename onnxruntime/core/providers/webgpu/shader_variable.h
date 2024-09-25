@@ -213,6 +213,12 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace detail
 
+inline int ShaderIndicesHelper::Rank() {
+  // getting the rank means the information is exposed to the shader. So we consider it as a usage of shape and stride.
+  usage_ |= ShaderUsage::UseShapeAndStride;
+  return rank_;
+}
+
 inline std::string ShaderIndicesHelper::OffsetToIndices(std::string_view offset_expr) const {
   usage_ |= ShaderUsage::UseOffsetToIndices | ShaderUsage::UseShapeAndStride;
   return rank_ < 2 ? std::string{offset_expr}

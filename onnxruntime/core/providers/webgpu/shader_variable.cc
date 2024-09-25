@@ -88,12 +88,6 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
       element_type_alias_{name_ + "_element_t"},
       indices_type_alias_{name_ + "_indices_t"} {}
 
-inline int ShaderIndicesHelper::Rank() {
-  // getting the rank means the information is exposed to the shader. So we consider it as a usage of shape and stride.
-  usage_ |= ShaderUsage::UseShapeAndStride;
-  return rank_;
-}
-
 ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims)
     : ShaderIndicesHelper{name, type, usage, dims} {
   ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
