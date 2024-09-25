@@ -52,7 +52,7 @@ const std::string AppendPermFunction(gsl::span<const int64_t> perm) {
   ss.imbue(std::locale::classic());
   ss << "fn perm(i: output_indices_t)->a_indices_t {\n"
         "  var a: a_indices_t;\n";
-  for (auto i = 0; i < perm.size(); ++i) {
+  for (size_t i = 0; i < perm.size(); ++i) {
     ss << "  a[" << perm[i] << "] = i[" << i << "];\n";
   }
   ss << "  return a;\n"
@@ -130,18 +130,18 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   InlinedVector<int64_t> new_shape{};
   InlinedVector<int64_t> new_perm{};
   SqueezeShape(input_shape.GetDims(), *p_perm, new_shape, new_perm);
-  const auto channels_last = new_perm == InlinedVector<int64_t>({2, 3, 1});
-  const auto channels_first = new_perm == InlinedVector<int64_t>({3, 1, 2});
-  const auto use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
-  auto new_input_shape = use_shared ? new_shape : input_shape;
-  auto new_output_shape = output_dims;
+  const bool channels_last = new_perm == InlinedVector<int64_t>({2, 3, 1});
+  const bool channels_first = new_perm == InlinedVector<int64_t>({3, 1, 2});
+  const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
+  auto new_input_shape = input_shape;
+  TensorShape new_output_shape(output_dims);
   if (use_shared) {
     new_input_shape = channels_last
-                          ? InlinedVector<int64_t>({new_shape[0], new_shape[1] * new_shape[2]})
+                          ? TensorShape({new_shape[0], new_shape[1] * new_shape[2]})
                       : channels_first
-                          ? InlinedVector<int64_t>({new_shape[0] * new_shape[1], new_shape[2]})
+                          ? TensorShape({new_shape[0] * new_shape[1], new_shape[2]})
                           : new_shape;
-    new_output_shape = InlinedVector<int64_t>({new_input_shape[1], new_input_shape[0]});
+    new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
   uint32_t output_size = gsl::narrow_cast<int32_t>(input_tensor->Shape().Size());
@@ -154,7 +154,7 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   program
       .CacheHint(absl::StrJoin(*p_perm, "-"))
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, new_output_shape, 1}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
       .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + tile_size - 1) / tile_size),
                             static_cast<uint32_t>(((new_output_shape[0] + tile_size - 1) / tile_size)))
       .AddUniformVariables({
