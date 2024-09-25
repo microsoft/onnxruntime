@@ -55,20 +55,20 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   std::string so_cache_path = config_options_.GetConfigOrDefault("ep.context_file_path", "").c_str();
 
   if (so_export_ep_ctx_blob && !so_cache_path.empty()) {
-          cache_dir_ = so_cache_path;
-          auto file_path = std::filesystem::path(cache_dir_);
-          // ep_context_file_path_ file extension must be .onnx
-          if (file_path.extension().generic_string() == ".onnx") {
-            // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
-            auto parent_path = file_path.parent_path();
-            if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
-                !std::filesystem::create_directory(parent_path)) {
-              ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + \
-                         file_path.parent_path().generic_string() + " \n");
-            }
-          } else {
-            ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + cache_dir_ + " \n");
-          }
+    cache_dir_ = so_cache_path;
+    auto file_path = std::filesystem::path(cache_dir_);
+    // ep_context_file_path_ file extension must be .onnx
+    if (file_path.extension().generic_string() == ".onnx") {
+      // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
+      auto parent_path = file_path.parent_path();
+      if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
+          !std::filesystem::create_directory(parent_path)) {
+        ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " +
+                  file_path.parent_path().generic_string() + " \n");
+      }
+    } else {
+      ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + cache_dir_ + " \n");
+    }
   }
 
   OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_, load_config_,

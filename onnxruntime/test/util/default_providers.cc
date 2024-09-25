@@ -99,7 +99,7 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params, 
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params,
                                                                          const SessionOptions* session_options) {
 #ifdef USE_OPENVINO
   return OpenVINOProviderFactoryCreator::Create(params, session_options)->CreateProvider();

@@ -179,72 +179,74 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 #endif
   }
 
-if (!global_context_.load_config.empty()) {
-  std::map<std::string, ov::AnyMap> target_config;
-  LoadConfig(global_context_.load_config, target_config);
+  if (!global_context_.load_config.empty()) {
+    std::map<std::string, ov::AnyMap> target_config;
+    LoadConfig(global_context_.load_config, target_config);
 
-  // Parse device types like "AUTO:CPU,GPU" and extract individual devices
-  auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
-    std::vector<std::string> devices;
-    auto delimiter_pos = device_type.find(':');
-    if (delimiter_pos != std::string::npos) {
-      std::stringstream str_stream(device_type.substr(delimiter_pos + 1));
-      std::string device;
-      while (std::getline(str_stream, device, ',')) {
-        devices.emplace_back(device);
+    // Parse device types like "AUTO:CPU,GPU" and extract individual devices
+    auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
+      std::vector<std::string> devices;
+      auto delimiter_pos = device_type.find(':');
+      if (delimiter_pos != std::string::npos) {
+        std::stringstream str_stream(device_type.substr(delimiter_pos + 1));
+        std::string device;
+        while (std::getline(str_stream, device, ',')) {
+          devices.emplace_back(device);
+        }
+      } else {
+        devices.emplace_back(device_type);
+      }
+      return devices;
+    };
+
+    // Check if a property is supported and mutable
+    auto is_supported_and_mutable = [&](const std::string& key,
+                                        const std::vector<ov::PropertyName>& supported_config) -> bool {
+      auto it = std::find_if(supported_config.begin(), supported_config.end(), [&](const ov::PropertyName& property) {
+        return property == key && property.is_mutable();
+      });
+      return it != supported_config.end();
+    };
+
+    // Set properties if they are valid, else log a warning if the property is missing or immutable by skipping the same
+    auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
+                                     const std::vector<ov::PropertyName>& supported_properties) {
+      for (const auto& [key, value] : config_options) {
+        if (is_supported_and_mutable(key, supported_properties)) {
+          global_context_.ie_core.Get().set_property(device, ov::AnyMap{{key, value}});
+        } else {
+          LOGS_DEFAULT(WARNING) << "WARNING: Property \"" << key
+                                << "\" is either unsupported in current OpenVINO version"
+                                << " or property is immutable for target device \""
+                                << device << "\". Skipping setting this property.";
+        }
+      }
+    };
+
+    // Check if the device type is AUTO, HETERO, or MULTI
+    if (global_context_.device_type.find("AUTO") == 0 ||
+        global_context_.device_type.find("HETERO") == 0 ||
+        global_context_.device_type.find("MULTI") == 0) {
+      // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
+      auto individual_devices = parse_individual_devices(global_context_.device_type);
+      // Set properties only for individual devices (e.g., "CPU", "GPU")
+      for (const std::string& device : individual_devices) {
+        if (target_config.count(device)) {
+          // Get supported properties for each individual device
+          auto device_properties = global_context_.ie_core.Get().get_property(device, ov::supported_properties);
+          // Set properties for the device
+          set_target_properties(device, target_config.at(device), device_properties);
+        }
       }
     } else {
-      devices.emplace_back(device_type);
-    }
-    return devices;
-  };
-
-  // Check if a property is supported and mutable
-  auto is_supported_and_mutable = [&](const std::string& key,
-                                      const std::vector<ov::PropertyName>& supported_config) -> bool {
-    auto it = std::find_if(supported_config.begin(), supported_config.end(), [&](const ov::PropertyName& property) {
-      return property == key && property.is_mutable();
-    });
-    return it != supported_config.end();
-  };
-
-  // Set properties if they are valid, else log a warning if the property is missing or immutable by skipping the same
-  auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
-                            const std::vector<ov::PropertyName>& supported_properties) {
-    for (const auto& [key, value] : config_options) {
-      if (is_supported_and_mutable(key, supported_properties)) {
-        global_context_.ie_core.Get().set_property(device, ov::AnyMap{{key, value}});
-      } else {
-        LOGS_DEFAULT(WARNING)<< "WARNING: Property \"" << key << "\" is either unsupported in current OpenVINO version"
-            << " or property is immutable for target device \"" << device << "\". Skipping setting this property.";
+      if (target_config.count(global_context_.device_type)) {
+        auto supported_properties = global_context_.ie_core.Get().get_property(global_context_.device_type,
+                                                                               ov::supported_properties);
+        set_target_properties(global_context_.device_type,
+                              target_config.at(global_context_.device_type), supported_properties);
       }
-    }
-  };
-
-  // Check if the device type is AUTO, HETERO, or MULTI
-  if (global_context_.device_type.find("AUTO") == 0 ||
-      global_context_.device_type.find("HETERO") == 0 ||
-      global_context_.device_type.find("MULTI") == 0) {
-    // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
-    auto individual_devices = parse_individual_devices(global_context_.device_type);
-    // Set properties only for individual devices (e.g., "CPU", "GPU")
-    for (const std::string& device : individual_devices) {
-      if (target_config.count(device)) {
-        // Get supported properties for each individual device
-        auto device_properties = global_context_.ie_core.Get().get_property(device, ov::supported_properties);
-        // Set properties for the device
-        set_target_properties(device, target_config.at(device), device_properties);
-      }
-    }
-  } else {
-    if (target_config.count(global_context_.device_type)) {
-      auto supported_properties = global_context_.ie_core.Get().get_property(global_context_.device_type,
-                                                                              ov::supported_properties);
-      set_target_properties(global_context_.device_type,
-                            target_config.at(global_context_.device_type), supported_properties);
     }
   }
-}
 }
 
 void BasicBackend::EnableCaching(ov::AnyMap& device_config) {

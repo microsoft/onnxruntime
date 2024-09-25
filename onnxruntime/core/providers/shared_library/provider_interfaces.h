@@ -578,7 +578,7 @@ struct ProviderHost {
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
-  virtual std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key, \
+  virtual std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key,
                                                         const std::string& default_value) = 0;
 
   // OrtRunOptions
