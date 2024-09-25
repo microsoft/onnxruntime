@@ -67,7 +67,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "win-qnn | $(BuildConfig)"
-      BuildPyArguments: >
+      BuildPyArguments: >-
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
