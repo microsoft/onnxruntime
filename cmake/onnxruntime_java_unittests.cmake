@@ -10,6 +10,7 @@ message(STATUS "gradle additional system property definitions: ${GRADLE_SYSTEM_P
 
 set(GRADLE_TEST_ARGS
     ${GRADLE_NATIVE_PATH}
+    test --rerun
     cmakeCheck
     --console=plain
     -DcmakeBuildDir=${BINDIR_NATIVE_PATH}
