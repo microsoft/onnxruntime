@@ -432,11 +432,10 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                                               AllocatorPtr& allocator,
                                               concurrency::ThreadPool* thread_pool,
                                               const MatMulComputeHelper& helper) const {
-  ORT_UNUSED_PARAMETER(scales);
-  ORT_ENFORCE(scales_fp32_ != nullptr, "scales_fp32_ is not initialized");
-  ORT_ENFORCE(!bias == !bias_fp32_, "packed_b_ is not initialized");
   const auto* a_data = a->Data<MLFloat16>();
+  const auto* scales_data = scales->Data<MLFloat16>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<MLFloat16>();
   auto* y_data = y->MutableData<MLFloat16>();
 
   const size_t batch_count = helper.OutputOffsets().size();
@@ -457,6 +456,26 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
   MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a_size);
 
+  float* scales_ptr = nullptr;
+  if (!scales_fp32_) {
+    auto scales_temp = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(scales->Shape().Size()), true);
+    MlasConvertHalfToFloatBuffer(scales_data, scales_temp.get(), static_cast<size_t>(scales->Shape().Size()));
+    scales_ptr = scales_temp.get();
+  } else {
+    scales_ptr = scales_fp32_.get();
+  }
+
+  float* bias_ptr = nullptr;
+  if (bias_data) {
+    if (!bias_fp32_) {
+      auto bias_temp = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(bias->Shape().Size()), true);
+      MlasConvertHalfToFloatBuffer(bias_data, bias_temp.get(), static_cast<size_t>(bias->Shape().Size()));
+      bias_ptr = bias_temp.get();
+    } else {
+      bias_ptr = bias_fp32_.get();
+    }
+  }
+
   size_t c_size = static_cast<size_t>(y->Shape().Size());
   std::vector<float> c_v(c_size);
 
@@ -470,9 +489,9 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     }
 #endif
     data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
-    data[i].QuantBScale = scales_fp32_.get();
+    data[i].QuantBScale = scales_ptr;
     data[i].QuantBZeroPoint = zero_points_data;
-    data[i].Bias = bias ? bias_fp32_.get() : nullptr;
+    data[i].Bias = bias ? bias_ptr : nullptr;
     data[i].C = c_v.data() + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
@@ -601,10 +620,9 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                                                 AllocatorPtr& allocator,
                                                 concurrency::ThreadPool* thread_pool,
                                                 const MatMulComputeHelper& helper) const {
-  ORT_UNUSED_PARAMETER(scales);
-  ORT_ENFORCE(scales_fp32_ != nullptr, "scales_fp32_ is not initialized");
   const auto* a_data = a->Data<MLFloat16>();
   const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<MLFloat16>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
   auto* y_data = y->MutableData<MLFloat16>();
@@ -616,6 +634,15 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(true);
 
+  float* scales_ptr = nullptr;
+  if (!scales_fp32_) {
+    auto temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales->Shape().Size(), true);
+    MlasConvertHalfToFloatBuffer(scales_data, temp_scales.get(), scales->Shape().Size());
+    scales_ptr = temp_scales.get();
+  } else {
+    scales_ptr = scales_fp32_.get();
+  }
+
   // TODO(fajin): move B dequant to prepack
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
@@ -624,7 +651,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_fp32_.get(),                            // quantization scales
+        scales_ptr,                                     // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -638,7 +665,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, MLFloat16>(
           tmp_b_data_ptr.get(),                             // dequantized output
           b_data,                                           // quantized input
-          scales_fp32_.get(),                              // quantization scales
+          scales_ptr,                                       // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -650,7 +677,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_fp32_.get(),                            // quantization scales
+          scales_ptr,                                     // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -688,13 +715,20 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   // if there is a bias input, copy bias values into C and set beta to 1.0f
   if (bias) {
-    ORT_ENFORCE(bias_fp32_ != nullptr, "bias_fp32_ is not initialized");
+    float* bias_ptr = nullptr;
     const size_t bias_size = bias->Shape().Size();
+    if (!bias_fp32_) {
+      auto bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
+      MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), bias_temp.get(), bias_size);
+      bias_ptr = bias_temp.get();
+    } else {
+      bias_ptr = bias_fp32_.get();
+    }
     for (size_t i = 0; i < batch_count; ++i) {
       float* C_row = data[i].C;
       const size_t ldc = data[i].ldc;
       for (size_t m = 0; m < M; ++m) {
-        std::copy(bias_fp32_.get(), bias_fp32_.get() + bias_size, C_row);
+        std::copy(bias_ptr, bias_ptr + bias_size, C_row);
         C_row += ldc;
       }
       data[i].beta = 1.0f;
