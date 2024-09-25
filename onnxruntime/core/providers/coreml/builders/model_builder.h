@@ -112,7 +112,7 @@ class ModelBuilder {
                       std::is_same_v<T, std::string> ||
                       std::is_same_v<T, bool>,
                   // add specialization in AddConstantImpl for new types if needed
-                  "AddConstant currently supports float/MLFloat16, int64_t, std::string and bool.");
+                  "AddConstant currently supports float, MLFloat16, int64_t, std::string and bool.");
     return AddConstantImpl(op_type, value_type, value, shape);
   }
 
