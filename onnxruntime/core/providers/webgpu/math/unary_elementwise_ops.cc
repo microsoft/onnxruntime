@@ -165,7 +165,19 @@ WEBGPU_ELEMENTWISE_KERNEL(Asinh, 9, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Acosh, "acosh(a)")
 WEBGPU_ELEMENTWISE_KERNEL(Acosh, 9, WebGpuSupportedFloatTypes())
 
+#if __APPLE__
+// Metal returns 0 for values >= 1.0.
+// Need custom impl to return +inf for 1.0 (by dividing 1 by 0), and NaN for > 1.0 (by dividing 0 by 0)
+WEBGPU_ELEMENTWISE_IMPL(Atanh,
+                        "select("
+                        " select(x_value_t(1.0), x_value_t(0.0), a > x_value_t(1.0)) / x_value_t(0.0),"
+                        " atanh(a),"
+                        " a < x_value_t(1.0))",
+                        "",
+                        ShaderUsage::UseValueTypeAlias)
+#else
 WEBGPU_ELEMENTWISE_IMPL(Atanh, "atanh(a)")
+#endif
 WEBGPU_ELEMENTWISE_KERNEL(Atanh, 9, WebGpuSupportedFloatTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Not, "!a")

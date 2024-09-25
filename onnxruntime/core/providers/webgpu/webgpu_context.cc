@@ -4,6 +4,9 @@
 #include <memory>
 #include <cmath>
 
+#include "dawn/dawn_proc.h"
+#include "dawn/native/DawnNative.h"
+
 #include "core/common/common.h"
 
 #include "core/providers/webgpu/compute_context.h"
@@ -21,6 +24,8 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
   std::call_once(init_flag_, [this, &webgpu_ep_info]() {
     // Initialization.Step.1 - Create wgpu::Instance
     if (instance_ == nullptr) {
+      dawnProcSetProcs(&dawn::native::GetProcs());
+
       wgpu::InstanceDescriptor instance_desc{};
       instance_desc.features.timedWaitAnyEnable = true;
       instance_ = wgpu::CreateInstance(&instance_desc);

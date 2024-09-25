@@ -67,6 +67,9 @@ class ShaderIndicesHelper {
  public:
   ShaderIndicesHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
 
+  ShaderIndicesHelper(ShaderIndicesHelper&&) = default;
+  ShaderIndicesHelper& operator=(ShaderIndicesHelper&&) = default;
+
   // get the number of components of the variable.
   inline int NumComponents() const { return num_components_; }
 

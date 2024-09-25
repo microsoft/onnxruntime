@@ -16,6 +16,7 @@
         "--build_shared_lib",
         "--use_nnapi",
         "--use_xnnpack",
+        "--use_webgpu",
         "--skip_tests"
     ]
 }
