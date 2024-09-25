@@ -65,6 +65,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   // WebGPU EP reuses the Device ID as the key to get the WebGpuContext instance.
   int GetDeviceId() const override { return context_id_; }
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;

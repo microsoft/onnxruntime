@@ -694,6 +694,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 #ifdef USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 

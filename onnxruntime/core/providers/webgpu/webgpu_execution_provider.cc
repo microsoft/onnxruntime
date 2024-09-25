@@ -25,6 +25,7 @@
 #include "core/graph/indexed_sub_graph.h"
 
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 
 namespace onnxruntime {
 
@@ -807,6 +808,10 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
 }
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
+}
+
+std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::WebGPUProfiler>(context_id_);
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
