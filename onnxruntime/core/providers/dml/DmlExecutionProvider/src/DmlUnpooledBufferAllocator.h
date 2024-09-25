@@ -17,14 +17,14 @@
 
 namespace Dml
 {
-    class DmlInputBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator
+    class DmlUnpooledBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator
     {
     public:
-        DmlInputBufferAllocator(ID3D12Device* d3d12Device, ExecutionContext* context) : onnxruntime::IAllocator(
+        DmlUnpooledBufferAllocator(ID3D12Device* d3d12Device, ExecutionContext* context, OrtDevice::MemoryType memoryType) : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_INPUT, 0)
+                OrtDevice(OrtDevice::GPU, memoryType, 0)
             )),
             m_d3d12Device(d3d12Device),
             m_context(context)

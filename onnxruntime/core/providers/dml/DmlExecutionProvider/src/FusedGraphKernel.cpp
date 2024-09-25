@@ -59,13 +59,16 @@ namespace Dml
             bool reuseCommandList
         )
         {
-            // Allocate a persistent resource and initialize the operator
+            auto providerImpl = static_cast<ExecutionProviderImpl*>(m_provider.Get());
+
+            // Allocate a persistent resource and initialize the operator. This is done only once during session load,
+            // so we don't want to needlessly pool the temporary memory and instead force the use of our own unpooled memory allocator
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                    providerImpl->GetUnpooledAllocator(),
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourceAllocatorUnknown.GetAddressOf()));
 
@@ -73,7 +76,7 @@ namespace Dml
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                kernelInfo.GetAllocator(OrtMemTypeDefault),
+                providerImpl->GetUnpooledAllocator(),
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));

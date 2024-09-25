@@ -22,7 +22,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
-#include "DmlInputBufferAllocator.h"
+#include "DmlUnpooledBufferAllocator.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -117,15 +117,15 @@ namespace Dml
     }
 
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
+        onnxruntime::AllocatorPtr& allocator,
         size_t size,
-        AllocatorRoundingMode roundingMode,
         ID3D12Resource **d3dResource,
         IUnknown** pooledResource
     ) const noexcept
     {
         ORT_TRY
         {
-        auto rawAllocation = m_allocator->Alloc(size, roundingMode);
+        auto rawAllocation = allocator->Alloc(size);
 
         ComPtr<IUnknown> allocation;
         allocation.Attach(static_cast<IUnknown*>(rawAllocation));
@@ -226,11 +226,19 @@ namespace Dml
     }
 
     std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
-        if (!m_allocator)
+        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
+        auto cpuAllocator = std::make_shared<onnxruntime::CPUAllocator>(OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, ::OrtMemType::OrtMemTypeCPUInput));
+
+        onnxruntime::AllocatorPtr defaultGpuAllocator;
+
+        if (m_memoryArenaDisabled)
         {
-            // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
-            // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-            m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
+            defaultGpuAllocator = std::make_shared<DmlUnpooledBufferAllocator>(m_d3d12Device.Get(), m_context.Get(), OrtDevice::MemType::DEFAULT);
+        }
+        else
+        {
+            defaultGpuAllocator = std::make_shared<BucketizedBufferAllocator>(
+                m_d3d12Device.Get(),
                 m_context.Get(),  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
                 CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                 D3D12_HEAP_FLAG_NONE,
@@ -239,14 +247,9 @@ namespace Dml
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
         }
 
-        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-        OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, ::OrtMemType::OrtMemTypeCPUInput);
+        m_unpooledAllocator = std::make_shared<DmlUnpooledBufferAllocator>(m_d3d12Device.Get(), m_context.Get(), OrtDevice::MemType::DML_UNPOOLED);
 
-        return std::vector<onnxruntime::AllocatorPtr>{
-            m_allocator,
-            std::make_shared<DmlInputBufferAllocator>(m_d3d12Device.Get(), m_context.Get()),
-            std::make_shared<onnxruntime::CPUAllocator>(memoryInfo),
-        };
+        return std::vector<onnxruntime::AllocatorPtr>{std::move(defaultGpuAllocator), m_unpooledAllocator, std::move(cpuAllocator)};
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -1178,14 +1181,6 @@ namespace Dml
         m_context->GetCurrentCompletionEvent().WaitForSignal(m_cpuSyncSpinningEnabled);
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
-
-        if (!m_memoryArenaDisabled)
-        {
-            // Allocations after this point are potentially transient and their sizes are
-            // rounded to enable pooling.
-            m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
-        }
-
         m_sessionInitialized = true;
 
         return onnxruntime::common::Status::OK();

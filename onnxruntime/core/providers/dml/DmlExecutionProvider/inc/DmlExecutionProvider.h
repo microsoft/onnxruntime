@@ -21,12 +21,6 @@ namespace onnxruntime
     class KernelRegistry;
 }
 
-enum class AllocatorRoundingMode
-{
-    Disabled = 0,
-    Enabled = 1,
-};
-
 namespace Dml
 {
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(

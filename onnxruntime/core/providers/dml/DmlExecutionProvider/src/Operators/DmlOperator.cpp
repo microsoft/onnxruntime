@@ -102,8 +102,8 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                    contextPrivate->GetAllocator(),
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourcePoolingUnk.GetAddressOf()));
 
@@ -207,8 +207,8 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                    contextPrivate->GetAllocator(),
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourcePoolingUnk.GetAddressOf()));
 
@@ -238,6 +238,9 @@ namespace Dml
         ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
         ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledOperator)));
 
+        ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+
         UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
         if (persistentResourceSize > 0)
         {
@@ -245,17 +248,14 @@ namespace Dml
             {
                 m_persistentResource = nullptr;
                 ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                    contextPrivate->GetAllocator(),
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourcePoolingUnk.GetAddressOf()));
             }
 
             m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
         }
-
-        ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
-        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
         ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
             contextPrivate->GetAllocator(),

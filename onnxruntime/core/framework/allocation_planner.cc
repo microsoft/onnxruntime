@@ -772,7 +772,7 @@ class PlannerImpl {
 #ifdef USE_DML
               // DML uses a different allocator for weights and inputs that allocates unpooled memory
               if (p_kernel_def->Provider() == onnxruntime::kDmlExecutionProvider && mem_type == OrtMemType::OrtMemTypeDefault) {
-                ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_INPUT, ort_device.Id());
+                ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_UNPOOLED, ort_device.Id());
               }
 #endif
 
@@ -900,7 +900,7 @@ class PlannerImpl {
 #ifdef USE_DML
     // DML uses a different allocator for weights and inputs that allocates unpooled memory
     if (node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider && ort_device.MemType() == OrtDevice::MemType::DEFAULT) {
-      ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_INPUT, ort_device.Id());
+      ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_UNPOOLED, ort_device.Id());
     }
 #endif
 

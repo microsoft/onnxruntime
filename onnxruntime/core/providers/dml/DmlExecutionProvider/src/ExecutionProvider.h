@@ -24,7 +24,7 @@ namespace Dml
     class PooledUploadHeap;
     class ReadbackHeap;
     class ExecutionContext;
-    class BucketizedBufferAllocator;
+    class DmlUnpooledBufferAllocator;
     class ExecutionProvider;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
@@ -141,8 +141,8 @@ namespace Dml
 
         // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
         STDMETHOD(AllocatePooledResource)(
+            onnxruntime::AllocatorPtr& allocator,
             size_t size,
-            AllocatorRoundingMode roundingMode,
             ID3D12Resource **d3dResource,
             IUnknown* *pooledResource
         ) const noexcept final;
@@ -183,6 +183,11 @@ namespace Dml
         onnxruntime::common::Status OnSessionInitializationEnd();
         std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
+        onnxruntime::AllocatorPtr GetUnpooledAllocator() const
+        {
+            return m_unpooledAllocator;
+        }
+
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
 
@@ -212,7 +217,7 @@ namespace Dml
         ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<BucketizedBufferAllocator> m_allocator;
+        onnxruntime::AllocatorPtr m_unpooledAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;

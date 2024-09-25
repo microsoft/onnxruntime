@@ -82,11 +82,6 @@ namespace Dml
 
     void* BucketizedBufferAllocator::Alloc(size_t size)
     {
-        return Alloc(size, m_defaultRoundingMode);
-    }
-
-    void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
-    {
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
 
@@ -95,42 +90,32 @@ namespace Dml
         uint64_t bucketSize = 0;
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        Bucket* bucket = nullptr;
+
+        // Find the bucket for this allocation size
+        gsl::index bucketIndex = GetBucketIndexFromSize(size);
+
+        if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
         {
-            Bucket* bucket = nullptr;
+            // Ensure there are sufficient buckets
+            m_pool.resize(bucketIndex + 1);
+        }
 
-            // Find the bucket for this allocation size
-            gsl::index bucketIndex = GetBucketIndexFromSize(size);
+        bucket = &m_pool[bucketIndex];
+        bucketSize = GetBucketSizeFromIndex(bucketIndex);
 
-            if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
-            {
-                // Ensure there are sufficient buckets
-                m_pool.resize(bucketIndex + 1);
-            }
-
-            bucket = &m_pool[bucketIndex];
-            bucketSize = GetBucketSizeFromIndex(bucketIndex);
-
-            if (bucket->resources.empty())
-            {
-                // No more resources in this bucket - allocate a new one
-                resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
-                resourceId = ++m_currentResourceId;
-            }
-            else
-            {
-                // Retrieve a resource from the bucket
-                resourceWrapper = std::move(bucket->resources.back().resource);
-                resourceId = bucket->resources.back().resourceId;
-                bucket->resources.pop_back();
-            }
+        if (bucket->resources.empty())
+        {
+            // No more resources in this bucket - allocate a new one
+            resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
+            resourceId = ++m_currentResourceId;
         }
         else
         {
-            // The allocation will not be pooled.  Construct a new one
-            bucketSize = (size + 3) & ~3;
-            resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
-            resourceId = ++m_currentResourceId;
+            // Retrieve a resource from the bucket
+            resourceWrapper = std::move(bucket->resources.back().resource);
+            resourceId = bucket->resources.back().resourceId;
+            bucket->resources.pop_back();
         }
 
         assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
@@ -174,41 +159,19 @@ namespace Dml
 
         // Free the resource to the pool if its size matches a bucket size
         gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
-        {
-            assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
+        assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
 
-            // Return the resource to the bucket
-            Bucket* bucket = &m_pool[bucketIndex];
+        // Return the resource to the bucket
+        Bucket* bucket = &m_pool[bucketIndex];
 
-            Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
-            bucket->resources.push_back(resource);
-        }
-        else
-        {
-            if (!m_context->IsClosed())
-            {
-                // Free the underlying allocation once queued work has completed.
-    #ifdef _GAMING_XBOX
-                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
-    #else
-                m_context->QueueReference(allocInfo->GetResource());
-    #endif
-            }
+        Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
+        bucket->resources.push_back(resource);
 
-            allocInfo->DetachResourceWrapper();
-        }
-
-    #if _DEBUG
+#if _DEBUG
         assert(m_outstandingAllocationsById[allocInfo->GetId()] == allocInfo);
         m_outstandingAllocationsById.erase(allocInfo->GetId());
-    #endif
+#endif
 
         // The allocation info is already destructing at this point
-    }
-
-    void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_defaultRoundingMode = roundingMode;
     }
 } // namespace Dml
