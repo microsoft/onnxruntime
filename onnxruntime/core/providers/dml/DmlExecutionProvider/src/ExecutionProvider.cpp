@@ -75,7 +75,8 @@ namespace Dml
         bool enableGraphCapture,
         bool enableSyncSpinning,
         bool disableMemoryArena) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)),
+            m_unpooledDevice(OrtDevice::GPU, OrtDevice::MemType::DML_UNPOOLED, 0)
     {
         D3D12_COMMAND_LIST_TYPE queueType = executionContext->GetCommandListTypeForQueue();
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)

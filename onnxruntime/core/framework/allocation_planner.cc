@@ -767,16 +767,7 @@ class PlannerImpl {
 
             if (!is_implicit_input) {
               OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              auto ort_device = exec_provider->GetOrtDeviceByMemType(mem_type);
-
-#ifdef USE_DML
-              // DML uses a different allocator for weights and inputs that allocates unpooled memory
-              if (p_kernel_def->Provider() == onnxruntime::kDmlExecutionProvider && mem_type == OrtMemType::OrtMemTypeDefault) {
-                ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_UNPOOLED, ort_device.Id());
-              }
-#endif
-
-              plan_.SetLocation(static_cast<size_t>(index), ort_device);
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemTypeForGraphInput(mem_type));
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level
@@ -888,23 +879,14 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtDevice GetLocationForNodeInput(size_t input_index, const Node& node, const KernelCreateInfoMap& kernel_create_info_map) {
+  OrtDevice GetLocationForNodeWeightInput(size_t input_index, const Node& node, const KernelCreateInfoMap& kernel_create_info_map) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
     // weights are not output from any node, so it's OK to put its location on CPU provider
-    auto ort_device = p_provider->GetOrtDeviceByMemType(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
-
-#ifdef USE_DML
-    // DML uses a different allocator for weights and inputs that allocates unpooled memory
-    if (node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider && ort_device.MemType() == OrtDevice::MemType::DEFAULT) {
-      ort_device = OrtDevice(ort_device.Type(), OrtDevice::MemType::DML_UNPOOLED, ort_device.Id());
-    }
-#endif
-
-    return ort_device;
+    return p_provider->GetOrtDeviceByMemTypeForGraphInput(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
   }
 
   std::vector<std::pair<int, int>> GetAliasMap(const Node& node, const KernelCreateInfo& kernel_create_info) {
@@ -1000,7 +982,7 @@ class PlannerImpl {
         // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
         // the right device before subgraph execution.
         locations[wt_index].emplace_back(
-            GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
+            GetLocationForNodeWeightInput(node_input_index, node, kernel_create_info_map));
       }
     }
 
