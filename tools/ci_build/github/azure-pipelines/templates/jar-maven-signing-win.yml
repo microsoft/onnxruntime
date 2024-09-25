@@ -44,16 +44,12 @@ steps:
 
         Write-Host "Importing GnuPG private key file."
         & $gpg_exe_path --batch --import $private_key_file
-        #$import_key_args_list = "--batch --import `"$private_key_file`""
-        #Start-Process -FilePath $gpg_exe_path -ArgumentList $import_key_args_list -NoNewWindow -PassThru| Wait-Process -Timeout 5 -ErrorAction Stop
         Write-Host "Imported GnuPG private key file."
 
         $targeting_original_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
         foreach ($file in $targeting_original_files) {
             $file_path = Join-Path $jar_file_directory -ChildPath $file
             Write-Host "GnuPG signing to file: "$file_path
-            #$args_list = "--pinentry-mode loopback --passphrase-file `"$passphrase_file`" -ab `"$file_path`""
-            #Start-Process -FilePath $gpg_exe_path -ArgumentList $args_list -NoNewWindow -PassThru| Wait-Process -Timeout 5 -ErrorAction Stop
             & $gpg_exe_path --batch --pinentry-mode loopback --passphrase-file $passphrase_file -ab $file_path
             Write-Host "GnuPG signed to file: "$file_path
         }
