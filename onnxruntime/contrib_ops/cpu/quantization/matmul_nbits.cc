@@ -280,9 +280,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     }
 #endif  // MLAS_TARGET_AMD64_IX86
   }
-#endif  // !defined(ORT_NEURAL_SPEED)
 
-return Status::OK();
+  return Status::OK();
 }
 
 template <>
@@ -333,9 +332,8 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
                                    nullptr, has_zp_input_, zptr, nullptr);
       is_packed = false;
     }
-#endif
+#endif  // MLAS_TARGET_AMD64_IX86
   }
-#endif  // defined(ORT_NEURAL_SPEED)
 
   return Status::OK();
 }
@@ -434,6 +432,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                                               AllocatorPtr& allocator,
                                               concurrency::ThreadPool* thread_pool,
                                               const MatMulComputeHelper& helper) const {
+  ORT_UNUSED_PARAMETER(scales);
   ORT_ENFORCE(scales_fp32_ != nullptr, "scales_fp32_ is not initialized");
   ORT_ENFORCE(!bias == !bias_fp32_, "packed_b_ is not initialized");
   const auto* a_data = a->Data<MLFloat16>();
@@ -602,6 +601,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                                                 AllocatorPtr& allocator,
                                                 concurrency::ThreadPool* thread_pool,
                                                 const MatMulComputeHelper& helper) const {
+  ORT_UNUSED_PARAMETER(scales);
   ORT_ENFORCE(scales_fp32_ != nullptr, "scales_fp32_ is not initialized");
   const auto* a_data = a->Data<MLFloat16>();
   const uint8_t* b_data = b->Data<uint8_t>();
@@ -624,7 +624,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_fp32_.data(),                            // quantization scales
+        scales_fp32_.get(),                            // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -638,7 +638,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, MLFloat16>(
           tmp_b_data_ptr.get(),                             // dequantized output
           b_data,                                           // quantized input
-          scales_fp32_.data(),                              // quantization scales
+          scales_fp32_.get(),                              // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -650,7 +650,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_fp32_.data(),                            // quantization scales
+          scales_fp32_.get(),                            // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
