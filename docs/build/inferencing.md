@@ -107,8 +107,8 @@ The last command will generate a fat-binary for both CPU architectures.
 
 Note: unit tests will be skipped due to the incompatible CPU instruction set when doing cross-compiling.
 
-### AIX
-In AIX, you can build ONNX Runtime for 64bit using 
+#### AIX
+In AIX, you can build ONNX Runtime for 64bit using
 
 * IBM Open XL compiler tool chain.
   Minimum required AIX OS version is 7.2. You need to have 17.1.2 compiler PTF5 (17.1.2.5) version.
