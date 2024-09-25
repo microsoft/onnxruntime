@@ -142,6 +142,8 @@ class MatMulNBits final : public OpKernel {
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
+  IAllocatorUniquePtr<float> scales_fp32_{};
+  IAllocatorUniquePtr<float> bias_fp32_{};
 
   bool has_zp_input_{false};
 #if defined(ORT_NEURAL_SPEED)
@@ -175,10 +177,6 @@ class MatMulNBits final : public OpKernel {
                         const MatMulComputeHelper& helper) const {
     ORT_THROW("ComputeBPacked is not supported for T1 type.");
   }
-
-  void PackScale(const Tensor& tensor) {
-    ORT_THROW("PackScale is not supported for T1 type.");
-  }
 };
 
 #ifdef MLAS_TARGET_AMD64_IX86
@@ -199,6 +197,7 @@ void MatMulNBits<float>::PackScale(const Tensor& tensor) {
 }
 #endif
 
+#if defined(ORT_NEURAL_SPEED)
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
@@ -207,7 +206,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
   }
-#if defined(ORT_NEURAL_SPEED)
 
   if (!all_constant_) {
     return Status::OK();
@@ -259,8 +257,21 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     is_packed = true;
   }
 
+  return Status::OK();
+}
+
 #else  // defined(ORT_NEURAL_SPEED)
+
+template <typename T1>
+Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                /*out*/ bool& is_packed,
+                                /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
+  is_packed = false;
+  if (has_g_idx_ || has_unquantized_zero_point_) {
+    return Status::OK();
+  }
+
   if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
     return Status::OK();
   }
@@ -276,7 +287,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   } else if (compute_type_ == CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
-      PackScale(tensor);
+      auto sptr = tensor.Data<float>();
+      MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                                  has_zp_input_, nullptr, nullptr);
       is_packed = false;
     } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
       auto zptr = tensor.Data<uint8_t>();
@@ -289,6 +302,63 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
   return Status::OK();
 }
+
+template <>
+Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                /*out*/ bool& is_packed,
+                                /*out*/ PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+
+  if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
+    auto sptr = tensor.Data<MLFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+    MlasConvertHalfToFloatBuffer(sptr, ptr.get(), tensor_size);
+    if (input_idx == InputIndex::scales) {
+      scales_fp32_ = std::move(ptr);
+    } else {
+      bias_fp32_ = std::move(ptr);
+    }
+  }
+
+  is_packed = false;
+  if (has_g_idx_ || has_unquantized_zero_point_) {
+    return Status::OK();
+  }
+
+  if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+    return Status::OK();
+  }
+  if (input_idx == InputIndex::B) {
+    packed_b_size_ = MlasSQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, compute_type_);
+    if (packed_b_size_ == 0) {
+      return Status::OK();
+    }
+    auto qptr = tensor.DataRaw();
+    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
+                                 nullptr, has_zp_input_, nullptr, nullptr);
+    is_packed = true;
+  } else if (compute_type_ == CompInt8) {
+#ifdef MLAS_TARGET_AMD64_IX86
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                   scales_fp32_.get(), has_zp_input_, nullptr, nullptr);
+      is_packed = false;
+    } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+      auto zptr = tensor.Data<uint8_t>();
+      MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                   nullptr, has_zp_input_, zptr, nullptr);
+      is_packed = false;
+    }
+#endif
+  }
+#endif  // defined(ORT_NEURAL_SPEED)
+
+  return Status::OK();
+}
+
+#endif  // !defined(ORT_NEURAL_SPEED)
 
 template <typename T1>
 Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
@@ -382,10 +452,10 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                                               AllocatorPtr& allocator,
                                               concurrency::ThreadPool* thread_pool,
                                               const MatMulComputeHelper& helper) const {
+  ORT_ENFORCE(scales_fp32_ != nullptr, "scales_fp32_ is not initialized");
+  ORT_ENFORCE(!bias == !bias_fp32_, "packed_b_ is not initialized");
   const auto* a_data = a->Data<MLFloat16>();
-  const auto* scales_data = scales->Data<MLFloat16>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<MLFloat16>();
   auto* y_data = y->MutableData<MLFloat16>();
 
   const size_t batch_count = helper.OutputOffsets().size();
@@ -406,17 +476,6 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
   MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a_size);
 
-  auto scales_size = static_cast<size_t>(scales->Shape().Size());
-  auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
-  MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), scales_size);
-
-  std::vector<float> bias_data_v;
-  if (bias_data != nullptr) {
-    auto bias_size = static_cast<size_t>(bias->Shape().Size());
-    bias_data_v.resize(bias_size);
-    MlasConvertHalfToFloatBuffer(bias_data, bias_data_v.data(), bias_size);
-  }
-
   size_t c_size = static_cast<size_t>(y->Shape().Size());
   std::vector<float> c_v(c_size);
 
@@ -430,9 +489,9 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     }
 #endif
     data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
-    data[i].QuantBScale = tmp_scales_data_ptr.get();
+    data[i].QuantBScale = scales_fp32_.get();
     data[i].QuantBZeroPoint = zero_points_data;
-    data[i].Bias = bias_data != nullptr ? bias_data_v.data() : nullptr;
+    data[i].Bias = bias ? bias_fp32_.get() : nullptr;
     data[i].C = c_v.data() + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
@@ -467,6 +526,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(true);
 
+  // TODO(fajin): move B dequant to prepack
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
@@ -560,16 +620,12 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                                                 AllocatorPtr& allocator,
                                                 concurrency::ThreadPool* thread_pool,
                                                 const MatMulComputeHelper& helper) const {
+  ORT_ENFORCE(scales_fp32_ != nullptr, "scales_fp32_ is not initialized");
   const auto* a_data = a->Data<MLFloat16>();
   const uint8_t* b_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<MLFloat16>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
   auto* y_data = y->MutableData<MLFloat16>();
-
-  const size_t scales_size = static_cast<size_t>(scales->Shape().Size());
-  std::vector<float> scales_data_v(scales_size);
-  MlasConvertHalfToFloatBuffer(scales_data, scales_data_v.data(), scales_size);
 
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
@@ -578,6 +634,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(true);
 
+  // TODO(fajin): move B dequant to prepack
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
@@ -585,7 +642,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_data_v.data(),                           // quantization scales
+        scales_fp32_.data(),                           // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -599,7 +656,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, MLFloat16>(
           tmp_b_data_ptr.get(),                             // dequantized output
           b_data,                                           // quantized input
-          scales_data_v.data(),                             // quantization scales
+          scales_fp32_.data(),                             // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -611,7 +668,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_data_v.data(),                           // quantization scales
+          scales_fp32_.data(),                           // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -649,14 +706,13 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   // if there is a bias input, copy bias values into C and set beta to 1.0f
   if (bias) {
-    auto bias_size = static_cast<size_t>(bias->Shape().Size());
-    auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
-    MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), tmp_bias_data_ptr.get(), bias_size);
+    ORT_ENFORCE(bias_fp32_ != nullptr, "bias_fp32_ is not initialized");
+    const size_t bias_size = bias->Shape().Size();
     for (size_t i = 0; i < batch_count; ++i) {
       float* C_row = data[i].C;
       const size_t ldc = data[i].ldc;
       for (size_t m = 0; m < M; ++m) {
-        std::copy(tmp_bias_data_ptr.get(), tmp_bias_data_ptr.get() + bias_size, C_row);
+        std::copy(bias_fp32_.get(), bias_fp32_.get() + bias_size, C_row);
         C_row += ldc;
       }
       data[i].beta = 1.0f;
