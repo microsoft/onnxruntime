@@ -138,8 +138,8 @@ ulimit -n 2000
 ulimit -f unlimited
 export OBJECT_MODE=64
 export BUILD_TYPE="Release"
-export CC="/opt/freeware/bin/gcc" 
-export CXX="/opt/freeware/bin/g++"
+export CC="gcc" 
+export CXX="g++"
 export CFLAGS="-maix64 -pthread -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx   -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
 export CXXFLAGS="-maix64 -pthread -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx  -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
 export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -Wl,-bbigtoc -lpython3.9"
