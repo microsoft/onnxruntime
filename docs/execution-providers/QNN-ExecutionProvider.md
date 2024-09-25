@@ -431,6 +431,51 @@ g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMod
 options.add_session_config_entry("ep.context_embed_mode", "0")
 ```
 
+## QNN EP weight sharing
+
+### Weight sharing in Onnx domain
+Weight sharing in Onnx means multiple Onnx models with external weights point to the same external weight file. The Onnx models share same tensor names so that they reference to the same tensor data.
+<p align="center"><img width="50%" src="../../images/Onnx_weight_sharing.png" alt="Weight sharing across Onnx models"/></p>
+
+### Weight sharing in QNN domain
+QNN weight sharing is enabled with QNN pre-generated QNN context binary. It requires users to generate context binary offline on Linux x86_64 or Windows x86_64 machine (Windows support since QNN 2.26). The QNN context binary contains multiple graphs which share the same tensors.
+<p align="center"><img width="30%" src="../../images/Qnn_weight_sharing.png" alt="Weight sharing in QNN context binary"/></p>
+
+### Weight sharing in QNN domain
+The way OnnxRuntime to convert Onnx model with weight sharing to QNN context binary with weight sharing.
+1. Create QNN context with weight sharing configuration enabled.
+2. Convert and compile model1.onnx into QNN context (get Qnn graph1).
+3. Convert and compile model2.onnx into QNN context (get Qnn graph2).
+4. Repeat step 2 if more models.
+5. Generated the QNN context binary file, generated wrapped Onnx model with EPContext nodes.
+OnnxRuntime QNN EP provides [OnnxRuntime_qnn_ctx_gen](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/qnn_ctx_gen) tool to complete these steps.
+Example command line:
+```
+./onnxruntime_qnn_ctx_gen -i "soc_model|60 htp_graph_finalization_optimization_mode|3" ./model1.onnx,./model2.onnx
+```
+It creates 2 Onnx model (model1.onnx_ctx.onnx, model2.onnx_ctx.onnx) and a QNN context binary file (model2.onnx_ctx.onnx_xxx.bin).
+<p align="center"><img width="90%" src="../../images/Ort_Qnn_Ep_weight_sharing.png" alt="Weight sharing from Onnx to QNN"/></p>
+If user creates the QNN context binary .bin file weight sharing from QNN toolchain (qnn-context-binary-generator). The context binary .bin file looks the same. User needs to create model1.onnx and model2.onnx with EPContext node which points to this .bin file. Each EPContext node should refer (node name and partition_name) to different Qnn graph names from the QNN context. Here’s an example script for reference [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py) which wraps one single QNN graph into EPContext node. 
+
+### Inference with QNN resource sharing workflow
+OnnxRuntime inference session need to have resource sharing enabled (set session option ep.share_ep_contexts to 1) to use the dumped Qnn context model with weight sharing enabled.
+1. Create OnnxRuuntime inference session with ep.share_ep_contexts=1, loads the model1.onnx_ctx.onnx model.
+ 1.1 The session loads the model1.onnx_ctx.onnx model.
+ 1.2 The shared place is empty.
+ 1.3 EPContext node1 in model1.onnx_ctx.onnx specifies that it uses Qnn_graph1
+ 1.4 QNN EP loads the qnn_ctx.bin and deserialize the binary to get Qnn graphs (Qnn_graph1, Qnn_graph2).
+ 1.5 Uses Qnn_graph1 for this OnnxRuntime session.
+ 1.6 Put the Qnn_graph2 into the shared place.
+2. Create OnnxRuuntime inference session with ep.share_ep_contexts=1, loads the model2.onnx_ctx.onnx model.
+ 2.1 The session loads the model2.onnx_ctx.onnx model.
+ 2.2 The EPContext node2 in model2.onnx_ctx.onnx specifies that it uses Qnn_graph2.
+ 2.3 The shared place has Qnn_graph2.
+ 2.4 QNN EP skips loading qnn_ctx.bin since it gets what it wants from the shared place.
+ 2.5 Uses Qnn_graph2 from the shared place for this session.
+3. To avoid issues while existing execution, user needs to destroy the 2nd session first, then the 1st session.
+
+[Code example](https://github.com/microsoft/onnxruntime/blob/291a5352b27ded5714e5748b381f2efb88f28fb9/onnxruntime/test/providers/qnn/qnn_ep_context_test.cc#L979-L992).
+
 ## Usage
 ### C++
 C API details are [here](../get-started/with-c.md).
