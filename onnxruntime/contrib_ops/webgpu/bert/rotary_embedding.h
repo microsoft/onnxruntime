@@ -34,7 +34,7 @@ class RotaryEmbedding final : public WebGpuKernel {
   RotaryEmbedding(const OpKernelInfo& info);
   Status ComputeInternal(ComputeContext& context) const override;
 
- protected:
+ private:
   float scale_;
   int num_heads_;
   int rotary_embedding_dim_;

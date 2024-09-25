@@ -20,12 +20,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
     RotaryEmbedding);
 
-const inline std::string ConvertBoolToString(bool b) {
-  std::stringstream ss;
-  ss << std::boolalpha << b;
-  return ss.str();
-}
-
 Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::UseUniform);
@@ -33,7 +27,7 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   const auto& output_indices = shader.AddIndices("output_indices");
-  const auto interleaved_str = ConvertBoolToString(interleaved_);
+  const auto interleaved_str = interleaved_ ? "true" : "false";
   shader.SetMainFunctionBody(
       "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
       "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
