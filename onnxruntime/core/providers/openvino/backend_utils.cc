@@ -271,14 +271,18 @@ void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std
 void LoadConfig(const std::string& filename, std::map<std::string, ov::AnyMap>& config) {
   std::ifstream input_filestream(filename);
   if (!input_filestream.is_open()) {
-    throw std::runtime_error("Can't load config file \"" + filename + "\".");
+    ORT_THROW("Can't load config file \"" + filename + "\".");
   }
 
   nlohmann::json json_config;
   try {
     input_filestream >> json_config;
-  } catch (const std::exception& e) {
-    throw std::runtime_error("Can't parse config file \"" + filename + "\".\n" + e.what());
+  } catch (const OnnxRuntimeException& ex) {
+    ORT_THROW("Can't parse config file \"" + filename + "\".\n" + ex.what());
+  } catch (const std::exception& ex) {
+    throw std::runtime_error("Standard exception for config file \"" + filename + "\".\n" + ex.what());
+  } catch (...) {
+    throw std::runtime_error("Unknown exception for config file \"" + filename + "\".\n");
   }
 
   for (auto item = json_config.cbegin(), end = json_config.cend(); item != end; ++item) {

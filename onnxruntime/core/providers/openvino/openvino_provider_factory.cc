@@ -8,29 +8,27 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device_type, const char* precision,
+  OpenVINOProviderFactory(const std::string& device_type, const std::string& precision,
                           bool enable_npu_fast_compile, size_t num_of_threads,
-                          const std::string& load_config, const char* cache_dir, const char* model_priority,
-                          int num_streams, void* context,
+                          const std::string& load_config, const std::string& cache_dir,
+                          const std::string& model_priority, int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool enable_qdq_optimizer, const ConfigOptions& config_options)
-      : precision_(precision),
+      : device_type_(device_type),
+        precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         load_config_(load_config),
+        cache_dir_(cache_dir),
         model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
         disable_dynamic_shapes_(disable_dynamic_shapes),
         enable_qdq_optimizer_(enable_qdq_optimizer),
-        config_options_(config_options) {
-        device_type_ = (device_type == nullptr) ? "" : device_type;
-        cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
-}
+        config_options_(config_options) {}
 
-  ~OpenVINOProviderFactory() override {
-  }
+  ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
@@ -115,7 +113,7 @@ struct OpenVINO_Provider : Provider {
     std::string cache_dir = "";              // [cache_dir]: specify the path to
                                              // dump and load the blobs for the model caching/kernel caching (GPU)
                                              // feature. If blob files are already present, it will be directly loaded.
-    const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
+    std::string model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
                                              // Defines what model should be provided with more performant
                                              // bounded resource first
     int num_streams = 1;                     // [num_streams]: Option that specifies the number of parallel inference
@@ -294,12 +292,12 @@ struct OpenVINO_Provider : Provider {
       }
     }
 
-    return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
-                                                     const_cast<char*>(precision.c_str()),
+    return std::make_shared<OpenVINOProviderFactory>(device_type,
+                                                     precision,
                                                      enable_npu_fast_compile,
                                                      num_of_threads,
                                                      load_config,
-                                                     const_cast<char*>(cache_dir.c_str()),
+                                                     cache_dir,
                                                      model_priority,
                                                      num_streams,
                                                      context,

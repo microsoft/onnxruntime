@@ -215,8 +215,8 @@ if (!global_context_.load_config.empty()) {
       if (is_supported_and_mutable(key, supported_properties)) {
         global_context_.ie_core.Get().set_property(device, ov::AnyMap{{key, value}});
       } else {
-        LOGS_DEFAULT(INFO)<< "WARNING: Property \"" << key << "\" is either unsupported in current OpenVINO version\""
-            << "\" or property is immutable for target device \"" << device << "\". Skipping setting this property.";
+        LOGS_DEFAULT(WARNING)<< "WARNING: Property \"" << key << "\" is either unsupported in current OpenVINO version"
+            << " or property is immutable for target device \"" << device << "\". Skipping setting this property.";
       }
     }
   };
