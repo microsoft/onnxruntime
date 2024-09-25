@@ -187,8 +187,41 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 
     size_t output_count = sizeof(output_names)/sizeof(output_names[0]);
     std::vector<OrtValue*> output_tensors(output_count, nullptr);
-    //OrtValue* output_tensor = nullptr;
     THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, sizeof(input_names)/sizeof(input_names[0]), output_names, output_count, output_tensors.data()));
+
+    // This output will be nullptr
+//    float* output_tensor_data = nullptr;
+//    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensors[0], (void**)&output_tensor_data));
+//    std::cout<<"Result:\n";
+//    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+}
+
+void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so) {
+    OrtSession* session = nullptr;
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/tinyyolov3/yolov3-tiny.onnx", so, &session));
+
+    OrtMemoryInfo* memory_info = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+
+    std::vector<OrtValue*> input_tensors(2, nullptr);
+    const int input_cnt = 3 * 416 * 416;
+    float input_data[input_cnt];
+    for (int i = 0; i < input_cnt; i++) input_data[i] = 0.501960813999176;
+    const size_t input_len = input_cnt * sizeof(float);
+    const int64_t input_shape[] = {1, 3, 416, 416};
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[0]));
+
+    float input2[2] = {375, 500};
+    const size_t input2_len = 8;    // 2 * sizeof(float)
+    const int64_t input2_shape[] = {1, 2};
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input2, input2_len, input2_shape, sizeof(input2_shape)/sizeof(input2_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[1]));
+
+    const char* input_names[] = {"input_1", "image_shape"};
+    const char* output_names[] = {"6379", "6381", "6383"};
+
+    size_t output_count = sizeof(output_names)/sizeof(output_names[0]);
+    std::vector<OrtValue*> output_tensors(output_count, nullptr);
+    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)input_tensors.data(), sizeof(input_names)/sizeof(input_names[0]), output_names, output_count, output_tensors.data()));
 
     float* output_tensor_data = nullptr;
     THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensors[0], (void**)&output_tensor_data));
@@ -222,6 +255,8 @@ int main(int argc, char *argv[]) {
         RunResnet18v1_7(g_ort, p_env, so);
     } else if (!strcmp(argv[2], "rcnn")) {
         RunFastRcnn(g_ort, p_env, so);
+    } else if (!strcmp(argv[2], "tyolo")) {
+        RunTinyYolov3(p_env, so);
     }
 
     g_ort->ReleaseEnv(p_env);
