@@ -33,6 +33,8 @@ namespace Dml
 
         void* Alloc(size_t size) final
         {
+            size = (size + 3) & ~3;
+
             Microsoft::WRL::ComPtr<ID3D12Resource> resource;
             auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             auto props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
