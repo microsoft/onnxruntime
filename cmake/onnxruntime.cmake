@@ -376,6 +376,7 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
     endif()
   endforeach()
 
+  # helper function that recurses to also handle static library dependencies of the ORT external libraries
   set(_processed_libs)  # keep track of processed libraries to skip any duplicate dependencies
   function(add_symlink_for_static_lib_and_dependencies lib)
     function(process cur_target)
