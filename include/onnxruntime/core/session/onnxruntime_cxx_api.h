@@ -779,13 +779,13 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    */
   RunOptions& UnsetTerminate();
 
-  /** \brief Designates the argument as an active adapter for the session Run() calls.
+  /** \brief Add the LoraAdapter to the list of active adapters.
    *  The setting does not affect RunWithBinding() calls.
    *
    * Wraps OrtApi::RunOptionsSetLoraAdapterActive
    * \param adapter The LoraAdapter to be used as the active adapter
    */
-  RunOptions& SetLoraAdapterActive(const LoraAdapter& adapter);
+  RunOptions& AddLoraAdapterActive(const LoraAdapter& adapter);
 };
 
 namespace detail {

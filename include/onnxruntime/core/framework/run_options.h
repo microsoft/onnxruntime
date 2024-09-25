@@ -48,7 +48,7 @@ struct OrtRunOptions {
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
   onnxruntime::ConfigOptions config_options;
 
-  onnxruntime::InlinedVector<const onnxruntime::lora::LoraAdapter*> active_adapters_;
+  onnxruntime::InlinedVector<const onnxruntime::lora::LoraAdapter*> active_adapters;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;

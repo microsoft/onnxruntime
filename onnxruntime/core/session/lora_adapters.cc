@@ -10,18 +10,16 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
 
-#include <fstream>
-#include <stdexcept>
-#include <string_view>
-#include <unordered_map>
-
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
-#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+#include <unordered_map>
 
 namespace onnxruntime {
 
+#ifdef USE_CUDA
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+#endif
 
 namespace lora {
 
@@ -56,10 +54,12 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info,
                               std::unique_ptr<IDataTransfer>& data_transfer) {
   ORT_RETURN_IF(mem_info.device.Type() == OrtDevice::CPU, "Destination must not be on CPU");
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
+#ifdef USE_CUDA
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
     if (cuda_provider_info != nullptr) {
       data_transfer = cuda_provider_info->CreateGPUDataTransfer();
     }
+#endif
   }
 
   if (data_transfer == nullptr) {

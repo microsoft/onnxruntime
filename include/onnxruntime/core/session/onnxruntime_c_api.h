@@ -4681,7 +4681,7 @@ struct OrtApi {
    *
    * \param[in] adapter_file_path Absolute file path to the adapter file.
    * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked, if nullptr data stays on CPU.
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
@@ -4695,17 +4695,17 @@ struct OrtApi {
 
   /** \brief Set the active Lora Adapter for the run options
    *
-   * The function sets the active Lora Adapter for the run options. The Lora Adapter must be created with
+   * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
    * OrtApi::CreateLoraAdapter. The Lora Adapter will be used by the session to run the model.
-   * The instance of the OrtRunOptions will then can be used to customize the OrtSession::Run() calls.
-   * More than one OrtLoraAdapter can be set active at the same time. Lora Parameters that belong to difference
+   * The instance of the OrtRunOptions will can then be then used to customize the Run() calls.
+   * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
    * Lora adapters that will be active at the same time must not overlap.
    * This setting does not affect RunWithBinding.
    *
    * \param[in] options OrtRunOptions instance
    * \param[in] adapter OrtLoraAdapter instance
    */
-  ORT_API2_STATUS(RunOptionsSetActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
+  ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
 };
 
 /*

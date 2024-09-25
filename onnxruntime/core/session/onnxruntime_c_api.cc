@@ -823,7 +823,7 @@ void CheckAndAdjustForLora(const OrtRunOptions& run_options,
                            gsl::span<const char* const>& input_names,
                            gsl::span<const OrtValue* const>& inputs) {
   size_t total_lora_params = 0;
-  for (const lora::LoraAdapter* ad : run_options.active_adapters_) {
+  for (const lora::LoraAdapter* ad : run_options.active_adapters) {
     total_lora_params += ad->GetParamNum();
   }
 
@@ -832,7 +832,7 @@ void CheckAndAdjustForLora(const OrtRunOptions& run_options,
   std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
   std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
 
-  for (const lora::LoraAdapter* ad : run_options.active_adapters_) {
+  for (const lora::LoraAdapter* ad : run_options.active_adapters) {
     ad->OutputAdapterParameters(std::back_inserter(input_names_with_lora),
                                 std::back_inserter(input_with_lora));
   }
@@ -858,7 +858,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
   Status status;
   if (run_options != nullptr) {
-    if (!run_options->active_adapters_.empty()) {
+    if (!run_options->active_adapters.empty()) {
       InlinedVector<const char*> input_names_with_lora;
       InlinedVector<const OrtValue*> input_with_lora;
 
@@ -2775,7 +2775,7 @@ static constexpr OrtApi ort_api_1_to_20 = {
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
     &OrtApis::CreateLoraAdapter,
     &OrtApis::ReleaseLoraAdapter,
-    &OrtApis::RunOptionsSetActiveLoraAdapter,
+    &OrtApis::RunOptionsAddActiveLoraAdapter,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

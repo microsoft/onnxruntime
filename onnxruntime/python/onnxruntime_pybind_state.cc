@@ -1906,7 +1906,7 @@ RunOptions instance. The individual calls will exit gracefully and return an err
           R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc")
       .def(
           "set_adapter_active", [](RunOptions* options, lora::LoraAdapter* adapter) {
-            options->active_adapters_.push_back(adapter);
+            options->active_adapters.push_back(adapter);
           },
           R"pbdoc(Activates the specified lora adapter)pbdoc");
 
@@ -2029,15 +2029,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               const std::map<std::string, const py::object>& pyfeeds, RunOptions* run_options = nullptr)
                -> py::list {
              NameMLValMap feeds;
-             if (run_options != nullptr && !run_options->active_adapters_.empty()) {
+             if (run_options != nullptr && !run_options->active_adapters.empty()) {
                size_t total_entries = pyfeeds.size();
-               for (const auto* adapter : run_options->active_adapters_) {
+               for (const auto* adapter : run_options->active_adapters) {
                  total_entries += adapter->GetParamNum();
                }
                feeds.reserve(total_entries);
 
                // Append necessary inputs for active adapters
-               for (const auto* adapter : run_options->active_adapters_) {
+               for (const auto* adapter : run_options->active_adapters) {
                  auto [begin, end] = adapter->GetParamIterators();
                  for (; begin != end; ++begin) {
                    const auto& [name, param] = *begin;
