@@ -699,11 +699,6 @@ public class InferenceTest {
     runProvider(OrtProvider.QNN);
   }
 
-  @Test
-  public void testDumpSystemProperties() {
-    System.getProperties().forEach((k, v) -> System.out.println(k + ":" + v));
-  }
-
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
