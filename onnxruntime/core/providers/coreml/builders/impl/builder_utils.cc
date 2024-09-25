@@ -214,8 +214,8 @@ void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, gsl::span<
 
 template <>
 void CopyDataToTensorValue<MLFloat16>(MILSpec::TensorValue& tensor_value, gsl::span<const MLFloat16> data) {
-  const char* begin = (const char*)(data.data());
-  const char* end = (const char*)(data.data()) + data.size() * sizeof(MLFloat16);
+  const char* begin = reinterpret_cast<const char*>(data.data());
+  const char* end = begin + (data.size() * sizeof(MLFloat16));
   tensor_value.mutable_bytes()->mutable_values()->assign(begin, end);
 }
 
