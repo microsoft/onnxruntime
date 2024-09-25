@@ -142,7 +142,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  SafeInt<uint32_t> vec_size = (size + 3) / 4;
+  uint32_t vec_size = SafeInt<uint32_t>((size + 3) / 4);
   BinaryElementwiseProgram program{kernel_name_,
                                    expression_,
                                    is_broadcast,
