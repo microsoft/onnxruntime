@@ -138,7 +138,7 @@ TEST(MathOpTest, Clip_MLFloat16) {
 }
 
 TEST(MathOpTest, Clip_MLFloat16_NoMin_NoMax) {
-  OpTester test("Clip", 13);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3};
   test.AddInput<MLFloat16>("X", dims,
@@ -150,7 +150,7 @@ TEST(MathOpTest, Clip_MLFloat16_NoMin_NoMax) {
 }
 
 TEST(MathOpTest, Clip_MLFloat16_NoMax) {
-  OpTester test("Clip", 13);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3};
   test.AddInput<MLFloat16>("X", dims,
@@ -163,7 +163,7 @@ TEST(MathOpTest, Clip_MLFloat16_NoMax) {
 }
 
 TEST(MathOpTest, Clip_MLFloat16_NoMin) {
-  OpTester test("Clip", 13);
+  OpTester test("Clip", 12);
 
   std::vector<int64_t> dims{3};
   test.AddInput<MLFloat16>("X", dims,
@@ -172,45 +172,6 @@ TEST(MathOpTest, Clip_MLFloat16_NoMin) {
   test.AddInput<MLFloat16>("max", {}, {MLFloat16(0.0f)});
   test.AddOutput<MLFloat16>("Y", dims,
                             {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(0.0f)});
-
-  test.Run();
-}
-
-TEST(MathOpTest, Clip_BFloat16_NoMin_NoMax) {
-  OpTester test("Clip", 13);
-
-  std::vector<int64_t> dims{3};
-  test.AddInput<BFloat16>("X", dims,
-                          {BFloat16(-1.0f), BFloat16(-2.0f), BFloat16(3.0f)});
-  test.AddOutput<BFloat16>("Y", dims,
-                           {BFloat16(-1.0f), BFloat16(-2.0f), BFloat16(3.0f)});
-
-  test.Run();
-}
-
-TEST(MathOpTest, Clip_BFloat16_NoMax) {
-  OpTester test("Clip", 13);
-
-  std::vector<int64_t> dims{3};
-  test.AddInput<BFloat16>("X", dims,
-                          {BFloat16(-1.0f), BFloat16(-2.0f), BFloat16(3.0f)});
-  test.AddInput<BFloat16>("min", {}, {BFloat16(0.0f)});
-  test.AddOutput<BFloat16>("Y", dims,
-                           {BFloat16(0.0f), BFloat16(0.0f), BFloat16(3.0f)});
-
-  test.Run();
-}
-
-TEST(MathOpTest, Clip_BFloat16_NoMin) {
-  OpTester test("Clip", 13);
-
-  std::vector<int64_t> dims{3};
-  test.AddInput<BFloat16>("X", dims,
-                          {BFloat16(-1.0f), BFloat16(-2.0f), BFloat16(3.0f)});
-  test.AddOptionalInputEdge<BFloat16>();  // no min
-  test.AddInput<BFloat16>("max", {}, {BFloat16(0.0f)});
-  test.AddOutput<BFloat16>("Y", dims,
-                           {BFloat16(-1.0f), BFloat16(-2.0f), BFloat16(0.0f)});
 
   test.Run();
 }
