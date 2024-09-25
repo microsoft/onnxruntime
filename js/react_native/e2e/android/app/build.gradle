@@ -118,7 +118,6 @@ def jscFlavor = 'org.webkit:android-jsc:+'
 def enableHermes = project.ext.react.get("enableHermes", false);
 
 android {
-    namespace 'com.example.reactnativeonnxruntimemodule'
     compileSdkVersion rootProject.ext.compileSdkVersion
 
     compileOptions {
@@ -178,9 +177,9 @@ android {
 }
 
 repositories {
-    flatDir {
+  flatDir {
     dir 'libs'
-    }
+  }
 }
 
 dependencies {
