@@ -290,7 +290,7 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                                          p_buffered_tensors);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},

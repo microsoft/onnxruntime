@@ -2770,7 +2770,8 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
   if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
-  std::function<void()> run_fn = [=]() {
+  std::function<void()> run_fn = [run_options, feed_names, feeds, fetch_names, fetches, num_fetches,
+                                  callback, user_data, this]() {
     Status status = Status::OK();
     ORT_TRY {
       if (run_options) {
