@@ -82,18 +82,16 @@ jobs:
         --use_qnn
         --qnn_home $(QnnSDKRootDir)
         --update --build --parallel
-      workingDirectory: '$(Build.BinariesDirectory)'
 
-  - powershell: >-
-      python $(Build.SourcesDirectory)\tools\ci_build\build.py
-        --config $(BuildConfig)
-        --build_dir $(Build.BinariesDirectory)
-        --cmake_generator "Visual Studio 17 2022"
-        --use_qnn
-        --qnn_home $(QnnSDKRootDir)
-        --skip_submodule_sync
+  - script: |
+      python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
+        --config $(BuildConfig) ^
+        --build_dir $(Build.BinariesDirectory) ^
+        --cmake_generator "Visual Studio 17 2022" ^
+        --use_qnn ^
+        --qnn_home $(QnnSDKRootDir) ^
+        --skip_submodule_sync ^
         --test --enable_onnx_tests
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run unit tests'
 
   - script: |
