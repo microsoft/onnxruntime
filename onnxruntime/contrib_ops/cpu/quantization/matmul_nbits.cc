@@ -179,24 +179,6 @@ class MatMulNBits final : public OpKernel {
   }
 };
 
-#ifdef MLAS_TARGET_AMD64_IX86
-template <>
-void MatMulNBits<MLFloat16>::PackScale(const Tensor& tensor) {
-  auto sptr = tensor.Data<MLFloat16>();
-  std::vector<float> scales_v(static_cast<unsigned int>(tensor.Shape().Size()));
-  MlasConvertHalfToFloatBuffer(sptr, &scales_v[0], scales_v.size());
-  MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), &scales_v[0],
-                               has_zp_input_, nullptr, nullptr);
-}
-
-template <>
-void MatMulNBits<float>::PackScale(const Tensor& tensor) {
-  auto sptr = tensor.Data<float>();
-  MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
-                               has_zp_input_, nullptr, nullptr);
-}
-#endif
-
 #if defined(ORT_NEURAL_SPEED)
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
@@ -289,24 +271,24 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       auto sptr = tensor.Data<float>();
       MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
-                                  has_zp_input_, nullptr, nullptr);
+                                   has_zp_input_, nullptr, nullptr);
       is_packed = false;
     } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
       auto zptr = tensor.Data<uint8_t>();
       MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), nullptr, has_zp_input_, zptr, nullptr);
       is_packed = false;
     }
-#endif
+#endif  // MLAS_TARGET_AMD64_IX86
   }
-#endif  // defined(ORT_NEURAL_SPEED)
+#endif  // !defined(ORT_NEURAL_SPEED)
 
-  return Status::OK();
+return Status::OK();
 }
 
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                                /*out*/ bool& is_packed,
-                                /*out*/ PrePackedWeights* prepacked_weights) {
+                                       /*out*/ bool& is_packed,
+                                       /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
 
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
@@ -642,7 +624,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
         b_data,                                         // quantized input
-        scales_fp32_.data(),                           // quantization scales
+        scales_fp32_.data(),                            // quantization scales
         static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
         static_cast<int32_t>(block_size_),              // quantization block size
         column_wise_quant_,                             // columnwise quantization or row-wise
@@ -656,7 +638,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, MLFloat16>(
           tmp_b_data_ptr.get(),                             // dequantized output
           b_data,                                           // quantized input
-          scales_fp32_.data(),                             // quantization scales
+          scales_fp32_.data(),                              // quantization scales
           static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
@@ -668,7 +650,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
-          scales_fp32_.data(),                           // quantization scales
+          scales_fp32_.data(),                            // quantization scales
           static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
