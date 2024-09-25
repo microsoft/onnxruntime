@@ -101,6 +101,10 @@ class ShaderHelper final {
     return *this;
   }
 
+  const std::vector<std::unique_ptr<ShaderVariableHelper>>& GetInputVars() {
+    return input_vars_;
+  }
+
   // Set the main function body of the shader.
   //
   // can be called only once.
