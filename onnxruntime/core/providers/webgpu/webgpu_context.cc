@@ -38,6 +38,9 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequestAdapterOptions req_adapter_options = {};
       wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       req_adapter_options.nextInChain = &adapter_toggles_desc;
+#ifdef WIN32
+      req_adapter_options.backendType = wgpu::BackendType::D3D12;
+#endif
 
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
       adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
@@ -392,7 +395,6 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
       "disable_robustness",
-      "disable_workgroup_init",
       "d3d_disable_ieee_strictness",
   };
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
