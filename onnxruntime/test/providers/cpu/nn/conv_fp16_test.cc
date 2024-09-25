@@ -37,12 +37,6 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& err_str = "",
                     int opset = 11) {
-#if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-  // a `return` after tester will make binary crash
-  if (!attributes.activation.empty()) {
-    return;
-  }
-#endif
   std::unique_ptr<OpTester> tester;
   if (!attributes.activation.empty()) {
     tester = std::make_unique<OpTester>("NhwcFusedConv", 1, onnxruntime::kMSDomain);
@@ -91,7 +85,9 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
     excluded_providers.insert(kQnnExecutionProvider);
   }
-
+  if (!attributes.activation.empty()) {
+    excluded_providers.insert(kCoreMLExecutionProvider);
+  }
   tester->Run(expect_result, err_str, excluded_providers);
 }
 
