@@ -305,11 +305,13 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
           ort_tensor_key_t ort_tensor_key{input_name};
           auto it = ort_ov_tensor_map.find(ort_tensor_key);
-          if ((it == ort_ov_tensor_map.end()) || (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
+          if ((it == ort_ov_tensor_map.end()) ||
+              (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
             ov_tensor_data_t ov_tensor_data;
             auto input = graph_input_info.at(input_idx);
             ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
-                                                                     (void*)tensor.GetTensorRawData());
+                                                                     const_cast<void*>(tensor.GetTensorRawData()));
+
             ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
             ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
@@ -349,12 +351,13 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
                                                    subgraph_context_.output_names);
         ort_tensor_key_t ort_tensor_key{output_name};
         const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
-        if ((it == ort_ov_tensor_map.end()) || (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
+        if ((it == ort_ov_tensor_map.end()) ||
+            (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
           ov_tensor_data_t ov_tensor_data;
           auto output = graph_output_info.at(output_idx);
           ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
           ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
-                                                                   (void*)tensor.GetTensorRawData());
+                                                                   const_cast<void*>(tensor.GetTensorRawData()));
           ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
           try {
