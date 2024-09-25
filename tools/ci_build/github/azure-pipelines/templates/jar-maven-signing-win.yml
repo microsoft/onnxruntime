@@ -50,7 +50,7 @@ steps:
         foreach ($file in $targeting_original_files) {
             $file_path = Join-Path $jar_file_directory -ChildPath $file
             Write-Host "GnuPG signing to file: "$file_path
-            & $gpg_exe_path --batch --pinentry-mode loopback --passphrase-file $passphrase_file -ab $file_path
+            & $gpg_exe_path --pinentry-mode loopback --passphrase-file $passphrase_file -ab $file_path
             Write-Host "GnuPG signed to file: "$file_path
         }
 
