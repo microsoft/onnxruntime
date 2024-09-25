@@ -168,6 +168,7 @@ export declare namespace Test {
 
     log: ReadonlyArray<{ category: string; config: Logger.Config }>;
     profile: boolean;
+    downloadModel: boolean;
     options: Options;
   }
 }

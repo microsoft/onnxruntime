@@ -48,6 +48,7 @@ Options:
                                  node
                                  bs         (for BrowserStack tests)
  -p, --profile                 Enable profiler.
+ -m, --download-model          Enable model download.
                                  Profiler will generate extra logs which include the information of events time consumption
  -t, --trace                   Enable trace.
  -P[=<...>], --perf[=<...>]    Generate performance number. Cannot be used with flag --debug.
@@ -168,6 +169,11 @@ export interface TestRunnerCliArgs {
    * Whether to enable InferenceSession's profiler
    */
   profile: boolean;
+
+  /**
+   * whether to enable model download
+   */
+  downloadModel: boolean;
 
   /**
    * Whether to enable file cache
@@ -429,6 +435,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logLevel = 'verbose';
   }
 
+  // Option: -m, --download-model
+  const downloadModel = args['download-model'] || args.m ? true : false;
+
   // Option: -t, --trace
   const trace = parseBooleanArg(args.trace || args.t, false);
 
@@ -515,6 +524,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     env: env as TestRunnerCliArgs['env'],
     logConfig,
     profile,
+    downloadModel,
     times: perf ? times : undefined,
     ioBindingMode: ioBindingMode as TestRunnerCliArgs['ioBindingMode'],
     optimizedModelFilePath,

@@ -799,6 +799,7 @@ export class ProtoOpTestContext {
   readonly ioBindingMode: Test.IOBindingMode;
   constructor(
     test: Test.OperatorTest,
+    private readonly downloadModel: boolean,
     private readonly sessionOptions: ort.InferenceSession.SessionOptions = {},
   ) {
     const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
@@ -986,7 +987,7 @@ export class ProtoOpTestContext {
     this.loadedData = onnx.ModelProto.encode(model).finish().slice();
 
     // in debug mode, open a new tab in browser for the generated onnx model.
-    if (ort.env.debug) {
+    if (this.downloadModel) {
       const modelFile = new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {
         type: 'application/octet-stream',
       });
