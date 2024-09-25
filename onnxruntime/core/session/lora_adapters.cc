@@ -4,15 +4,25 @@
 #include "lora_adapters.h"
 #include "lora/adapter_format_utils.h"
 
+#include "core/framework/data_transfer.h"
+#include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/error_code_helper.h"
 
 #include <fstream>
 #include <stdexcept>
+#include <string_view>
+#include <unordered_map>
+
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 
 namespace onnxruntime {
+
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+
 namespace lora {
 
 LoraAdapter::Param::Param(OrtValue ort_value_mapped) noexcept
@@ -42,9 +52,45 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
   InitializeParamsValues();
 }
 
+static Status GetDataTransfer(const OrtMemoryInfo& mem_info,
+                              std::unique_ptr<IDataTransfer>& data_transfer) {
+  ORT_RETURN_IF(mem_info.device.Type() == OrtDevice::CPU, "Destination must not be on CPU");
+  if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
+    auto* cuda_provider_info = TryGetProviderInfo_CUDA();
+    if (cuda_provider_info != nullptr) {
+      data_transfer = cuda_provider_info->CreateGPUDataTransfer();
+    }
+  }
+
+  if (data_transfer == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination provider: ",
+                           mem_info.name, " not available, copy failed");
+  }
+
+  return Status::OK();
+}
+
+static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
+                                     const AllocatorPtr& device_allocator,
+                                     const IDataTransfer& data_transfer,
+                                     OrtValue& out) {
+  OrtValue result;
+  const auto& src = ort_value_mapped.Get<Tensor>();
+  Tensor on_device(src.DataType(), src.Shape(), device_allocator);
+  ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, on_device));
+  Tensor::InitOrtValue(std::move(on_device), result);
+  out = std::move(result);
+  return Status::OK();
+}
+
 void LoraAdapter::InitializeParamsValues() {
   if (adapter_ == nullptr) {
     ORT_THROW("Adapter is not loaded yet.");
+  }
+
+  std::unique_ptr<IDataTransfer> data_transfer;
+  if (device_allocator_) {
+    ORT_THROW_IF_ERROR(GetDataTransfer(device_allocator_->Info(), data_transfer));
   }
 
   const auto* params = adapter_->parameters();
@@ -52,8 +98,16 @@ void LoraAdapter::InitializeParamsValues() {
   params_values.reserve(params->size());
   for (const auto* param : *params) {
     auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
-    Param lora_param(std::move(ort_value));
-    params_values.emplace(std::move(name), std::move(lora_param));
+    if (device_allocator_) {
+      OrtValue ort_value_ondevice;
+      ORT_THROW_IF_ERROR(CreateOrtValueOnDevice(ort_value, device_allocator_,
+                                                *data_transfer, ort_value_ondevice));
+      Param lora_param(std::move(ort_value), std::move(ort_value_ondevice));
+      params_values.emplace(std::move(name), std::move(lora_param));
+    } else {
+      Param lora_param(std::move(ort_value));
+      params_values.emplace(std::move(name), std::move(lora_param));
+    }
   }
   params_values_.swap(params_values);
 }
