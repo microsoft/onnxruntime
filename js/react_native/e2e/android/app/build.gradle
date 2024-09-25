@@ -168,6 +168,7 @@ dependencies {
     androidTestImplementation 'androidx.test:rules:1.4.0'
     implementation "com.facebook.react:react-android"
     implementation "com.facebook.react:hermes-android"
+    implementation project(':react-native-fs')
     implementation project(':onnxruntime-react-native')
     // specify ORT dependency here so it can be found in libs flatDir repository
     implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
@@ -180,4 +181,3 @@ task copyDownloadableDepsToLibs(type: Copy) {
     into 'libs'
 }
 
-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
