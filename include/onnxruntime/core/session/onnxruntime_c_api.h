@@ -3650,10 +3650,10 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Only used for float32 model.
+       "enable_htp_fp16_precision": Used for float32 model for HTP backend.
        Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": Default. With fp32 precision.
-         - "1": With fp16 precision.
+         - "0": With fp32 precision.
+         - "1": Default. With fp16 precision.
        "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
          - "0": Default. Disabled.
          - "1": Enabled.

@@ -1787,6 +1787,90 @@ TEST(MathOpTest, Min_12_MLFloat16_Scalar1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+void TestFloat16MinMax(
+    const char* op_name,
+    const std::vector<int64_t>& lhs_dim,
+    const std::initializer_list<float>& lhs_values,
+    const std::vector<int64_t>& rhs_dim,
+    const std::initializer_list<float>& rhs_values,
+    const std::vector<int64_t>& out_dim,
+    const std::initializer_list<float>& out_values) {
+  {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    if (nullptr != DefaultCpuExecutionProvider()) {
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+    }
+    if (nullptr != DefaultCudaExecutionProvider()) {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
+    OpTester test(op_name, 13);
+    test.AddInput<MLFloat16>("data_0", lhs_dim, MakeMLFloat16(lhs_values));
+    test.AddInput<MLFloat16>("data_1", rhs_dim, MakeMLFloat16(rhs_values));
+    test.AddOutput<MLFloat16>("output", out_dim, MakeMLFloat16(out_values));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+
+    OpTester test(op_name, 13);
+    test.AddInput<BFloat16>("data_0", lhs_dim, MakeBFloat16(lhs_values));
+    test.AddInput<BFloat16>("data_1", rhs_dim, MakeBFloat16(rhs_values));
+    test.AddOutput<BFloat16>("output", out_dim, MakeBFloat16(out_values));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Min_13_Float16_MatrixVector) {
+  TestFloat16MinMax("Min",
+                    {3, 3},
+                    {1.0f, 1.0f, 1.0f,
+                     -0.5f, 0.0f, -2.0f,
+                     0.5f, 0.0f, 2.0f},
+                    {3, 1}, {0.0f, -1.0f, 1.0f},
+                    {3, 3},
+                    {0.0f, 0.0f, 0.0f,
+                     -1.0f, -1.0f, -2.0f,
+                     0.5f, 0.0f, 1.0f});
+}
+
+TEST(MathOpTest, Min_13_Float16_VectorMatrix) {
+  TestFloat16MinMax("Min",
+                    {3, 1}, {0.0f, -1.0f, 1.0f},
+                    {3, 4},
+                    {1.0f, 1.0f, 1.0f, -1.0f,
+                     -0.5f, 0.0f, -2.0f, -1.25f,
+                     0.5f, 0.0f, 2.0f, 1.5f},
+                    {3, 4},
+                    {0.0f, 0.0f, 0.0f, -1.0f,
+                     -1.0f, -1.0f, -2.0f, -1.25f,
+                     0.5f, 0.0f, 1.0f, 1.0f});
+}
+
+TEST(MathOpTest, Min_13_Float16_Nan) {
+  TestFloat16MinMax("Min",
+                    {4, 1}, {-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f, 0.5f},
+                    {4, 1}, {0.5f, 1.0f, 0.25f, std::numeric_limits<float>::quiet_NaN()},
+                    {4, 1},
+                    {-1.0f, std::numeric_limits<float>::quiet_NaN(), 0.25f, std::numeric_limits<float>::quiet_NaN()});
+}
+
+TEST(MathOpTest, Min_13_Float16_Nan_with_scalar) {
+  TestFloat16MinMax("Min",
+                    {3, 1}, {-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f},
+                    {1}, {0.25f},
+                    {3, 1}, {-1.0f, std::numeric_limits<float>::quiet_NaN(), 0.25f});
+}
+
+TEST(MathOpTest, Min_13_Float16_with_scalar_Nan) {
+  TestFloat16MinMax("Min",
+                    {3, 1}, {-0.5f, 1.0f, 1.5f},
+                    {1}, {std::numeric_limits<float>::quiet_NaN()},
+                    {3, 1},
+                    {std::numeric_limits<float>::quiet_NaN(),
+                     std::numeric_limits<float>::quiet_NaN(),
+                     std::numeric_limits<float>::quiet_NaN()});
+}
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -2135,6 +2219,59 @@ TEST(MathOpTest, Max_12_MLFloat16_Scalar1) {
   test.AddOutput<MLFloat16>("max", {1, 3},
                             MakeMLFloat16({2.f, 2.f, 2.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_13_Float16_MatrixVector) {
+  TestFloat16MinMax("Max",
+                    {4, 3},
+                    {1.0f, 1.0f, 1.0f,
+                     -0.5f, 0.0f, -2.0f,
+                     0.0f, 0.5f, 0.75f,
+                     0.5f, 0.0f, 2.0f},
+                    {4, 1}, {0.0f, -1.0f, 0.5f, 1.0f},
+                    {4, 3},
+                    {1.0f, 1.0f, 1.0f,
+                     -0.5f, 0.0f, -1.0f,
+                     0.5f, 0.5f, 0.75f,
+                     1.0f, 1.0f, 2.0f});
+}
+
+TEST(MathOpTest, Max_13_Float16_VectorMatrix) {
+  TestFloat16MinMax("Max",
+                    {3, 1}, {0.0f, -1.0f, 1.0f},
+                    {3, 3},
+                    {1.0f, 1.0f, 1.0f,
+                     -0.5f, 0.0f, -2.0f,
+                     0.5f, 0.0f, 2.0f},
+                    {3, 3},
+                    {1.0f, 1.0f, 1.0f,
+                     -0.5f, 0.0f, -1.0f,
+                     1.0f, 1.0f, 2.0f});
+}
+
+TEST(MathOpTest, Max_13_Float16_Nan) {
+  TestFloat16MinMax("Max",
+                    {4, 1}, {-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f, 0.5f},
+                    {4, 1}, {0.5f, 1.0f, 0.25f, std::numeric_limits<float>::quiet_NaN()},
+                    {4, 1},
+                    {0.5f, std::numeric_limits<float>::quiet_NaN(), 1.0f, std::numeric_limits<float>::quiet_NaN()});
+}
+
+TEST(MathOpTest, Max_13_Float16_Nan_with_scalar) {
+  TestFloat16MinMax("Max",
+                    {3, 1}, {-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f},
+                    {1}, {0.25f},
+                    {3, 1}, {0.25f, std::numeric_limits<float>::quiet_NaN(), 1.0f});
+}
+
+TEST(MathOpTest, Max_13_Float16_with_scalar_Nan) {
+  TestFloat16MinMax("Max",
+                    {3, 1}, {-0.5f, 1.0f, 1.5f},
+                    {1}, {std::numeric_limits<float>::quiet_NaN()},
+                    {3, 1},
+                    {std::numeric_limits<float>::quiet_NaN(),
+                     std::numeric_limits<float>::quiet_NaN(),
+                     std::numeric_limits<float>::quiet_NaN()});
 }
 
 TEST(MathOpTest, Not) {
