@@ -81,7 +81,7 @@ jobs:
       Platform: 'x64'
       BuildConfig: $(BuildConfig)
 
-  - powershell: >
+  - powershell: >-
      python $(Build.SourcesDirectory)\tools\ci_build\build.py
        --config $(BuildConfig)
        --build_dir $(Build.BinariesDirectory)

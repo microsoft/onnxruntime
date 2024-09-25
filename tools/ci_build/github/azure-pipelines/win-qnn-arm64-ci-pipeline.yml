@@ -84,7 +84,7 @@ jobs:
         --update --build --parallel
       workingDirectory: '$(Build.BinariesDirectory)'
 
-  - powershell: >
+  - powershell: >-
       python $(Build.SourcesDirectory)\tools\ci_build\build.py
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
