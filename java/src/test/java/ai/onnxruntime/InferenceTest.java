@@ -60,8 +60,8 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /** Tests for the onnx-runtime Java interface. */
 public class InferenceTest {
-  private static final String QnnEpBackendPathEnvironmentVariableName =
-      "ORT_TEST_QNN_EP_BACKEND_PATH";
+  private static final String qnnEpBackendPathEnvironmentVariableName =
+      "ORT_JAVA_TEST_QNN_EP_BACKEND_PATH";
 
   private static final Logger logger = Logger.getLogger(InferenceTest.class.getName());
 
@@ -694,7 +694,7 @@ public class InferenceTest {
 
   @Test
   @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
-  @EnabledIfEnvironmentVariable(named = QnnEpBackendPathEnvironmentVariableName, matches = ".+")
+  @EnabledIfEnvironmentVariable(named = qnnEpBackendPathEnvironmentVariableName, matches = ".+")
   public void testQNN() throws OrtException {
     runProvider(OrtProvider.QNN);
   }
@@ -1998,7 +1998,7 @@ public class InferenceTest {
           options.addXnnpack(Collections.emptyMap());
           break;
         case QNN:
-          String backendPath = System.getenv(QnnEpBackendPathEnvironmentVariableName);
+          String backendPath = System.getenv(qnnEpBackendPathEnvironmentVariableName);
           options.addQnn(Collections.singletonMap("backend_path", backendPath));
           break;
         case VITIS_AI:
