@@ -27,9 +27,9 @@ The following table lists AMD targets that are supported by the Vitis AI ONNX Ru
 | **Architecture**   							    | **Family**                                                 | **Supported Targets**                                      | **Supported OS**                                           |
 |---------------------------------------------------|------------------------------------------------------------|------------------------------------------------------------|------------------------------------------------------------|
 | AMD64							                    | Ryzen AI                                                   | AMD Ryzen 7040U, 7040HS                                    | Windows                                                    |
-| ARM64 Cortex-A53   				                | Zynq UltraScale+ MPSoC                                     | ZCU102, ZCU104, KV260                                      | Linux                                                      |
-| ARM64 Cortex-A72				                    | Versal AI Core / Premium                                   | VCK190                                                     | Linux                                                      |
-| ARM64	Cortex-A72						            | Versal AI Edge                                             | VEK280                                                     | Linux                                                      |
+| Arm® Cortex®-A53   				                | Zynq UltraScale+ MPSoC                                     | ZCU102, ZCU104, KV260                                      | Linux                                                      |
+| Arm® Cortex®-A72				                    | Versal AI Core / Premium                                   | VCK190                                                     | Linux                                                      |
+| Arm® Cortex®-A72						            | Versal AI Edge                                             | VEK280                                                     | Linux                                                      |
 
 
 AMD Adaptable SoC developers can also leverage the Vitis AI ONNX Runtime Execution Provider to support custom (chip-down) designs.

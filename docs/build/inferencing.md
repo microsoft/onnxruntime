@@ -88,7 +88,8 @@ If you would like to use [Xcode](https://developer.apple.com/xcode/) to build th
 
 Without this flag, the cmake build generator will be Unix makefile by default.
 
-Today, Mac computers are either Intel-Based or Apple silicon(aka. ARM) based. By default, ONNX Runtime's build script only generate bits for the CPU ARCH that the build machine has. If you want to do cross-compiling: generate ARM binaries on a Intel-Based Mac computer, or generate x86 binaries on a Mac ARM computer, you can set the "CMAKE_OSX_ARCHITECTURES" cmake variable. For example:
+Today, Mac computers are either Intel-Based or Apple silicon-based. By default, ONNX Runtime's build script only generate bits for the CPU ARCH that the build machine has. If you want to do cross-compiling: generate arm64 binaries on a Intel-Based Mac computer, or generate x86 binaries on a Mac
+system with Apple silicon, you can set the "CMAKE_OSX_ARCHITECTURES" cmake variable. For example:
 
 Build for Intel CPUs:
 ```bash
@@ -311,21 +312,21 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
     ```
 
 
-### ARM
+### Arm
 
-There are a few options for building ONNX Runtime for ARM. 
+There are a few options for building ONNX Runtime for Arm®-based devices. 
 
-First, you may do it on a real ARM device, or on a x86_64 device with an emulator(like qemu), or on a x86_64 device with a docker container with an emulator(you can run an ARM container on a x86_64 PC). Then the build instructions are essentially the same as the instructions for Linux x86_64. However, it wouldn't work if your the CPU you are targeting is not 64-bit since the build process needs more than 2GB memory.  
+First, you may do it on a real Arm-based device, or on a x86_64 device with an emulator(like qemu), or on a x86_64 device with a docker container with an emulator(you can run an Arm-based container on a x86_64 PC). Then the build instructions are essentially the same as the instructions for Linux x86_64. However, it wouldn't work if your the CPU you are targeting is not 64-bit since the build process needs more than 2GB memory.  
 
-* [Cross compiling for ARM with simulation (Linux/Windows)](#cross-compiling-for-arm-with-simulation-linuxwindows) - **Recommended**;  Easy, slow, ARM64 only(no support for ARM32)
+* [Cross compiling for Arm-based devices with simulation (Linux/Windows)](#cross-compiling-for-arm-with-simulation-linuxwindows) - **Recommended**;  Easy, slow, ARM64 only(no support for ARM32)
 * [Cross compiling on Linux](#cross-compiling-on-linux) - Difficult, fast
 * [Cross compiling on Windows](#cross-compiling-on-windows)
 
-#### Cross compiling for ARM with simulation (Linux/Windows)
+#### Cross compiling for Arm-based devices with simulation (Linux/Windows)
 
 *EASY, SLOW, RECOMMENDED*
 
-This method relies on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts. The build process can take hours, and may run of memory if the target CPU is 32-bit.
+This method relies on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every Arm architecture instruction to x86. This is potentially much faster than compiling natively on a low-end device. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an Arm-based device where it can be invoked in Python 3 scripts. The build process can take hours, and may run of memory if the target CPU is 32-bit.
 
 #### Cross compiling on Linux
 
@@ -364,12 +365,12 @@ This option is very fast and allows the package to be built in minutes, but is c
 
     You must also know what kind of flags your target hardware need, which can differ greatly. For example, if you just get the normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
-    A target env is identifed by:
+    A target env is identified by:
 
     * Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
     * OS: bare-metal or linux.
     * Libc: gnu libc/ulibc/musl/...
-    * ABI: ARM has mutilple ABIs like eabi, eabihf...
+    * ABI: Arm has multiple ABIs like eabi, eabihf...
 
     You can get all these information from the previous output, please be sure they are all correct.
    
@@ -528,8 +529,8 @@ This option is very fast and allows the package to be built in minutes, but is c
 
 **Using Visual C++ compilers**
 
-1. Download and install Visual C++ compilers and libraries for ARM(64).
-   If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
+1. Download and install Visual C++ compilers and libraries for Arm(64).
+   If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding Arm(64) compilers and libraries.
 
 2. Use `.\build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
