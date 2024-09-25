@@ -375,7 +375,9 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           auto allocator_name = tensor.GetTensorMemoryInfo().GetAllocatorName();
           ov_tensor_data_t ov_tensor_key;
           ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
-          {
+          if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
+            ov_tensor_key = it->second;
+          } else {
             // Does this make sense for both types of allocators?
             auto input = graph_input_info.at(input_idx);
             if (allocator_name == OpenVINO_RT_NPU) {
@@ -386,7 +388,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
               ov_tensor_key.copy_needed = true;
               ov_tensor_key.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape());
             }
-            ort_ov_tensor_map[ort_tensor_key] = ov_tensor_key;
+            ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_key);
 
             if (ov_tensor_key.copy_needed) {
               const char* ort_tensor_data = tensor.GetTensorData<char>();
@@ -433,7 +435,9 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
 
         ov_tensor_data_t ov_tensor_data;
         ort_tensor_key_t ort_tensor_key{tensor.GetTensorRawData(), allocator_name};
-        {
+        if (const auto& it = ort_ov_tensor_map.find(ort_tensor_key); it != ort_ov_tensor_map.end()) {
+          ov_tensor_data = it->second;
+        } else {
           auto output = graph_output_info.at(output_idx);
           if (allocator_name == OpenVINO_RT_NPU) {
             ov_tensor_data.copy_needed = false;
@@ -443,7 +447,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
             ov_tensor_data.copy_needed = true;
             ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape());
           }
-          ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
+          ort_ov_tensor_map.emplace(ort_tensor_key, ov_tensor_data);
 
           try {
             infer_request->SetTensor(output_name, ov_tensor_data.tensor_ptr);
