@@ -129,7 +129,7 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
   return t_disp.InvokeRet<Status, SrcDispatcher>(this, p_ctx, axis_, epsilon_, simplified_, contrib_op_);
 }
 
-template<typename T, typename U>
+template <typename T, typename U>
 Status LayerNormImpl::ComputeWithoutContext(
   const T* X_data,
   const TensorShape& x_shape,

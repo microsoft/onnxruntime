@@ -15,7 +15,7 @@ class LayerNormImpl : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
   // This method was created so that it can be called directly from `test/onnx/microbenchmark/layer_normalization.cc`.
-  template<typename T, typename U>
+  template <typename T, typename U>
   Status ComputeWithoutContext(
     const T* X_data,
     const TensorShape& x_shape,
@@ -28,8 +28,8 @@ class LayerNormImpl : public OpKernel {
     U* inv_std_dev,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     int64_t axis,
-    float epsilon = epsilon_,
-    bool simplified = simplified_
+    float epsilon,
+    bool simplified
   ) const;
 
  private:
