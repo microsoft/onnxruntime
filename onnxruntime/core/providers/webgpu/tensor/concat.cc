@@ -131,7 +131,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   for (int i = 0; i < input_count; ++i) {
     program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
   }
-  program.CacheHint(absl::StrCat(prepare.axis))
+  program.CacheHint(absl::StrCat(input_count, prepare.axis))
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((prepare.output_num_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()),
