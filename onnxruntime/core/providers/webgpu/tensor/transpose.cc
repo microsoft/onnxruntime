@@ -76,31 +76,22 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
   if (use_shared_) {
-    const auto tile_size = std::to_string(tile_size_);
-    shader.AppendImplementation("var<workgroup> tile : array<array<output_value_t, " + tile_size + " + 1>, " + tile_size + ">;\n");
+    const auto tile_size = std::to_string(TILE_SIZE);
+    shader.AppendImplementation("var<workgroup> tile : array<array<output_value_t, tile_size + 1>, tile_size>;\n");
     shader.SetMainFunctionBody(
-        "  let stride = (uniforms.output_shape[1] - 1) / " + tile_size +
-        " + 1;\n"
+        "  let stride = (uniforms.output_shape[1] - 1) / tile_size + 1;\n"
         "  let workgroup_id_x = workgroup_idx % stride;\n"
         "  let workgroup_id_y = workgroup_idx / stride;\n"
-        "  let input_col = workgroup_id_y * " +
-        tile_size +
-        "u + local_id.x;\n"
-        "  let input_row = workgroup_id_x * " +
-        tile_size +
-        "u + local_id.y;\n"
+        "  let input_col = workgroup_id_y * tile_size + local_id.x;\n"
+        "  let input_row = workgroup_id_x * tile_size + local_id.y;\n"
         "  if (input_row < uniforms.a_shape[0] && input_col < uniforms.a_shape[1]) {\n"
         "    tile[local_id.y][local_id.x] = " +
         input.GetByIndices("a_indices_t(input_row, input_col)") +
         ";\n"
         "  }\n"
         "  workgroupBarrier();\n"
-        "  let output_col = workgroup_id_x * " +
-        tile_size +
-        "u + local_id.x;\n"
-        "  let output_row = workgroup_id_y * " +
-        tile_size +
-        "u + local_id.y;\n"
+        "  let output_col = workgroup_id_x * tile_size + local_id.x;\n"
+        "  let output_row = workgroup_id_y * tile_size + local_id.y;\n"
         "  if (output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]) {\n    " +
         output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y]") + "\n  }");
   } else {
@@ -145,8 +136,8 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   }
 
   uint32_t output_size = gsl::narrow_cast<int32_t>(input_tensor->Shape().Size());
-  const auto tile_size = 16;
-  TransposeProgram program{*p_perm, use_shared, tile_size};
+  TransposeProgram program{*p_perm, use_shared};
+  const auto tile_size = TransposeProgram::TILE_SIZE;
   if (use_shared) {
     program.SetWorkgroupSize(tile_size, tile_size, 1);
   }

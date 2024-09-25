@@ -13,18 +13,19 @@ namespace webgpu {
 
 class TransposeProgram final : public Program<TransposeProgram> {
  public:
-  TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared, const int tile_size)
-      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()), use_shared_(use_shared), tile_size_(tile_size) {
+  TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared)
+      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()), use_shared_(use_shared) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+  constexpr static const uint32_t TILE_SIZE = 16;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_CONSTANTS({"tile_size", TILE_SIZE});
 
  private:
   InlinedVector<int64_t> perm_;
   const bool use_shared_;
-  const uint32_t tile_size_;
 };
 
 class Transpose final : public WebGpuKernel, public TransposeBase {
