@@ -102,6 +102,12 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
       workingDirectory: $(Build.SourcesDirectory)
 
+  - template: jar-maven-signing-linux.yml
+    parameters:
+      JarFileDirectory: '$(artifacts_directory)'
+      WorkingDirectory: '$(Build.BinariesDirectory)'
+      EnableJarMavenSigning: true
+
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(artifacts_directory)'
