@@ -1180,14 +1180,14 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
 
   if (!tracelogging_provider_ep_enabled) {
     if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
-    outfile << event_data_extended.v1.timestamp << ","
-            << message << ","
-            << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
-            << unit << ","
-            << "BACKEND"
-            << ","
-            << eventLevel << ","
-            << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
+      outfile << event_data_extended.v1.timestamp << ","
+              << message << ","
+              << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
+              << unit << ","
+              << "BACKEND"
+              << ","
+              << eventLevel << ","
+              << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
     }
   } else {
 #ifdef _WIN32
