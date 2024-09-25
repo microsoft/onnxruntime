@@ -125,8 +125,8 @@ export OBJECT_MODE=64
 export BUILD_TYPE="Release"
 export CC="/opt/IBM/openxlC/17.1.2/bin/ibm-clang" 
 export CXX="/opt/IBM/openxlC/17.1.2/bin/ibm-clang++_r"
-export CFLAGS="-pthread -m64 -D_ALL_SOURCE -mcmodel=large  -Wno-deprecate-lax-vec-conv-all  -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare "
-export CXXFLAGS=" -pthread -m64 -D_ALL_SOURCE -mcmodel=large -Wno-deprecate-lax-vec-conv-all -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare"
+export CFLAGS="-pthread -m64 -D_ALL_SOURCE -mcmodel=large -Wno-deprecate-lax-vec-conv-all  -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare"
+export CXXFLAGS="-pthread -m64 -D_ALL_SOURCE -mcmodel=large -Wno-deprecate-lax-vec-conv-all -Wno-unused-but-set-variable -Wno-unused-command-line-argument -maltivec -mvsx  -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare"
 export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -lpthread"
 export LIBPATH="$PWD/build/Linux/$BUILD_TYPE/"
 ```
@@ -140,10 +140,9 @@ export OBJECT_MODE=64
 export BUILD_TYPE="Release"
 export CC="/opt/freeware/bin/gcc" 
 export CXX="/opt/freeware/bin/g++"
-export CPPFLAGS="-I/opt/freeware/include"
-export CFLAGS="-maix64 -pthread  ${CPPFLAGS} -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx   -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
-export CXXFLAGS="-maix64 -pthread ${CPPFLAGS} -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx  -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
-export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/  -L/opt/freeware/lib/pthread -L/opt/freeware/lib64 -L/opt/freeware/lib -lpthread -Wl,-bbigtoc -lpython3.9"
+export CFLAGS="-maix64 -pthread -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx   -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
+export CXXFLAGS="-maix64 -pthread -DFLATBUFFERS_LOCALE_INDEPENDENT=0 -maltivec -mvsx  -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -fno-extern-tls-init -Wl,-berok "
+export LDFLAGS="-L$PWD/build/Linux/$BUILD_TYPE/ -Wl,-bbigtoc -lpython3.9"
 export LIBPATH="$PWD/build/Linux/$BUILD_TYPE"
 ```
 To initiate build, run the below command
@@ -153,8 +152,7 @@ To initiate build, run the below command
   --build_shared_lib \
   --skip_submodule_sync \
   --cmake_extra_defines CMAKE_INSTALL_PREFIX=$PWD/install \
-  --parallel   \
-  --allow_running_as_root 
+  --parallel  
 ```
 
 * If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX.
