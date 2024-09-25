@@ -49,7 +49,6 @@ bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                const logging::Logger& logger,
                                 QnnModelLookupTable& qnn_models);
 
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
