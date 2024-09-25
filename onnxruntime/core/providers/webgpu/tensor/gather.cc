@@ -17,31 +17,19 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   calc_data_indices.imbue(std::locale::classic());
   calc_data_indices << "var indices_indices  = input_indices_indices_t(0);\n";
   for (int i = 0; i < indices.Rank(); i++) {
-    calc_data_indices << "indices_indices";
-    if (indices.Rank() > 1) {
-      calc_data_indices << "[" << i << "]";
-    }
-    calc_data_indices << " = output_indices[uniforms.axis + " << i << "];\n";
+    calc_data_indices << indices.IndicesSet("indices_indices", i, output.IndicesGet("output_indices", axis_ + i)) << ";\n";
   }
   calc_data_indices << "var idx = " << indices.GetByIndices("indices_indices") << ";\n"
                     << "if (idx < 0) {\n"
-                    << "  idx = idx + input_indices_value_t(uniforms.data_shape[uniforms.axis]);\n"
+                    << "  idx = idx + input_indices_value_t(uniforms.data_shape[" << axis_ << "]);\n"
                     << "}\n"
                     << "var data_indices : data_indices_t;\n";
   for (int i = 0, j = 0; i < data.Rank(); i++) {
-    calc_data_indices << "data_indices";
-    if (data.Rank() > 1) {
-      calc_data_indices << "[" << i << "]";
-    }
     if (i == SafeInt<int>(axis_)) {
-      calc_data_indices << " = u32(idx);\n";
+      calc_data_indices << data.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
       j += indices.Rank();
     } else {
-      calc_data_indices << " = output_indices";
-      if (output.Rank() > 1) {
-        calc_data_indices << "[" << j << "]";
-      }
-      calc_data_indices << ";\n";
+      calc_data_indices << data.IndicesSet("data_indices", i, output.IndicesGet("output_indices", j)) << ";\n";
       j++;
     }
   }
@@ -70,7 +58,7 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
       .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Rank})
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(axis))
-      .AddUniformVariables({{data_size}, {axis}});
+      .AddUniformVariables({{data_size}});
   return context.RunProgram(program);
 }
 

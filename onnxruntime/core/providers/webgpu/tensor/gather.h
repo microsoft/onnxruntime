@@ -16,8 +16,7 @@ class GatherProgram final : public Program<GatherProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32},
-                                          {"axis", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t axis_;
