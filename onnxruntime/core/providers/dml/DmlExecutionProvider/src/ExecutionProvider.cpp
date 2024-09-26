@@ -676,7 +676,7 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto cpuOnDmlOperators = std::array<const char*, 8>{
+        auto cpuOnDmlOperators = std::array<const char*, 9>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
@@ -684,7 +684,8 @@ namespace Dml
             "SequenceErase",
             "SequenceInsert",
             "OptionalGetElement",
-            "OptionalHasElement"
+            "OptionalHasElement",
+            "If",
         };
 
         for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
