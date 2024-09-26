@@ -62,10 +62,8 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info,
 #endif
   }
 
-  if (data_transfer == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination provider: ",
-                           mem_info.name, " not available, copy failed");
-  }
+  ORT_RETURN_IF(data_transfer == nullptr, "Destination memory device: ",
+                mem_info.name, " not available, copy failed");
 
   return Status::OK();
 }
@@ -77,7 +75,12 @@ static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
   OrtValue result;
   const auto& src = ort_value_mapped.Get<Tensor>();
   Tensor on_device(src.DataType(), src.Shape(), device_allocator);
-  ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, on_device));
+  {
+    auto status = data_transfer.CopyTensor(src, on_device);
+    if (!status.IsOK()) {
+      return status;
+    }
+  }
   Tensor::InitOrtValue(std::move(on_device), result);
   out = std::move(result);
   return Status::OK();
