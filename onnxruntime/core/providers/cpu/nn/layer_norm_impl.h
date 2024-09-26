@@ -29,8 +29,7 @@ class LayerNormImpl : public OpKernel {
     onnxruntime::concurrency::ThreadPool* thread_pool,
     int64_t axis,
     float epsilon,
-    bool simplified
-  ) const;
+    bool simplified) const;
 
  private:
   template <typename T, typename U>
@@ -38,7 +37,8 @@ class LayerNormImpl : public OpKernel {
 
   template <typename T>
   struct SrcDispatcher {
-    Status operator()(const LayerNormImpl* p_instance, OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified, bool contrib_op) const {
+    Status operator()(const LayerNormImpl* p_instance, OpKernelContext* p_ctx, int64_t orig_axis,
+      float epsilon, bool simplified, bool contrib_op) const {
       // the contrib op kernel was always registered with the same type for all constraints.
       // our implementation of the onnx op only supports 'float' as the U constraint.
   #if !defined(DISABLE_CONTRIB_OPS)
