@@ -4410,7 +4410,7 @@ TEST(CApiTest, RunWithLoraAdapter) {
 
   Ort::LoraAdapter adapter(adapter_path, nullptr);
   Ort::RunOptions run_options;
-  run_options.AddLoraAdapterActive(adapter);
+  run_options.AddActiveLoraAdapter(adapter);
 
   // Single input
   constexpr const std::array<int64_t, 2> input_shape = {4, 4};

@@ -785,7 +785,7 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * Wraps OrtApi::RunOptionsSetLoraAdapterActive
    * \param adapter The LoraAdapter to be used as the active adapter
    */
-  RunOptions& AddLoraAdapterActive(const LoraAdapter& adapter);
+  RunOptions& AddActiveLoraAdapter(const LoraAdapter& adapter);
 };
 
 namespace detail {
