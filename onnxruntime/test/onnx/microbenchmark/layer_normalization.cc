@@ -24,6 +24,29 @@
 
 using namespace onnxruntime;
 
+namespace {
+
+static const std::vector<int64_t> dims{1, 256, 1024};
+static const size_t num_elems = dims[0] * dims[1] * dims[2];
+static const std::vector<float> float_vals(num_elems, 1.0f);
+static const std::vector<MLFloat16> MLFloat16_vals(num_elems, MLFloat16(1.0f));
+
+} // namespace
+
+template <typename T>
+const T* getVector();
+
+template <>
+const float* getVector<float>() {
+    return float_vals.data();
+}
+
+template <>
+const MLFloat16* getVector<MLFloat16>() {
+    return MLFloat16_vals.data();
+}
+
+
 template<typename T, typename U>
 static void BM_LayerNormalization(benchmark::State& state) {
   bool simplified = false;
@@ -48,32 +71,17 @@ static void BM_LayerNormalization(benchmark::State& state) {
 
   LayerNormImpl layer_norm_impl(op_kernel_info);
 
-  std::vector<int64_t> x_dims{2, 2, 2};
-  TensorShape x_shape(x_dims);
-  std::vector<float> x{1, 1, 1, 1, 1, 1, 1, 1};
+  TensorShape x_shape(dims);
+  TensorShape scale_shape(dims);
+  TensorShape bias_shape(dims);
 
-  std::vector<int64_t> scale_bias_dims{1, 2, 2};
-  TensorShape scale_shape(scale_bias_dims);
-  TensorShape bias_shape(scale_bias_dims);
-  std::vector<float> scale{1, 1, 1, 1};
-  std::vector<float> bias{1, 1, 1, 1};
+  const T* x_data = getVector<T>();
+  const T* scale_data = getVector<T>();
+  const T* bias_data = getVector<T>();
 
-  T* X_data = static_cast<T*>(malloc(x.size() * sizeof(T)));
-  T* scale_data = static_cast<T*>(malloc(scale.size() * sizeof(T)));
-  T* bias_data = static_cast<T*>(malloc(bias.size() * sizeof(T)));
-  for (size_t i = 0; i < x.size(); i++) {
-    X_data[i] = T(x[i]);
-  }
-  for (size_t i = 0; i < scale.size(); i++) {
-    scale_data[i] = T(scale[i]);
-  }
-  for (size_t i = 0; i < bias.size(); i++) {
-    bias_data[i] = T(bias[i]);
-  }
-
-  T* Y_data = static_cast<T*>(malloc(x.size() * sizeof(T)));
-  U* mean_data = static_cast<U*>(malloc(x.size() * sizeof(U)));
-  U* inv_std_dev_data = static_cast<U*>(malloc(x.size() * sizeof(U)));
+  T* Y_data = static_cast<T*>(malloc(num_elems * sizeof(T)));
+  U* mean_data = static_cast<U*>(malloc(num_elems * sizeof(U)));
+  U* inv_std_dev_data = static_cast<U*>(malloc(num_elems * sizeof(U)));
 
   OrtThreadPoolParams tp_params;
   tp_params.name = ORT_TSTR("intra-op");
@@ -81,7 +89,7 @@ static void BM_LayerNormalization(benchmark::State& state) {
     &Env::Default(), tp_params, concurrency::ThreadPoolType::INTRA_OP);
 
   for (auto _ : state) {
-    auto status = layer_norm_impl.ComputeWithoutContext(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape,
+    auto status = layer_norm_impl.ComputeWithoutContext(x_data, x_shape, scale_data, scale_shape, bias_data, bias_shape,
       Y_data, mean_data, inv_std_dev_data, thread_pool.get(), axis, epsilon, simplified);
 
     if (! status.IsOK())
@@ -95,14 +103,10 @@ static void BM_LayerNormalization(benchmark::State& state) {
 
 BENCHMARK(BM_LayerNormalization<float, float>)
     ->Arg(1)
-    ->Arg(256)
-    ->Arg(1024)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 BENCHMARK(BM_LayerNormalization<MLFloat16, MLFloat16>)
     ->Arg(1)
-    ->Arg(256)
-    ->Arg(1024)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
