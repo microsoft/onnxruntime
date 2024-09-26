@@ -30,37 +30,40 @@ void TestBinaryFloat16(const char* op_name,
                        const std::vector<int64_t>& out_dim,
                        const std::initializer_list<float>& out_values,
                        bool enable_bf16 = true) {
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef COREML_ENABLE_MLPROGRAM
-  execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+    execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
+    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
-  if (execution_providers.size() > 0) {
-    OpTester tester(op_name, 14);
-    tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
-    tester.AddInput<MLFloat16>("B", rhs_dim, MakeMLFloat16(rhs_values));
-    tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
+    if (execution_providers.size() > 0) {
+      OpTester tester(op_name, 14);
+      tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
+      tester.AddInput<MLFloat16>("B", rhs_dim, MakeMLFloat16(rhs_values));
+      tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
 
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
   }
-  execution_providers.clear();
-
+  {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
+    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 
-  if (enable_bf16 && execution_providers.size() > 0) {
-    OpTester tester(op_name, 14);
-    tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
-    tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
-    tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
+    if (enable_bf16 && execution_providers.size() > 0) {
+      OpTester tester(op_name, 14);
+      tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
+      tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
+      tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
 
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
   }
 }
 
@@ -71,36 +74,39 @@ void TestUnaryFloat16(const char* op_name,
                       const std::initializer_list<float>& out_values,
                       int opset = 14,
                       bool run_bf16 = true) {
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef COREML_ENABLE_MLPROGRAM
-  execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+    execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
+    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
-  if (execution_providers.size() > 0) {
-    OpTester tester(op_name, opset);
-    tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
-    tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
+    if (execution_providers.size() > 0) {
+      OpTester tester(op_name, opset);
+      tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
+      tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
 
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
   }
 
-  execution_providers.clear();
-
+  {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
+    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 
-  if (run_bf16 && execution_providers.size() > 0) {
-    OpTester tester(op_name, opset);
-    tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
-    tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
+    if (run_bf16 && execution_providers.size() > 0) {
+      OpTester tester(op_name, opset);
+      tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
+      tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
 
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
   }
 }
 
