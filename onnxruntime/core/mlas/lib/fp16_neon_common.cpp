@@ -44,7 +44,6 @@ StoreFp32Lane(float* dest, float32x4_t src, size_t count)
 }
 
 void
-// TODO(fajin): test unrolling
 MlasCastF16ToF32KernelNeon(const unsigned short* src, float* dest, size_t count)
 {
     // 4 float16 alignment
@@ -115,7 +114,6 @@ StoreU16Lane(unsigned short* dest, uint16x4_t src, size_t count)
 }
 
 void
-// TODO(fajin): test unrolling
 MlasCastF32ToF16KernelNeon(const float* src, unsigned short* dest, size_t count)
 {
     // 4 float32 alignment

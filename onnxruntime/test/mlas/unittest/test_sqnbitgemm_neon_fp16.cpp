@@ -44,7 +44,7 @@ class MlasNeonFp16CastTest : public MlasTestBase {
     std::vector<unsigned short> dest(count);
 
     for (size_t i = 0; i < count; i++) {
-      src[i] = static_cast<float>(i);
+      src[i] = static_cast<float>(i) + 0.125f;
     }
 
     MlasCastF32ToF16KernelNeon(src.data(), dest.data(), count);
