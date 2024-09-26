@@ -65,8 +65,18 @@ run_gpu()
     python3 benchmark_sam2.py --model_type $model --engine ort --sam2_dir $sam2_dir --repeats $repeats --onnx_path ${onnx_dir}/${model}_image_decoder_fp32_gpu.onnx --component image_decoder --use_gpu
 }
 
+if ! [ -f truck.jpg ]; then
+    curl https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/notebooks/images/truck.jpg > truck.jpg
+fi
+
 if python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
     run_gpu 1000
 else
     run_cpu 100
 fi
+
+cat benchmark*.csv > combined_csv
+awk '!x[$0]++' combined_csv > sam2.csv
+rm combined_csv
+
+echo "Benchmarking SAM2 model $model done. Results are saved in sam2.csv"

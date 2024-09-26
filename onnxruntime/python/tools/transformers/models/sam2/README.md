@@ -88,5 +88,15 @@ It is able to run demo on optimized model as well. For example,
 python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp16 --use_gpu --demo
 ```
 
+## Benchmark
+To prepare an environment for benchmark, follow [Setup Environment](#setup-environment) and [Download Checkpoints](#download-checkpoints),
+and you may need update sam2_dir (default to be `~/segment-anything-2`) in [benchmark_sam2.sh](https://raw.githubusercontent.com/microsoft/onnxruntime/refs/heads/main/onnxruntime/python/tools/transformers/models/sam2/benchmark_sam2.sh).
+
+Run the benchmark like the following:
+```bash
+sh benchmark_sam2.sh
+```
+The result is in sam2.csv, which can be loaded into Excel.
+
 ## Limitations
 - The exported image_decoder model does not support batch mode for now.
