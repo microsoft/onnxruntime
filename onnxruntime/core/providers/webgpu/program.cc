@@ -84,24 +84,24 @@ std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) 
 
 #ifndef NDEBUG
 constexpr std::string_view ProgramVariableDataTypeName[] = {
-    "f32",     // f32
-    "f32x2",   // vec2f32
-    "f32x4",   // vec4f32
-    "f16",     // f16
-    "f16x2",   // vec2f16
-    "f16x4",   // vec4f16
-    "i32",     // i32
-    "i32x2",   // vec2i32
-    "i32x4",   // vec4i32
-    "u32",     // u32
-    "u32x2",   // vec2u32
-    "u32x4",   // vec4u32
-    "i64",     // int64
-    "u64",     // uint64
-    "boolx4",  // vec4bool
-    "u32",     // uint8
-    "u32x2",   // vec2uint8
-    "u32x4",   // vec4uint8
+    "f32",     // Float32
+    "f32x2",   // Float32x2
+    "f32x4",   // Float32x4
+    "f16",     // Float16
+    "f16x2",   // Float16x2
+    "f16x4",   // Float16x4
+    "i32",     // Int32
+    "i32x2",   // Int32x2
+    "i32x4",   // Int32x4
+    "u32",     // Uint32
+    "u32x2",   // Uint32x2
+    "u32x4",   // Uint32x4
+    "i64",     // Int64
+    "u64",     // Uint64
+    "boolx4",  // Boolx4
+    "u8x4",    // Uint8x4
+    "u8x8",    // Uint8x8
+    "u8x16",   // Uint8x16
 };
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
   os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
