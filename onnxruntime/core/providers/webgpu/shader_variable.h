@@ -100,6 +100,8 @@ class ShaderIndicesHelper {
   template <typename TIdx>
   inline std::string IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const;
 
+  inline int Rank() const { return rank_; }
+
  protected:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderIndicesHelper);
 
