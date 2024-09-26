@@ -155,7 +155,7 @@
 	<div class="join join-vertical w-full p-2">
 		<!-- Announcements Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="announcements" />
 			<div class="collapse-title text-xl font-bold">Announcements</div>
 			<div class="collapse-content">
 				<p class="font-thin">
@@ -171,7 +171,7 @@
 
 		<!-- Build System & Packages Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="build" />
 			<div class="collapse-title text-xl font-bold">Build System & Packages</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
@@ -187,7 +187,7 @@
 
 		<!-- Core Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="core" />
 			<div class="collapse-title text-xl font-bold">Core</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
@@ -203,7 +203,7 @@
 
 		<!-- Performance Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="performance" />
 			<div class="collapse-title text-xl font-bold">Performance</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
@@ -215,7 +215,7 @@
 
 		<!-- EPs Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="eps" />
 			<div class="collapse-title text-xl font-bold">EPs</div>
 			<div class="collapse-content">
 				<h3 class="text-lg font-semibold">TensorRT</h3>
@@ -243,7 +243,7 @@
 
 		<!-- Mobile Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="mobile" />
 			<div class="collapse-title text-xl font-bold">Mobile</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
@@ -259,7 +259,7 @@
 
 		<!-- Web Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="web" />
 			<div class="collapse-title text-xl font-bold">Web</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
@@ -281,7 +281,7 @@
 
 		<!-- GenAI Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="genai" />
 			<div class="collapse-title text-xl font-bold">GenAI</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
@@ -297,7 +297,7 @@
 
 		<!-- Extensions Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="radio" name="my-accordion" />
+			<input type="checkbox" name="extensions" />
 			<div class="collapse-title text-xl font-bold">Extensions</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
