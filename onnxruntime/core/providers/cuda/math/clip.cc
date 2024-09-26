@@ -62,8 +62,8 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
 template <typename T>
 struct Clip::ComputeImpl {
   void operator()(cudaStream_t stream, const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y) const {
-    auto min_default = std::numeric_limits<T>::lowest();
-    auto max_default = std::numeric_limits<T>::max();
+    constexpr T min_default = std::numeric_limits<T>::lowest();
+    constexpr T max_default = std::numeric_limits<T>::max();
 
     const T* min_data = nullptr;
     const T* max_data = nullptr;
