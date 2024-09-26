@@ -274,12 +274,12 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   const OrtGraph* cur_graph = nullptr;
   api->OrtGraph_GetOrtGraph(graph_viewer, &cur_graph);
   bool is_subgraph = false;
-  api->OrtGraph_IsSubgraph(graph_viewer, &is_subgraph);
+  api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   while (is_subgraph) {
     const OrtGraph* parent_graph = nullptr;
     api->OrtGraph_GetParentGraph(cur_graph, &parent_graph);
     cur_graph = parent_graph;
-    api->OrtGraph_IsSubgraph(graph_viewer, &is_subgraph);
+    api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   }
 
   const OrtGraph* main_graph = cur_graph;

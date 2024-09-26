@@ -217,7 +217,7 @@ void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so) {
     THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input2, input2_len, input2_shape, sizeof(input2_shape)/sizeof(input2_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[1]));
 
     const char* input_names[] = {"input_1", "image_shape"};
-    const char* output_names[] = {"6379", "6381", "6383"};
+    const char* output_names[] = {"yolonms_layer_1", "yolonms_layer_1:1", "yolonms_layer_1:2"};
 
     size_t output_count = sizeof(output_names)/sizeof(output_names[0]);
     std::vector<OrtValue*> output_tensors(output_count, nullptr);
