@@ -44,6 +44,8 @@
 #include "core/framework/provider_factory_adapter.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/ort_type_constraints.h"
+#include "onnxruntime_c_api_ep.h"
+#include "ort_apis_ep.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -2906,6 +2908,11 @@ ORT_API(void, OrtApis::ReleaseTypeConstraints, OrtTypeConstraints* type_constrai
   delete type_constraints;
 }
 
+ORT_API(const OrtGraphApi*, OrtApis::GetGraphApi, uint32_t version) {
+  //if (version >= xx && version <= ORT_API_VERSION)
+  return OrtGraphApis::GetGraphApi(version);
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -3345,6 +3352,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::CreateOrtTypeConstraints,
     &OrtApis::AddTypeConstraint,
     &OrtApis::ReleaseTypeConstraints,
+    &OrtApis::GetGraphApi,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

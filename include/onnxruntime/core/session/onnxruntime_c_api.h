@@ -673,6 +673,9 @@ typedef struct OrtApi OrtApi;
 struct OrtTrainingApi;
 typedef struct OrtTrainingApi OrtTrainingApi;
 
+struct OrtGraphApi;
+typedef struct OrtGraphApi OrtGraphApi;
+
 /** \brief The helper interface to get the right version of OrtApi
  *
  * Get a pointer to this structure through ::OrtGetApiBase
@@ -4876,6 +4879,8 @@ struct OrtApi {
   ORT_API2_STATUS(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
 
   ORT_CLASS_RELEASE(TypeConstraints);
+
+  const OrtGraphApi*(ORT_API_CALL* GetGraphApi)(uint32_t version)NO_EXCEPTION;
 };  // struct OrtApi
 
 /*

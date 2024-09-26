@@ -1280,6 +1280,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
         const TensorrtExecutionProvider* p = static_cast<const TensorrtExecutionProvider*>(this_);
+        const OrtGraphApi* g_ort_graph_api = api->GetGraphApi(ORT_API_VERSION);
+        int num_nodes = 0;
+        g_ort_graph_api->OrtGraph_PlaceHolder(graph, &num_nodes);
         // Get ModelPath
         const std::filesystem::path* model_path = nullptr;
         api->OrtGraph_GetModelPath(graph, (const void**)&model_path);

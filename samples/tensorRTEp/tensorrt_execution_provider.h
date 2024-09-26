@@ -2,7 +2,7 @@
 #include <ctime>
 #include <string>
 #include <unordered_set>
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 #include "core/framework/provider_options.h"
 #include "tensorrt_execution_provider_info.h"
 #include "nv_includes.h"

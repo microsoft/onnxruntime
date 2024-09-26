@@ -644,4 +644,6 @@ ORT_API_STATUS_IMPL(CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type
 ORT_API_STATUS_IMPL(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
 
 ORT_API(void, ReleaseTypeConstraints, _In_ OrtTypeConstraints* type_constraints);
+
+ORT_API(const OrtGraphApi*, GetGraphApi, uint32_t version);
 }  // namespace OrtApis

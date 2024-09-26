@@ -196,9 +196,10 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 //    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
-void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so) {
+void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so, const char* model) {
     OrtSession* session = nullptr;
-    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/tinyyolov3/yolov3-tiny.onnx", so, &session));
+    if (!strcmp(model, "tyolo")) THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/tinyyolov3/yolov3-tiny.onnx", so, &session));
+    else if (!strcmp(model, "yolo")) THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/yolov3/yolov3.onnx", so, &session));
 
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
@@ -212,6 +213,9 @@ void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so) {
     THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[0]));
 
     float input2[2] = {375, 500};
+    if (!strcmp(model, "yolo")) {
+        input2[0] = 506, input2[1] = 640;
+    }
     const size_t input2_len = 8;    // 2 * sizeof(float)
     const int64_t input2_shape[] = {1, 2};
     THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input2, input2_len, input2_shape, sizeof(input2_shape)/sizeof(input2_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[1]));
@@ -255,8 +259,8 @@ int main(int argc, char *argv[]) {
         RunResnet18v1_7(g_ort, p_env, so);
     } else if (!strcmp(argv[2], "rcnn")) {
         RunFastRcnn(g_ort, p_env, so);
-    } else if (!strcmp(argv[2], "tyolo")) {
-        RunTinyYolov3(p_env, so);
+    } else if (!strcmp(argv[2], "tyolo") || !strcmp(argv[2], "yolo")) {
+        RunTinyYolov3(p_env, so, argv[2]);
     }
 
     g_ort->ReleaseEnv(p_env);
