@@ -401,15 +401,15 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   }
 
   auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()));
+  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()), thread_pool);
 
   auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(scales->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), static_cast<size_t>(scales->Shape().Size()));
+  MlasConvertHalfToFloatBuffer(scales_data, tmp_scales_data_ptr.get(), static_cast<size_t>(scales->Shape().Size()), thread_pool);
 
   std::vector<float> bias_data_v;
   if (bias_data != nullptr) {
     bias_data_v.resize(static_cast<size_t>(bias->Shape().Size()));
-    MlasConvertHalfToFloatBuffer(bias_data, &bias_data_v[0], bias_data_v.size());
+    MlasConvertHalfToFloatBuffer(bias_data, &bias_data_v[0], bias_data_v.size(), thread_pool);
   }
 
   std::vector<float> C_v(static_cast<size_t>(y->Shape().Size()));
@@ -432,7 +432,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   }
   MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                       thread_pool);
-  MlasConvertFloatToHalfBuffer(&C_v[0], y_data, C_v.size());
+  MlasConvertFloatToHalfBuffer(&C_v[0], y_data, C_v.size(), thread_pool);
   return Status::OK();
 }
 
@@ -564,7 +564,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const float* scales_data_;
   std::vector<float> scales_data_v;
   scales_data_v.resize(static_cast<size_t>(scales->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(scales_data, &scales_data_v[0], scales_data_v.size());
+  MlasConvertHalfToFloatBuffer(scales_data, &scales_data_v[0], scales_data_v.size(), thread_pool);
   scales_data_ = &scales_data_v[0];
 
   const size_t batch_count = helper.OutputOffsets().size();
@@ -624,7 +624,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
   auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()));
+  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), static_cast<size_t>(a->Shape().Size()), thread_pool);
   auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(y->Shape().Size()));
   for (size_t i = 0; i < batch_count; i++) {
     data[i].BIsPacked = false;
@@ -643,7 +643,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(bias->Shape().Size()));
     MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(),
                                  tmp_bias_data_ptr.get(),
-                                 static_cast<size_t>(bias->Shape().Size()));
+                                 static_cast<size_t>(bias->Shape().Size()), thread_pool);
     for (size_t i = 0; i < batch_count; ++i) {
       float* C_row = data[i].C;
       const size_t ldc = data[i].ldc;
@@ -657,7 +657,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 
   MlasGemmBatch(CblasNoTrans, CblasTrans,
                 M, N, K, data.data(), batch_count, thread_pool);
-  MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, static_cast<size_t>(y->Shape().Size()));
+  MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, static_cast<size_t>(y->Shape().Size()), thread_pool);
   return Status::OK();
 }
 

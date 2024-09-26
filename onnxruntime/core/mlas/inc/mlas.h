@@ -1424,15 +1424,17 @@ MLASCALL
 MlasConvertHalfToFloatBuffer(
     const MLAS_FP16* Source,
     float* Destination,
-    size_t Count
+    size_t Count,
+    MLAS_THREADPOOL* thread_pool = nullptr
 );
 
 void
 MLASCALL
 MlasConvertFloatToHalfBuffer(
-const float* Source,
-MLAS_FP16* Destination,
-size_t Count
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* thread_pool = nullptr
 );
 
     /**
