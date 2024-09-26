@@ -56,6 +56,7 @@ Abstract:
 #if defined(__GNUC__) && __GNUC__ >= 12
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // GCC 12 warns about uninitialized variables in immintrin.h.
+#pragma GCC diagnostic ignored "-Wuninitialized"  // GCC 12 warns about uninitialized variables in immintrin.h.
 #include <immintrin.h>
 #pragma GCC diagnostic pop
 #else
@@ -711,6 +712,28 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_SOFTMAX_I8_KERNEL)(
+    size_t D,
+    const int8_t* Xdata,
+    int8_t* Ydata,
+    const float* LookupTable,
+    float Yscale,
+    int8_t YZeroPoint,
+    float* Buff);
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_SOFTMAX_U8_KERNEL)(
+    size_t D,
+    const uint8_t* Xdata,
+    uint8_t* Ydata,
+    const float* LookupTable,
+    float Yscale,
+    uint8_t YZeroPoint,
+    float* Buff);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -876,7 +899,13 @@ extern "C" {
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
+    MLAS_QUANTIZE_SOFTMAX_I8_KERNEL MlasQuantizeSoftmaxI8KernelAvx2;
+    MLAS_QUANTIZE_SOFTMAX_I8_KERNEL MlasQuantizeSoftmaxI8KernelAvx512;
+    MLAS_QUANTIZE_SOFTMAX_U8_KERNEL MlasQuantizeSoftmaxU8KernelAvx2;
+    MLAS_QUANTIZE_SOFTMAX_U8_KERNEL MlasQuantizeSoftmaxU8KernelAvx512;
 #endif
+    MLAS_QUANTIZE_SOFTMAX_I8_KERNEL MlasQuantizeSoftmaxI8KernelNaive;
+    MLAS_QUANTIZE_SOFTMAX_U8_KERNEL MlasQuantizeSoftmaxU8KernelNaive;
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
@@ -1188,6 +1217,9 @@ struct MLAS_PLATFORM {
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
+
+    MLAS_QUANTIZE_SOFTMAX_I8_KERNEL *QuantizeSoftmaxI8Kernel;
+    MLAS_QUANTIZE_SOFTMAX_U8_KERNEL *QuantizeSoftmaxU8Kernel;
 };
 
 inline
