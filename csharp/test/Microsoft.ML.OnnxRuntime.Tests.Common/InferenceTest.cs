@@ -1678,6 +1678,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+
         void TestCPUAllocatorInternal(InferenceSession session)
         {
             int device_id = 0;

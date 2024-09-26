@@ -56,7 +56,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
-            NativeMethods.OrtReleaseAllocator(handle);
+            NativeMethods.ReleaseLoraAdapter(handle);
             handle = IntPtr.Zero;
             return true;
         }

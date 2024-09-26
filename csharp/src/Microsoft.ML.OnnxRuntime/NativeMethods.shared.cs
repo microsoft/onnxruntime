@@ -324,7 +324,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr AddExternalInitializersFromFilesInMemory;
         public IntPtr CreateLoraAdapter;
         public IntPtr ReleaseLoraAdapter;
-        public IntPtr RunOptionsSetActiveLoraAdapter;
+        public IntPtr RunOptionsAddActiveLoraAdapter;
     }
 
     internal static class NativeMethods
@@ -567,8 +567,8 @@ namespace Microsoft.ML.OnnxRuntime
                 typeof(DCreateLoraAdapter));
             ReleaseLoraAdapter = (DReleaseLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.ReleaseLoraAdapter,
                 typeof(DReleaseLoraAdapter));
-            OrtRunOptionsSetActiveLoraAdapter = (DOrtRunOptionsSetActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
-                api_.RunOptionsSetActiveLoraAdapter, typeof(DOrtRunOptionsSetActiveLoraAdapter));
+            OrtRunOptionsAddActiveLoraAdapter = (DOrtRunOptionsAddActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
+                api_.RunOptionsAddActiveLoraAdapter, typeof(DOrtRunOptionsAddActiveLoraAdapter));
         }
 
         internal class NativeLib
@@ -1353,10 +1353,10 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetActiveLoraAdapter(
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsAddActiveLoraAdapter(
             IntPtr /* OrtRunOptions* */ options,
             IntPtr /* OrtLoraAdapter* */ lora_adapter);
-        public static DOrtRunOptionsSetActiveLoraAdapter OrtRunOptionsSetActiveLoraAdapter;
+        public static DOrtRunOptionsAddActiveLoraAdapter OrtRunOptionsAddActiveLoraAdapter;
 
         /// <summary>
         /// Add run config entry
