@@ -52,7 +52,7 @@ const std::string AppendPermFunction(gsl::span<const size_t> perm) {
   ss.imbue(std::locale::classic());
   ss << "fn perm(i: y_indices_t)->x_indices_t {\n"
         "  var a: x_indices_t;\n";
-  for (auto i = 0; i < perm.size(); ++i) {
+  for (size_t i = 0; i < perm.size(); ++i) {
     ss << "  a[" << perm[i] << "] = i[" << i << "];\n";
   }
   ss << "  return a;\n"

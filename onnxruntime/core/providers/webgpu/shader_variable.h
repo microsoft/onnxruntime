@@ -67,7 +67,14 @@ class ShaderIndicesHelper {
  public:
   ShaderIndicesHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
 
+  ShaderIndicesHelper(ShaderIndicesHelper&&) = default;
+  ShaderIndicesHelper& operator=(ShaderIndicesHelper&&) = default;
+
+  // get the number of components of the variable.
   inline int NumComponents() const { return num_components_; }
+
+  // get the rank of the indices.
+  inline int Rank() const;
 
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
@@ -208,6 +215,12 @@ std::string pass_as_string(T&& v) {
   return std::forward<T>(v);
 }
 }  // namespace detail
+
+inline int ShaderIndicesHelper::Rank() const {
+  // getting the rank means the information is exposed to the shader. So we consider it as a usage of shape and stride.
+  usage_ |= ShaderUsage::UseShapeAndStride;
+  return rank_;
+}
 
 inline std::string ShaderIndicesHelper::OffsetToIndices(std::string_view offset_expr) const {
   usage_ |= ShaderUsage::UseOffsetToIndices | ShaderUsage::UseShapeAndStride;

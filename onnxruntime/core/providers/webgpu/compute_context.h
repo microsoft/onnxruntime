@@ -43,7 +43,14 @@ class ComputeContext {
   }
 
   //
-  // Get the logger
+  // Get the kernel context.
+  //
+  inline OpKernelContext& KernelContext() {
+    return kernel_context_;
+  }
+
+  //
+  // Get the logger.
   //
   inline const logging::Logger& Logger() const {
     return kernel_context_.Logger();

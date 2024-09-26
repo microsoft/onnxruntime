@@ -2282,10 +2282,10 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
-        elif use_azure:
-            args.append("--use_azure")
         elif use_qnn:
             args.append("--use_qnn")
+        elif use_azure:
+            args.append("--use_azure")
 
         run_subprocess(args, cwd=cwd)
 
