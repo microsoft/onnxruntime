@@ -29,12 +29,12 @@ struct ConvOpAndTestAttributes {
 };
 
 /*
-Please notice that, we have two predefined macros in the head of the file
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM).
+Please notice that, we have predefined macros in the head of the file
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)|| defined(USE_QNN).
 When we have these two macro defines, this UT will turn into green light and work.
 
 `NhwcFusedConv` in FP16 dtype is a contribe op and not well support by basic CPU ep.
-Once your EP can satisfy all the conditions and capture the op, UT will crash as there
+Once your EP can't satisfy all the conditions and capture the op, UT will crash as there
 is no appropriate ep can handle this node.
 As What CoreML did, if attributes has activation fused in, we should exclude CoreML ep
 to let the test pass.
@@ -93,7 +93,9 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
   // QNN have issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
-  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
+  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" ||
+      attributes.auto_pad == "SAME_LOWER" ||
+      !attributes.activation.empty()) {
     excluded_providers.insert(kQnnExecutionProvider);
   }
   if (!weight_is_initializer || !attributes.activation.empty()) {
