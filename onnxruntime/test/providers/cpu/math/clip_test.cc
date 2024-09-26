@@ -137,6 +137,45 @@ TEST(MathOpTest, Clip_MLFloat16) {
   test.Run();
 }
 
+TEST(MathOpTest, Clip_MLFloat16_NoMin_NoMax) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+
+  test.Run();
+}
+
+TEST(MathOpTest, Clip_MLFloat16_NoMax) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+  test.AddInput<MLFloat16>("min", {}, {MLFloat16(0.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(3.0f)});
+
+  test.Run();
+}
+
+TEST(MathOpTest, Clip_MLFloat16_NoMin) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+  test.AddOptionalInputEdge<MLFloat16>();  // no min
+  test.AddInput<MLFloat16>("max", {}, {MLFloat16(0.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(0.0f)});
+
+  test.Run();
+}
+
 TEST(MathOpTest, Clip_int32) {
   OpTester test("Clip", 12);
 
