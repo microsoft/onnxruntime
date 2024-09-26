@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
+constexpr static const uint32_t TILE_SIZE = 16;
 class TransposeProgram final : public Program<TransposeProgram> {
  public:
   TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared)
@@ -18,7 +19,6 @@ class TransposeProgram final : public Program<TransposeProgram> {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  constexpr static const uint32_t TILE_SIZE = 16;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
   WEBGPU_PROGRAM_DEFINE_CONSTANTS({"tile_size", TILE_SIZE});

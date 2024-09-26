@@ -137,23 +137,22 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
 
   uint32_t output_size = gsl::narrow_cast<int32_t>(input_tensor->Shape().Size());
   TransposeProgram program{*p_perm, use_shared};
-  const auto tile_size = TransposeProgram::TILE_SIZE;
   if (use_shared) {
-    program.SetWorkgroupSize(tile_size, tile_size, 1);
+    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
   }
 
   program
       .CacheHint(absl::StrJoin(*p_perm, "-"))
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
-      .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + tile_size - 1) / tile_size),
-                            static_cast<uint32_t>(((new_output_shape[0] + tile_size - 1) / tile_size)))
+      .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
       .AddUniformVariables({
           {static_cast<uint32_t>(output_size)},
       });
 
-  use_shared ? program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + tile_size - 1) / tile_size),
-                                            static_cast<uint32_t>(((new_output_shape[0] + tile_size - 1) / tile_size)))
+  use_shared ? program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
              : program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
