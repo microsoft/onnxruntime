@@ -494,6 +494,25 @@ TEST_F(DataTypeTest, MLFloat16Comparision) {
 }
 
 TEST_F(DataTypeTest, MLFloat16TestNAN) {
+  const MLFloat16 quiet_NaN = std::numeric_limits<MLFloat16>::quiet_NaN();
+  EXPECT_TRUE(quiet_NaN.IsNaN());
+  EXPECT_TRUE(quiet_NaN.IsNaNOrZero());
+  EXPECT_NE(MLFloat16::NaN, quiet_NaN);  // NaN are not equal to each other
+  EXPECT_TRUE(std::isnan(quiet_NaN.ToFloat()));
+
+  const MLFloat16 signaling_NaN = std::numeric_limits<MLFloat16>::signaling_NaN();
+  EXPECT_TRUE(signaling_NaN.IsNaN());
+  EXPECT_TRUE(signaling_NaN.IsNaNOrZero());
+  EXPECT_NE(MLFloat16::NaN, signaling_NaN);  // NaN are not equal to each other
+  EXPECT_TRUE(std::isnan(signaling_NaN.ToFloat()));
+
+  // NaN used in C# has negative sign
+  const MLFloat16 csharp_NaN = MLFloat16::FromBits(0xFE00U);
+  EXPECT_TRUE(csharp_NaN.IsNaN());
+  EXPECT_TRUE(csharp_NaN.IsNaNOrZero());
+  EXPECT_NE(BFloat16::NaN, csharp_NaN);
+  EXPECT_TRUE(std::isnan(csharp_NaN.ToFloat()));
+
   const MLFloat16 fp16NANFromSingle(std::numeric_limits<float>::quiet_NaN());
   EXPECT_TRUE(fp16NANFromSingle.IsNaN());
   EXPECT_TRUE(fp16NANFromSingle.IsNaNOrZero());
@@ -520,6 +539,11 @@ TEST_F(DataTypeTest, MLFloat16NaNComparision) {
 }
 
 TEST_F(DataTypeTest, MLFloat16Infinity) {
+  const MLFloat16 fp16_infinity(std::numeric_limits<MLFloat16>::infinity());
+  EXPECT_TRUE(fp16_infinity.IsInfinity());
+  EXPECT_FALSE(fp16_infinity.IsFinite());
+  EXPECT_FALSE(fp16_infinity.IsNegative());
+
   EXPECT_FALSE(MLFloat16::MaxValue.Negate().IsInfinity());
   EXPECT_FALSE(MLFloat16::MaxValue.IsInfinity());
   EXPECT_TRUE(MLFloat16::MaxValue.IsFinite());
@@ -549,6 +573,8 @@ TEST_F(DataTypeTest, MLFloat16NormalSubnormal) {
   const MLFloat16 smallest_subnormal = MLFloat16::FromBits(min_subnormal_bits);
   EXPECT_TRUE(smallest_subnormal.IsSubnormal());
   EXPECT_FALSE(smallest_subnormal.IsNormal());
+
+  EXPECT_EQ(smallest_subnormal, std::numeric_limits<MLFloat16>::denorm_min());
 
   // float smallest positive subnormal is ~1.40129846432481707092E-45, and
   // in float the same number above would be normal
@@ -639,6 +665,24 @@ TEST_F(DataTypeTest, BFloat16Comparision) {
 }
 
 TEST_F(DataTypeTest, BFloat16TestNAN) {
+  const BFloat16 quiet_NaN = std::numeric_limits<BFloat16>::quiet_NaN();
+  EXPECT_TRUE(quiet_NaN.IsNaN());
+  EXPECT_TRUE(quiet_NaN.IsNaNOrZero());
+  EXPECT_NE(BFloat16::NaN, quiet_NaN);
+  EXPECT_TRUE(std::isnan(quiet_NaN.ToFloat()));
+
+  const BFloat16 signaling_NaN = std::numeric_limits<BFloat16>::signaling_NaN();
+  EXPECT_TRUE(signaling_NaN.IsNaN());
+  EXPECT_TRUE(signaling_NaN.IsNaNOrZero());
+  EXPECT_NE(BFloat16::NaN, signaling_NaN);
+  EXPECT_TRUE(std::isnan(signaling_NaN.ToFloat()));
+
+  const BFloat16 csharp_NaN = BFloat16::FromBits(0xFFC1U);
+  EXPECT_TRUE(csharp_NaN.IsNaN());
+  EXPECT_TRUE(csharp_NaN.IsNaNOrZero());
+  EXPECT_NE(BFloat16::NaN, csharp_NaN);
+  EXPECT_TRUE(std::isnan(csharp_NaN.ToFloat()));
+
   const BFloat16 fp16NANFromSingle = std::numeric_limits<float>::quiet_NaN();
   EXPECT_TRUE(fp16NANFromSingle.IsNaN());
   EXPECT_TRUE(fp16NANFromSingle.IsNaNOrZero());
@@ -694,6 +738,8 @@ TEST_F(DataTypeTest, BFloat16NormalSubnormal) {
   const BFloat16 smallest_subnormal = BFloat16::FromBits(min_subnormal_bits);
   EXPECT_TRUE(smallest_subnormal.IsSubnormal());
   EXPECT_FALSE(smallest_subnormal.IsNormal());
+
+  EXPECT_EQ(smallest_subnormal, std::numeric_limits<BFloat16>::denorm_min());
 
   const float float_from_smallest_subnormal = (float)smallest_subnormal;
   EXPECT_FALSE(std::isnormal(float_from_smallest_subnormal));
