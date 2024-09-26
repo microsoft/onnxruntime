@@ -1144,13 +1144,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="outputValues">output of ort values</param>
         /// <returns>task to be awaited</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public async Task<IReadOnlyCollection<OrtValue>> RunAsync(RunOptions options,
+        public Task<IReadOnlyCollection<OrtValue>> RunAsync(RunOptions options,
                                                                   IReadOnlyCollection<string> inputNames,
                                                                   IReadOnlyCollection<OrtValue> inputValues,
                                                                   IReadOnlyCollection<string> outputNames,
                                                                   IReadOnlyCollection<OrtValue> outputValues)
         {
-            var promise = new TaskCompletionSource<IReadOnlyCollection<OrtValue>>();
+            var promise = new TaskCompletionSource<IReadOnlyCollection<OrtValue>>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+
             RunAsyncInternal(options,
                      inputNames,
                      inputValues,
@@ -1168,7 +1171,7 @@ namespace Microsoft.ML.OnnxRuntime
                              promise.SetException(ex);
                          }
                      });
-            return await promise.Task;
+            return promise.Task;
         }
 
         #endregion
