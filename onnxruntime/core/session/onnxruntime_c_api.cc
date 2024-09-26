@@ -2434,9 +2434,9 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const Ort
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsSubgraph, const OrtGraphViewer* graph, _Out_ bool* ret) {
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  *ret = graph_viewer->IsSubgraph();
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret) {
+  const ::onnxruntime::Graph* graph_ptr = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
+  *ret = graph_ptr->IsSubgraph();
   return nullptr;
 }
 
@@ -2610,7 +2610,7 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
 
   auto& graph_build = model_build->MainGraph();
-  // bool has_control_flow_op = false;
+  bool has_control_flow_op = false;
 
   std::vector<std::string> subgraph_output_names;
   const std::vector<NodeIndex>& node_index = graph_viewer->GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
@@ -2646,10 +2646,10 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
       }
     }
 
-    // TODO: handle control flow ops
-    // if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
-    //   has_control_flow_op = true;
-    // }
+    std::unordered_set<std::string> control_flow_op_set = {"If", "Loop", "Scan"};
+    if (control_flow_op_set.find(node->OpType()) != control_flow_op_set.end()) {
+      has_control_flow_op = true;
+    }
 
     // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
     // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
@@ -2678,12 +2678,12 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, 
   // TODO:yang
   // Only if the newly built graph has control flow op as well as it has parent node,
   // it needs to handle outer scope values before calling graph.Resolve().
-  // if (has_control_flow_op && graph.ParentNode()) {
+  if (has_control_flow_op && graph_viewer->ParentNode()) {
   //   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
   //   BuildSubGraphContext(graph_build);
   //   SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
   //   SetAllGraphInputs(graph_build);
-  // }
+  }
 
   common::Status status = graph_build.Resolve();
   if (status != Status::OK()) return ToOrtStatus(status);

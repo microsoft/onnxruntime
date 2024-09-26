@@ -1067,7 +1067,7 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const OrtGraphViewer* 
   const OrtGraph* cur_graph = nullptr;
   api->OrtGraph_GetOrtGraph(graph, &cur_graph);
   bool is_subgraph = false;
-  api->OrtGraph_IsSubgraph(graph, &is_subgraph);
+  api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   if (is_subgraph) {
     const OrtNode* node = nullptr;
     api->OrtGraph_GetParenNode(graph, &node);
@@ -1235,8 +1235,10 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
 
   // Generate unique kernel name for TRT subgraph
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(subgraph_index);
+  const OrtGraph* cur_graph = nullptr;
+  api_->OrtGraph_GetOrtGraph(graph, &cur_graph);
   bool is_subgraph = false;
-  api_->OrtGraph_IsSubgraph(graph, &is_subgraph);
+  api_->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   const std::string graph_type = is_subgraph ? "subgraph" : "graph";
   const char* graph_name = api_->OrtGraph_GetName(graph);
   std::string meta_def_name = "TRTKernel_" + graph_type + "_" + std::string(graph_name) + subgraph_id;
