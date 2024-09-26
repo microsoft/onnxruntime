@@ -155,10 +155,10 @@ To initiate build, run the below command
   --parallel  
 ```
 
-* If you want to install the package in custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX.
+* If you want to install the package in a custom directory, then mention the directory location as value of CMAKE_INSTALL_PREFIX.
 * In case of IBM Open XL compiler tool chain, It is possible that in AIX 7.2 some of the runtime libraries like libunwind.a  needed for onnxruntime, will be missing. To fix this, you can install the relevant file-sets.
 * --parallel option in build option.
-  As name suggest, this option is for parallel building and resource intensive option. So, if  your system is not having good amount of memory , then this option can be skipped. As per our understanding, use this option if you have 60GB+ RAM in your system. 
+  As name suggest, this option is for parallel building and resource intensive option. So, if your system is not having good amount of memory for each CPU core, then this option can be skipped. 
 * --allow_running_as_root  is needed if root user is triggering the build.
     
 
