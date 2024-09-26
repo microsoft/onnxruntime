@@ -28,6 +28,18 @@ struct ConvOpAndTestAttributes {
   vector<float> activation_parameters = {};
 };
 
+
+/*
+Please notice that, we have two predefined macros in the head of the file
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM).
+When we have these two macro defines, this UT will turn into green light and work.
+
+`NhwcFusedConv` in FP16 dtype is a contribe op and not well support by basic CPU ep.
+Once your EP can satisfy all the conditions and capture the op, UT will crash as there
+is no appropriate ep can handle this node.
+As What CoreML did, if attributes has activation fused in, we should exclude CoreML ep
+to let the test pass.
+*/
 void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     const vector<vector<MLFloat16>>& inputs,
                     const vector<vector<int64_t>>& input_shapes,
