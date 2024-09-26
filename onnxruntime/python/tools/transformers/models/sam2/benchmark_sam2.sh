@@ -11,7 +11,8 @@ dir="$( cd "$( dirname "$0" )" && pwd )"
 onnx_dir=$dir/sam2_onnx_models
 
 # Directory of the sam2 code by "git clone https://github.com/facebookresearch/segment-anything-2"
-sam2_dir=~/segment-anything-2
+# It reads from the sam2_dir environment variable, or defaults to ~/segment-anything-2.
+sam2_dir=${sam2_dir:-~/segment-anything-2}
 
 # model name to benchmark
 model=sam2_hiera_large
