@@ -1,6 +1,8 @@
 import argparse
 import os
+import sys
 import time
+from pathlib import Path
 
 import requests
 
@@ -65,8 +67,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test_platform", type=str, help="Testing platform", choices=["espresso", "xcuitest"], required=True
     )
-    parser.add_argument("--app_apk_path", type=str, help="Path to the app APK", required=True)
-    parser.add_argument("--test_apk_path", type=str, help="Path to the test suite APK", required=True)
+    parser.add_argument(
+        "--app_apk_path",
+        type=Path,
+        help="Path to the app APK -- run 'find . -iname *.apk' in the build output directory to find the path locally.",
+        required=True,
+    )
+    parser.add_argument(
+        "--test_apk_path",
+        type=Path,
+        help="Path to the test APK -- run 'find . -iname *.apk' in the build output directory to find the path locally.",
+        required=True,
+    )
     parser.add_argument(
         "--devices",
         type=str,
@@ -78,8 +90,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    browserstack_id = os.environ["BROWSERSTACK_ID"]
-    browserstack_token = os.environ["BROWSERSTACK_TOKEN"]
+    try:
+        browserstack_id = os.environ["BROWSERSTACK_ID"]
+        browserstack_token = os.environ["BROWSERSTACK_TOKEN"]
+    except KeyError:
+        print("Please set the environment variables BROWSERSTACK_ID and BROWSERSTACK_TOKEN")
+        print(
+            "These values will be found at https://app-automate.browserstack.com/dashboard/v2 & clicking 'ACCESS KEY'"
+        )
+        sys.exit(1)
 
     # Upload the app and test suites
     upload_app_json = upload_apk_parse_json(

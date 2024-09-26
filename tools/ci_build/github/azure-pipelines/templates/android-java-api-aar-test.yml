@@ -66,16 +66,17 @@ jobs:
     parameters:
       stop: true
 
+  # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
   - script: |
       set -e -x
       pip install requests
-      python upload_and_run_browserstack_tests.py \
+      python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
         --test_platform espresso \
-        --app_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/debug/app-debug.apk" \
-        --test_apk_path "$(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" \
+        --app_apk_path "debug/app-debug.apk" \
+        --test_apk_path "androidTest/debug/app-debug-androidTest.apk" \
         --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
     displayName: Run E2E tests using Browserstack
-    workingDirectory: $(Build.SourcesDirectory)/tools/python
+    workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
     timeoutInMinutes: 15
     env:
       BROWSERSTACK_ID: $(browserstack_username)
