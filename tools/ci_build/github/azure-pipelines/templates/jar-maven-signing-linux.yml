@@ -26,6 +26,7 @@ steps:
       workingDirectory: '$(Build.BinariesDirectory)'
       script: |
         #!/bin/bash
+        set -x
 
         jar_file_directory='${{ parameters.JarFileDirectory }}'
         working_directory='${{ parameters.WorkingDirectory }}'

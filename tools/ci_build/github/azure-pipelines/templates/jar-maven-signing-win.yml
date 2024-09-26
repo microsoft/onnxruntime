@@ -44,6 +44,10 @@ steps:
 
         Write-Host "Importing GnuPG private key file."
         & $gpg_exe_path --batch --import $private_key_file
+        if ($lastExitCode -ne 0) {
+            Write-Host -Object "GnuPG importing private key command failed. Exitcode: $exitCode"
+            exit $lastExitCode
+        }
         Write-Host "Imported GnuPG private key file."
 
         $targeting_original_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
@@ -51,6 +55,10 @@ steps:
             $file_path = Join-Path $jar_file_directory -ChildPath $file
             Write-Host "GnuPG signing to file: "$file_path
             & $gpg_exe_path --pinentry-mode loopback --passphrase-file $passphrase_file -ab $file_path
+            if ($lastExitCode -ne 0) {
+                Write-Host -Object "GnuPG signing file command failed. Exitcode: $exitCode"
+                exit $lastExitCode
+            }
             Write-Host "GnuPG signed to file: "$file_path
         }
 
