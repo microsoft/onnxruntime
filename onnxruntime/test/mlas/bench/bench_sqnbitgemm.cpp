@@ -80,9 +80,10 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   params.A = A.data();
   params.lda = K;
   if (PackedQuantBData != nullptr)
-    params.QuantBDataWorkspace = static_cast<const void*>(PackedQuantBData.get());
+    params.PackedQuantBData = PackedQuantBData.get();
   else
     params.QuantBDataWorkspace = static_cast<const void*>(QuantBData.data());
+
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
   params.Bias = HasBias ? Bias.data() : nullptr;
