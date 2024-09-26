@@ -613,7 +613,7 @@ inline RunOptions& RunOptions::UnsetTerminate() {
   return *this;
 }
 
-inline RunOptions& RunOptions::AddLoraAdapterActive(const LoraAdapter& adapter) {
+inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) {
   ThrowOnError(GetApi().RunOptionsAddActiveLoraAdapter(p_, adapter));
   return *this;
 }

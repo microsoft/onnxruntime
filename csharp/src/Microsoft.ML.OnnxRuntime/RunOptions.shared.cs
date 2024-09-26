@@ -135,9 +135,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// make use of the activates Lora Adapters
         /// </summary>
         /// <param name="loraAdapter">Lora adapter instance</param>
-        public void SetActiveLoraAdapter(OrtLoraAdapter loraAdapter)
+        public void AddActiveLoraAdapter(OrtLoraAdapter loraAdapter)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetActiveLoraAdapter(handle, loraAdapter.Handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsAddActiveLoraAdapter(handle, loraAdapter.Handle));
         }
 
         #region SafeHandle

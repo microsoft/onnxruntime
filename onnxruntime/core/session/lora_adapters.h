@@ -152,8 +152,6 @@ class LoraAdapter {
 
  private:
   void InitializeParamsValues();
-  // Get the size of the buffer
-  size_t GetBufferSize() const;
 
   struct BufferHolder {
     explicit BufferHolder(std::vector<uint8_t> buffer) : buffer_(std::move(buffer)) {}

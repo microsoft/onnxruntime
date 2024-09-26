@@ -817,28 +817,28 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
 
 namespace {
 // Checks if there are active lora adapters and adjusts input spans.
-void CheckAndAdjustForLora(const OrtRunOptions& run_options,
-                           InlinedVector<const char*>& input_names_with_lora,
-                           InlinedVector<const OrtValue*>& input_with_lora,
-                           gsl::span<const char* const>& input_names,
-                           gsl::span<const OrtValue* const>& inputs) {
+void CheckAndAdjustInputSpansForLora(const OrtRunOptions& run_options,
+                                     InlinedVector<const char*>& input_names_with_lora,
+                                     InlinedVector<const OrtValue*>& inputs_with_lora,
+                                     gsl::span<const char* const>& input_names,
+                                     gsl::span<const OrtValue* const>& inputs) {
   size_t total_lora_params = 0;
   for (const lora::LoraAdapter* ad : run_options.active_adapters) {
     total_lora_params += ad->GetParamNum();
   }
 
   input_names_with_lora.reserve(input_names.size() + total_lora_params);
-  input_with_lora.reserve(inputs.size() + total_lora_params);
+  inputs_with_lora.reserve(inputs.size() + total_lora_params);
   std::copy(input_names.begin(), input_names.end(), std::back_inserter(input_names_with_lora));
-  std::copy(inputs.begin(), inputs.end(), std::back_inserter(input_with_lora));
+  std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputs_with_lora));
 
   for (const lora::LoraAdapter* ad : run_options.active_adapters) {
     ad->OutputAdapterParameters(std::back_inserter(input_names_with_lora),
-                                std::back_inserter(input_with_lora));
+                                std::back_inserter(inputs_with_lora));
   }
 
   input_names = gsl::make_span(input_names_with_lora);
-  inputs = gsl::make_span(input_with_lora);
+  inputs = gsl::make_span(inputs_with_lora);
 }
 
 }  // namespace
@@ -862,7 +862,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
       InlinedVector<const char*> input_names_with_lora;
       InlinedVector<const OrtValue*> input_with_lora;
 
-      CheckAndAdjustForLora(*run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
+      CheckAndAdjustInputSpansForLora(*run_options, input_names_with_lora, input_with_lora, input_names_span, input_span);
 
       status = session->Run(*run_options,
                             input_names_span,
@@ -897,6 +897,10 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
+  if (run_options != nullptr && !run_options->active_adapters.empty()) {
+    LOGS(*session->GetLogger(), WARNING) << "RunAsync() active adapters specified, but won't have an effect";
+  }
+
   auto input_names_span = gsl::make_span(input_names, input_len);
   auto input_span = gsl::make_span(input, input_len);
   auto output_name_span = gsl::make_span(output_names, output_names_len);
@@ -928,6 +932,9 @@ ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ cons
     OrtRunOptions default_run_options;
     status = session->Run(default_run_options, *binding_ptr->binding_);
   } else {
+    if (!run_options->active_adapters.empty()) {
+      LOGS(*session->GetLogger(), WARNING) << "RunWithBinding() active adapters specified, but won't have effect";
+    }
     status = session->Run(*run_options, *binding_ptr->binding_);
   }
   if (!status.IsOK()) {
@@ -2832,7 +2839,7 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-const char* ORT_API_CALL OrtApis::GetBuildInfoString() noexcept {
+ORT_API(const char*, OrtApis::GetBuildInfoString) {
   return ORT_BUILD_INFO;
 }
 

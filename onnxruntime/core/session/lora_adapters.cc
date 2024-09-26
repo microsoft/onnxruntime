@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "lora_adapters.h"
+#include "core/session/lora_adapters.h"
 #include "lora/adapter_format_utils.h"
+
+#include <unordered_map>
 
 #include "core/framework/data_transfer.h"
 #include "core/framework/error_code_helper.h"
@@ -13,7 +15,6 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
-#include <unordered_map>
 
 namespace onnxruntime {
 
@@ -113,15 +114,6 @@ void LoraAdapter::InitializeParamsValues() {
     }
   }
   params_values_.swap(params_values);
-}
-
-size_t LoraAdapter::GetBufferSize() const {
-  if (std::holds_alternative<MemMapHolder>(buffer_)) {
-    return std::get<1>(buffer_).file_size_;
-  } else if (std::holds_alternative<BufferHolder>(buffer_)) {
-    return std::get<2>(buffer_).buffer_.size();
-  }
-  ORT_THROW("Non-exhaustive visitor for BinaryFormatHolder::GetSize()");
 }
 
 }  // namespace lora
