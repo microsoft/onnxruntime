@@ -96,7 +96,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
     excluded_providers.insert(kQnnExecutionProvider);
   }
-  if (!attributes.activation.empty()) {
+  if (!weight_is_initializer || !attributes.activation.empty()) {
     excluded_providers.insert(kCoreMLExecutionProvider);
   }
   tester->Run(expect_result, err_str, excluded_providers);
@@ -1160,6 +1160,7 @@ TEST(ConvFp16Test, Pointwise_Relu) {
       MLFloat16(17.5f), MLFloat16(9.5f)};
 
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvFp16Test, Conv2D_HardSigmoid) {
@@ -1189,6 +1190,7 @@ TEST(ConvFp16Test, Conv2D_HardSigmoid) {
       MLFloat16(1.0f), MLFloat16(0.0f),
       MLFloat16(1.0f), MLFloat16(0.0f)};
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvFp16Test, Conv2D_Bias_Z_Relu) {
@@ -1218,6 +1220,7 @@ TEST(ConvFp16Test, Conv2D_Bias_Z_Relu) {
   vector<int64_t> Z_shape = {1, 2, 2, 2};
   auto expected_vals = {MLFloat16(12.0f), MLFloat16(11.0f), MLFloat16(17.0f), MLFloat16(15.0f), MLFloat16(25.0f), MLFloat16(23.0f), MLFloat16(29.0f), MLFloat16(28.0f)};
   TestConvFp16Op(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, true);
 }
 
 #endif  // CONTRIB_OPS
