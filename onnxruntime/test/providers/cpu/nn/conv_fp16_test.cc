@@ -28,7 +28,6 @@ struct ConvOpAndTestAttributes {
   vector<float> activation_parameters = {};
 };
 
-
 /*
 Please notice that, we have two predefined macros in the head of the file
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM).
