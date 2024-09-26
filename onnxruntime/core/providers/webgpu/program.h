@@ -172,23 +172,23 @@ constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 enum class ProgramVariableDataType {
   InvalidType = -1,
   Float32,
-  Vec2Float32,
-  Vec4Float32,
+  Float32x2,
+  Float32x4,
   Float16,
-  Vec2Float16,
-  Vec4Float16,
+  Float16x2,
+  Float16x4,
   Int32,
-  Vec2Int32,
-  Vec4Int32,
+  Int32x2,
+  Int32x4,
   Uint32,
-  Vec2Uint32,
-  Vec4Uint32,
+  Uint32x2,
+  Uint32x4,
   Int64,
   Uint64,
-  Vec4Bool,
-  Uint8,
-  Vec2Uint8,
-  Vec4Uint8
+  Boolx4,
+  Uint8x4,
+  Uint8x8,
+  Uint8x16
 };
 #ifndef NDEBUG
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);

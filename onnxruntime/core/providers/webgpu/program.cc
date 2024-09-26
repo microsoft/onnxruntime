@@ -118,21 +118,21 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Uint64:
     case ProgramVariableDataType::Float16:
       return 1;
-    case ProgramVariableDataType::Vec2Float32:
-    case ProgramVariableDataType::Vec2Int32:
-    case ProgramVariableDataType::Vec2Uint32:
-    case ProgramVariableDataType::Vec2Float16:
+    case ProgramVariableDataType::Float32x2:
+    case ProgramVariableDataType::Int32x2:
+    case ProgramVariableDataType::Uint32x2:
+    case ProgramVariableDataType::Float16x2:
       return 2;
-    case ProgramVariableDataType::Vec4Float32:
-    case ProgramVariableDataType::Vec4Int32:
-    case ProgramVariableDataType::Vec4Uint32:
-    case ProgramVariableDataType::Vec4Float16:
-    case ProgramVariableDataType::Vec4Bool:
-    case ProgramVariableDataType::Uint8:
+    case ProgramVariableDataType::Float32x4:
+    case ProgramVariableDataType::Int32x4:
+    case ProgramVariableDataType::Uint32x4:
+    case ProgramVariableDataType::Float16x4:
+    case ProgramVariableDataType::Boolx4:
+    case ProgramVariableDataType::Uint8x4:
       return 4;
-    case ProgramVariableDataType::Vec2Uint8:
+    case ProgramVariableDataType::Uint8x8:
       return 8;
-    case ProgramVariableDataType::Vec4Uint8:
+    case ProgramVariableDataType::Uint8x16:
       return 16;
     default:
       return -1;
@@ -160,44 +160,44 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   } else if (component == 2) {
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        return ProgramVariableDataType::Vec2Float32;
+        return ProgramVariableDataType::Float32x2;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-        return ProgramVariableDataType::Vec2Float16;
+        return ProgramVariableDataType::Float16x2;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        return ProgramVariableDataType::Vec2Int32;
+        return ProgramVariableDataType::Int32x2;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        return ProgramVariableDataType::Vec2Uint32;
+        return ProgramVariableDataType::Uint32x2;
       default:
         return ProgramVariableDataType::InvalidType;
     }
   } else if (component == 4) {
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        return ProgramVariableDataType::Uint8;
+        return ProgramVariableDataType::Uint8x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        return ProgramVariableDataType::Vec4Float32;
+        return ProgramVariableDataType::Float32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-        return ProgramVariableDataType::Vec4Float16;
+        return ProgramVariableDataType::Float16x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        return ProgramVariableDataType::Vec4Int32;
+        return ProgramVariableDataType::Int32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        return ProgramVariableDataType::Vec4Uint32;
+        return ProgramVariableDataType::Uint32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-        return ProgramVariableDataType::Vec4Bool;
+        return ProgramVariableDataType::Boolx4;
       default:
         return ProgramVariableDataType::InvalidType;
     }
   } else if (component == 8) {
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        return ProgramVariableDataType::Vec2Uint8;
+        return ProgramVariableDataType::Uint8x8;
       default:
         return ProgramVariableDataType::InvalidType;
     }
   } else if (component == 16) {
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        return ProgramVariableDataType::Vec4Uint8;
+        return ProgramVariableDataType::Uint8x16;
       default:
         return ProgramVariableDataType::InvalidType;
     }
