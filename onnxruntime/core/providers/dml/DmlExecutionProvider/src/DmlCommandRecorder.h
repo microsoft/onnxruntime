@@ -37,7 +37,8 @@ namespace Dml
             uint64_t dstOffset,
             ID3D12Resource* srcBuffer,
             uint64_t srcOffset,
-            uint64_t byteCount);
+            uint64_t byteCount,
+            char* debugName = nullptr);
 
         void FillBufferWithPattern(
             ID3D12Resource* dstBuffer,

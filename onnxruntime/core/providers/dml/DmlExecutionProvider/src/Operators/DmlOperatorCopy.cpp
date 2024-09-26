@@ -29,6 +29,15 @@ public:
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
+        if (kernelInfo.GetNodeWrapperInterface())
+        {
+            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->GetUtf8Name(sizeof(m_nodeName), m_nodeName));
+        }
+        else
+        {
+            m_nodeName[0] = '\0';
+        }
+
         if (contextPrivate->IsDmlGraphNode())
         {
             std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
@@ -55,9 +64,14 @@ public:
             // Copy elements from input tensor to output tensor.
             ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
                 outputTensor.GetInterface().Get(),
-                inputTensor.GetInterface().Get()));
+                inputTensor.GetInterface().Get(),
+                m_nodeName));
         }
     }
+
+private:
+    // Static buffer (might truncate name) to avoid excessive dynamic allocation only for debugging purposes.
+    char m_nodeName[512];
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Copy, DmlOperatorCopy);

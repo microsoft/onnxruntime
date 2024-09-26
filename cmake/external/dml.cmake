@@ -22,6 +22,10 @@ set(onnxruntime_USE_CUSTOM_DIRECTML OFF CACHE BOOL "Depend on a custom/internal 
 set(dml_EXTERNAL_PROJECT OFF CACHE BOOL "Build DirectML as a source dependency.")
 set(DML_SHARED_LIB DirectML.dll)
 
+get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
+set(PIX_PACKAGE_DIR ${PACKAGES_DIR}/WinPixEventRuntime.1.0.240308001)
+include_directories(BEFORE "${PIX_PACKAGE_DIR}/include")
+
 if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   if (NOT(MSVC) OR NOT(WIN32))
     message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
@@ -40,7 +44,6 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
 
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
-  get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
   set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.15.1)
 
   # Restore nuget packages, which will pull down the DirectML redist package.

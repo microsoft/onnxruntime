@@ -5,6 +5,7 @@
 #include "DmlCommandRecorder.h"
 #include "CommandQueue.h"
 #include "BucketizedBufferAllocator.h"
+#include "PixWrapper.h"
 
 using namespace Dml;
 
@@ -178,9 +179,21 @@ void DmlCommandRecorder::CopyBufferRegion(
     uint64_t dstOffset,
     ID3D12Resource* srcBuffer,
     uint64_t srcOffset,
-    uint64_t byteCount)
+    uint64_t byteCount,
+    char* debugName)
 {
+    if (debugName)
+    {
+        Pix::BeginEvent(m_currentCommandList.Get(), 0, debugName);
+    }
+
     m_currentCommandList->CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
+
+    if (debugName)
+    {
+        Pix::EndEvent(m_currentCommandList.Get());
+    }
+
     m_operationsRecordedInCurrentCommandList = true;
 }
 
@@ -338,7 +351,7 @@ void DmlCommandRecorder::CloseAndExecute()
 }
 
 void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList)
-{   
+{
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
@@ -359,7 +372,7 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
         m_queue->ExecuteCommandLists(
                 gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
     }
-    
+
     m_cachedCommandList = m_currentCommandList;
     m_currentCommandList = nullptr;
     m_operationsRecordedInCurrentCommandList = false;

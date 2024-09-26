@@ -75,7 +75,7 @@ namespace Dml
             gsl::span<DML_BINDING_DESC> outputTensors
             ) const noexcept final;
 
-        STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept final;
+        STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src, char* debugName = nullptr) const noexcept final;
         STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept final;
 
         STDMETHOD(FillTensorWithPattern)(

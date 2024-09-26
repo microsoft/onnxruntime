@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
+#include "PixWrapper.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -159,6 +160,8 @@ namespace Dml
           m_memoryArenaDisabled(disableMemoryArena),
           m_context(executionContext)
     {
+        Pix::Initialize();
+
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
@@ -453,7 +456,7 @@ namespace Dml
         return gsl::make_span(static_cast<std::byte*>(data), sizeInBytes);
     }
 
-    HRESULT __stdcall ExecutionProviderImpl::CopyTensor(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept
+    HRESULT __stdcall ExecutionProviderImpl::CopyTensor(IMLOperatorTensor* dst, IMLOperatorTensor* src, char* debugName) const noexcept
     {
         ORT_TRY
         {
@@ -516,7 +519,7 @@ namespace Dml
 
             ID3D12Resource* srcData = srcAllocInfo->GetResource();
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
-            m_context->CopyBufferRegion(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, srcData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dataSizeInBytes);
+            m_context->CopyBufferRegion(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, srcData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dataSizeInBytes, debugName);
         }
         else
         {

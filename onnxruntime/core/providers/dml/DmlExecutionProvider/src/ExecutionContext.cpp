@@ -34,7 +34,8 @@ namespace Dml
         ID3D12Resource* srcBuffer,
         uint64_t srcOffset,
         D3D12_RESOURCE_STATES srcState,
-        uint64_t byteCount)
+        uint64_t byteCount,
+        char* debugName)
     {
         assert(!m_closed);
 
@@ -56,7 +57,7 @@ namespace Dml
             m_dmlRecorder.ResourceBarrier(barriers);
         }
 
-        m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
+        m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount, debugName);
 
         // Reset barrier state
         if (!barriers.empty())
