@@ -680,7 +680,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var orderedInputNames = new List<string>(inputContainer.Count);
             var orderdedInputs = new List<OrtValue>(inputContainer.Count);
-            foreach(var pair in inputContainer)
+            foreach (var pair in inputContainer)
             {
                 orderedInputNames.Add(pair.Key);
                 orderdedInputs.Add(pair.Value);
@@ -772,7 +772,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
                 }
 
-                using(var runOptions = new RunOptions())
+                using (var runOptions = new RunOptions())
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     string testDataDirNamePattern = "test_data*";
@@ -1077,7 +1077,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(result.GetStringTensorAsArray(), expectedValue.AsTensor<string>().ToArray(), new ExactComparer<string>());
                         break;
                     default:
-                        Assert.Fail($"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
+                        Assert.Fail($"VerifyTensorResults cannot handle ElementType: {resultTypeShape.ElementDataType}");
                         break;
                 }
             }
@@ -1249,6 +1249,61 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.True(File.Exists(modelOutputPath));
                 }
             }
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapter")]
+        private void TestInferenceWithLoraAdapter()
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220 };
+
+            using var session = new InferenceSession(modelPath);
+            using var adapter = OrtLoraAdapter.Create(adapterPath, null);
+            using var runOptions = new RunOptions();
+            runOptions.AddActiveLoraAdapter(adapter);
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs.First().GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+        [Fact(DisplayName = "TestInferenceWithBaseLoraModel")]
+        private void TestInferenceWithBaseLoraModel()
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                    28, 32, 36, 40,
+                    28, 32, 36, 40,
+                    28, 32, 36, 40,
+                    28, 32, 36, 40 };
+
+            using var session = new InferenceSession(modelPath);
+            using var runOptions = new RunOptions();
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs.First().GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
         }
 
         // TestGpu() will test
