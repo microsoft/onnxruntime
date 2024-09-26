@@ -1816,6 +1816,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
+  ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
   return ov_options_converted_map;

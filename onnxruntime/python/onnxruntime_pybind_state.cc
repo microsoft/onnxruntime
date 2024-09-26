@@ -1087,6 +1087,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "num_streams") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "load_config") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "cache_dir") {
           OV_provider_options_map[option.first] = option.second;
           continue;
