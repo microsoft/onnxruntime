@@ -125,7 +125,7 @@ TEST_F(ActivationOpTest, Relu) {
       {}, {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 14);
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_QNN) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
   TestActivationOp<MLFloat16>(
       "Relu",
       input_values_fp16,

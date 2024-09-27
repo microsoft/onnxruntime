@@ -3,7 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_QNN)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -30,7 +30,7 @@ struct ConvOpAndTestAttributes {
 
 /*
 Please notice that, we have predefined macros in the head of the file
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)|| defined(USE_QNN).
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
 When we have these two macro defines, this UT will turn into green light and work.
 
 `NhwcFusedConv` in FP16 dtype is a contribe op and not well support by basic CPU ep.
@@ -93,9 +93,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
   // QNN have issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
-  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" ||
-      attributes.auto_pad == "SAME_LOWER" ||
-      !attributes.activation.empty()) {
+  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
     excluded_providers.insert(kQnnExecutionProvider);
   }
   if (!weight_is_initializer || !attributes.activation.empty()) {
