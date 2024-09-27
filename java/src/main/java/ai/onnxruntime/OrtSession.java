@@ -1576,13 +1576,21 @@ public class OrtSession implements AutoCloseable {
 
     private boolean closed = false;
 
+    private LoraAdapter(long nativeHandle)  {
+      this.nativeHandle = nativeHandle;
+    }
+
     /**
      * Creates an instance of LoraAdapter.
      * 
+     * @param absoluteAdapterPath path to the adapter file that is going to be
+     *        memory mapped
+     * @param allocator optional allocator or null. If supplied, adapter parameters
+     *                 are copied to the allocator memory
      * @throws OrtException
      */
-    public LoraAdapter() throws OrtException {
-      this.nativeHandle = createLoraAdapter(OnnxRuntime.ortApiHandle);
+    public static LoraAdapter Create(String absoluteAdapterPath, OrtAllocator allocator) throws OrtException {
+      return new LoraAdapter(createLoraAdapter(OnnxRuntime.ortApiHandle, absoluteAdapterPath, allocator));
     }
 
     /**
@@ -1614,7 +1622,8 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
-    private native long createLoraAdapter(long apiHandle) throws OrtException;
+    private static native long createLoraAdapter(long apiHandle, String adapterPath,
+                                          OrtAllocator allocator) throws OrtException;
 
     private static native void close(long apiHandle, long nativeHandle);
   }

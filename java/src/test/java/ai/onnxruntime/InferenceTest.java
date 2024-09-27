@@ -1295,6 +1295,58 @@ public class InferenceTest {
   }
 
   @Test
+  public void testRunWithLoraAdapter() throws OrtException {
+    // XXX: Not sure how exactly to get paths to native testdata
+    // it seems that it is included into resources
+    String modelPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx").toString();
+    String adapterPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx_adapter").toString();
+
+    var inputShape = new long[] {4, 4};
+    var inputData = new float[16];
+    // Fixme
+    Array.fill(inputData, 1.f);
+
+    var expectedOutput = new float[] {
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f};
+
+    try(var session = new env.createSession(modelPath);
+        var adapter = new OrtSession.LoraAdapter.Create(adapterPath, null);
+        var runOptions = new OrtSession.RunOptions()) {
+
+          runOptions.addActiveLoraAdapter(adapter);
+          session.Run();
+      }
+  }
+
+  @Test
+  public void testRunWithBaseLoraModel() throws OrtException {
+    // XXX: Not sure how exactly to get paths to native testdata
+    // it seems that it is included into resources
+    String modelPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx").toString();
+
+    var inputShape = new long[] {4, 4};
+    var inputData = new float[16];
+    // Fixme
+    Array.fill(inputData, 1.f);
+
+    var expectedOutput = new float[] {
+      28.f, 32.f, 36.f, 40.f,
+      28.f, 32.f, 36.f, 40.f,
+      28.f, 32.f, 36.f, 40.f,
+      28.f, 32.f, 36.f, 40.f};
+
+    // See C# tests
+    try(var session = new env.createSession(modelPath);
+        var adapter = new OrtSession.LoraAdapter.Create(adapterPath, null);
+      {
+          session.Run();
+      }
+  }
+
+  @Test
   public void testExtraSessionOptions() throws OrtException, IOException {
     // model takes 1x5 input of fixed type, echoes back
     String modelPath = TestHelpers.getResourcePath("/test_types_BOOL.pb").toString();
