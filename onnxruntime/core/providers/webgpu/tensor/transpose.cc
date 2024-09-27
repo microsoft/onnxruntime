@@ -76,7 +76,6 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
   if (use_shared_) {
-    const auto tile_size = std::to_string(TILE_SIZE);
     shader.AppendImplementation("var<workgroup> tile : array<array<output_value_t, tile_size + 1>, tile_size>;\n");
     shader.SetMainFunctionBody(
         "  let stride = (uniforms.output_shape[1] - 1) / tile_size + 1;\n"
