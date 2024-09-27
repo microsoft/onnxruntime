@@ -15,6 +15,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Add this block for the native library usage -->
+        <uses-native-library
+            android:name="libcdsprpc.so"
+            android:required="false" />
     </application>
 
 </manifest>

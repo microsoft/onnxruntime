@@ -838,6 +838,7 @@ def run_subprocess(
         raise ValueError("args should be a sequence of strings, not a string")
 
     my_env = os.environ.copy()
+    log.info(my_env)
     if dll_path:
         if is_windows():
             if "PATH" in my_env:
@@ -1863,15 +1864,17 @@ def setup_rocm_build(args):
 def run_android_tests(args, source_dir, build_dir, config, cwd):
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = "/data/local/tmp"
+    adb_prefix=" -P 8000 "
 
     def adb_push(src, dest, **kwargs):
-        return run_subprocess([sdk_tool_paths.adb, "push", src, dest], **kwargs)
+        
+        return run_subprocess([sdk_tool_paths.adb, '-P', '8000', 'push', src, dest], **kwargs)
 
     def adb_shell(*args, **kwargs):
-        return run_subprocess([sdk_tool_paths.adb, "shell", *args], **kwargs)
+        return run_subprocess([sdk_tool_paths.adb, '-P', '8000',"shell", *args], **kwargs)
 
     def adb_install(*args, **kwargs):
-        return run_subprocess([sdk_tool_paths.adb, "install", *args], **kwargs)
+        return run_subprocess([sdk_tool_paths.adb,'-P', '8000', "install", *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1882,10 +1885,11 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             adb_shell(f"cd {device_dir} && {cmd}")
 
-    if args.android_abi == "x86_64":
+    if True: ## args.android_abi == "x86_64":
         with contextlib.ExitStack() as context_stack:
+            
             if args.android_run_emulator:
-                avd_name = "ort_android"
+                avd_name = "ort_android1"
                 system_image = f"system-images;android-{args.android_api};default;{args.android_abi}"
 
                 android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
@@ -1896,7 +1900,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                         extra_args=["-partition-size", "2047", "-wipe-data"],
                     )
                 )
-                context_stack.callback(android.stop_emulator, emulator_proc)
+                #context_stack.callback(android.stop_emulator, emulator_proc)
+            """
 
             adb_push("testdata", device_dir, cwd=cwd)
             adb_push(
@@ -1911,20 +1916,22 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
             # when we try to copy the java app to the device.
             adb_shell(f"rm {device_dir}/onnxruntime_test_all")
-
-            if args.build_java:
+            """
+            if True: #args.build_java:
                 # use the gradle wrapper under <repo root>/java
                 gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
                 android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+                device_serial = "f623f410" 
                 run_subprocess(
                     [
                         gradle_executable,
                         "--no-daemon",
-                        f"-DminSdkVer={args.android_api}",
+                        f"-DminSdkVer={args.android_api}",  
                         "clean",
                         "connectedDebugAndroidTest",
                     ],
                     cwd=android_test_path,
+                    #env={"ANDROID_SERIAL": device_serial}
                 )
 
             if args.use_nnapi:

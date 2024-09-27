@@ -114,6 +114,7 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
     onnxruntime::ProviderOptions options;
 #if defined(_WIN32)
     options["backend_path"] = "QnnCpu.dll";
+    return EXIT_FAILURE;  
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif

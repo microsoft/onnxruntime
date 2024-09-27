@@ -24,6 +24,10 @@ android {
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
 		}
 	}
+	packagingOptions {
+		jniLibs.useLegacyPackaging = true
+		//exclude 'lib/arm64-v8a/libQnnGpu.so'
+	}
 	compileOptions {
 		sourceCompatibility JavaVersion.VERSION_1_8
 		targetCompatibility JavaVersion.VERSION_1_8
@@ -32,6 +36,7 @@ android {
 		jvmTarget = '1.8'
 	}
 	namespace 'ai.onnxruntime.example.javavalidator'
+	
 }
 
 dependencies {
@@ -45,6 +50,8 @@ dependencies {
 	androidTestImplementation 'androidx.test.ext:junit:1.1.3'
 	androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
 	implementation(name: "onnxruntime-android", ext: "aar")
+	implementation 'com.qualcomm.qti:qnn-runtime:2.26.0'
+
 
 	androidTestImplementation 'androidx.test:runner:1.4.0'
 	androidTestImplementation 'androidx.test:rules:1.4.0'

@@ -162,6 +162,15 @@ publishing {
 						email = 'onnxruntime@microsoft.com'
 					}
 				}
+				// Add the Qualcomm QNN Runtime as a dependency in the generated POM
+                withXml {
+                    asNode().appendNode('dependencies').appendNode('dependency').apply {
+                        appendNode('groupId', 'com.qualcomm.qti')
+                        appendNode('artifactId', 'qnn-runtime')
+                        appendNode('version', '2.26.0')
+						appendNode('scope', 'runtime')
+                    }
+				}
 			}
 		}
 	}
