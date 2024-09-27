@@ -15,8 +15,8 @@ class Transpose final : public WebGpuKernel, public TransposeBase {
  public:
   Transpose(const OpKernelInfo& info) : WebGpuKernel{info}, TransposeBase{info} {
   }
-  constexpr static uint32_t TILE_SIZE = 16;
   Status ComputeInternal(ComputeContext& context) const override;
+  constexpr static uint32_t TILE_SIZE = 16;
 };
 
 class TransposeProgram final : public Program<TransposeProgram> {
