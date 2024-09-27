@@ -323,6 +323,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr KernelInfoGetAllocator;
         public IntPtr AddExternalInitializersFromFilesInMemory;
         public IntPtr CreateLoraAdapter;
+        public IntPtr CreateLoraAdapterFromArray;
         public IntPtr ReleaseLoraAdapter;
         public IntPtr RunOptionsAddActiveLoraAdapter;
     }
@@ -565,6 +566,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
             CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
                 typeof(DCreateLoraAdapter));
+            CreateLoraAdapterFromArray = (DCreateLoraAdapterFromArray)Marshal.GetDelegateForFunctionPointer (api_.CreateLoraAdapterFromArray, typeof(DCreateLoraAdapterFromArray));
             ReleaseLoraAdapter = (DReleaseLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.ReleaseLoraAdapter,
                 typeof(DReleaseLoraAdapter));
             OrtRunOptionsAddActiveLoraAdapter = (DOrtRunOptionsAddActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
@@ -1290,9 +1292,17 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DSessionOptionsAppendExecutionProvider SessionOptionsAppendExecutionProvider;
 
-    #endregion
+        #endregion
 
         #region LoraAdapter API
+        /// <summary>
+        /// Memory maps the adapter file, wraps it into the adapter object
+        /// and returns it.
+        /// </summary>
+        /// <param name="adapter_path">absolute path to the adapter file</param>
+        /// <param name="allocator">optional device allocator or null</param>
+        /// <param name="lora_adapter">New LoraAdapter object</param>
+        /// <returns></returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapter(
                 byte[] adapter_path, // This takes const ORTCHAR_T* use GetPlatformSerializedString
@@ -1301,11 +1311,30 @@ namespace Microsoft.ML.OnnxRuntime
             );
         public static DCreateLoraAdapter CreateLoraAdapter;
 
+        /// <summary>
+        /// Creates LoraAdapter instance from a byte array that must
+        /// represents a valid LoraAdapter formst.
+        /// </summary>
+        /// <param name="bytes">bytes</param>
+        /// <param name="size">size in bytes</param>
+        /// <param name="allocator">optional device allocator</param>
+        /// <param name="lora_adapter">resuling LoraAdapter instance</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapterFromArray(
+                byte[] bytes,
+                UIntPtr size,
+                IntPtr /* OrtAllocator */ allocator, // optional
+                out IntPtr lora_adapter
+            );
+        public static DCreateLoraAdapterFromArray CreateLoraAdapterFromArray;
+
+
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DReleaseLoraAdapter(IntPtr /* OrtLoraAdapter* */ lora_adapter);
         public static DReleaseLoraAdapter ReleaseLoraAdapter;
 
-    #endregion
+#endregion
 
     #region RunOptions API
 

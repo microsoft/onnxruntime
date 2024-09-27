@@ -11,20 +11,34 @@ namespace Microsoft.ML.OnnxRuntime
     public class OrtLoraAdapter : SafeHandle
     {
         /// <summary>
-        /// Creates an instance of OrtLoraAdapter.
+        /// Creates an instance of OrtLoraAdapter from file.
         /// The adapter file is memory mapped. If allocator parameter
         /// is provided, then lora parameters are copied to the memory
         /// allocated by the specified allocator.
         /// </summary>
         /// <param name="adapterPath">path to the adapter file</param>
         /// <param name="ortAllocator">optional allocator, can be null, must be a device allocator</param>
-        /// <returns></returns>
+        /// <returns>New instance of LoraAdapter</returns>
         public static OrtLoraAdapter Create(string adapterPath, OrtAllocator ortAllocator)
         {
             var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(adapterPath);
             var allocatorHandle = (ortAllocator != null) ? ortAllocator.Pointer : IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.CreateLoraAdapter(platformPath, allocatorHandle,
                 out IntPtr adapterHandle));
+            return new OrtLoraAdapter(adapterHandle);
+        }
+
+        /// <summary>
+        /// Creates an instance of OrtLoraAdapter from an array of bytes.
+        /// </summary>
+        /// <param name="bytes">array of bytes containing valid LoraAdapter format</param>
+        /// <param name="ortAllocator">optional device allocator or null</param>
+        /// <returns>new instance of LoraAdapter</returns>
+        public static OrtLoraAdapter Create(byte[] bytes, OrtAllocator ortAllocator)
+        {
+            var allocatorHandle = (ortAllocator != null) ? ortAllocator.Pointer : IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.CreateLoraAdapterFromArray(bytes, 
+                new UIntPtr((uint)bytes.Length), allocatorHandle, out IntPtr adapterHandle));
             return new OrtLoraAdapter(adapterHandle);
         }
 
