@@ -82,7 +82,6 @@ jobs:
             --use_qnn \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --skip_submodule_sync \
             --test
         displayName: Run unit tests
 
