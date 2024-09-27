@@ -26,6 +26,7 @@
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/tensor.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
@@ -1168,19 +1169,24 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
   @param align_info offset alignment info.
+  @param save_prepacked_constant_initializers whether to save prepacked initializer into onnx data file.
+  @param pre_packed_initializers_name_map hashmap used to store prepacked initializers.
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold,
                                                                   const OffsetAlignmentInfo& align_info,
-                                                                  bool save_prepacked_constant_initializers) const;
+                                                                  bool save_prepacked_constant_initializers,
+                                                                  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const;
 
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold) const {
     OffsetAlignmentInfo default_options;
-    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options, false);
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options, 
+                                                false, pre_packed_initializers_name_map);
   }
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
@@ -1494,6 +1500,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
  private:
   void InitializeStateFromModelFileGraphProto();
+  static void SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_info,
+                                       size_t tensor_bytes_size,
+                                       int64_t& external_offset,
+                                       std::ofstream& external_stream,
+                                       const std::vector<uint8_t>& raw_data,
+                                       ONNX_NAMESPACE::TensorProto* output_proto,
+                                       const std::filesystem::path& external_file_path,
+                                       const ONNX_NAMESPACE::TensorProto& initializer,
+                                       bool is_prepacked);
 
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,

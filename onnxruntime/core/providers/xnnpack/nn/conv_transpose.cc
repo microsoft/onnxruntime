@@ -15,7 +15,9 @@ namespace xnnpack {
 // use PrePack to handle the weight layout change as that's not a simple NCHW -> NHWC transpose
 Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                               /*out*/ bool& is_packed,
-                              /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+                              /*out*/ PrePackedWeights* /*prepacked_weights*/,
+                              bool save_prepacked_initializers) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
   if ((conv_type_ == OpComputeType::op_compute_type_fp32 && input_idx == 1) ||

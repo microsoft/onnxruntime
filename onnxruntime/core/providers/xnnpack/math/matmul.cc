@@ -66,7 +66,9 @@ MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info, /*enable_caches*/
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                        /*out*/ bool& is_packed,
-                       /*out*/ PrePackedWeights* /*Not used*/) {
+                       /*out*/ PrePackedWeights* /*Not used*/,
+                       bool save_prepacked_initializers) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   is_packed = false;
 
   if (input_idx == 0 || input_idx == 2) {

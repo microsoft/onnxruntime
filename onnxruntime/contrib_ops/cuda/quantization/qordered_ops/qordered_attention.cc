@@ -100,7 +100,9 @@ Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr a
 
 Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                   /*out*/ bool& is_packed,
-                                  /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+                                  /*out*/ PrePackedWeights* /*prepacked_weights*/,
+                                  bool save_prepacked_initializers) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   is_packed = false;
 
   if (input_idx == InputIds::ScaleInput) {

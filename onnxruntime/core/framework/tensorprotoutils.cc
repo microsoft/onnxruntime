@@ -169,7 +169,8 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
                                   const std::filesystem::path& tensor_proto_dir,
                                   std::basic_string<ORTCHAR_T>& external_file_path,
                                   onnxruntime::FileOffsetType& file_offset,
-                                  SafeInt<size_t>& tensor_byte_size) {
+                                  SafeInt<size_t>& tensor_byte_size,
+                                  bool& pre_packed) {
   ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
                     "Tensor does not have external data to read from.");
 
@@ -178,6 +179,8 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 
   std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
   ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+
+  pre_packed = external_data_info->GetPrePacked();
 
   const auto& location = external_data_info->GetRelPath();
 
@@ -194,6 +197,15 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
   file_offset = external_data_info->GetOffset();
 
   return Status::OK();
+}
+
+static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                  const std::filesystem::path& tensor_proto_dir,
+                                  std::basic_string<ORTCHAR_T>& external_file_path,
+                                  onnxruntime::FileOffsetType& file_offset,
+                                  SafeInt<size_t>& tensor_byte_size) {
+  bool pre_packed = false;
+  return GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size, pre_packed);
 }
 
 // Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
@@ -988,7 +1000,7 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf,
                                  SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter,
-                                 Tensor* buffered_tensor) {
+                                 std::unordered_map<std::string, size_t>& pre_packed_initializers_name_count_map, Tensor* buffered_tensor) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -997,8 +1009,13 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
+  bool pre_packed = false;
   ORT_RETURN_IF_ERROR(
-      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len, pre_packed));
+
+  if (pre_packed) {
+    pre_packed_initializers_name_count_map[tensor_proto.name()] = 1;
+  }
 
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
     // the value in location is the memory address of the data
@@ -1106,9 +1123,10 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   SafeInt<size_t> raw_data_len = 0;
   AutoDelete deleter_for_file_data;
   OrtCallback& d = deleter_for_file_data.d;
+  std::unordered_map<std::string, size_t> pre_packed_initializers_name_count_map;
 
   if (utils::HasExternalData(tensor_proto)) {
-    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d));
+    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d, pre_packed_initializers_name_count_map));
   } else if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data

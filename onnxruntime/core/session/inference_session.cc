@@ -2027,9 +2027,11 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
+                                             pre_packed_initializers_name_map,
                                              !saving_model,
                                              saving_ort_format));
 
@@ -2065,12 +2067,15 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           Graph::OffsetAlignmentInfo align_info;
           align_info.align_offset = true;
+          bool save_prepacked_constant_initializers =
+                   session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
                                                                              optimized_model_external_initializers_min_size_in_bytes,
                                                                              align_info,
-                                                                             session_options_.save_prepacked_constant_initializers));
+                                                                             save_prepacked_constant_initializers,
+                                                                             pre_packed_initializers_name_map));
         }
       }
     }

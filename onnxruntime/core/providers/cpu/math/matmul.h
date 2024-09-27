@@ -38,16 +38,22 @@ class MatMul<float> final : public OpKernel {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
+  Tensor* packed_tensor_;
 
   // For FusedMatMul contrib ops
   float alpha_attr_;

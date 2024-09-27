@@ -85,10 +85,11 @@ class OpKernel {
   //                   the Compute function.
   // @param prepacked_weights: A PrePackedWeights instance will be provided to the kernel IF the pre-packed weights
   //                          are meant to be stored in a shared container.
+  // @param save_prepacked_initializers: Set it to true if save prepacked initializers to onnx data file.
 
   virtual Status
   PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
-          /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+          /*out*/ bool& is_packed, /*out*/ PrePackedWeights*, /*prepacked_weights*/ bool /*save_prepacked_initializers*/) {
     is_packed = false;
     return Status::OK();
   }
@@ -126,6 +127,14 @@ class OpKernel {
                                            int /*input_idx*/,
                                            /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
+    return Status::OK();
+  }
+
+  virtual Tensor* GetPrePackTensors() {
+    return nullptr;
+  }
+
+  virtual Status SetPrePackTensors(int /*input_index*/, const Tensor* /*pre_packed_tensor*/) {
     return Status::OK();
   }
 

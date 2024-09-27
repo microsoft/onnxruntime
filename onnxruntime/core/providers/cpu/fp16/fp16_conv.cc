@@ -6,6 +6,7 @@
 //
 
 #include "core/mlas/inc/mlas.h"
+#include "core/framework/utils.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
@@ -51,11 +52,16 @@ class FusedConvFp16 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
  protected:
   bool channels_last_{false};
@@ -94,15 +100,17 @@ class FusedConvFp16 final : public OpKernel {
   MLAS_ACTIVATION activation_;
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
-  BufferUniquePtr packed_W_buffer_;
+  IAllocatorUniquePtr<void> packed_W_buffer_;
   size_t packed_W_size_{0};
   bool is_W_packed_{false};
-  BufferUniquePtr reordered_W_buffer_;
+  IAllocatorUniquePtr<void> reordered_W_buffer_;
+  Tensor* packed_tensor_;
 };
 
 Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                               /*out*/ bool& is_packed,
-                              /*out*/ PrePackedWeights* prepacked_weights) {
+                              /*out*/ PrePackedWeights* prepacked_weights,
+                              bool save_prepacked_initializers) {
   is_packed = false;
   if (input_idx != 1) {
     // Only pack filter tensor (aka weights)
@@ -145,14 +153,13 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
     packed_W_size_ = MlasHalfGemmPackBSize(group_output_channels, kernel_dim, false);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
-      auto* packed_W = static_cast<MLFloat16*>(alloc->Alloc(packed_W_data_size));
+      packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_data_size, true);
+      auto* packed_W = static_cast<MLFloat16*>(packed_W_buffer_.get());
 
       // Initialize memory to 0 as there could be some padding associated with pre-packed
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset((void*)packed_W, 0, packed_W_data_size);
-
-      packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
 
       // Allocate a temporary buffer to hold the reordered oihw->hwio filter for
       // a single group.
@@ -177,6 +184,12 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
         prepacked_weights->buffer_sizes_.push_back(packed_W_data_size);
       }
 
+      if (save_prepacked_initializers) {
+        const char flag = '1';
+        utils::ConvertPackedBufferAndShapeToTensorWithFlag(alloc, tensor, packed_W_data_size, W_shape_, 1,
+                                                  packed_W_buffer_, packed_tensor_, flag);
+      }
+
       is_W_packed_ = true;
       is_packed = true;
       return Status::OK();
@@ -189,20 +202,25 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   }
 
   size_t reordered_w_data_size = SafeInt<size_t>(sizeof(MLFloat16)) * output_channels * kernel_dim;
-  auto* reordered_W = static_cast<MLFloat16*>(alloc->Alloc(reordered_w_data_size));
+  reordered_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, reordered_w_data_size, true);
+  auto reordered_W = static_cast<MLFloat16*>(reordered_W_buffer_.get());
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset((void*)reordered_W, 0, reordered_w_data_size);
 
-  reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
-
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 
   if (share_prepacked_weights) {
     prepacked_weights->buffers_.push_back(std::move(reordered_W_buffer_));
     prepacked_weights->buffer_sizes_.push_back(reordered_w_data_size);
+  }
+
+  if (save_prepacked_initializers) {
+    const char flag = '0';
+    utils::ConvertPackedBufferAndShapeToTensorWithFlag(alloc, tensor, reordered_w_data_size, W_shape_, 1,
+                                                reordered_W_buffer_, packed_tensor_, flag);
   }
 
   is_W_packed_ = true;
@@ -227,6 +245,31 @@ Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
     ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
     reordered_W_buffer_ = std::move(prepacked_buffers[1]);
   }
+
+  return Status::OK();
+}
+
+Tensor* FusedConvFp16::GetPrePackTensors() {
+  return packed_tensor_;
+}
+
+Status FusedConvFp16::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  if (input_idx != 1) {
+    // only the filter tensor is packed
+    return Status::OK();
+  }
+
+  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
+
+  auto buffer_start = static_cast<void*>(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 1);
+  if (*static_cast<char*>(packed_tensor_->MutableDataRaw()) == '1') {
+    utils::ConvertTensorToPackedBufferAndShape(packed_W_size_, W_shape_, 1, packed_W_buffer_, buffer_start);
+  } else {
+    size_t reorder_packed_W_size_;
+    TensorShape reorder_W_shape_;
+    utils::ConvertTensorToPackedBufferAndShape(reorder_packed_W_size_, reorder_W_shape_, 1, reordered_W_buffer_, buffer_start);
+  }
+  is_W_packed_ = true;
 
   return Status::OK();
 }

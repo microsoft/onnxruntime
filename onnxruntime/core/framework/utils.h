@@ -234,6 +234,38 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
+std::string GetPrepackedInitializerName(const std::string initializer_name, const std::string kernel_name);
+
+IAllocatorUniquePtr<void> StoreSizeTInBuffer(size_t input, AllocatorPtr alloc);
+
+size_t RetriveSizeTFromBuffer(IAllocatorUniquePtr<void> buffer);
+
+size_t CalculateTensorShapeVectorMemoryUsage(TensorShapeVector& tensor_shape_vector);
+
+void ConvertPackedBufferAndShapeToTensor(onnxruntime::AllocatorPtr& alloc,
+                                         const onnxruntime::Tensor& weights,
+                                         size_t packed_weights_size_,
+                                         TensorShape weight_shape_,
+                                         int weight_size_factor,
+                                         IAllocatorUniquePtr<void>& packed_weights_,
+                                         Tensor* packed_tensor_,
+                                         PrePackedWeights* prepacked_weights);
+
+void ConvertPackedBufferAndShapeToTensorWithFlag(onnxruntime::AllocatorPtr& alloc,
+                                                 const onnxruntime::Tensor& weights,
+                                                 size_t packed_weights_size_,
+                                                 TensorShape weight_shape_,
+                                                 int weight_size_factor,
+                                                 IAllocatorUniquePtr<void>& packed_weights_,
+                                                 Tensor* packed_tensor_,
+                                                 const char flag);
+
+void ConvertTensorToPackedBufferAndShape(size_t& packed_weights_size_,
+                                         TensorShape weight_shape_,
+                                         int weight_size_factor,
+                                         IAllocatorUniquePtr<void>& packed_weights_,
+                                         void* buffer_start);
+
 #ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif

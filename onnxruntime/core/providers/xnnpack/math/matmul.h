@@ -24,7 +24,8 @@ class MatMul : public XnnpackKernel {
   static bool IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 
  private:
   TensorShape b_shape_;

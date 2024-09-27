@@ -314,11 +314,21 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
+                              std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
   SessionState* Parent() {
     return parent_;
+  }
+
+  Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                              const KernelRegistryManager& kernel_registry_manager,
+                              bool remove_initializers = true,
+                              bool saving_ort_format = false) {
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    return FinalizeSessionState(graph_loc, kernel_registry_manager, pre_packed_initializers_name_map, 
+                                remove_initializers, saving_ort_format);
   }
 
   // Clear all removable attributes if they exists.
@@ -382,7 +392,10 @@ class SessionState {
    * The original constant initialized tensors will be removed to save memory.
    */
   Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                           const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
+                                           const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
+                                           bool save_prepacked_constant_initializers, 
+                                           std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                           std::unordered_map<std::string, size_t>& pre_packed_initializers_name_count_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -400,6 +413,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 

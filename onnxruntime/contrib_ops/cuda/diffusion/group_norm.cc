@@ -95,7 +95,9 @@ GroupNorm::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
 }
 
 Status GroupNorm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /*alloc*/,
-                          bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+                          bool& is_packed, PrePackedWeights* /*prepacked_weights*/,
+                          bool save_prepacked_initializers) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   is_packed = false;
 
   // Compute and cache cPerBlock using number of channels from gamma tensor shape.

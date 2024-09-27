@@ -50,7 +50,8 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
+    std::unordered_map<std::string, size_t>& pre_packed_initializers_name_count_map);
 
 common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,

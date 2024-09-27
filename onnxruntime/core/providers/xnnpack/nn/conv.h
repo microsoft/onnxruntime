@@ -20,7 +20,8 @@ class Conv : public ConvBase {
   // use PrePack to handle the weight layout change as that's not a simple NCHW -> NHWC transpose
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 };
 
 }  // namespace xnnpack

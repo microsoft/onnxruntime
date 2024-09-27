@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/gemm.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/framework/utils.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
@@ -239,7 +240,9 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
 template <typename T>
 Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
                         /*out*/ bool& is_packed,
-                        /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/) {
+                        /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/,
+                        bool save_prepacked_initializers) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   is_packed = false;
   return Status::OK();
 }
@@ -247,7 +250,8 @@ Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, Allocat
 template <>
 Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
                             AllocatorPtr alloc, /*out*/ bool& is_packed,
-                            /*out*/ PrePackedWeights* prepacked_weights) {
+                            /*out*/ PrePackedWeights* prepacked_weights,
+                            bool save_prepacked_initializers) {
   is_packed = false;
 
   // only pack Matrix B
@@ -258,6 +262,11 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
+
+    if (is_packed && save_prepacked_initializers) {
+      utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_b_size, b_shape_, 1,
+                                                 packed_b_, packed_tensor_, prepacked_weights);
     }
   }
   return Status::OK();
@@ -281,6 +290,37 @@ Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
+  return Status::OK();
+}
+
+template <typename T>
+Tensor* Gemm<T>::GetPrePackTensors() {
+  return nullptr;
+}
+
+template <>
+Tensor* Gemm<float>::GetPrePackTensors() {
+  return packed_tensor_;
+}
+
+template <typename T>
+Status Gemm<T>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  if (input_idx == 1) {
+    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
+    packed_b_ = nullptr;
+  }
+
+  return Status::OK();
+}
+
+template <>
+Status Gemm<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  if (input_idx == 1) {
+    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
+    size_t packed_b_size_;
+    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
+  }
+
   return Status::OK();
 }
 

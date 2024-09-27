@@ -4,6 +4,7 @@
 #include "attention_cpu_base.h"
 #include "attention_helper.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -31,21 +32,31 @@ class Attention : public OpKernel, public AttentionCPUBase {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
  private:
   bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size,
                                size_t input_hidden_size, const T* weights_data,
                                size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
 
+  void ConvertPrePackWeightsIntoTensor(onnxruntime::AllocatorPtr& alloc, const onnxruntime::Tensor& weights, PrePackedWeights* prepacked_weights);
+
+  void ConvertTensorToPrePackWeight();
+
   std::array<IAllocatorUniquePtr<void>, 3> packed_weights_;
   size_t packed_weights_size_[3] = {0, 0, 0};
   bool is_prepack_ = false;
   TensorShape weight_shape_;
+  Tensor* packed_tensor_;
 };
 
 // These ops are internal-only, so register outside of onnx
@@ -102,7 +113,8 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
                              /*out*/ bool& is_packed,
-                             /*out*/ PrePackedWeights* prepacked_weights) {
+                             /*out*/ PrePackedWeights* prepacked_weights,
+                             bool save_prepacked_initializers) {
   /* The PrePack() massages the weights to speed up Compute(), there is an option to
    * use shared prepacked weights in which case prepacked_weights parameter would be non-null.
    *
@@ -169,9 +181,65 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     return Status::OK();
   }
 
+  if (save_prepacked_initializers) {
+    ConvertPrePackWeightsIntoTensor(alloc, weights, prepacked_weights);
+  }
+
   is_packed = true;
   is_prepack_ = true;
   return Status::OK();
+}
+
+template <typename T>
+void Attention<T>::ConvertPrePackWeightsIntoTensor(onnxruntime::AllocatorPtr& alloc,
+                                                   const onnxruntime::Tensor& weights,
+                                                   PrePackedWeights* prepacked_weights) {
+  // buffer of packed_tensor is combine of:
+  // 1. packed_weights_size_: first packed_weights_size_ array memory size, then array content
+  // 2. weight shape: first vector memory size, then vector content
+  // 3. packed_weights: packed_weights_[0], packed_weights_[1], packed_weights_[2]
+  auto weight_size_buffer = static_cast<void*>(packed_weights_size_);
+  auto weight_size_buffer_size_buffer = utils::StoreSizeTInBuffer(sizeof(weight_size_buffer), alloc);
+
+  TensorShapeVector shape_vector = weight_shape_.AsShapeVector();
+  size_t shape_vector_mem_size = utils::CalculateTensorShapeVectorMemoryUsage(shape_vector);
+  auto shape_vector_mem_size_buffer = utils::StoreSizeTInBuffer(shape_vector_mem_size, alloc);
+  void* shape_vector_ptr = static_cast<void*>(&shape_vector);
+
+  size_t buffer_size = (packed_weights_size_[0] + packed_weights_size_[1] + packed_weights_size_[2]) * num_heads_ +
+                       2 * sizeof(size_t) + sizeof(weight_size_buffer) +
+                       shape_vector_mem_size;
+
+  auto packed_tensor_buffer = IAllocator::MakeUniquePtr<void>(alloc,
+                                                              buffer_size,
+                                                              true);
+  std::memcpy(packed_tensor_buffer.get(),
+              weight_size_buffer_size_buffer.get(),
+              sizeof(size_t));
+  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + sizeof(size_t),
+              weight_size_buffer,
+              sizeof(weight_size_buffer));
+  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + sizeof(size_t) + sizeof(weight_size_buffer),
+              shape_vector_mem_size_buffer.get(),
+              sizeof(size_t));
+  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2 * sizeof(size_t) + sizeof(weight_size_buffer),
+              shape_vector_ptr,
+              shape_vector_mem_size);
+  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2 * sizeof(size_t) + sizeof(weight_size_buffer) + shape_vector_mem_size,
+              packed_weights_[0] != nullptr ? packed_weights_[0].get() : prepacked_weights->buffers_[0].get(),
+              packed_weights_size_[0] * num_heads_);
+  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2 * sizeof(size_t) + sizeof(weight_size_buffer) + shape_vector_mem_size + packed_weights_size_[0] * num_heads_,
+              packed_weights_[1] != nullptr ? packed_weights_[1].get() : prepacked_weights->buffers_[1].get(),
+              packed_weights_size_[1] * num_heads_);
+  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2 * sizeof(size_t) + sizeof(weight_size_buffer) + shape_vector_mem_size + packed_weights_size_[0] * num_heads_ + packed_weights_size_[1] * num_heads_,
+              packed_weights_[2] != nullptr ? packed_weights_[2].get() : prepacked_weights->buffers_[2].get(),
+              packed_weights_size_[2] * num_heads_);
+
+  std::vector<int64_t> packed_weights_dims = {static_cast<int64_t>((buffer_size - 1) / weights.DataType()->Size()) + 1};
+  packed_tensor_ = new Tensor(weights.DataType(),
+                              TensorShape(packed_weights_dims),
+                              packed_tensor_buffer.get(),
+                              OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 }
 
 template <typename T>
@@ -188,6 +256,65 @@ Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pre
   packed_weights_[2] = std::move(prepacked_buffers[2]);
 
   return Status::OK();
+}
+
+template <typename T>
+Tensor* Attention<T>::GetPrePackTensors() {
+  return packed_tensor_;
+}
+
+template <typename T>
+Status Attention<T>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  if (1 != input_idx) {
+    return Status::OK();
+  }
+
+  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
+
+  ConvertTensorToPrePackWeight();
+
+  is_prepack_ = true;
+
+  return Status::OK();
+}
+
+template <typename T>
+void Attention<T>::ConvertTensorToPrePackWeight() {
+  // buffer of packed_tensor is combine of:
+  // 1. packed_weights_size_: first packed_weights_size_ array memory size, then array content
+  // 2. weight shape: first vector memory size, then vector content
+  // 3. packed_weights: packed_weights_[0], packed_weights_[1], packed_weights_[2]
+  AllocatorPtr alloc;
+  size_t weight_size_array_size = *static_cast<size_t*>(packed_tensor_->MutableDataRaw());
+  auto weight_size_buffer = IAllocator::MakeUniquePtr<void>(alloc, weight_size_array_size * sizeof(size_t), true);
+  std::memcpy(weight_size_buffer.get(),
+              static_cast<char*>(packed_tensor_->MutableDataRaw()) + sizeof(size_t),
+              weight_size_array_size * sizeof(size_t));
+  auto packed_weight_size_array = static_cast<size_t*>(weight_size_buffer.get());
+  for (int i = 0; i < weight_size_array_size; ++i) {
+    packed_weights_size_[i] = *(packed_weight_size_array + i * sizeof(size_t));
+  }
+
+  size_t weight_shape_buffer_size = *(
+      static_cast<size_t*>(packed_tensor_->MutableDataRaw()) + 1 + weight_size_array_size);
+  auto weight_shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, weight_shape_buffer_size, true);
+  std::memcpy(weight_shape_buffer.get(),
+              static_cast<char*>(packed_tensor_->MutableDataRaw()) + 2 * sizeof(size_t) + weight_size_array_size * sizeof(size_t),
+              weight_shape_buffer_size);
+  auto weight_shape_vector = static_cast<const InlinedVector<int64_t>*>(weight_shape_buffer.get());
+  weight_shape_ = TensorShape(*weight_shape_vector);
+
+  std::memcpy(packed_weights_[0].get(),
+              static_cast<char*>(packed_tensor_->MutableDataRaw()) + 2 * sizeof(size_t) + weight_size_array_size * sizeof(size_t) + weight_shape_buffer_size,
+              packed_weights_size_[0] * num_heads_);
+  std::memcpy(packed_weights_[1].get(),
+              static_cast<char*>(packed_tensor_->MutableDataRaw()) + 2 * sizeof(size_t) + weight_size_array_size * sizeof(size_t) + weight_shape_buffer_size +
+                  packed_weights_size_[0] * num_heads_,
+              packed_weights_size_[1] * num_heads_);
+  std::memcpy(packed_weights_[2].get(),
+              static_cast<char*>(packed_tensor_->MutableDataRaw()) + 2 * sizeof(size_t) + weight_size_array_size * sizeof(size_t) + weight_shape_buffer_size +
+                  packed_weights_size_[0] * num_heads_ + packed_weights_size_[1] * num_heads_,
+              packed_weights_size_[2] * num_heads_);
 }
 
 template <typename T>

@@ -79,7 +79,8 @@ class ConvBase : public JsKernel {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* /* prepacked_weights */) override {
+                 /*out*/ PrePackedWeights* /* prepacked_weights */,
+                 bool save_prepacked_initializers) override {
     is_packed = false;
 
     if (input_idx == 1) {

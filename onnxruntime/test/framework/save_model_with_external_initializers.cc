@@ -19,19 +19,34 @@ using namespace onnxruntime;
 namespace onnxruntime {
 namespace test {
 
+std::vector<std::string> split(const std::string& str, char delimiter) {
+  std::vector<std::string> result;
+  std::stringstream ss(str);
+  std::string token;
+
+  // Use getline with a delimiter to split the string
+  while (std::getline(ss, token, delimiter)) {
+    result.push_back(token);
+  }
+
+  return result;
+}
+
 Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
                                const std::filesystem::path& input_external_init_file,
                                const std::filesystem::path& output_onnx,
                                const std::filesystem::path& output_external_init_file,
                                size_t initializer_size_threshold,
-                               const Graph::OffsetAlignmentInfo& align_info) {
+                               const Graph::OffsetAlignmentInfo& align_info,
+                               std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map,
+                               bool save_prepacked_constant_initializers = false) {
   auto logger = DefaultLoggingManager().CreateLogger("LoadSaveAndCompareModel");
   std::shared_ptr<Model> model;
   ORT_RETURN_IF_ERROR(Model::Load(input_onnx, model, nullptr, *logger));
   std::filesystem::remove(output_onnx);
   std::filesystem::remove(output_external_init_file);
   ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, output_external_init_file, initializer_size_threshold,
-                                                          align_info));
+                                                          align_info, save_prepacked_constant_initializers, pre_packed_initializers_name_map));
 
   std::shared_ptr<Model> model_from_external;
   ORT_RETURN_IF_ERROR(Model::Load(output_onnx.native(), model_from_external, nullptr, *logger));
@@ -50,10 +65,11 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
   // Compare the initializers of the two versions.
   std::filesystem::path model_path{};
   std::filesystem::path external_data_path{};
-  for (const auto& i : initializers) {
+  for (const auto& i : initializers_from_external) {
     const std::string kInitName = i.first;
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
-    const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
+    const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = i.second;
+    // prepack initializer will have name as [original name]:[kernel name] in case initializer used by multiple kernels
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = save_prepacked_constant_initializers ? initializers[split(kInitName, ':')[0]] : initializers[kInitName];
 
     std::vector<uint8_t> tensor_proto_data;
     model_path = input_onnx;
@@ -75,9 +91,13 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
       ORT_RETURN_IF_NOT(from_external_tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL, "location mismatch");
     }
 
-    ORT_RETURN_IF_NOT(tensor_proto_size == from_external_tensor_proto_size, "size mismatch");
-    ORT_RETURN_IF_NOT(memcmp(tensor_proto_data.data(), from_external_tensor_proto_data.data(), tensor_proto_size) == 0, "data mismatch");
-
+    if (!save_prepacked_constant_initializers) {
+      ORT_RETURN_IF_NOT(tensor_proto_size == from_external_tensor_proto_size, "size mismatch");
+      ORT_RETURN_IF_NOT(memcmp(tensor_proto_data.data(), from_external_tensor_proto_data.data(), tensor_proto_size) == 0, "data mismatch");
+    } else {
+      ORT_RETURN_IF_NOT(from_external_tensor_proto_size >= tensor_proto_size, "prepack initializer's size is at least same as original tensor, might be larger");
+    }
+    
     if (align_info.align_offset) {
       for (const StringStringEntryProto& entry : from_external_tensor_proto->external_data()) {
         if (entry.has_key() && entry.has_value() && entry.key() == "offset") {
@@ -89,6 +109,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
       }
     }
   }
+  
   // Cleanup.
   ORT_RETURN_IF_NOT(std::filesystem::remove(output_onnx), "delete file failed");
   ORT_RETURN_IF_NOT(std::filesystem::remove(external_data_path), "delete file failed");
@@ -98,13 +119,15 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
 // Original model does not have external initializers
 TEST(SaveWithExternalInitializers, Mnist) {
   Graph::OffsetAlignmentInfo align_info;
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/mnist.onnx"), ORT_TSTR(""), ORT_TSTR("testdata/mnist_with_external_initializers.onnx"), ORT_TSTR("mnist_external_initializers.bin"), 100, align_info));
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/mnist.onnx"), ORT_TSTR(""), ORT_TSTR("testdata/mnist_with_external_initializers.onnx"), ORT_TSTR("mnist_external_initializers.bin"), 100, align_info, pre_packed_initializers_name_map));
 }
 
 // Original model has external initializers
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
   Graph::OffsetAlignmentInfo align_info;
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info));
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_name_map));
 }
 
 // Original model has external initializers, align offset
@@ -112,7 +135,22 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
   Graph::OffsetAlignmentInfo align_info;
   align_info.align_offset = true;
   align_info.align_threshold = 0;
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info));
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_name_map));
+}
+
+// Original model has external initializers, align offset and serialize prepacked external initializer to model file
+TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffsetAndSavePrepackTensors) {
+  Graph::OffsetAlignmentInfo align_info;
+  align_info.align_offset = true;
+  align_info.align_threshold = 0;
+  std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
+  TensorShape shape = {178};
+  // prepack both initializers for test purpose
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+  pre_packed_initializers_name_map["MatMul.Weight"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<UINT8>(), shape, alloc)}};
+  pre_packed_initializers_name_map["scales"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<FLOAT>(), shape, alloc)}};
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/prepack/model_with_matmul_nbits.onnx"), ORT_TSTR("model_with_matmul_nbits.onnx.data"), ORT_TSTR("testdata/prepack/model_with_matmul_nbits_opt.onnx"), ORT_TSTR("model_with_matmul_nbits_opt.onnx.data"), 0, align_info, pre_packed_initializers_name_map, true));
 }
 
 }  // namespace test

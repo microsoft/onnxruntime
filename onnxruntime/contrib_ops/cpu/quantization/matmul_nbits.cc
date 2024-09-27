@@ -121,10 +121,15 @@ class MatMulNBits final : public OpKernel {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
  private:
   const size_t K_;
@@ -138,6 +143,7 @@ class MatMulNBits final : public OpKernel {
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
+  Tensor* packed_tensor_;
 
   bool has_zp_input_{false};
 #if defined(ORT_NEURAL_SPEED)
@@ -150,7 +156,8 @@ class MatMulNBits final : public OpKernel {
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                             /*out*/ bool& is_packed,
-                            /*out*/ PrePackedWeights* prepacked_weights) {
+                            /*out*/ PrePackedWeights* prepacked_weights,
+                            bool save_prepacked_initializers) {
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
@@ -237,6 +244,34 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
 #endif
   }
 #endif  // defined(ORT_NEURAL_SPEED)
+
+  if (save_prepacked_initializers) {
+    if (!packed_tensor_) {
+      std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
+      packed_tensor_ = new Tensor(tensor.DataType(),
+                                  TensorShape(weights_dims),
+                                  packed_b_.get(),
+                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    } else {
+      packed_tensor_ = new Tensor(packed_tensor_->DataType(),
+                                  packed_tensor_->Shape(),
+                                  packed_b_.get(),
+                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    }
+  }
+
+  return Status::OK();
+}
+
+Tensor* MatMulNBits::GetPrePackTensors() {
+  return packed_tensor_;
+}
+
+Status MatMulNBits::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  if (input_idx == 1) {
+    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
+    packed_b_ = BufferUniquePtr(packed_tensor_->MutableDataRaw());
+  }
 
   return Status::OK();
 }

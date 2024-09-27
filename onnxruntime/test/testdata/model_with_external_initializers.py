@@ -38,6 +38,7 @@ def GenerateModel(model_name, external_data_name):  # noqa: N802
         "Pad",  # node name
         ["X", external_data_name],  # inputs
         ["Y"],  # outputs
+        "pad0",  # node name
         mode="constant",  # Attributes
     )
 

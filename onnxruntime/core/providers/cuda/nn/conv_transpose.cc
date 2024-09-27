@@ -45,7 +45,9 @@ Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T, bool NHWC>
 Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed,
-                                       PrePackedWeights* prepacked_weights) {
+                                       PrePackedWeights* prepacked_weights,
+                                       bool save_prepacked_initializers) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
   if constexpr (NHWC) {  // InputTensors::IN_W

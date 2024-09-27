@@ -29,11 +29,16 @@ class ConvTranspose : public OpKernel {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ PrePackedWeights* prepacked_weights,
+                 bool save_prepacked_initializers) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -45,7 +50,8 @@ class ConvTranspose : public OpKernel {
 
   // for pre-packing usage
   TensorShape filter_shape_;
-  BufferUniquePtr transposed_filter_;
+  IAllocatorUniquePtr<void> transposed_filter_;
+  Tensor* packed_tensor_;
 };
 
 }  // namespace onnxruntime
