@@ -2,14 +2,9 @@ parameters:
   - name: JarFileDirectory
     type: string
 
-  - name: EnableJarMavenSigning
-    type: boolean
-    default: true
-
 steps:
   - task: AzureKeyVault@2
     displayName: 'Get GnuPG signing keys'
-    condition: and(succeeded(), eq('${{ parameters.EnableJarMavenSigning }}', true))
     inputs:
       azureSubscription: 'OnnxrunTimeCodeSign_20240611'
       KeyVaultName: 'ort-release'
@@ -18,7 +13,6 @@ steps:
 
   - task: PowerShell@2
     displayName: 'Sign jar files: GnuPG and sha256'
-    condition: and(succeeded(), eq('${{ parameters.EnableJarMavenSigning }}', true))
     inputs:
       targetType: 'inline'
       workingDirectory: '$(Build.SourcesDirectory)'
