@@ -82,8 +82,6 @@ jobs:
       BuildConfig: $(BuildConfig)
 
   - script: |
-      set "ORT_JAVA_TEST_QNN_EP_BACKEND_PATH=$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnCpu.dll"
-
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
         --config $(BuildConfig) ^
         --build_dir $(Build.BinariesDirectory) ^

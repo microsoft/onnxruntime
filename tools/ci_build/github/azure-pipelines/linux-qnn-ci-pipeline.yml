@@ -72,8 +72,6 @@ jobs:
         displayName: Build QNN EP
 
       - script: |
-          export ORT_JAVA_TEST_QNN_EP_BACKEND_PATH="$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so"
-
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
