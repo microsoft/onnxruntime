@@ -81,10 +81,8 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({
-          {static_cast<uint32_t>(output_size)},
-          {repeats}
-       });
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                            {repeats}});
   return context.RunProgram(program);
 }
 
