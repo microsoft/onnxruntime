@@ -1299,51 +1299,54 @@ public class InferenceTest {
     // XXX: Not sure how exactly to get paths to native testdata
     // it seems that it is included into resources
     String modelPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx").toString();
-    String adapterPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx_adapter").toString();
+    String adapterPath =
+        TestHelpers.getResourcePath("lora/two_params_lora_model.onnx_adapter").toString();
 
-    var inputShape = new long[] {4, 4};
-    var inputData = new float[16];
-    // Fixme
-    Array.fill(inputData, 1.f);
+    long[] inputShape = new long[] {4, 4};
+    float[] inputData = new float[16];
+    Arrays.fill(inputData, 1.f);
+    FloatBuffer buf =
+        ByteBuffer.allocateDirect(Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    buf.put(inputData);
+    buf.rewind();
 
-    var expectedOutput = new float[] {
-      154.f, 176.f, 198.f, 220.f,
-      154.f, 176.f, 198.f, 220.f,
-      154.f, 176.f, 198.f, 220.f,
-      154.f, 176.f, 198.f, 220.f};
+    float[][] expectedOutput =
+        new float[][] {
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f}
+        };
 
-    try(var session = new env.createSession(modelPath);
-        var adapter = new OrtSession.LoraAdapter.Create(adapterPath, null);
-        var runOptions = new OrtSession.RunOptions()) {
+    float[][] expectedLoRAOutput =
+        new float[][] {
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f}
+        };
 
-          runOptions.addActiveLoraAdapter(adapter);
-          session.Run();
+    try (OrtSession session = env.createSession(modelPath);
+        OnnxTensor tensor = OnnxTensor.createTensor(env, buf, inputShape)) {
+
+      Map<String, OnnxTensor> inputs = Collections.singletonMap("input", tensor);
+
+      // Without LoRA
+      try (OrtSession.Result result = session.run(inputs)) {
+        float[][] resultArr = (float[][]) result.get(0).getValue();
+        Assertions.assertArrayEquals(expectedOutput, resultArr);
       }
-  }
 
-  @Test
-  public void testRunWithBaseLoraModel() throws OrtException {
-    // XXX: Not sure how exactly to get paths to native testdata
-    // it seems that it is included into resources
-    String modelPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx").toString();
-
-    var inputShape = new long[] {4, 4};
-    var inputData = new float[16];
-    // Fixme
-    Array.fill(inputData, 1.f);
-
-    var expectedOutput = new float[] {
-      28.f, 32.f, 36.f, 40.f,
-      28.f, 32.f, 36.f, 40.f,
-      28.f, 32.f, 36.f, 40.f,
-      28.f, 32.f, 36.f, 40.f};
-
-    // See C# tests
-    try(var session = new env.createSession(modelPath);
-        var adapter = new OrtSession.LoraAdapter.Create(adapterPath, null);
-      {
-          session.Run();
+      // With LoRA
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(adapterPath);
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
       }
+    }
   }
 
   @Test
