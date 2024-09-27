@@ -6,6 +6,8 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Objects;
 
 /**
  * A container for an adapter which can be supplied to {@link
@@ -27,6 +29,63 @@ public final class OrtLoraAdapter implements AutoCloseable {
 
   private OrtLoraAdapter(long nativeHandle) {
     this.nativeHandle = nativeHandle;
+  }
+
+  /**
+   * Creates an instance of OrtLoraAdapter from a byte array.
+   *
+   * @param loraArray The LoRA stored in a byte array.
+   * @throws OrtException If the native call failed.
+   */
+  public static OrtLoraAdapter create(byte[] loraArray) throws OrtException {
+    return create(loraArray, null);
+  }
+
+  /**
+   * Creates an instance of OrtLoraAdapter from a byte array.
+   *
+   * @param loraArray The LoRA stored in a byte array.
+   * @param allocator optional allocator or null. If supplied, adapter parameters are copied to the
+   *     allocator memory.
+   * @throws OrtException If the native call failed.
+   */
+  static OrtLoraAdapter create(byte[] loraArray, OrtAllocator allocator)
+      throws OrtException {
+    Objects.requireNonNull(loraArray, "LoRA array must not be null");
+    long allocatorHandle = allocator == null ? 0 : allocator.handle;
+    return new OrtLoraAdapter(
+        createLoraAdapterFromArray(OnnxRuntime.ortApiHandle, loraArray, allocatorHandle));
+  }
+
+  /**
+   * Creates an instance of OrtLoraAdapter from a direct ByteBuffer.
+   *
+   * @param loraBuffer The buffer to load.
+   * @throws OrtException If the native call failed.
+   */
+  public static OrtLoraAdapter create(ByteBuffer loraBuffer) throws OrtException {
+    return create(loraBuffer, null);
+  }
+
+  /**
+   * Creates an instance of OrtLoraAdapter from a direct ByteBuffer.
+   *
+   * @param loraBuffer The buffer to load.
+   * @param allocator optional allocator or null. If supplied, adapter parameters are copied to the
+   *     allocator memory.
+   * @throws OrtException If the native call failed.
+   */
+  static OrtLoraAdapter create(ByteBuffer loraBuffer, OrtAllocator allocator)
+      throws OrtException {
+    Objects.requireNonNull(loraBuffer, "LoRA buffer must not be null");
+    if (loraBuffer.remaining() == 0) {
+      throw new OrtException("Invalid LoRA buffer, no elements remaining.");
+    } else if (!loraBuffer.isDirect()) {
+      throw new OrtException("ByteBuffer is not direct.");
+    }
+    long allocatorHandle = allocator == null ? 0 : allocator.handle;
+    return new OrtLoraAdapter(
+        createLoraAdapterFromBuffer(OnnxRuntime.ortApiHandle, loraBuffer, loraBuffer.position(), loraBuffer.remaining(), allocatorHandle));
   }
 
   /**
@@ -63,10 +122,10 @@ public final class OrtLoraAdapter implements AutoCloseable {
     return nativeHandle;
   }
 
-  /** Checks if the LoraAdapter is closed, if so throws {@link IllegalStateException}. */
+  /** Checks if the OrtLoraAdapter is closed, if so throws {@link IllegalStateException}. */
   void checkClosed() {
     if (closed) {
-      throw new IllegalStateException("Trying to use a closed LoraAdapter");
+      throw new IllegalStateException("Trying to use a closed OrtLoraAdapter");
     }
   }
 
@@ -76,12 +135,18 @@ public final class OrtLoraAdapter implements AutoCloseable {
       close(OnnxRuntime.ortApiHandle, nativeHandle);
       closed = true;
     } else {
-      throw new IllegalStateException("Trying to close an already closed LoraAdapter");
+      throw new IllegalStateException("Trying to close an already closed OrtLoraAdapter");
     }
   }
 
   private static native long createLoraAdapter(
       long apiHandle, String adapterPath, long allocatorHandle) throws OrtException;
+
+  private static native long createLoraAdapterFromArray(
+      long apiHandle, byte[] loraBytes, long allocatorHandle) throws OrtException;
+
+  private static native long createLoraAdapterFromBuffer(
+      long apiHandle, ByteBuffer loraBuffer, int bufferPos, int bufferSize, long allocatorHandle) throws OrtException;
 
   private static native void close(long apiHandle, long nativeHandle);
 }
