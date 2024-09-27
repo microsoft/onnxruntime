@@ -19,10 +19,10 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class OnnxTensorTest {
+  private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
   public void testScalarCreation() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     String[] stringValues = new String[] {"true", "false"};
     for (String s : stringValues) {
       try (OnnxTensor t = OnnxTensor.createTensor(env, s)) {
@@ -94,8 +94,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testBufferCreation() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
-
     // Test creating a value from an array
     // Arrays result in tensors allocated by ORT, so they do not have a backing java.nio.Buffer
     float[] arrValues = new float[] {0, 1, 2, 3, 4};
@@ -179,7 +177,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testStringCreation() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     String[] arrValues = new String[] {"this", "is", "a", "single", "dimensional", "string"};
     try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
       Assertions.assertArrayEquals(new long[] {6}, t.getInfo().shape);
@@ -209,7 +206,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testUint8Creation() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     byte[] buf = new byte[] {0, 1};
     ByteBuffer data = ByteBuffer.wrap(buf);
     long[] shape = new long[] {2};
@@ -220,7 +216,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testByteBufferCreation() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     ByteBuffer byteBuf = ByteBuffer.allocateDirect(Float.BYTES * 5).order(ByteOrder.nativeOrder());
     FloatBuffer floatBuf = byteBuf.asFloatBuffer();
     floatBuf.put(1.0f);
@@ -244,7 +239,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testEmptyTensor() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     FloatBuffer buf = FloatBuffer.allocate(0);
     long[] shape = new long[] {4, 0};
     try (OnnxTensor t = OnnxTensor.createTensor(env, buf, shape)) {
@@ -265,7 +259,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testBf16ToFp32() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     String modelPath = TestHelpers.getResourcePath("/java-bf16-to-fp32.onnx").toString();
     SplittableRandom rng = new SplittableRandom(1);
 
@@ -298,7 +291,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testFp16ToFp32() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     String modelPath = TestHelpers.getResourcePath("/java-fp16-to-fp32.onnx").toString();
     SplittableRandom rng = new SplittableRandom(1);
 
@@ -331,7 +323,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testFp32ToFp16() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     String modelPath = TestHelpers.getResourcePath("/java-fp32-to-fp16.onnx").toString();
     SplittableRandom rng = new SplittableRandom(1);
 
@@ -378,7 +369,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testFp32ToBf16() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     String modelPath = TestHelpers.getResourcePath("/java-fp32-to-bf16.onnx").toString();
     SplittableRandom rng = new SplittableRandom(1);
 
@@ -459,7 +449,6 @@ public class OnnxTensorTest {
 
   @Test
   public void testClose() throws OrtException {
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     long[] input = new long[] {1, 2, 3, 4, 5};
     OnnxTensor value = OnnxTensor.createTensor(env, input);
     assertFalse(value.isClosed());
