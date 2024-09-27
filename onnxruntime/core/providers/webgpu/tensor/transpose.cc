@@ -70,15 +70,14 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                  "  let input_col = workgroup_id_y * tile_size + local_id.x;\n"
                                  "  let input_row = workgroup_id_x * tile_size + local_id.y;\n"
                                  "  if (input_row < uniforms.a_shape[0] && input_col < uniforms.a_shape[1]) {\n"
-                                 "    tile[local_id.y][local_id.x] = "
-                              << input.GetByIndices("a_indices_t(input_row, input_col)")
-                              << ";\n"
-                                 "  }\n"
+                              << "    tile[local_id.y][local_id.x] = " << input.GetByIndices("a_indices_t(input_row, input_col)") << ";\n"
+                              << "  }\n"
                                  "  workgroupBarrier();\n"
                                  "  let output_col = workgroup_id_x * tile_size + local_id.x;\n"
                                  "  let output_row = workgroup_id_y * tile_size + local_id.y;\n"
-                                 "  if (output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]) {\n    "
-                              << output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y]") << "\n  }";
+                                 "  if (output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]) {\n"
+                              << "    " << output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y]") << "\n"
+                              << "  }";
   } else {
     shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
                                          "  var a: a_indices_t;\n";

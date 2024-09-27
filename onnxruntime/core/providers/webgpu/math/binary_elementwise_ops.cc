@@ -43,13 +43,9 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
       const auto& a_indices = shader.AddIndices("a_indices");
       const auto& b_indices = shader.AddIndices("b_indices");
 
-      shader.MainFunctionBody() << "let outputIndices = " << c_indices.OffsetToIndices("global_idx * 4")
-                                << ";\n"
-                                   "let offset_a = "
-                                << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "let offset_b = "
-                                << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
+      shader.MainFunctionBody() << "let outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
       // get A data
       if (a.NumComponents() == 4) {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << ";\n";
@@ -65,40 +61,18 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
       }
     } else {
       // In broadcast mode, each element of the vec4 value of A and B will be loaded separately to calculate the output value.
-      shader.MainFunctionBody() << "var outputIndices = " << c_indices.OffsetToIndices("global_idx * 4")
-                                << ";\n"
-                                   "let offset_a0 = "
-                                << a.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "let offset_b0 = "
-                                << b.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "outputIndices = "
-                                << c_indices.OffsetToIndices("global_idx * 4 + 1")
-                                << ";\n"
-                                   "let offset_a1 = "
-                                << a.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "let offset_b1 = "
-                                << b.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "outputIndices = "
-                                << c_indices.OffsetToIndices("global_idx * 4 + 2")
-                                << ";\n"
-                                   "let offset_a2 = "
-                                << a.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "let offset_b2 = "
-                                << b.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "outputIndices = "
-                                << c_indices.OffsetToIndices("global_idx * 4 + 3")
-                                << ";\n"
-                                   "let offset_a3 = "
-                                << a.BroadcastedIndicesToOffset("outputIndices", c_indices)
-                                << ";\n"
-                                   "let offset_b3 = "
-                                << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
+      shader.MainFunctionBody() << "var outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "let offset_a0 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b0 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 1") << ";\n"
+                                << "let offset_a1 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b1 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 2") << ";\n"
+                                << "let offset_a2 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b2 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 3") << ";\n"
+                                << "let offset_a3 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b3 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
 
       // get A data
       shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
