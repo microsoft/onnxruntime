@@ -15,11 +15,6 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
-  std::string common;
-  std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n"
-                                          : "let a = " + a.GetByOffset("global_idx") + ";\n";
-  std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n"
-                                          : "let b = " + b.GetByOffset("global_idx") + ";\n";
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.

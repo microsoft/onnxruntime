@@ -38,48 +38,6 @@ WEBGPU_CONCAT_VERSIONED_KERNEL(4, 10)
 WEBGPU_CONCAT_VERSIONED_KERNEL(11, 12)
 WEBGPU_CONCAT_KERNEL(13)
 
-const std::string AppendCalCulateInputIndexFunction(size_t input_count) {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
-  ss << "fn calculate_input_index(index: u32) -> u32 {" << std::endl
-     << "  for (var i = 0u; i < " << input_count << "; i = i + 1u) {" << std::endl
-     << "    if (index < uniforms.size_in_concat_axis[i]) {" << std::endl
-     << "      return i;" << std::endl
-     << "    }" << std::endl
-     << "  }" << std::endl
-     << "  return " << input_count << ";" << std::endl
-     << "}" << std::endl;
-  return ss.str();
-}
-
-const void AppendAssignOutput(std::ostringstream& ss, const ShaderVariableHelper& input, const ShaderVariableHelper& output) {
-  ss << output.SetByOffset("global_idx", input.GetByIndices("indices")) << ";" << std::endl;
-}
-
-const std::string AppendAssignOutputDataFunction(gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output) {
-  std::ostringstream ss;
-  size_t input_count = inputs.size();
-  ss.imbue(std::locale::classic());
-  ss << "fn assign_output_data(global_idx: u32, input_index: u32, indices: output_indices_t) {" << std::endl;
-  if (input_count == 0) {
-    AppendAssignOutput(ss, *inputs[0], output);
-  } else {
-    for (size_t i = 0; i < input_count; ++i) {
-      if (i == 0) {
-        ss << "  if (input_index == 0u) {" << std::endl;
-      } else if (i == input_count - 1) {
-        ss << "  } else {" << std::endl;
-      } else {
-        ss << "  } else if (input_index == " << i << "u) {" << std::endl;
-      }
-      ss << "     ";
-      AppendAssignOutput(ss, *inputs[i], output);
-    }
-    ss << "  }" << std::endl;
-  }
-  ss << "}" << std::endl;
-  return ss.str();
-}
 Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   size_t input_count = Inputs().size();
   std::vector<const ShaderVariableHelper*> inputs;
@@ -88,16 +46,38 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
     inputs.push_back(&shader.AddInput("input_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  shader.AppendImplementation(AppendCalCulateInputIndexFunction(input_count));
-  shader.AppendImplementation(AppendAssignOutputDataFunction(gsl::make_span(inputs), output));
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
-                             "  var indices = ", output.OffsetToIndices("global_idx"), ";\n",
-                             "  let indices_axis = ", output.IndicesGet("indices", axis_), ";\n",
-                             "  let input_index = calculate_input_index(indices_axis);\n",
-                             "  if (input_index != 0u) {\n",
-                             "     ", output.IndicesSet("indices", axis_, "indices_axis - uniforms.size_in_concat_axis[input_index - 1]"), ";\n",
-                             "  }\n",
-                             "  assign_output_data(global_idx, input_index, indices);\n");
+
+  shader.AdditionalImplementation() << "fn calculate_input_index(index: u32) -> u32 {\n"
+                                    << "  for (var i = 0u; i < " << input_count << "; i = i + 1u) {\n"
+                                    << "    if (index < uniforms.size_in_concat_axis[i]) {\n"
+                                    << "      return i;\n"
+                                    << "    }\n"
+                                    << "  }\n"
+                                    << "  return " << input_count << ";\n"
+                                    << "}\n";
+
+  shader.AdditionalImplementation() << "fn assign_output_data(global_idx: u32, input_index: u32, indices: output_indices_t) {\n";
+  for (size_t i = 0; i < input_count; ++i) {
+    if (i == 0) {
+      shader.AdditionalImplementation() << "  if (input_index == 0u) {\n";
+    } else if (i == input_count - 1) {
+      shader.AdditionalImplementation() << "  } else {\n";
+    } else {
+      shader.AdditionalImplementation() << "  } else if (input_index == " << i << "u) {\n";
+    }
+    shader.AdditionalImplementation() << "     " << output.SetByOffset("global_idx", inputs[i]->GetByIndices("indices")) << ";\n";
+  }
+  shader.AdditionalImplementation() << "  }\n"
+                                       "}\n";
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "  var indices = " << output.OffsetToIndices("global_idx") << ";\n"
+                            << "  let indices_axis = " << output.IndicesGet("indices", axis_) << ";\n"
+                            << "  let input_index = calculate_input_index(indices_axis);\n"
+                               "  if (input_index != 0u) {\n"
+                            << "     " << output.IndicesSet("indices", axis_, "indices_axis - uniforms.size_in_concat_axis[input_index - 1]") << ";\n"
+                            << "  }\n"
+                               "  assign_output_data(global_idx, input_index, indices);\n";
   return Status::OK();
 }
 

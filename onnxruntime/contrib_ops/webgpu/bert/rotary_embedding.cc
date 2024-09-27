@@ -29,38 +29,23 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // TODO: remove output_indices.
   const auto& output_indices = shader.AddIndices("output_indices", false);
   const auto interleaved_str = interleaved_ ? "true" : "false";
-  shader.SetMainFunctionBody(
-      "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
-      "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
-      "  let size = uniforms.global_shape[0] * uniforms.global_stride[0];\n",
-      "  if (global_idx >= size) { return; }\n"
-      "  if (bsnh[3] < half_rotary_emb_dim) {\n"
-      "    let position_ids_idx = " +
-          position_ids.BroadcastedIndicesToOffset("bsnh.xy", output_indices) + ";\n" +
-          "    let position_id = u32(" +
-          position_ids.GetByOffset("position_ids_idx") + ")" +
-          " + select(0, bsnh[1], position_ids_idx == 0);\n"
-          "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " +
-          interleaved_str +
-          ");\n"
-          "    let j = i + select(half_rotary_emb_dim, 1, " +
-          interleaved_str +
-          ");\n"
-          "    let re = " +
-          input.GetByOffset("i") + " * " + cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") + "-" +
-          input.GetByOffset("j") + " * " + sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") + ";\n" +
-          "    " + output.SetByOffset("i", "re") + "\n" +
-          "    let im = " + input.GetByOffset("i") + " * " +
-          sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") +
-          "+ " + input.GetByOffset("j") +
-          " * " + cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") +
-          ";\n    " + output.SetByOffset("j", "im") +
-          "\n"
-          "  } else { \n"
-          "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n" +
-          "    " + output.SetByOffset("k", input.GetByOffset("k")) +
-          "\n"
-          "  }");
+  shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
+                               "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
+                               "  let size = uniforms.global_shape[0] * uniforms.global_stride[0];\n"
+                               "  if (global_idx >= size) { return; }\n"
+                               "  if (bsnh[3] < half_rotary_emb_dim) {\n"
+                            << "    let position_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", output_indices) << ";\n"
+                            << "    let position_id = u32(" << position_ids.GetByOffset("position_ids_idx") << ") + select(0, bsnh[1], position_ids_idx == 0);\n"
+                            << "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " << interleaved_str << ");\n"
+                            << "    let j = i + select(half_rotary_emb_dim, 1, " << interleaved_str << ");\n"
+                            << "    let re = " << input.GetByOffset("i") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " - " << input.GetByOffset("j") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+                            << "    " << output.SetByOffset("i", "re") << "\n"
+                            << "    let im = " << input.GetByOffset("i") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " + " << input.GetByOffset("j") + " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+                            << "    " << output.SetByOffset("j", "im") << "\n"
+                            << "  } else { \n"
+                               "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
+                            << "    " << output.SetByOffset("k", input.GetByOffset("k")) << "\n"
+                            << "  }";
 
   return Status::OK();
 }
