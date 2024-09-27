@@ -114,8 +114,8 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
           single_assignment("output_data[global_idx]", "3");
     }
   }
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             assignment);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                            << assignment;
   return Status::OK();
 }
 

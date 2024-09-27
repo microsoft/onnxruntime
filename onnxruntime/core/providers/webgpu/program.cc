@@ -233,7 +233,7 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
       use_override_shape{true},
       override_shape{override_shape} {}
 
-ProgramBase::ProgramBase(const std::string& name, ProgramMetadata&& metadata)
+ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
     : name_{name},
       metadata_{metadata},
       dispatch_group_size_x_{0},

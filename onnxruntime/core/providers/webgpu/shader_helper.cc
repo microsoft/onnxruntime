@@ -10,6 +10,8 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/string_utils.h"
+#include "core/providers/webgpu/string_macros.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -27,7 +29,9 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
       program_{program},
-      program_metadata_{program_metadata} {}
+      program_metadata_{program_metadata},
+      additional_implementation_ss_{&additional_implementation_},
+      body_ss_{&body_} {}
 
 Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
@@ -50,30 +54,28 @@ Status ShaderHelper::Init() {
 
   // init body string stream
   bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
-  body_.imbue(std::locale::classic());
+  body_.reserve(4096);
+  additional_implementation_.reserve(1024);
 
   // append header for main function so it is ready for user to append main function body
-  body_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)\n"
-           "fn main(@builtin(global_invocation_id) global_id : vec3<u32>,\n"
-           "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
-           "        @builtin(local_invocation_id) local_id : vec3<u32>";
+  body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)\n"
+              "fn main(@builtin(global_invocation_id) global_id : vec3<u32>,\n"
+              "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
+              "        @builtin(local_invocation_id) local_id : vec3<u32>";
   if (!is_1d_dispatch) {
-    body_ << ",\n"
-             "        @builtin(local_invocation_index) local_idx : u32,\n"
-             "        @builtin(num_workgroups) num_workgroups : vec3<u32>";
+    body_ss_ << ",\n"
+                "        @builtin(local_invocation_index) local_idx : u32,\n"
+                "        @builtin(num_workgroups) num_workgroups : vec3<u32>";
   }
-  body_ << ") {\n";
+  body_ss_ << ") {\n";
   if (is_1d_dispatch) {
-    body_ << "  let global_idx = global_id.x;\n"
-             "  let local_idx = local_id.x;\n"
-             "  let workgroup_idx = workgroup_id.x;\n";
+    body_ss_ << "  let global_idx = global_id.x;\n"
+                "  let local_idx = local_id.x;\n"
+                "  let workgroup_idx = workgroup_id.x;\n";
   } else {
-    body_ << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
-             "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
+    body_ss_ << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
+                "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
   }
-
-  // init additional implementation string stream
-  additional_implementation_.imbue(std::locale::classic());
 
   return Status::OK();
 }
@@ -316,8 +318,7 @@ Status ShaderHelper::ValidateIndices() const {
 }
 
 Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
+  SS(ss, kStringInitialSizeShaderSourceCode);
 
   //
   // Section feature enabling
@@ -507,16 +508,16 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Additional Implementation
   //
-  ss << additional_implementation_.str();
+  ss << additional_implementation_;
 
   //
   // Main Function Body
   //
-  ss << body_.str();
+  ss << body_;
   ss << "\n"
         "}\n";
 
-  code = ss.str();
+  code = SS_GET(ss);
   return Status::OK();
 }
 

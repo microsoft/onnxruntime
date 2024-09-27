@@ -24,22 +24,23 @@ Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
-  std::string add_bias = "";
+  shader.AdditionalImplementation() << TanhImpl;
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                            << "  var a = " << x.GetByOffset("global_idx") << ";\n";
   if (Inputs().size() > 1) {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
-    add_bias = bias_components_ == 1 ? "  let bias_offset = global_idx * 4;\n"
-                                       "  a += x_value_t(" +
-                                           bias.GetByOffset("bias_offset % uniforms.bias_shape") + ", " +
-                                           bias.GetByOffset("(bias_offset + 1) % uniforms.bias_shape") + ", " +
-                                           bias.GetByOffset("(bias_offset + 2) % uniforms.bias_shape") + ", " +
-                                           bias.GetByOffset("(bias_offset + 3) % uniforms.bias_shape") + ");\n"
-                                     : "  a += " + bias.GetByOffset("global_idx % uniforms.bias_shape") + ";\n";
+    if (bias_components_ == 1) {
+      shader.MainFunctionBody() << "  let bias_offset = global_idx * 4;\n"
+                                   "  a += x_value_t("
+                                << bias.GetByOffset("bias_offset % uniforms.bias_shape") << ", "
+                                << bias.GetByOffset("(bias_offset + 1) % uniforms.bias_shape") << ", "
+                                << bias.GetByOffset("(bias_offset + 2) % uniforms.bias_shape") << ", "
+                                << bias.GetByOffset("(bias_offset + 3) % uniforms.bias_shape") << ");\n";
+    } else {
+      shader.MainFunctionBody() << "  a += " << bias.GetByOffset("global_idx % uniforms.bias_shape") + ";\n";
+    }
   }
-  shader.AppendImplementation(TanhImpl);
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             "  var a = ", x.GetByOffset("global_idx"), ";\n",
-                             add_bias,
-                             y.SetByOffset("global_idx", onnxruntime::webgpu::FastGeluExpr));
+  shader.MainFunctionBody() << y.SetByOffset("global_idx", onnxruntime::webgpu::FastGeluExpr);
 
   return Status::OK();
 }

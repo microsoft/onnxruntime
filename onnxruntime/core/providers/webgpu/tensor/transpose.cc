@@ -63,13 +63,13 @@ const std::string AppendPermFunction(gsl::span<const size_t> perm) {
 Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  shader.AppendImplementation(AppendPermFunction(this->perm_));
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
-                             "  let indices = ", output.OffsetToIndices("global_idx"),
-                             ";\n"
-                             "  let x_indices = perm(indices); \n"
-                             "  ",
-                             output.SetByOffset("global_idx", input.GetByIndices("x_indices")));
+  shader.AdditionalImplementation() << AppendPermFunction(this->perm_);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "  let indices = " << output.OffsetToIndices("global_idx")
+                            << ";\n"
+                               "  let x_indices = perm(indices); \n"
+                               "  "
+                            << output.SetByOffset("global_idx", input.GetByIndices("x_indices"));
   return Status::OK();
 }
 
