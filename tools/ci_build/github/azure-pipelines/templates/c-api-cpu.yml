@@ -83,14 +83,12 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-latest'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - template: download-deps.yml
 
@@ -237,6 +235,10 @@ stages:
         failOnStderr: true
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+
+    - template: jar-maven-signing-win.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
     - task: CopyFiles@2
       displayName: 'Copy Java Files to Artifact Staging Directory'
@@ -782,7 +784,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-latest
+    AgentPool : macOS-13
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -818,4 +820,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-latest'
+    PoolName: 'macOS-13'

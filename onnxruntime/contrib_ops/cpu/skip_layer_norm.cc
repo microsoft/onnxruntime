@@ -5,6 +5,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
+#include "core/util/force_inline.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_helper.h"
 
@@ -33,6 +34,50 @@ namespace contrib {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
+REGISTER_KERNEL_TYPED(MLFloat16)
+
+// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
+template <typename T, typename Ret>
+ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
+
+template <>
+ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val) {
+  return val.ToFloat();
+}
+
+template <>
+ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val) {
+  return static_cast<double>(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
+}
+
+template <>
+ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val) {
+  return val;
+}
+
+template <>
+ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val) {
+  return val;
+}
+
+// Function template that only converts the input value to MLFloat16 if T is MLFloat16.
+template <typename T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>
+ConvertDoubleOrFloatToMLFloat16IfNeeded(T val) {
+  return val;
+}
+
+template <typename T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
+ConvertDoubleOrFloatToMLFloat16IfNeeded(float val) {
+  return MLFloat16(val);
+}
+
+template <typename T>
+ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
+ConvertDoubleOrFloatToMLFloat16IfNeeded(double val) {
+  return MLFloat16(static_cast<float>(val));
+}
 
 template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
@@ -91,21 +136,32 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         T* p_output = output_data + offset;
         T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
-        T mean = 0;
-        T mean_square = 0;
+        using DoubleOrFloat = typename std::conditional<
+            std::is_same<T, double>::value,  // If T is double
+            double,                          // Use double
+            float                            // Otherwise, use float (covers float and MLFloat16)
+            >::type;
 
-        for (int64_t h = 0; h < hidden_size; h++) {
-          T value = p_input[h] + p_skip[h];
+        DoubleOrFloat mean(0.0f);
+        DoubleOrFloat mean_square(0.0f);
+
+        std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(hidden_size);
+        for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
+          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
+          DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
+
+          DoubleOrFloat value = input_value + skip_value;
 
           if (nullptr != bias_data) {
-            value += bias_data[h];
+            value += ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
           }
 
+          output_buffer[h] = value;
+          T converted_value = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(value);
           if (nullptr != p_skip_input_bias_add_output_data) {
-            p_skip_input_bias_add_output_data[h] = value;
+            p_skip_input_bias_add_output_data[h] = converted_value;
           }
 
-          p_output[h] = value;
           mean += value;
           mean_square += value * value;
         }
@@ -117,13 +173,15 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
         }
 
-        for (int64_t h = 0; h < hidden_size; h++) {
+        for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
+          DoubleOrFloat gamma_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(gamma_data[h]);
           if (simplified) {
-            p_output[h] = p_output[h] / mean_square * gamma_data[h];
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
           } else if (nullptr == beta_data) {
-            p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value);
           } else {
-            p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+            DoubleOrFloat beta_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(beta_data[h]);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
           }
         }
       },

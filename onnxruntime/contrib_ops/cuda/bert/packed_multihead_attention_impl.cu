@@ -639,6 +639,7 @@ Status FlashAttention(
           sequence_length,
           sequence_length,
           scale,
+          0.0,
           false,  // is causal
           false   // is bf16
           ));

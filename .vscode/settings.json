@@ -22,7 +22,5 @@
         "-build/include_subdir",
         "-runtime/references"
     ],
-    "files.associations": {
-        "span": "cpp"
-    }
+    "C_Cpp.autoAddFileAssociations": false
 }

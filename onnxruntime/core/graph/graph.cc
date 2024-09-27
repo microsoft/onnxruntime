@@ -915,6 +915,42 @@ void Node::Init(std::string_view name,
     }
   }
 }
+void Node::Init(std::string_view name,
+                std::string_view op_type,
+                std::string_view description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                std::string_view domain) {
+  name_ = name;
+  op_type_ = op_type;
+  description_ = description;
+  definitions_.input_defs.assign(input_args.begin(), input_args.end());
+  definitions_.output_defs.assign(output_args.begin(), output_args.end());
+  domain_ = domain;
+  can_be_saved_ = true;
+  priority_ = 0;
+  if (kOnnxDomainAlias == domain_) {
+    domain_ = kOnnxDomain;
+  }
+
+  // Set each arg count as 1 by default.
+  // It could be adjusted when resolving the node with its operator
+  // information.
+  definitions_.input_arg_count.assign(input_args.size(), 1);
+
+  attributes_ = std::move(attributes);
+
+  for (auto& name_to_attr : attributes_) {
+    if (utils::HasGraph(name_to_attr.second)) {
+#if !defined(ORT_MINIMAL_BUILD)
+      CreateSubgraph(name_to_attr.first);
+#else
+      ORT_THROW("Creating node with a subgraph via AddNode is not supported in this build.");
+#endif
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -3916,6 +3952,35 @@ Node& Graph::AddNode(const std::string& name,
 
   const gsl::not_null<Node*> node = AllocateNode();
   node->Init(name, op_type, description, inputs, outputs, attributes, domain);
+  if (0 != op_type.compare(kNoOp)) {
+    GraphProtoSyncNeeded(true);
+  }
+
+  return *node;
+}
+
+Node& Graph::AddNode(const std::string& name,
+                     const std::string& op_type,
+                     const std::string& description,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
+                     NodeAttributes&& attributes,
+                     const std::string& domain) {
+  InlinedVector<NodeArg*> inputs;
+  InlinedVector<NodeArg*> outputs;
+  inputs.resize(input_args.size());
+  outputs.resize(output_args.size());
+  int i = 0;
+  for (auto input_arg : input_args) {
+    inputs[i++] = &GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+  }
+  i = 0;
+  for (auto output_arg : output_args) {
+    outputs[i++] = &GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+  }
+
+  const gsl::not_null<Node*> node = AllocateNode();
+  node->Init(name, op_type, description, inputs, outputs, std::move(attributes), domain);
   if (0 != op_type.compare(kNoOp)) {
     GraphProtoSyncNeeded(true);
   }

@@ -103,6 +103,17 @@ inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPoo
 }
 
 template <typename T>
+void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, float softcap) {
+  for (int i = 0; i < sequence_length; i++) {
+    scores[i] = scores[i] / softcap;
+    scores[i] = std::tanh(scores[i]);
+    scores[i] = scores[i] * softcap;
+  }
+}
+
+template void ComputeAttentionSoftcapInplace<float>(float* scores, int sequence_length, float softcap);
+
+template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  gsl::span<const int64_t> mask_index_dims,
                  T* mask_data,
@@ -225,19 +236,16 @@ T* ConcatStateChunkGQA(const T* past,
                        size_t past_buff_chunk_length,
                        size_t past_chunk_length,
                        size_t new_chunk_length,
-                       bool is_prompt,
                        bool past_present_share_buffer,
                        std::ptrdiff_t i) {
   T* start = present + i * present_buff_chunk_length;
 
   T* p = start;
-  if (!is_prompt) {
-    if (!past_present_share_buffer) {
-      const T* src_past = past + i * past_buff_chunk_length;
-      memcpy(p, src_past, past_chunk_length * sizeof(T));
-    }
-    p += past_chunk_length;
+  if (!past_present_share_buffer && past_chunk_length > 0) {
+    const T* src_past = past + i * past_buff_chunk_length;
+    memcpy(p, src_past, past_chunk_length * sizeof(T));
   }
+  p += past_chunk_length;
 
   memcpy(p, chunk, new_chunk_length * sizeof(T));
   return start;

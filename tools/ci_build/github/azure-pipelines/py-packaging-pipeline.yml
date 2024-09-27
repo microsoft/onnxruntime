@@ -44,6 +44,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_linux_x64_qnn
+  displayName: 'Whether Linux x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
@@ -64,7 +69,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.25.0.240728
+  default: 2.26.0.240828
 
 trigger: none
 
@@ -80,6 +85,7 @@ stages:
     enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
     enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
     enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
+    enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
     build_py_parameters: ${{ parameters.build_py_parameters }}
     cmake_build_type: ${{ parameters.cmake_build_type }}
     qnn_sdk_version: ${{ parameters.qnn_sdk_version }}

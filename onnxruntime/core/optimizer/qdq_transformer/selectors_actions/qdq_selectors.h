@@ -302,14 +302,20 @@ class BaseSelector : public NodeSelector {
 
 class DropQDQNodesSelector : public BaseSelector {
  public:
-  explicit DropQDQNodesSelector(bool allow_16bit = false, bool allow_4bit = false, bool allow_nonpositive_scale = true)
-      : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale)) {}
+  explicit DropQDQNodesSelector(bool allow_16bit = false, bool allow_4bit = false,
+                                bool allow_nonpositive_scale = true,
+                                gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
+                     compatible_providers) {}
 };
 
 class DropDQNodesSelector : public BaseSelector {
  public:
-  explicit DropDQNodesSelector(bool allow_16bit = false, bool allow_4bit = false)
-      : BaseSelector(std::make_unique<DropDQNodeGroupSelector>(allow_16bit, allow_4bit)) {}
+  explicit DropDQNodesSelector(bool allow_16bit = false,
+                               bool allow_4bit = false,
+                               gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<DropDQNodeGroupSelector>(allow_16bit, allow_4bit),
+                     compatible_providers) {}
 };
 
 class UnarySelector : public BaseSelector {
@@ -329,8 +335,11 @@ class BinarySelector : public BaseSelector {
 // Variadic DQ nodes -> node -> Q
 class InputVariadicSelector : public BaseSelector {
  public:
-  explicit InputVariadicSelector(bool allow_16bit = false, bool allow_4bit = false)
-      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit)) {}
+  explicit InputVariadicSelector(bool allow_16bit = false,
+                                 bool allow_4bit = false,
+                                 gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit),
+                     compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -338,8 +347,10 @@ class InputVariadicSelector : public BaseSelector {
 //  DQ -> Split -> variadic Q nodes
 class SplitSelector : public BaseSelector {
  public:
-  SplitSelector(bool req_equal_quant_params = false, bool allow_4bit = false)
-      : BaseSelector(std::make_unique<SplitNodeGroupSelector>(req_equal_quant_params, allow_4bit)) {}
+  SplitSelector(bool req_equal_quant_params = false, bool allow_4bit = false,
+                gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<SplitNodeGroupSelector>(req_equal_quant_params, allow_4bit),
+                     compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -347,8 +358,10 @@ class SplitSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
-  ConvSelector(bool int8_allowed = false, bool allow_16bit = false, bool allow_4bit_weight = false)
-      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit, allow_4bit_weight)) {}
+  ConvSelector(bool int8_allowed = false, bool allow_16bit = false, bool allow_4bit_weight = false,
+               gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit, allow_4bit_weight),
+                     compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -363,9 +376,11 @@ class WhereSelector : public BaseSelector {
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed, bool allow_16bit = false, bool allow_4bit = false)
+  MatMulSelector(bool int8_allowed, bool allow_16bit = false, bool allow_4bit = false,
+                 gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               allow_16bit, allow_4bit)) {}
+                                                               allow_16bit, allow_4bit),
+                     compatible_providers) {}
 };
 
 // Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"

@@ -1,7 +1,7 @@
 parameters:
 - name: cmake_build_type
   type: string
-  displayName: 'Linux packages cmake build type. Linux Only.'
+  displayName: 'Linux/Windows/iOS packages cmake build type.'
   default: 'Release'
   values:
    - Debug
@@ -23,4 +23,6 @@ stages:
     enable_mac_cpu: true
     enable_linux_arm: false
     enable_windows_arm64_qnn: false
+    enable_windows_arm64ec_qnn: false
     enable_windows_x64_qnn: false
+    enable_linux_x64_qnn: false
