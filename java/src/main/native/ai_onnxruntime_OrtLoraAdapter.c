@@ -14,7 +14,7 @@
  * Signature: (JLjava/lang/String;J)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtLoraAdapter_createLoraAdapter
-    (JNIEnv * env, jclass clazz, jlong apiHandle, jstring loraPath, jlong allocatorHandle) {
+    (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jstring loraPath, jlong allocatorHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -48,9 +48,9 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtLoraAdapter_createLoraAdapter
  * Signature: (JJ)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtLoraAdapter_close
-    (JNIEnv * env, jclass clazz, jlong apiHandle, jlong loraHandle) {
-  (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+    (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong loraHandle) {
+  (void) jniEnv; (void) jclazz; // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
-  api->ReleaseLoraAdapter((OrtLoraAdapter*) handle);
+  api->ReleaseLoraAdapter((OrtLoraAdapter*) loraHandle);
 }
 
