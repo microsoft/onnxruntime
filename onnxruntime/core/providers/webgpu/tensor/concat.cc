@@ -52,20 +52,17 @@ const std::string AppendCalCulateInputIndexFunction(size_t input_count) {
   return ss.str();
 }
 
-const std::string AssignOutput(const std::vector<std::unique_ptr<ShaderVariableHelper>>& inputs, const ShaderVariableHelper& output, size_t input_index) {
-  std::ostringstream ss;
-  const auto& input = inputs[input_index];
-  ss << output.SetByOffset("global_idx", input->GetByIndices("indices")) << ";" << std::endl;
-  return ss.str();
+const void AppendAssignOutput(std::ostringstream& ss, const ShaderVariableHelper& input, const ShaderVariableHelper& output) {
+  ss << output.SetByOffset("global_idx", input.GetByIndices("indices")) << ";" << std::endl;
 }
 
-const std::string AppendAssignOutputDataFunction(const std::vector<std::unique_ptr<ShaderVariableHelper>>& inputs, const ShaderVariableHelper& output) {
+const std::string AppendAssignOutputDataFunction(gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output) {
   std::ostringstream ss;
   size_t input_count = inputs.size();
   ss.imbue(std::locale::classic());
   ss << "fn assign_output_data(global_idx: u32, input_index: u32, indices: output_indices_t) {" << std::endl;
   if (input_count == 0) {
-    ss << AssignOutput(inputs, output, 0);
+    AppendAssignOutput(ss, *inputs[0], output);
   } else {
     for (size_t i = 0; i < input_count; ++i) {
       if (i == 0) {
@@ -75,7 +72,8 @@ const std::string AppendAssignOutputDataFunction(const std::vector<std::unique_p
       } else {
         ss << "  } else if (input_index == " << i << "u) {" << std::endl;
       }
-      ss << "     " << AssignOutput(inputs, output, i);
+      ss << "     ";
+      AppendAssignOutput(ss, *inputs[i], output);
     }
     ss << "  }" << std::endl;
   }
@@ -83,13 +81,14 @@ const std::string AppendAssignOutputDataFunction(const std::vector<std::unique_p
   return ss.str();
 }
 Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  std::vector<const ShaderVariableHelper*> inputs;
+  inputs.reserve(input_count_);
   for (size_t i = 0; i < input_count_; ++i) {
-    shader.AddInput("input_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+    inputs.push_back(&shader.AddInput("input_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
-  const auto& inputs = shader.GetInputVars();
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   shader.AppendImplementation(AppendCalCulateInputIndexFunction(input_count_));
-  shader.AppendImplementation(AppendAssignOutputDataFunction(inputs, output));
+  shader.AppendImplementation(AppendAssignOutputDataFunction(gsl::make_span(inputs), output));
   shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
                              "  var indices = ", output.OffsetToIndices("global_idx"), ";\n",
                              "  let indices_axis = ", output.IndicesGet("indices", axis_), ";\n",
@@ -105,6 +104,12 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   auto input_count = context.InputCount();
   InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
+  if (SafeInt<uint32_t>(input_count + 1) > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
+    // TODO: support when input_count + 1 > maxStorageBuffersPerShaderStage, by raising the limit or run the program in multiple passes.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of storage buffer (input=",
+                           input_count, ", output=1) exceeds the limit (",
+                           context.DeviceLimits().maxStorageBuffersPerShaderStage, ") of the device.");
+  }
 
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(context.Input<Tensor>(i));
