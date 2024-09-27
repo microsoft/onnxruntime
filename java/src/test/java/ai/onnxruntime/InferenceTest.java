@@ -1298,15 +1298,15 @@ public class InferenceTest {
   public void testRunWithLoraAdapter() throws OrtException {
     // XXX: Not sure how exactly to get paths to native testdata
     // it seems that it is included into resources
-    String modelPath = TestHelpers.getResourcePath("lora/two_params_lora_model.onnx").toString();
+    String modelPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx").toString();
     String adapterPath =
-        TestHelpers.getResourcePath("lora/two_params_lora_model.onnx_adapter").toString();
+        TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx_adapter").toString();
 
     long[] inputShape = new long[] {4, 4};
     float[] inputData = new float[16];
     Arrays.fill(inputData, 1.f);
     FloatBuffer buf =
-        ByteBuffer.allocateDirect(Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        ByteBuffer.allocateDirect(Float.BYTES*16).order(ByteOrder.nativeOrder()).asFloatBuffer();
     buf.put(inputData);
     buf.rewind();
 
@@ -1329,7 +1329,7 @@ public class InferenceTest {
     try (OrtSession session = env.createSession(modelPath);
         OnnxTensor tensor = OnnxTensor.createTensor(env, buf, inputShape)) {
 
-      Map<String, OnnxTensor> inputs = Collections.singletonMap("input", tensor);
+      Map<String, OnnxTensor> inputs = Collections.singletonMap("input_x", tensor);
 
       // Without LoRA
       try (OrtSession.Result result = session.run(inputs)) {
