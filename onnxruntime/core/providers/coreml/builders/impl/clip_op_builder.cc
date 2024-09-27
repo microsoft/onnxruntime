@@ -60,8 +60,6 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& output_name = output.Name();
   float min, max;
   ORT_RETURN_IF_NOT(GetClipMinMax(model_builder.GetGraphViewer(), node, min, max, logger), "GetClipMinMax failed");
-  // we already checked it and dtype must be existed.
-  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
   bool has_min = min != std::numeric_limits<float>::lowest();
   bool has_max = max != std::numeric_limits<float>::max();
@@ -94,6 +92,8 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         Operation& clip_op = *op;
         AddOperationInput(clip_op, "x", input_name);
 
+        // we already checked it and dtype must be existed.
+        auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
         // if min and max were attributes we need to add initializers. otherwise we use the existing inputs
         const bool min_max_attribs = node.SinceVersion() < 11;
         std::string_view min_name;
