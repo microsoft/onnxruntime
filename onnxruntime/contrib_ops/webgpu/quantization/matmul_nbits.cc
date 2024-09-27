@@ -256,7 +256,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t N = SafeInt<uint32_t>(helper.N());
   const uint32_t K = SafeInt<uint32_t>(helper.K());
   const uint32_t block_size = SafeInt<uint32_t>(block_size_);
-  const uint32_t nbits = SafeInt<uint32_t>(nbits_);
+  const uint32_t nbits = 4;
 
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
   const uint32_t blob_size = (block_size / 8) * nbits;

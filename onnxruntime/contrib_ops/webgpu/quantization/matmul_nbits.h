@@ -14,10 +14,10 @@ using namespace onnxruntime::webgpu;
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(const uint32_t output_number, const int components_b, const bool has_zero_points) : Program{"MatMulNBits"},
-                                                                                                         output_number_{output_number},
-                                                                                                         components_b_{components_b},
-                                                                                                         has_zero_points_{has_zero_points} {
+  MatMulNBitsProgram(uint32_t output_number, int components_b, bool has_zero_points) : Program{"MatMulNBits"},
+                                                                                       output_number_{output_number},
+                                                                                       components_b_{components_b},
+                                                                                       has_zero_points_{has_zero_points} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -32,11 +32,11 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
 class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-    ORT_ENFORCE(nbits_ == 4,
+    K_ = info.GetAttr<int64_t>("K");
+    N_ = info.GetAttr<int64_t>("N");
+    block_size_ = info.GetAttr<int64_t>("block_size");
+    int64_t bits = info.GetAttr<int64_t>("bits");
+    ORT_ENFORCE(bits == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
 
@@ -46,7 +46,6 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t K_;
   int64_t N_;
   int64_t block_size_;
-  int64_t nbits_;
 };
 
 }  // namespace webgpu
