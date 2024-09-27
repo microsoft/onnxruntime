@@ -56,7 +56,12 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
   size_t input_rank = input_shape.NumDimensions();
 
   const auto* repeats_tensor = context.Input(1);
-  const auto* repeats = repeats_tensor->Data<int64_t>();
+  const auto* repeats_data = repeats_tensor->Data<int64_t>();
+  std::vector<uint32_t> repeats;
+
+  for (size_t i = 0; i < static_cast<uint32_t>(repeats_tensor->Shape().Size()); i++) {
+    repeats.push_back(static_cast<uint32_t>(repeats_data[i]));
+  }
 
   auto output_dims = input_shape.AsShapeVector();
   for (size_t axis = 0; axis < input_rank; axis++) {
@@ -76,7 +81,10 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
+      .AddUniformVariables({
+          {static_cast<uint32_t>(output_size)},
+          {repeats}
+       });
   return context.RunProgram(program);
 }
 

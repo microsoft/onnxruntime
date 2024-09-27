@@ -15,7 +15,8 @@ class TileProgram final : public Program<TileProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+	  {"repeats", ProgramUniformVariableDataType::Uint32});
 };
 
 class Tile final : public WebGpuKernel {
