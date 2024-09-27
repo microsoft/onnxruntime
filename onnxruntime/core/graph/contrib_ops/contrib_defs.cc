@@ -3442,7 +3442,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
 
 Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
 Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-  - [CeilDiv((N * n_blocks_per_col) * bits, 8)]
+  - [N * CeilDiv(n_blocks_per_col * bits, 8)]
   If zero_points has same type as A, it's not packed and has the same shape as Scales.
 )DOC";
 
