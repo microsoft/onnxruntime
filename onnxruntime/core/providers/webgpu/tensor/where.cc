@@ -59,7 +59,7 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& b_input = shader.AddInput("b_data", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output_data", ShaderUsage::UseUniform);
 
-  auto expression = [](const std::string& a, const std::string& b, const std::string& c) -> const auto {
+  const auto expression = [](const std::string& a, const std::string& b, const std::string& c) -> auto {
     return "select(" + b + ", " + a + ", " + c + ")";
   };
   std::string assignment;
@@ -74,10 +74,10 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& b_indices = shader.AddIndices("b_indices");
     const auto& output_indices = shader.AddIndices("output_indices");
 
-    auto single_assignment =
+    const auto single_assignment =
         [&expression, &output_indices, &a_indices, &b_indices, &c_indices](
             const std::string& rest_str, const std::string& x, const std::string& type_cast = "")
-        -> const auto {
+        -> auto {
       const std::string a_expression = "a_data[index_a" + x + "][component_a" + x + "]";
       const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
       const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << (component_c" + x + " * 8)))";
