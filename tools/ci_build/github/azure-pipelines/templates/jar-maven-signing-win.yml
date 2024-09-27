@@ -2,12 +2,9 @@ parameters:
   - name: JarFileDirectory
     type: string
 
-  - name: WorkingDirectory
-    type: string
-
   - name: EnableJarMavenSigning
     type: boolean
-    default: false
+    default: true
 
 steps:
   - task: AzureKeyVault@2
@@ -24,10 +21,10 @@ steps:
     condition: and(succeeded(), eq('${{ parameters.EnableJarMavenSigning }}', true))
     inputs:
       targetType: 'inline'
-      workingDirectory: '$(Build.BinariesDirectory)'
+      workingDirectory: '$(Build.SourcesDirectory)'
       script: |
         $jar_file_directory = '${{ parameters.JarFileDirectory }}'
-        $working_directory = '${{ parameters.WorkingDirectory }}'
+        $working_directory = '$(Build.SourcesDirectory)'
 
         $original_passphrase='$(java-pgp-pwd)'
         $original_private_key='$(java-pgp-key)'

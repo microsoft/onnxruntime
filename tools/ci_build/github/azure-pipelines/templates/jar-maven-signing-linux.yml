@@ -2,12 +2,9 @@ parameters:
   - name: JarFileDirectory
     type: string
 
-  - name: WorkingDirectory
-    type: string
-
   - name: EnableJarMavenSigning
     type: boolean
-    default: false
+    default: true
 
 steps:
   - task: AzureKeyVault@2
@@ -23,13 +20,13 @@ steps:
     displayName: 'Sign jar files: GnuPG and sha256'
     condition: and(succeeded(), eq('${{ parameters.EnableJarMavenSigning }}', true))
     inputs:
-      workingDirectory: '$(Build.BinariesDirectory)'
+      workingDirectory: '$(Build.SourcesDirectory)'
       script: |
         #!/bin/bash
-        set -x
+        set -ex
 
         jar_file_directory='${{ parameters.JarFileDirectory }}'
-        working_directory='${{ parameters.WorkingDirectory }}'
+        working_directory='$(Build.SourcesDirectory)'
         original_private_key='$(java-pgp-key)'
         original_passphrase='$(java-pgp-pwd)'
 
