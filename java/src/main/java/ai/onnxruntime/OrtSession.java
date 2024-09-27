@@ -1560,11 +1560,9 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds the specified adapter to the list of active adapters
+     * Adds the specified adapter to the list of active adapters for this run.
      *
-     * <p>
-     *
-     * @param loraAdapter valid LoraAdapter object
+     * @param loraAdapter valid OrtLoraAdapter object
      * @throws OrtException of the native library call failed
      */
     public void addActiveLoraAdapter(OrtLoraAdapter loraAdapter) throws OrtException {

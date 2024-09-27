@@ -36,6 +36,7 @@ public final class OrtLoraAdapter implements AutoCloseable {
    *
    * @param loraArray The LoRA stored in a byte array.
    * @throws OrtException If the native call failed.
+   * @return An OrtLoraAdapter instance.
    */
   public static OrtLoraAdapter create(byte[] loraArray) throws OrtException {
     return create(loraArray, null);
@@ -48,9 +49,9 @@ public final class OrtLoraAdapter implements AutoCloseable {
    * @param allocator optional allocator or null. If supplied, adapter parameters are copied to the
    *     allocator memory.
    * @throws OrtException If the native call failed.
+   * @return An OrtLoraAdapter instance.
    */
-  static OrtLoraAdapter create(byte[] loraArray, OrtAllocator allocator)
-      throws OrtException {
+  static OrtLoraAdapter create(byte[] loraArray, OrtAllocator allocator) throws OrtException {
     Objects.requireNonNull(loraArray, "LoRA array must not be null");
     long allocatorHandle = allocator == null ? 0 : allocator.handle;
     return new OrtLoraAdapter(
@@ -62,6 +63,7 @@ public final class OrtLoraAdapter implements AutoCloseable {
    *
    * @param loraBuffer The buffer to load.
    * @throws OrtException If the native call failed.
+   * @return An OrtLoraAdapter instance.
    */
   public static OrtLoraAdapter create(ByteBuffer loraBuffer) throws OrtException {
     return create(loraBuffer, null);
@@ -74,9 +76,9 @@ public final class OrtLoraAdapter implements AutoCloseable {
    * @param allocator optional allocator or null. If supplied, adapter parameters are copied to the
    *     allocator memory.
    * @throws OrtException If the native call failed.
+   * @return An OrtLoraAdapter instance.
    */
-  static OrtLoraAdapter create(ByteBuffer loraBuffer, OrtAllocator allocator)
-      throws OrtException {
+  static OrtLoraAdapter create(ByteBuffer loraBuffer, OrtAllocator allocator) throws OrtException {
     Objects.requireNonNull(loraBuffer, "LoRA buffer must not be null");
     if (loraBuffer.remaining() == 0) {
       throw new OrtException("Invalid LoRA buffer, no elements remaining.");
@@ -85,7 +87,12 @@ public final class OrtLoraAdapter implements AutoCloseable {
     }
     long allocatorHandle = allocator == null ? 0 : allocator.handle;
     return new OrtLoraAdapter(
-        createLoraAdapterFromBuffer(OnnxRuntime.ortApiHandle, loraBuffer, loraBuffer.position(), loraBuffer.remaining(), allocatorHandle));
+        createLoraAdapterFromBuffer(
+            OnnxRuntime.ortApiHandle,
+            loraBuffer,
+            loraBuffer.position(),
+            loraBuffer.remaining(),
+            allocatorHandle));
   }
 
   /**
@@ -93,6 +100,7 @@ public final class OrtLoraAdapter implements AutoCloseable {
    *
    * @param absoluteAdapterPath path to the adapter file that is going to be memory mapped.
    * @throws OrtException If the native call failed.
+   * @return An OrtLoraAdapter instance.
    */
   public static OrtLoraAdapter create(String absoluteAdapterPath) throws OrtException {
     return create(absoluteAdapterPath, null);
@@ -105,6 +113,7 @@ public final class OrtLoraAdapter implements AutoCloseable {
    * @param allocator optional allocator or null. If supplied, adapter parameters are copied to the
    *     allocator memory.
    * @throws OrtException If the native call failed.
+   * @return An OrtLoraAdapter instance.
    */
   static OrtLoraAdapter create(String absoluteAdapterPath, OrtAllocator allocator)
       throws OrtException {
@@ -146,7 +155,8 @@ public final class OrtLoraAdapter implements AutoCloseable {
       long apiHandle, byte[] loraBytes, long allocatorHandle) throws OrtException;
 
   private static native long createLoraAdapterFromBuffer(
-      long apiHandle, ByteBuffer loraBuffer, int bufferPos, int bufferSize, long allocatorHandle) throws OrtException;
+      long apiHandle, ByteBuffer loraBuffer, int bufferPos, int bufferSize, long allocatorHandle)
+      throws OrtException;
 
   private static native void close(long apiHandle, long nativeHandle);
 }

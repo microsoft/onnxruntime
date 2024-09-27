@@ -1297,14 +1297,13 @@ public class InferenceTest {
   @Test
   public void testRunWithLoraAdapter() throws IOException, OrtException {
     Path modelPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx");
-    Path adapterPath =
-        TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx_adapter");
+    Path adapterPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx_adapter");
 
     long[] inputShape = new long[] {4, 4};
     float[] inputData = new float[16];
     Arrays.fill(inputData, 1.f);
     FloatBuffer buf =
-        ByteBuffer.allocateDirect(Float.BYTES*16).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        ByteBuffer.allocateDirect(Float.BYTES * 16).order(ByteOrder.nativeOrder()).asFloatBuffer();
     buf.put(inputData);
     buf.rewind();
 
@@ -1337,7 +1336,7 @@ public class InferenceTest {
 
       // With LoRA from path
       try (OrtLoraAdapter adapter = OrtLoraAdapter.create(adapterPath.toString());
-           OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
         runOptions.addActiveLoraAdapter(adapter);
         try (OrtSession.Result result = session.run(inputs, runOptions)) {
           float[][] resultArr = (float[][]) result.get(0).getValue();
@@ -1348,7 +1347,7 @@ public class InferenceTest {
       // With LoRA from array
       byte[] loraArray = Files.readAllBytes(adapterPath);
       try (OrtLoraAdapter adapter = OrtLoraAdapter.create(loraArray);
-           OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
         runOptions.addActiveLoraAdapter(adapter);
         try (OrtSession.Result result = session.run(inputs, runOptions)) {
           float[][] resultArr = (float[][]) result.get(0).getValue();
@@ -1361,14 +1360,13 @@ public class InferenceTest {
       loraBuf.put(loraArray);
       loraBuf.rewind();
       try (OrtLoraAdapter adapter = OrtLoraAdapter.create(loraBuf);
-           OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
         runOptions.addActiveLoraAdapter(adapter);
         try (OrtSession.Result result = session.run(inputs, runOptions)) {
           float[][] resultArr = (float[][]) result.get(0).getValue();
           Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
         }
       }
-
     }
   }
 
