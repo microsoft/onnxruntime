@@ -38,18 +38,15 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
   const WG = 64;
   const inputRank = inputShape.length;
   const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
-  const needTranspose = axis < inputShape.length - 1;
+  const isTransposeRequired = axis < inputShape.length - 1;
   let transposedInput: TensorView;
+  let perm: number[] = [];
 
-  if (needTranspose) {
-    const perm = [];
-    for (let i = 0; i < axis; i++) {
-      perm.push(i);
-    }
-    perm.push(inputRank - 1);
-    for (let i = axis + 1; i < inputRank; i++) {
-      perm.push(i - 1);
-    }
+  if (isTransposeRequired) {
+    perm = Array.from({ length: inputRank }, (_, i) => i);
+    perm[axis] = inputRank - 1;
+    perm[inputRank - 1] = axis;
+
     transposedInput = context.compute(createTransposeProgramInfo(input, perm), {
       inputs: [input],
       outputs: [-1],
@@ -169,20 +166,11 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
     },
     {
       inputs: [transposedInput],
-      outputs: [needTranspose ? -1 : 0],
+      outputs: [isTransposeRequired ? -1 : 0],
     },
   )[0];
 
-  if (needTranspose) {
-    const perm = [];
-    for (let i = 0; i < axis; i++) {
-      perm.push(i);
-    }
-    for (let i = axis; i < inputRank - 1; i++) {
-      perm.push(i + 1);
-    }
-    perm.push(axis);
-
+  if (isTransposeRequired) {
     context.compute(createTransposeProgramInfo(result, perm), {
       inputs: [result],
     });
