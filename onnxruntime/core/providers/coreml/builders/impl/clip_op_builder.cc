@@ -60,6 +60,8 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& output_name = output.Name();
   float min, max;
   ORT_RETURN_IF_NOT(GetClipMinMax(model_builder.GetGraphViewer(), node, min, max, logger), "GetClipMinMax failed");
+  // we already checked it and dtype must be existed.
+  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
   bool has_min = min != std::numeric_limits<float>::lowest();
   bool has_max = max != std::numeric_limits<float>::max();
@@ -94,19 +96,31 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
         // if min and max were attributes we need to add initializers. otherwise we use the existing inputs
         const bool min_max_attribs = node.SinceVersion() < 11;
-        std::string_view min_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "min", min)
-                                                    : node.InputDefs()[1]->Name();
+        std::string_view min_name;
+        if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          min_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "min", min)
+                                     : node.InputDefs()[1]->Name();
+        } else {
+          min_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "min", MLFloat16(min))
+                                     : node.InputDefs()[1]->Name();
+        }
 
         AddOperationInput(clip_op, "alpha", min_name);
 
         if (has_max) {
-          std::string_view max_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "max", max)
-                                                      : node.InputDefs()[2]->Name();
+          std::string_view max_name;
+          if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+            max_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "max", max)
+                                       : node.InputDefs()[2]->Name();
+          } else {
+            max_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "max", MLFloat16(max))
+                                       : node.InputDefs()[2]->Name();
+          }
           AddOperationInput(clip_op, "beta", max_name);
         }
       }
     }
-
+    std::cout << "3444444444444444444444444444444444444444444\n\n";
     AddOperationOutput(*op, output);
     model_builder.AddOperation(std::move(op));
   } else
