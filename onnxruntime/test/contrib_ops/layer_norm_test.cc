@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
