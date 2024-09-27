@@ -6,12 +6,13 @@ from pathlib import Path
 
 import requests
 
-script_description = '''
+script_description = """
 After building ONNXRuntime for Android or iOS, use this script to upload the app and test files to BrowserStack then
 run the tests on the specified devices. \n
 Find the source for Android here:
 https://github.com/microsoft/onnxruntime/tree/3846f84218a77b0071b5ed992832a328870bc84f/java/src/test/android/app/src
-'''
+"""
+
 
 def response_to_json(response):
     response.raise_for_status()
@@ -41,7 +42,7 @@ def browserstack_build_request(devices, app_url, test_suite_url, test_platform, 
         headers=headers,
         json=json_data,
         auth=(id, token),
-        timeout=180
+        timeout=180,
     )
 
     return response_to_json(build_response)
@@ -59,7 +60,7 @@ def build_query_loop(build_id, test_platform, id, token):
         test_response = requests.get(
             f"https://api-cloud.browserstack.com/app-automate/{test_platform}/v2/builds/{build_id}",
             auth=(id, token),
-            timeout=30
+            timeout=30,
         )
 
         test_response_json = response_to_json(test_response)
