@@ -105,7 +105,6 @@ jobs:
   - template: jar-maven-signing-linux.yml
     parameters:
       JarFileDirectory: '$(artifacts_directory)'
-      WorkingDirectory: '$(Build.SourcesDirectory)'
 
   - task: PublishBuildArtifacts@1
     inputs:
