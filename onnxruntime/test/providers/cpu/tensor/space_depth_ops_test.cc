@@ -342,7 +342,6 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
       132., 133., 134., 135., 136., 137., 138., 139., 140., 141., 142.,
       143.};
 
-
   const std::vector<float> result = {
       0., 18., 1., 19., 36., 54., 37., 55., 2., 20., 3.,
       21., 38., 56., 39., 57., 4., 22., 5., 23., 40., 58.,
@@ -394,7 +393,6 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
                                      18., 27., 19., 28., 20., 29.,
                                      3., 12., 4., 13., 5., 14.,
                                      21., 30., 22., 31., 23., 32.};
-
 
   if constexpr (std::is_same<TypeParam, float>::value) {
     test.AddInput<float>("input", {N, C, H, W}, X);

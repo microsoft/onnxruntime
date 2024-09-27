@@ -139,8 +139,21 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   // Add/Sub/Mul/Div spec says inputs must be of the same type.
   // Pow spec says inputs can be different types.
   // We support float/float16 for all of these inputs.
-  if (!IsInputDtypeSupport(node, 0, input_params, logger) ||
-      ((node.OpType() == "Pow") && !IsInputDtypeSupport(node, 1, input_params, logger))) {
+
+  if (node.OpType() == "Pow") {
+    const auto& input0 = *node.InputDefs()[0];
+    const auto& input1 = *node.InputDefs()[1];
+    int32_t input_type0 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    int32_t input_type1 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    if (!GetType(input0, input_type0, logger)) {
+      return false;
+    }
+    if (!GetType(input1, input_type1, logger) || input_type1 != input_type0) {
+      return false;
+    }
+  }
+
+  if (!IsInputDtypeSupport(node, 0, input_params, logger)) {
     return false;
   }
 

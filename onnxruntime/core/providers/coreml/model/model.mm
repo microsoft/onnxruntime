@@ -179,8 +179,8 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
 }
 
 template <typename T>
-void StrideCopy(const T* src_buffer, T* dst_buffer, size_t block_size,
-                size_t num_blocks, size_t src_stride, size_t dst_stride) {
+void StridedCopy(const T* src_buffer, T* dst_buffer, size_t block_size,
+                 size_t num_blocks, size_t src_stride, size_t dst_stride) {
   for (size_t idx = 0; idx < num_blocks; ++idx) {
     std::copy_n(src_buffer, block_size, dst_buffer);
     src_buffer += src_stride;
@@ -210,21 +210,21 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       const auto* src_buffer = static_cast<const float*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<float*>(tensor_buffer);
-      StrideCopy<float>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
+      StridedCopy<float>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
       const auto* src_buffer = static_cast<const uint16_t*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<uint16_t*>(tensor_buffer);
-      StrideCopy<uint16_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
+      StridedCopy<uint16_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       const auto* src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<int32_t*>(tensor_buffer);
-      StrideCopy<int32_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
+      StridedCopy<int32_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
       break;
     }

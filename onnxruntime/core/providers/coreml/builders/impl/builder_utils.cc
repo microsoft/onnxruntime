@@ -118,7 +118,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 }
 
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const MLFloat16> data) {
-  const char* data_byte_ptr = (const char*)(data.data());
+  const char* data_byte_ptr = reinterpret_cast<const char*>(data.data());
   weight.mutable_float16value()->assign(data_byte_ptr, data_byte_ptr + data.size_bytes());
 }
 
@@ -137,7 +137,7 @@ void CreateCoreMLWeightConvertingDataToFloat16s(CoreML::Specification::WeightPar
   std::vector<MLFloat16> weight_float16s{};
   weight_float16s.reserve(data.size());
   std::transform(data.begin(), data.end(), std::back_inserter(weight_float16s),
-                 [](T v) { return MLFloat16(narrow<float>(v)); });
+                 [](T v) { return MLFloat16(float(v)); });
   CreateCoreMLWeight(weight, weight_float16s);
 }
 }  // namespace

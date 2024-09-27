@@ -120,7 +120,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         }
       }
     }
-    std::cout << "3444444444444444444444444444444444444444444\n\n";
+
     AddOperationOutput(*op, output);
     model_builder.AddOperation(std::move(op));
   } else

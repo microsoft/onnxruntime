@@ -237,7 +237,7 @@ TYPED_TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<TypeParam> roi{};
-    std::vector<float> scales{(1.0f), (1.0f), (0.6f), (0.6f)};
+    std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
 
     test.AddAttribute("mode", "linear");
 

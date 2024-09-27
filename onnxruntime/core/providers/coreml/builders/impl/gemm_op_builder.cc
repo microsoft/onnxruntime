@@ -141,12 +141,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         std::vector<int64_t> weight_nk_shape = {N, K};
         // transpose from {K, N} to {N, K}
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-          std::vector<float> weight_nk;  // use bytes to store the type-erased data, could be any data-type
+          std::vector<float> weight_nk;
           ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
           AddOperationInput(*gemm_op, "weight",
                             model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
-        } else {                             // TensorProto_DataType_FLOAT16
-          std::vector<MLFloat16> weight_nk;  // use bytes to store the type-erased data, could be any data-type
+        } else {  // TensorProto_DataType_FLOAT16
+          std::vector<MLFloat16> weight_nk;
           ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
           AddOperationInput(*gemm_op, "weight",
                             model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));

@@ -9,7 +9,6 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-
 template <typename T>
 class PoolTest : public ::testing::Test {
 };

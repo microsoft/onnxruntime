@@ -37,8 +37,11 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 
   std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
                        -1.0f, -2.0f, -3.0f, -4.0f};
-  std::vector<float> B = {0.5f, 2.1f, 1.2f, -0.3f, -1.2f, 0.2f, 1.0f, -2.1f, 1.3f, 4.1f, 1.3f, -8.1f};
-  std::vector<float> C = {0.5f, 2.1f, 1.2f, -0.3f, -1.2f, 0.2f};
+  std::vector<float> B = {0.5f, 2.1f, 1.2f, -0.3f,
+                          -1.2f, 0.2f, 1.0f, -2.1f,
+                          1.3f, 4.1f, 1.3f, -8.1f};
+  std::vector<float> C = {0.5f, 2.1f, 1.2f,
+                          -0.3f, -1.2f, 0.2f};
 
   std::vector<MLFloat16> f_A(8);
   std::vector<MLFloat16> f_B(12);
@@ -48,7 +51,8 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   {
     // bias has same shape as output
     std::vector<MLFloat16> f_Y(6);
-    std::vector<float> Y{19.8f, 0.7f, -25.7f, -19.6f, 0.2f, 27.1f};
+    std::vector<float> Y{19.8f, 0.7f, -25.7f,
+                         -19.6f, 0.2f, 27.1f};
     ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
     std::vector<MLFloat16> f_C(6);
@@ -64,6 +68,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
     test.AddInput<MLFloat16>("B", {4, 3}, f_B);
     test.AddInput<MLFloat16>("C", {2, 3}, f_C);
     test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    // we used float data with decimal instead of only integer, increase Tolerance to make test pass
     test.SetOutputTolerance(0.005f);
     test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
         .Config(run_with_tunable_op)
@@ -72,7 +77,8 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   {
     // bias has  shape {1,  output_features}
     std::vector<MLFloat16> f_Y(6);
-    std::vector<float> Y{19.8f, 0.7f, -25.7f, -18.8f, 3.5f, 28.1f};
+    std::vector<float> Y{19.8f, 0.7f, -25.7f,
+                         -18.8f, 3.5f, 28.1f};
     ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
     std::vector<MLFloat16> f_C(3);
@@ -96,7 +102,8 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   {
     // bias is a scalar
     std::vector<MLFloat16> f_Y(6);
-    std::vector<float> Y{19.8f, -0.9f, -26.4f, -18.8f, 1.9f, 27.4f};
+    std::vector<float> Y{19.8f, -0.9f, -26.4f,
+                         -18.8f, 1.9f, 27.4f};
     ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
     std::vector<MLFloat16> f_C(1);
@@ -130,8 +137,11 @@ TEST(GemmOpTest, GemmTransB_f16) {
 
   std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
                        -1.0f, -2.0f, -3.0f, -4.0f};
-  std::vector<float> B = {0.5f, 2.1f, 1.2f, -0.3f, -1.2f, 0.2f, 1.0f, -2.1f, 1.3f, 4.1f, 1.3f, -8.1f};
-  std::vector<float> C = {0.5f, 2.1f, 1.2f, -0.3f, -1.2f, 0.2f};
+  std::vector<float> B = {0.5f, 2.1f, 1.2f, -0.3f,
+                          -1.2f, 0.2f, 1.0f, -2.1f,
+                          1.3f, 4.1f, 1.3f, -8.1f};
+  std::vector<float> C = {0.5f, 2.1f, 1.2f,
+                          -0.3f, -1.2f, 0.2f};
 
   std::vector<MLFloat16> f_A(8);
   std::vector<MLFloat16> f_B(12);
