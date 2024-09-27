@@ -51,9 +51,13 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
   InitializeParamsValues();
 }
 
-static Status GetDataTransfer(const OrtMemoryInfo& mem_info,
-                              std::unique_ptr<IDataTransfer>& data_transfer) {
-  ORT_RETURN_IF(mem_info.device.Type() == OrtDevice::CPU, "Destination must not be on CPU");
+static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_info) {
+  std::unique_ptr<IDataTransfer> data_transfer;
+
+  if (strcmp(mem_info.name, onnxruntime::CPU) == 0) {
+    return data_transfer;
+  }
+
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
 #ifdef USE_CUDA
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
@@ -63,10 +67,7 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info,
 #endif
   }
 
-  ORT_RETURN_IF(data_transfer == nullptr, "Destination memory device: ",
-                mem_info.name, " not available, copy failed");
-
-  return Status::OK();
+  return data_transfer;
 }
 
 static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
@@ -76,12 +77,7 @@ static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
   OrtValue result;
   const auto& src = ort_value_mapped.Get<Tensor>();
   Tensor on_device(src.DataType(), src.Shape(), device_allocator);
-  {
-    auto status = data_transfer.CopyTensor(src, on_device);
-    if (!status.IsOK()) {
-      return status;
-    }
-  }
+  ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, on_device));
   Tensor::InitOrtValue(std::move(on_device), result);
   out = std::move(result);
   return Status::OK();
@@ -94,25 +90,33 @@ void LoraAdapter::InitializeParamsValues() {
 
   std::unique_ptr<IDataTransfer> data_transfer;
   if (device_allocator_) {
-    ORT_THROW_IF_ERROR(GetDataTransfer(device_allocator_->Info(), data_transfer));
+    data_transfer = GetDataTransfer(device_allocator_->Info());
+    if (data_transfer == nullptr) {
+      ORT_THROW("Data transfer is not available for the specified device allocator, it also must not be a CPU allocator");
+    }
   }
 
   const auto* params = adapter_->parameters();
   std::unordered_map<std::string, Param> params_values;
   params_values.reserve(params->size());
-  for (const auto* param : *params) {
-    auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
-    if (device_allocator_) {
+  // Re-work in two separate loops due to compiler issues
+  if (data_transfer) {
+    for (const auto* param : *params) {
+      auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
       OrtValue ort_value_ondevice;
       ORT_THROW_IF_ERROR(CreateOrtValueOnDevice(ort_value, device_allocator_,
                                                 *data_transfer, ort_value_ondevice));
       Param lora_param(std::move(ort_value), std::move(ort_value_ondevice));
       params_values.emplace(std::move(name), std::move(lora_param));
-    } else {
+    }
+  } else {
+    for (const auto* param : *params) {
+      auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
       Param lora_param(std::move(ort_value));
       params_values.emplace(std::move(name), std::move(lora_param));
     }
   }
+
   params_values_.swap(params_values);
 }
 
@@ -132,6 +136,28 @@ ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_fi
   }
   // For platforms that do not support Memmap, we can #ifdef it to ->Load(adapter_file_path)
   lora_adapter->MemoryMap(adapter_file_path);
+  *adapter = reinterpret_cast<OrtLoraAdapter*>(lora_adapter.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapterFromArray, const uint8_t* bytes, size_t num_bytes,
+                    _In_ OrtAllocator* allocator, _Outptr_ OrtLoraAdapter** adapter) {
+  API_IMPL_BEGIN
+
+  std::unique_ptr<onnxruntime::lora::LoraAdapter> lora_adapter;
+  if (allocator != nullptr) {
+    auto alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
+    lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>(std::move(alloc_ptr));
+  } else {
+    lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
+  }
+
+  auto span = gsl::make_span(bytes, num_bytes);
+  std::vector<uint8_t> buffer;
+  buffer.reserve(num_bytes);
+  buffer.assign(span.begin(), span.end());
+  lora_adapter->Load(std::move(buffer));
   *adapter = reinterpret_cast<OrtLoraAdapter*>(lora_adapter.release());
   return nullptr;
   API_IMPL_END

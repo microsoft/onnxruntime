@@ -4689,6 +4689,22 @@ struct OrtApi {
   ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
 
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function copies the bytes from the array and creates an OrtLoraAdapter instance.
+   *
+   *
+   * \param[in] bytes pointer to a valid Lora Adapter format buffer.
+   * \param[in] num_bytes length of bytes buffer.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   */
+  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const uint8_t* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
   /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
    */
   ORT_CLASS_RELEASE(LoraAdapter);
@@ -4696,7 +4712,7 @@ struct OrtApi {
   /** \brief Set the active Lora Adapter for the run options
    *
    * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
-   * OrtApi::CreateLoraAdapter. The Lora Adapter will be used by the session to run the model.
+   * OrtApi::CreateLoraAdapter or FromArray. The Lora Adapter will be used by the session to run the model.
    * The instance of the OrtRunOptions will can then be then used to customize the Run() calls.
    * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
    * Lora adapters that will be active at the same time must not overlap.

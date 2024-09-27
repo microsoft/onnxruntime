@@ -2781,6 +2781,7 @@ static constexpr OrtApi ort_api_1_to_20 = {
     &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
     &OrtApis::CreateLoraAdapter,
+    &OrtApis::CreateLoraAdapterFromArray,
     &OrtApis::ReleaseLoraAdapter,
     &OrtApis::RunOptionsAddActiveLoraAdapter,
 };
