@@ -567,7 +567,7 @@ inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHA
 inline LoraAdapter LoraAdapter::CreateLoraAdapterFromArray(const uint8_t* bytes, size_t num_bytes,
                                                            OrtAllocator* allocator) {
   OrtLoraAdapter* p;
-  GetApi().CreateLoraAdapterFromArray(bytes, num_bytes, allocator, &p);
+  ThrowOnError(GetApi().CreateLoraAdapterFromArray(bytes, num_bytes, allocator, &p));
   return LoraAdapter{p};
 }
 
