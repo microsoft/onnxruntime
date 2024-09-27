@@ -141,7 +141,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_fi
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapterFromArray, const uint8_t* bytes, size_t num_bytes,
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapterFromArray, _In_ const uint8_t* bytes, size_t num_bytes,
                     _In_ OrtAllocator* allocator, _Outptr_ OrtLoraAdapter** adapter) {
   API_IMPL_BEGIN
 
