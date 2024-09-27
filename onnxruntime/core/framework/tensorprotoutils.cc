@@ -1697,7 +1697,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
       tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                                   \
     }                                                                                            \
     /* TODO: C++ 20 replace with std::make_unique_for_overwrite<uint8_t[]>(tensor_byte_size); */ \
-    unpacked_tensor = std::unique_ptr<uint8_t[]>(new uint8_t[tensor_byte_size]);                 \
+    unpacked_tensor = std::unique_ptr<uint8_t[]>(new uint8_t[size_t(tensor_byte_size)]);                 \
     return onnxruntime::utils::UnpackTensor(                                                     \
         initializer,                                                                             \
         initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,                    \
