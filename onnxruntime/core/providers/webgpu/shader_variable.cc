@@ -15,57 +15,66 @@ namespace webgpu {
 
 namespace {
 constexpr static const std::string_view STORAGE_TYPE[] = {
-    "f32",        // f32
-    "vec2<f32>",  // vec2f32
-    "vec4<f32>",  // vec4f32
-    "f16",        // f16
-    "vec2<f16>",  // vec2f16
-    "vec4<f16>",  // vec4f16
-    "i32",        // i32
-    "vec2<i32>",  // vec2i32
-    "vec4<i32>",  // vec4i32
-    "u32",        // u32
-    "vec2<u32>",  // vec2u32
-    "vec4<u32>",  // vec4u32
-    "vec2<u32>",  // int64
-    "vec2<u32>",  // uint64
-    "u32",        // vec4bool
+    "f32",        // Float32
+    "vec2<f32>",  // Float32x2
+    "vec4<f32>",  // Float32x4
+    "f16",        // Float16
+    "vec2<f16>",  // Float16x2
+    "vec4<f16>",  // Float16x4
+    "i32",        // Int32
+    "vec2<i32>",  // Int32x2
+    "vec4<i32>",  // Int32x4
+    "u32",        // Uint32
+    "vec2<u32>",  // Uint32x2
+    "vec4<u32>",  // Uint32x4
+    "vec2<u32>",  // Int64
+    "vec2<u32>",  // Uint64
+    "u32",        // Boolx4
+    "u32",        // Uint8x4
+    "vec2<u32>",  // Uint8x8
+    "vec4<u32>",  // Uint8x16
 };
 
 constexpr static const std::string_view VALUE_TYPE[] = {
-    "f32",         // f32
-    "vec2<f32>",   // vec2f32
-    "vec4<f32>",   // vec4f32
-    "f16",         // f16
-    "vec2<f16>",   // vec2f16
-    "vec4<f16>",   // vec4f16
-    "i32",         // i32
-    "vec2<i32>",   // vec2i32
-    "vec4<i32>",   // vec4i32
-    "u32",         // u32
-    "vec2<u32>",   // vec2u32
-    "vec4<u32>",   // vec4u32
-    "i32",         // int64 (trancated to i32)
-    "u32",         // uint64 (trancated to u32)
-    "vec4<bool>",  // vec4bool
+    "f32",         // Float32
+    "vec2<f32>",   // Float32x2
+    "vec4<f32>",   // Float32x4
+    "f16",         // Float16
+    "vec2<f16>",   // Float16x2
+    "vec4<f16>",   // Float16x4
+    "i32",         // Int32
+    "vec2<i32>",   // Int32x2
+    "vec4<i32>",   // Int32x4
+    "u32",         // Uint32
+    "vec2<u32>",   // Uint32x2
+    "vec4<u32>",   // Uint32x4
+    "i32",         // Int64 (trancated to i32)
+    "u32",         // Uint64 (trancated to u32)
+    "vec4<bool>",  // Boolx4
+    "u32",         // Uint8x4 (u32 as 4 elements of uint8)
+    "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
+    "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
 };
 
 constexpr static const std::string_view ELEMENT_TYPE[] = {
-    "f32",   // f32
-    "f32",   // vec2f32
-    "f32",   // vec4f32
-    "f16",   // f16
-    "f16",   // vec2f16
-    "f16",   // vec4f16
-    "i32",   // i32
-    "i32",   // vec2i32
-    "i32",   // vec4i32
-    "u32",   // u32
-    "u32",   // vec2u32
-    "u32",   // vec4u32
-    "i32",   // int64
-    "u32",   // uint64
-    "bool",  // vec4bool
+    "f32",   // Float32
+    "f32",   // Float32x2
+    "f32",   // Float32x4
+    "f16",   // Float16
+    "f16",   // Float16x2
+    "f16",   // Float16x4
+    "i32",   // Int32
+    "i32",   // Int32x2
+    "i32",   // Int32x4
+    "u32",   // Uint32
+    "u32",   // Uint32x2
+    "u32",   // Uint32x4
+    "i32",   // Int64
+    "u32",   // Uint64
+    "bool",  // Boolx4
+    "u32",   // Uint8x4
+    "u32",   // Uint8x8
+    "u32",   // Uint8x16
 };
 
 inline std::string GetIndicesType(int rank) {
@@ -263,7 +272,7 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
       break;
-    case onnxruntime::webgpu::ProgramVariableDataType::Vec4Bool:
+    case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << "vec4<bool>(bool("
          << name_ << "[" << offset << "] & 0xFFu), bool("
          << name_ << "[" << offset << "] & 0xFF00u), bool("
@@ -291,7 +300,7 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
       break;
-    case onnxruntime::webgpu::ProgramVariableDataType::Vec4Bool:
+    case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
       break;
     default:
