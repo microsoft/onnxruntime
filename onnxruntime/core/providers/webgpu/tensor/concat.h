@@ -12,16 +12,16 @@ namespace webgpu {
 
 class ConcatProgram final : public Program<ConcatProgram> {
  public:
-  ConcatProgram(size_t input_count, size_t axis) : Program{"Concat"}, input_count_(input_count), axis_(axis) {
+  ConcatProgram(size_t axis) : Program{"Concat"}, axis_{axis} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size_in_concat_axis", ProgramUniformVariableDataType::Uint32}, {"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size_in_concat_axis", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
-  size_t input_count_ = 0;
-  size_t axis_ = 0;
+  size_t axis_;
 };
 
 class Concat final : public WebGpuKernel, public ConcatBase {

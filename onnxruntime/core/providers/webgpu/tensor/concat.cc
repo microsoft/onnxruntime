@@ -81,13 +81,14 @@ const std::string AppendAssignOutputDataFunction(gsl::span<const ShaderVariableH
   return ss.str();
 }
 Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  size_t input_count = Inputs().size();
   std::vector<const ShaderVariableHelper*> inputs;
-  inputs.reserve(input_count_);
-  for (size_t i = 0; i < input_count_; ++i) {
+  inputs.reserve(input_count);
+  for (size_t i = 0; i < input_count; ++i) {
     inputs.push_back(&shader.AddInput("input_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  shader.AppendImplementation(AppendCalCulateInputIndexFunction(input_count_));
+  shader.AppendImplementation(AppendCalCulateInputIndexFunction(input_count));
   shader.AppendImplementation(AppendAssignOutputDataFunction(gsl::make_span(inputs), output));
   shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
                              "  var indices = ", output.OffsetToIndices("global_idx"), ";\n",
@@ -101,46 +102,52 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status Concat::ComputeInternal(ComputeContext& context) const {
-  auto input_count = context.InputCount();
+  int input_count = context.InputCount();
   InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
-  if (SafeInt<uint32_t>(input_count + 1) > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
+  for (int i = 0; i < input_count; ++i) {
+    input_tensors.push_back(context.Input<Tensor>(i));
+  }
+
+  Prepare prepare;
+  ORT_RETURN_IF_ERROR(PrepareForCompute(&context.GetKernelContext(), input_tensors, prepare));
+  if (prepare.output_num_elements == 0) {
+    return Status::OK();
+  }
+
+  uint32_t output_size = gsl::narrow_cast<int32_t>(prepare.output_tensor->Shape().Size());
+
+  ConcatProgram program{prepare.axis};
+
+  std::vector<uint32_t> sizes_in_concat_axis;
+  sizes_in_concat_axis.reserve(input_count);
+  uint32_t sum = 0;
+  for (int i = 0; i < input_count; ++i) {
+    const auto& input = prepare.inputs[i];
+    if (input.tensor->Shape().Size() == 0) {
+      continue;
+    }
+    program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
+
+    auto axis_size = input.tensor->Shape()[prepare.axis];
+    sum += static_cast<uint32_t>(axis_size);
+    sizes_in_concat_axis.push_back(sum);
+  }
+
+  size_t non_empty_input_count = sizes_in_concat_axis.size();
+
+  if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
     // TODO: support when input_count + 1 > maxStorageBuffersPerShaderStage, by raising the limit or run the program in multiple passes.
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of storage buffer (input=",
                            input_count, ", output=1) exceeds the limit (",
                            context.DeviceLimits().maxStorageBuffersPerShaderStage, ") of the device.");
   }
 
-  for (int i = 0; i < input_count; ++i) {
-    input_tensors.push_back(context.Input<Tensor>(i));
-  }
-  Prepare prepare;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(&context.GetKernelContext(), input_tensors, prepare));
-  if (prepare.output_num_elements == 0) {
-    return Status::OK();
-  }
-  auto* output_tensor = context.Output(0, prepare.output_tensor->Shape());
-  uint32_t output_size = gsl::narrow_cast<int32_t>(output_tensor->Shape().Size());
-  std::vector<uint32_t> sizes_in_concat_axis;
-  sizes_in_concat_axis.reserve(input_count);
-  uint32_t sum = 0;
-  sizes_in_concat_axis.reserve(input_count);
-  for (int i = 0; i < input_count; ++i) {
-    const auto& input = prepare.inputs[i];
-    auto axis_size = input.tensor->Shape()[prepare.axis];
-    sum += static_cast<uint32_t>(axis_size);
-    sizes_in_concat_axis.push_back(sum);
-  }
-
-  ConcatProgram program(input_count, prepare.axis);
-  for (int i = 0; i < input_count; ++i) {
-    program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
-  }
-  program.CacheHint(absl::StrCat(input_count, prepare.axis))
-      .AddOutputs({output_tensor})
+  program.CacheHint(absl::StrJoin(std::make_tuple(non_empty_input_count, prepare.axis), ","))
+      .AddOutputs({prepare.output_tensor})
       .SetDispatchGroupSize((prepare.output_num_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()),
-                            {static_cast<uint32_t>(output_size)}});
+                            output_size});
   return context.RunProgram(program);
 }
 
