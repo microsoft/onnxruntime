@@ -118,8 +118,8 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
-      {128},                  // BlkLen
-      {1},                         // M
+      {128},                                   // BlkLen
+      {1},                                     // M
       {4096, 11008},                           // N
       {4096, 11008},                           // K
       {1, 8},                                  // Threads
