@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "max_pool.h"
-#include <string>
+
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/xnnpack_init.h"

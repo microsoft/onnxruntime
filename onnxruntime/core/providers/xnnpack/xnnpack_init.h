@@ -1,5 +1,5 @@
 #include "core/framework/allocator.h"
-#include <stdexcept> //temp
+
 struct xnn_allocator;
 
 namespace onnxruntime {
@@ -46,7 +46,7 @@ namespace xnnpack {
 #define XNN_ALLOCATION_ALIGNMENT 16
 #endif
 
-
+#if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
 #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM64EC)
 #if !defined(__APPLE__) 
 // Had to temporary disable fp16 under APPLE ARM64, as compiling
@@ -54,14 +54,10 @@ namespace xnnpack {
 // When building an universial binary for APPLE, this flag would
 // cause trouble for x64 target.
 // reference from MLAS
-
-#if (!defined(_MSC_VER))
-// KleidiAI doesn't support MSVC
 #define XNNPACK_FP16_SUPPORTED
-#endif
-
 #endif //
 #endif // ARM64
+#endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
 std::pair<AllocatorPtr&, xnn_allocator*> GetStoredAllocator();
 
