@@ -283,7 +283,7 @@ stages:
 - stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
-  condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+  condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'), eq(variables['UseA100'], '1')
   jobs:
   - job: Llama2_7B_ONNX
     timeoutInMinutes: 120
