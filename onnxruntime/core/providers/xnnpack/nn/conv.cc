@@ -4,7 +4,7 @@
 #include "conv.h"
 
 #include <cassert>
-
+#include <stdexcept> //temp
 #include <gsl/gsl>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/tensorprotoutils.h"
@@ -21,9 +21,10 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
                      /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
+  throw std::invalid_argument("I'm here now");
   // only layout of weight input is adjusted via PrePack
-  if ((conv_type_ == OpComputeType::op_compute_type_fp32 && input_idx == 1) ||
-      (conv_type_ != OpComputeType::op_compute_type_fp32 && input_idx == 3)) {  // InputTensors::IN_W
+  if (((conv_type_ == OpComputeType::op_compute_type_fp32 || conv_type_ == OpComputeType::op_compute_type_fp16) && input_idx == 1) ||
+      ((conv_type_ != OpComputeType::op_compute_type_fp32 || conv_type_ != OpComputeType::op_compute_type_fp16) && input_idx == 3)) {  // InputTensors::IN_W
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
@@ -70,6 +71,7 @@ Status Conv::Compute(OpKernelContext* context) const {
   // we support 1D or 2D. if 1D we convert to 2D by setting H to 1
   const int64_t H = is_1D ? 1 : X_shape[1];
   const int64_t W = X_shape[rank - 2];
+  throw std::invalid_argument("I'm here now");
 
   // We don't need to call ValidateInputShape as we checked validity in ConvChecker.
   // We also can't use ValidateInputShape as-is as the weight tensor was pre-packed and the layout was changed there.
@@ -142,13 +144,23 @@ Status Conv::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, float, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   Conv);
 
-ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
+ONNX_OPERATOR_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, float, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Conv);
+
+#ifdef XNNPACK_FP16_SUPPORTED
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, MLFloat16, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                  Conv);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, MLFloat16, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                        Conv);
+#endif
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv,
@@ -175,5 +187,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     Conv);
+
 }  // namespace xnnpack
 }  // namespace onnxruntime

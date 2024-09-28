@@ -18,6 +18,13 @@
 #include "core/providers/xnnpack/detail/node_support_checker.h"
 #include "core/providers/xnnpack/xnnpack_init.h"
 
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  onnxruntime::Status st;
+};
+}  // namespace
+
 namespace onnxruntime {
 
 namespace xnnpack {
@@ -30,6 +37,10 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 #define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op, Domain) \
   BuildKernelCreateInfo<                                     \
       ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
+
+#define KERNEL_CREATE_INFO_TYPED_VERSIONED(Start, End, Type, Op, Domain) \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, \
+                                                              Type, Op)>
 
 #define KERNEL_CREATE_INFO(Start, Op, Domain) \
   BuildKernelCreateInfo<                      \
@@ -45,8 +56,12 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIn
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, AveragePool);
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, Conv);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, float, Conv);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, float, Conv);
+#ifdef XNNPACK_FP16_SUPPORTED
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, MLFloat16, Conv);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, Conv);
+#endif
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
@@ -86,9 +101,26 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13
 // Internal domain
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax);
 
-std::unique_ptr<KernelRegistry> RegisterKernels() {
-  auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
+#ifdef XNNPACK_FP16_SUPPORTED
+Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      KERNEL_CREATE_INFO_TYPED_VERSIONED(1, 10, MLFloat16,Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED(11, MLFloat16, Conv, kMSInternalNHWCDomain),
+  };
 
+  for (auto& function_table_entry : function_table) {
+    KernelCreateInfo info = function_table_entry();
+    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
+Status RegisterKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
 
@@ -98,8 +130,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(11, 18, AveragePool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO(19, AveragePool, kMSInternalNHWCDomain),
 
-      KERNEL_CREATE_INFO_VERSIONED(1, 10, Conv, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO(11, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED_VERSIONED(1, 10, float, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED(11, float, Conv, kMSInternalNHWCDomain),
 
       KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO(11, ConvTranspose, kMSInternalNHWCDomain),
@@ -143,11 +175,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
-      ORT_THROW_IF_ERROR(kernel_registry->Register(std::move(info)));
+      ORT_THROW_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }
 
-  return kernel_registry;
+  return Status::OK();
 }
 
 }  // namespace xnnpack
@@ -348,9 +380,25 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   return capabilities;
 }
 
+Status RegisterXnnPackKernels(KernelRegistry& kernel_registry) {
+  ORT_RETURN_IF_ERROR(RegisterKernels(kernel_registry));
+#ifdef XNNPACK_FP16_SUPPORTED
+  ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
+#endif
+  return Status::OK();
+}
+
+KernelRegistryAndStatus GetXnnPackKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterXnnPackKernels(*ret.kernel_registry);
+  return ret;
+}
+
 std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> registry = xnnpack::RegisterKernels();
-  return registry;
+  static KernelRegistryAndStatus k = GetXnnPackKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
