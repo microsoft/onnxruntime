@@ -38,7 +38,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   BuildKernelCreateInfo<                                     \
       ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
 
-#define KERNEL_CREATE_INFO_TYPED_VERSIONED(Start, End, Type, Op, Domain) \
+#define KERNEL_CREATE_INFO_VERSIONED_TYPED(Start, End, Type, Op, Domain) \
   BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, \
                                                               Type, Op)>
 
@@ -83,6 +83,12 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIn
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, MaxPool);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
+#ifdef XNNPACK_FP16_SUPPORTED
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 8, 9, MLFloat16, MaxPool);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, MLFloat16, MaxPool);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MLFloat16, MaxPool);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MLFloat16, MaxPool);
+#endif
 
 // ONNX operators
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 8, Gemm);
@@ -105,8 +111,15 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainB
 Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
-      KERNEL_CREATE_INFO_TYPED_VERSIONED(1, 10, MLFloat16,Conv, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 10, MLFloat16,Conv, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_TYPED(11, MLFloat16, Conv, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(8, 9, MLFloat16, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(10, 10, MLFloat16, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 11, MLFloat16, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED(12, MLFloat16, MaxPool, kMSInternalNHWCDomain),
+
   };
 
   for (auto& function_table_entry : function_table) {
@@ -130,7 +143,7 @@ Status RegisterKernels(KernelRegistry& kernel_registry) {
       KERNEL_CREATE_INFO_VERSIONED(11, 18, AveragePool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO(19, AveragePool, kMSInternalNHWCDomain),
 
-      KERNEL_CREATE_INFO_TYPED_VERSIONED(1, 10, float, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 10, float, Conv, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_TYPED(11, float, Conv, kMSInternalNHWCDomain),
 
       KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose, kMSInternalNHWCDomain),
@@ -291,7 +304,6 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-
   std::shared_ptr<KernelRegistry> registry = GetKernelRegistry();
   std::unordered_map<const Node*, const NodeUnit*> supported_node_unit_map;
   NodeSupportChecker checker{graph, supported_node_unit_map};
