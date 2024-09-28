@@ -13,7 +13,6 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-
 class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
  public:
   SkipLayerNormProgram(bool hasBeta, bool hasBias, float epsilon, int hiddenSize, bool isFP16, bool simplified) : Program{"SkipLayerNorm"} {
@@ -29,9 +28,9 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-    {"components", ProgramUniformVariableDataType::Uint32},
-    {"hidden_size", ProgramUniformVariableDataType::Uint32},
-    {"epsilon", ProgramUniformVariableDataType::Float32});
+      {"components", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
   bool hasBeta_;
