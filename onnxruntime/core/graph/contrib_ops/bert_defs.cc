@@ -708,6 +708,77 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedMultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
+void propagateShapeAndTypeFromFirstInputAndParam(ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+  // fix output_shape
+  auto* output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  for (int i = 0; i < output_shape->dim_size(); i++) {
+    auto* dim_i = output_shape->mutable_dim(i);
+    if (dim_i->has_dim_param() && dim_i->dim_value() == 0) {
+      dim_i->set_dim_value(-1);
+    }
+  }
+}
+
+constexpr const char* PagedAttention_ver1_doc = R"DOC(
+PagedAttention Implementation for ONNXRuntime
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    PagedAttention, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("page_size", "Number of slots (tokens) per page", AttributeProto::INT)
+        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
+        .Attr("num_kv_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("kv_quant_group_size", "Size of the groupwise quantization",
+              AttributeProto::INT, static_cast<int64_t>(32))
+        .Input(0,
+               "query",
+               "Query with shape [num_seqs, num_heads, head_size]",
+               "T")
+        .Input(1,
+               "key_cache",
+               "Page based key cache with shape [num_pages, page_size*num_kv_heads*head_size]",
+               "C")
+        .Input(2,
+               "value_cache",
+               "Page based value cache with shape [num_pages, page_size*num_kv_heads*head_size]",
+               "C")
+        .Input(3,
+               "page_table",
+               "Mapping each sequence to paged form. Map pages from logical to physical page ids."
+               "With shape [num_seqs, max_num_pages_per_sequence]",
+               "tensor(int32)")
+        .Input(4,
+               "context_lens",
+               "Context length of each sequence in the batch. Tensor of shape [num_seqs]",
+               "tensor(int32)")
+        .Input(5,
+               "max_context_len",
+               "Max length of the context among all sequences. Used by scheduling. A tensor of single element on CPU."
+               "Must be specified if max_context_len > 32768",
+               "tensor(int32)",
+               OpSchema::Optional)
+        .Input(6, "alibi_bias", "Input for Alibi", "tensor(float)", OpSchema::Optional)
+        .Input(7,
+               "kv_quant_param",
+               "Additional input for kvcache dequantization. Scale and bias or scale and zeropoint"
+               "Tensor of shape [num_pages, 2*page_size*num_kv_heads*head_size/group_size]",
+               "tensor(float16)",
+               OpSchema::Optional)
+        .Output(0, "output", "Attention output", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrains input and output types.")
+        .TypeConstraint("C", {"tensor(float)", "tensor(float16)", "tensor(float8e4m3fn)"}, "Constrains key and value cache types.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInputAndParam(ctx);
+        }));
+
 constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
 Self attention that supports input sequence length of 1.
 

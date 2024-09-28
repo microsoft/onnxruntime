@@ -79,6 +79,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedMultiHeadAttention);
+class CUDA_MS_OP_CLASS_NAME(1,  PagedAttention);
 class CUDA_MS_OP_CLASS_NAME(1, BeamSearch);
 class CUDA_MS_OP_CLASS_NAME(1, WhisperBeamSearch);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ConvTransposeWithDynamicPads);
@@ -283,6 +284,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedMultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BeamSearch)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, WhisperBeamSearch)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ConvTransposeWithDynamicPads)>,

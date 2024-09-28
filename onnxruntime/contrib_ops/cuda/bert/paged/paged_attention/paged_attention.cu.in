@@ -1,0 +1,40 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#define PAGED_ATTENTION_KERNEL_IMPL 1
+#include "contrib_ops/cuda/bert/paged/paged_attention/paged_attention.cuh"
+
+namespace onnxruntime::contrib::paged {
+
+using float8_e4m3fn_t = cute::float_e4m3_t;
+
+// clang-format off
+#define NUM_THREADS @NUM_THREADS@
+#define HEAD_SIZE @HEAD_SIZE@
+#define PAGE_SIZE @PAGE_SIZE@
+#define CHUNK_SIZE 32  // only useful for fp8
+#define NUM_QUERIES_PER_KV @NUM_QUERIES_PER_KV@
+#define TIO @TIO@
+#define TKV @TKV@
+#define TSB @TSB@
+// clang-format on
+
+template __global__ void paged_attention_kernel<NUM_THREADS, HEAD_SIZE, PAGE_SIZE, CHUNK_SIZE, NUM_QUERIES_PER_KV, TIO, TKV, TSB>(
+    TIO* __restrict__ out,                   // [num_seqs, num_heads, head_size]
+    const TIO* __restrict__ q,               // [num_seqs, num_heads, head_size]
+    const TKV* __restrict__ k_cache,         // [num_pages, num_kv_heads, head_size/x, page_size, x]
+    const TKV* __restrict__ v_cache,         // [num_pages, num_kv_heads, head_size, page_size]
+    const TSB* __restrict__ scalebias,       // [num_pages, 2, num_kv_heads, 2, head_size/chunk_size, page_size]
+    const int* __restrict__ page_table,      // [num_seqs, max_num_pages_per_seq]
+    const int* __restrict__ context_lens,    // [num_seqs]
+    const float* __restrict__ alibi_slopes,  // [num_heads]
+    const float scale,
+    const int num_seqs,
+    const int num_heads,
+    const int num_kv_heads,
+    const int max_num_pages_per_seq,
+    const int q_stride,
+    const int max_context_len
+);
+
+}  // namespace onnxruntime::contrib::paged

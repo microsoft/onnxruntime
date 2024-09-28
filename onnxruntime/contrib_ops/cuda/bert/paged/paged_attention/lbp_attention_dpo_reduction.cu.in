@@ -1,0 +1,41 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#define PAGED_ATTENTION_KERNEL_IMPL 1
+#include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_dpo_reduction.cuh"
+
+namespace onnxruntime::contrib::paged {
+
+using float8_e4m3fn_t = cute::float_e4m3_t;
+
+// clang-format off
+#define HEAD_SIZE @HEAD_SIZE@
+#define TIO @TIO@
+// clang-format on
+
+#define NUM_THREADS 128
+#define NUM_QUERIES_PER_KV 1
+using DPOConfig = DataParallelConfig<false, false, NUM_QUERIES_PER_KV>;
+
+template __global__ void lbp_attention_reduction_kernel<NUM_THREADS, HEAD_SIZE, TIO, DPOConfig>(
+    void* __restrict__ workspace,
+    TIO* __restrict__ out,                 // [num_seqs, num_heads, head_size]
+    const int* __restrict__ context_lens,  // [num_seqs]
+    const int num_seqs,
+    const int num_heads,
+    const int max_context_len
+);
+
+#if INSTANTIATE_SPLIT_HEAD_KERNEL
+template __global__ void lbp_attention_split_head_reduction_kernel<TIO, DPOConfig>(
+    void* __restrict__ workspace,
+    TIO* __restrict__ out,                 // [num_seqs, num_heads, head_size]
+    const int* __restrict__ context_lens,  // [num_seqs]
+    const int num_seqs,
+    const int num_heads,
+    const int head_size,
+    const int max_context_len
+);
+#endif
+
+}  // namespace onnxruntime::contrib::paged
