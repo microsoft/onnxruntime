@@ -367,11 +367,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
   }
 #endif  // defined(ORT_NEURAL_SPEED)
 
-  if (save_prepacked_initializers) {
-    ConvertPrepackWeightIntoTensor(tensor);
-  }
+if (save_prepacked_initializers) {
+  ConvertPrepackWeightIntoTensor(tensor);
+}
 
-  return Status::OK();
+return Status::OK();
 }
 
 template <typename T1>

@@ -327,7 +327,7 @@ class SessionState {
                               bool remove_initializers = true,
                               bool saving_ort_format = false) {
     std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-    return FinalizeSessionState(graph_loc, kernel_registry_manager, pre_packed_initializers_name_map, 
+    return FinalizeSessionState(graph_loc, kernel_registry_manager, pre_packed_initializers_name_map,
                                 remove_initializers, saving_ort_format);
   }
 
@@ -395,7 +395,7 @@ class SessionState {
    */
   Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
-                                           bool save_prepacked_constant_initializers, 
+                                           bool save_prepacked_constant_initializers,
                                            std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
                                            std::unordered_map<std::string, size_t>& pre_packed_initializers_name_count_map);
 

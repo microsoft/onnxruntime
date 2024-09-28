@@ -372,9 +372,8 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override {
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool save_prepacked_initializers,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
     ORT_UNUSED_PARAMETER(save_prepacked_initializers);

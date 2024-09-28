@@ -520,7 +520,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
                                                     "0"));
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName,
                                                     external_initializer_file_name.c_str()));
-  
+
   // optimize model with serialize prepack constant initializers
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
@@ -531,7 +531,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
   auto logger = DefaultLoggingManager().CreateLogger("TestPrepackSerialization");
   std::shared_ptr<Model> model;
   auto load_status = Model::Load(ToWideString(optimized_model), model, nullptr, *logger);
-  ASSERT_EQ(Status::OK() , load_status);
+  ASSERT_EQ(Status::OK(), load_status);
   Graph& graph = model->MainGraph();
 
   bool found_prepack_initializer = false;
@@ -548,7 +548,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
   const char* input_names[] = {"A"};
   const char* const output_names[] = {"Y"};
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  TensorShape input_shape = {1,1};
+  TensorShape input_shape = {1, 1};
   std::vector<float> matrix_A(input_shape.Size(), 2.8f);
   auto matrix_A_tensor = Ort::Value::CreateTensor<float>(
       info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
@@ -566,7 +566,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
   std::wstring optimized_model_wide = ToWideString(optimized_model);
   Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
   auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+                                         output_names, 1);
 
   // check output of original model and optimized model are equal
   ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());

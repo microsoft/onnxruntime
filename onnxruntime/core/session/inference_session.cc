@@ -2072,7 +2072,7 @@ common::Status InferenceSession::Initialize() {
           Graph::OffsetAlignmentInfo align_info;
           align_info.align_offset = true;
           bool save_prepacked_constant_initializers =
-                   session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
           if (save_prepacked_constant_initializers) {
             LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
                                             << "Use this option only when run model inference on PC with CPU."

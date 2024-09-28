@@ -403,7 +403,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                                                        std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
                                                        std::unordered_map<std::string, size_t>& pre_packed_initializers_name_count_map) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
-                                     save_prepacked_constant_initializers , &pre_packed_initializers_name_map,
+                                     save_prepacked_constant_initializers, &pre_packed_initializers_name_map,
                                      &pre_packed_initializers_name_count_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     std::unordered_map<std::string, std::string> pre_packed_kernel_input_map;
@@ -442,9 +442,8 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   ORT_THROW_IF_ERROR(kernel->SetPrePackTensors(input_idx, &const_initialized_tensor));
                 }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                else if
-                  (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
-                    node.GetExecutionProviderType() == kCpuExecutionProvider) {  // caching of pre-packed weights' turned ON
+                else if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                         node.GetExecutionProviderType() == kCpuExecutionProvider) {  // caching of pre-packed weights' turned ON
 
                   AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetOrCreateAllocator(CPU);
                   ORT_ENFORCE(allocator_for_caching.get() != nullptr);
@@ -1569,7 +1568,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-  // pre-packed constant initializers only when: 
+  // pre-packed constant initializers only when:
   //   1. pre-packing is not disabled
   //   2. pre-packed not initializers found and loaded during model load
   if (!disable_prepacking) {

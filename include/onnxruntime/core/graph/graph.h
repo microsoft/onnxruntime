@@ -1199,7 +1199,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                                   size_t initializer_size_threshold) const {
     OffsetAlignmentInfo default_options;
     std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options, 
+    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options,
                                                 false, pre_packed_initializers_name_map);
   }
 

@@ -200,7 +200,7 @@ class Model {
                                                                   size_t initializer_size_threshold) const {
     Graph::OffsetAlignmentInfo default_align_info;
     std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-    return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info, 
+    return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info,
                                                 false, pre_packed_initializers_name_map);
   }
 

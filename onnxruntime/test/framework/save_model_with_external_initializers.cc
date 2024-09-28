@@ -97,7 +97,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
     } else {
       ORT_RETURN_IF_NOT(from_external_tensor_proto_size >= tensor_proto_size, "prepack initializer's size is at least same as original tensor, might be larger");
     }
-    
+
     if (align_info.align_offset) {
       for (const StringStringEntryProto& entry : from_external_tensor_proto->external_data()) {
         if (entry.has_key() && entry.has_value() && entry.key() == "offset") {
@@ -109,7 +109,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
       }
     }
   }
-  
+
   // Cleanup.
   ORT_RETURN_IF_NOT(std::filesystem::remove(output_onnx), "delete file failed");
   ORT_RETURN_IF_NOT(std::filesystem::remove(external_data_path), "delete file failed");

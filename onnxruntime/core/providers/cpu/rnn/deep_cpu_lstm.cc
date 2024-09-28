@@ -225,8 +225,9 @@ static void UseSharedPrePackedBuffersImpl(std::vector<BufferUniquePtr>& prepacke
 }
 
 Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
+                              AllocatorPtr alloc, 
                               [[maybe_unused]] bool save_prepacked_initializers,
-                              AllocatorPtr alloc, /*out*/ bool& is_packed,
+                              /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
