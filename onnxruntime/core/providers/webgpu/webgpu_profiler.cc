@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_profiler.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace profiling {

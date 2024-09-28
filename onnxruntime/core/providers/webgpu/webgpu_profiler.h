@@ -4,9 +4,13 @@
 #pragma once
 
 #include "core/common/profiler_common.h"
-#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
+
+namespace webgpu {
+class WebGpuContext;
+}
+
 namespace profiling {
 
 class WebGPUProfiler final : public EpProfiler {
