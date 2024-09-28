@@ -21,7 +21,6 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
                      /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
-  throw std::invalid_argument("I'm here now");
   // only layout of weight input is adjusted via PrePack
   if (((conv_type_ == OpComputeType::op_compute_type_fp32 || conv_type_ == OpComputeType::op_compute_type_fp16) && input_idx == 1) ||
       ((conv_type_ != OpComputeType::op_compute_type_fp32 || conv_type_ != OpComputeType::op_compute_type_fp16) && input_idx == 3)) {  // InputTensors::IN_W
@@ -144,23 +143,12 @@ Status Conv::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, float, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   Conv);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, float, kXnnpackExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Conv);
-
-#ifdef XNNPACK_FP16_SUPPORTED
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  Conv);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, MLFloat16, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                        Conv);
-#endif
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv,

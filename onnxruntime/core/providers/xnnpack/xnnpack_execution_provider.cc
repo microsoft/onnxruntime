@@ -56,12 +56,8 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIn
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, AveragePool);
 
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, float, Conv);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, float, Conv);
-#ifdef XNNPACK_FP16_SUPPORTED
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, MLFloat16, Conv);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, Conv);
-#endif
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
@@ -81,7 +77,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 8, 9, MaxPool);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, MaxPool);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLAS_SNAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 #ifdef XNNPACK_FP16_SUPPORTED
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 8, 9, MLFloat16, MaxPool);
@@ -112,14 +108,10 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
 
-      KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 10, MLFloat16,Conv, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_TYPED(11, MLFloat16, Conv, kMSInternalNHWCDomain),
-
       KERNEL_CREATE_INFO_VERSIONED_TYPED(8, 9, MLFloat16, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED_TYPED(10, 10, MLFloat16, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 11, MLFloat16, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_TYPED(12, MLFloat16, MaxPool, kMSInternalNHWCDomain),
-
   };
 
   for (auto& function_table_entry : function_table) {
@@ -143,8 +135,8 @@ Status RegisterKernels(KernelRegistry& kernel_registry) {
       KERNEL_CREATE_INFO_VERSIONED(11, 18, AveragePool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO(19, AveragePool, kMSInternalNHWCDomain),
 
-      KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 10, float, Conv, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_TYPED(11, float, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(11, Conv, kMSInternalNHWCDomain),
 
       KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO(11, ConvTranspose, kMSInternalNHWCDomain),
