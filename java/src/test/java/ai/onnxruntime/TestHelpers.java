@@ -470,11 +470,14 @@ public class TestHelpers {
     }
   }
 
+  // Gets an OrtEnvironment instance to use in tests.
+  // Reads a numeric log level from the ORT_JAVA_TEST_LOG_LEVEL environment variable and passes that
+  // to OrtEnvironment.getEnvironment().
   public static OrtEnvironment getOrtEnvironment() {
     String logLevelEnvironmentVariableName = "ORT_JAVA_TEST_LOG_LEVEL";
     String logLevelString = System.getenv(logLevelEnvironmentVariableName);
 
-    if (logLevelString.isEmpty()) {
+    if (logLevelString == null || logLevelString.isEmpty()) {
       return OrtEnvironment.getEnvironment();
     }
 
