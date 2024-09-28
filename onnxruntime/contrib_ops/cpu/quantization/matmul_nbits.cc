@@ -123,9 +123,11 @@ class MatMulNBits final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override;
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  void ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor);
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
@@ -188,9 +190,9 @@ class MatMulNBits final : public OpKernel {
 #if defined(ORT_NEURAL_SPEED)
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                [[maybe_unused]] bool save_prepacked_initializers,
                                 /*out*/ bool& is_packed,
-                                /*out*/ PrePackedWeights* prepacked_weights,
-                                [[maybe_unused]] bool save_prepacked_initializers) {
+                                /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
@@ -253,9 +255,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                [[maybe_unused]] bool save_prepacked_initializers,
                                 /*out*/ bool& is_packed,
-                                /*out*/ PrePackedWeights* prepacked_weights,
-                                [[maybe_unused]] bool save_prepacked_initializers) {
+                                /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
@@ -290,28 +292,33 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 
   if (save_prepacked_initializers) {
-    if (!packed_tensor_) {
-      std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
-      packed_tensor_ = new Tensor(tensor.DataType(),
-                                  TensorShape(weights_dims),
-                                  packed_b_.get(),
-                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-    } else {
-      packed_tensor_ = new Tensor(packed_tensor_->DataType(),
-                                  packed_tensor_->Shape(),
-                                  packed_b_.get(),
-                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-    }
+    ConvertPrepackWeightIntoTensor(tensor);
   }
 
   return Status::OK();
 }
 
+template <typename T1>
+void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor) {
+  if (!packed_tensor_) {
+    std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
+    packed_tensor_ = new Tensor(tensor.DataType(),
+                                TensorShape(weights_dims),
+                                packed_b_.get(),
+                                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  } else {
+    packed_tensor_ = new Tensor(packed_tensor_->DataType(),
+                                packed_tensor_->Shape(),
+                                packed_b_.get(),
+                                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  }
+}
+
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                       [[maybe_unused]] bool save_prepacked_initializers,
                                        /*out*/ bool& is_packed,
-                                       /*out*/ PrePackedWeights* prepacked_weights,
-                                       [[maybe_unused]] bool save_prepacked_initializers) {
+                                       /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
 
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
@@ -361,18 +368,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 #endif  // defined(ORT_NEURAL_SPEED)
 
   if (save_prepacked_initializers) {
-    if (!packed_tensor_) {
-      std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
-      packed_tensor_ = new Tensor(tensor.DataType(),
-                                  TensorShape(weights_dims),
-                                  packed_b_.get(),
-                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-    } else {
-      packed_tensor_ = new Tensor(packed_tensor_->DataType(),
-                                  packed_tensor_->Shape(),
-                                  packed_b_.get(),
-                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-    }
+    ConvertPrepackWeightIntoTensor(tensor);
   }
 
   return Status::OK();

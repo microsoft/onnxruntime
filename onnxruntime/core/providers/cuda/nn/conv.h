@@ -219,8 +219,8 @@ class Conv : public CudaKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool& is_packed, PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override;
+                 bool save_prepacked_initializers,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
   Status ComputeInternal(OpKernelContext* context) const override;
 

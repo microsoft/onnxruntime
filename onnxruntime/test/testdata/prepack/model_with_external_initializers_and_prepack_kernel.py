@@ -87,7 +87,7 @@ def GenerateMatmulNBitsModel(model_name, external_data_name):  # noqa: N802
         ],
     )
 
-    # Create the model (ModelProto)
+    # Create the model
     model_def = helper.make_model(graph_def,
                                   producer_name="onnx-example",
                                   opset_imports=[helper.make_operatorsetid('', 14),

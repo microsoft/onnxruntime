@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/utils.h"
 #include "core/providers/cpu/math/matmul.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -174,9 +173,9 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
 #endif
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                              [[maybe_unused]] bool save_prepacked_initializers,
                               /*out*/ bool& is_packed,
-                              /*out*/ PrePackedWeights* prepacked_weights,
-                              bool save_prepacked_initializers) {
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack Matrix B
@@ -205,11 +204,6 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size);
     }
-
-    if (is_packed && save_prepacked_initializers) {
-      utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_b_size, b_shape_, 1,
-                                                 packed_b_, packed_tensor_, prepacked_weights);
-    }
   }
   return Status::OK();
 }
@@ -222,20 +216,6 @@ Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
   if (input_idx == 1) {
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
-  }
-
-  return Status::OK();
-}
-
-Tensor* MatMul<float>::GetPrePackTensors() {
-  return packed_tensor_;
-}
-
-Status MatMul<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
-  if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-    size_t packed_b_size_;
-    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
   }
 
   return Status::OK();

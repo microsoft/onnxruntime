@@ -83,7 +83,9 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
-  // save pre-packed constant initializers instead of original initializers
+  // save pre-packed constant external initializers instead of original initializers to ONNX data file.
+  // Only useful for models run on PC with CPU so ORT could load prepacked weights directly from
+  // ONNX data file with mmap and no need to do prepacking on fly to save a lot of heap memory.
   bool save_prepacked_constant_initializers = false;
 
   // Non empty filepath enables serialization of the transformed optimized model to the specified filepath.

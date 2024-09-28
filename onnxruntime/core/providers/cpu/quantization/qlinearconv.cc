@@ -5,7 +5,6 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/safeint.h"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -26,17 +25,13 @@ class QLinearConv : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override;
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
-
-  Tensor* GetPrePackTensors() override;
-
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
  private:
   enum InputTensors : int {
@@ -216,7 +211,6 @@ class QLinearConv : public OpKernel {
       }
 
       auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_size));
-      packed_W_size_ = packed_size;
       packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
 
       MlasConvSymPackW(group_count,
@@ -368,9 +362,9 @@ REGISTER_QLINEARCONV_INT8_KERNEL(kMSDomain, 1);
 
 template <typename ActType>
 Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     [[maybe_unused]] bool save_prepacked_initializers,
                                      /*out*/ bool& is_packed,
-                                     /*out*/ PrePackedWeights* prepacked_weights,
-                                     bool save_prepacked_initializers) {
+                                     /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // Support packing the weight matrix.
@@ -419,14 +413,6 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                                         group_input_channels,
                                         group_output_channels,
                                         kernel_size)) {
-    if (save_prepacked_initializers) {
-      ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(alloc, tensor, packed_W_size_, W_shape_,
-                                                              is_symmetric_conv_ ? 1 : SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)),
-                                                              packed_W_buffer_, packed_tensor_, '1',
-                                                              is_symmetric_conv_ ? '0' : '1', column_sums_,
-                                                              prepacked_weights);
-    }
-      
     is_packed = true;
     return Status::OK();
   }
@@ -475,11 +461,6 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
         prepacked_weights->buffer_sizes_.push_back(packed_W_data_size);
       }
 
-      if (save_prepacked_initializers) {
-        ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(alloc, tensor, packed_W_size_, W_shape_, SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)), packed_W_buffer_,
-                                                                packed_tensor_, '1', '2', column_sums_, prepacked_weights);
-      }
-
       is_W_packed_ = true;
       is_packed = true;
       return Status::OK();
@@ -507,94 +488,9 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
     prepacked_weights->buffer_sizes_.push_back(reordered_w_data_size);
   }
 
-  if (save_prepacked_initializers) {
-    char flag = '0';
-    size_t buffer_size = reordered_w_data_size;
-    auto packed_tensor_buffer = IAllocator::MakeUniquePtr<void>(alloc, buffer_size, true);
-    std::memcpy(packed_tensor_buffer.get(),
-                &flag,
-                1);
-    std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 1,
-                reordered_W_buffer_ != nullptr ? reordered_W_buffer_.get() : prepacked_weights->buffers_[1].get(),
-                reordered_w_data_size);
-
-    std::vector<int64_t> packed_weights_dims = {static_cast<int64_t>((buffer_size - 1) / tensor.DataType()->Size()) + 1};
-    packed_tensor_ = new Tensor(tensor.DataType(),
-                                TensorShape(packed_weights_dims),
-                                packed_tensor_buffer.get(),
-                                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-  }
-
   is_W_packed_ = true;
   is_packed = true;
   return Status::OK();
-}
-
-void ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::AllocatorPtr& alloc,
-                                                             const onnxruntime::Tensor& weights,
-                                                             size_t& packed_weights_size_,
-                                                             TensorShape weight_shape_,
-                                                             int weight_size_factor,
-                                                             IAllocatorUniquePtr<void>& packed_weights_,
-                                                             Tensor* packed_tensor_,
-                                                             const char flag,
-                                                             const char is_symmetric,
-                                                             std::vector<int32_t>& column_sums_,
-                                                             PrePackedWeights* prepacked_weights) {
-  // buffer of packed_tensor is combine of:
-  // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
-  // 2. char indicate whether this is symmetric: 0 - is symmetric conv, 1 - is symmetric gemm, other - is not symmetric
-  // 3. packed_weights_size_
-  // 4. weight shape: first vector memory size, then vector content
-  // 5. column_sums_: first size of vector, then content of vector
-  // 6. original packed_weights buffer
-  auto packed_weights_size_buffer = utils::StoreSizeTInBuffer(packed_weights_size_, alloc);
-  TensorShapeVector shape_vector = weight_shape_.AsShapeVector();
-  size_t shape_vector_mem_size = utils::CalculateTensorShapeVectorMemoryUsage(shape_vector);
-  auto shape_vector_mem_size_buffer = utils::StoreSizeTInBuffer(shape_vector_mem_size, alloc);
-  void* shape_vector_ptr = static_cast<void*>(&shape_vector);
-
-  size_t column_sums_mem_size = column_sums_.size() * sizeof(int32_t);
-  auto column_sums_mem_size_buffer = utils::StoreSizeTInBuffer(column_sums_mem_size, alloc);
-  void* column_sums_vector_ptr = static_cast<void*>(column_sums_.data());
-
-  size_t buffer_size = packed_weights_size_ * weight_size_factor + 3 * sizeof(size_t) + 2 +
-                       column_sums_mem_size + shape_vector_mem_size;
-
-  auto packed_tensor_buffer = IAllocator::MakeUniquePtr<void>(alloc,
-                                                              buffer_size,
-                                                              true);
-
-  std::memcpy(packed_tensor_buffer.get(),
-              &flag,
-              1);
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 1,
-              &is_symmetric,
-              1);
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2,
-              packed_weights_size_buffer.get(),
-              sizeof(size_t));
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + sizeof(size_t) + 2,
-              shape_vector_mem_size_buffer.get(),
-              sizeof(size_t));
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2 * sizeof(size_t) + 2,
-              shape_vector_ptr,
-              shape_vector_mem_size);
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 2 * sizeof(size_t) + shape_vector_mem_size + 2,
-              column_sums_mem_size_buffer.get(),
-              sizeof(size_t));
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 3 * sizeof(size_t) + shape_vector_mem_size + 2,
-              column_sums_vector_ptr,
-              column_sums_mem_size);
-  std::memcpy(static_cast<char*>(packed_tensor_buffer.get()) + 3 * sizeof(size_t) + shape_vector_mem_size + 2 + column_sums_mem_size,
-              packed_weights_ != nullptr ? packed_weights_.get() : prepacked_weights->buffers_[0].get(),
-              packed_weights_size_ * weight_size_factor);
-
-  std::vector<int64_t> packed_weights_dims = {static_cast<int64_t>((buffer_size - 1) / weights.DataType()->Size()) + 1};
-  packed_tensor_ = new Tensor(weights.DataType(),
-                              TensorShape(packed_weights_dims),
-                              packed_tensor_buffer.get(),
-                              OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 }
 
 template <typename ActType>
@@ -614,71 +510,6 @@ Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniqueP
     ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
     reordered_W_buffer_ = std::move(prepacked_buffers[1]);
   }
-
-  return Status::OK();
-}
-
-template <typename ActType>
-Tensor* QLinearConv<ActType>::GetPrePackTensors() {
-  return packed_tensor_;
-}
-
-template <typename ActType>
-Status QLinearConv<ActType>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
-  if (input_idx != 3) {
-    return Status::OK();
-  }
-
-  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-
-  AllocatorPtr alloc;
-
-  if (*static_cast<char*>(packed_tensor_->MutableDataRaw()) == '1') {
-    // buffer of packed_tensor is combine of:
-    // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
-    // 2. char indicate whether this is symmetric: 0 - is symmetric conv, 1 - is symmetric gemm, other - is not symmetric
-    // 3. packed_weights_size_
-    // 4. weight shape: first vector memory size, then vector content
-    // 5. column_sums_: first size of vector, then content of vector
-    // 6. original packed_weights buffer
-    auto is_symmetric_conv = *(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 1);
-    if (is_symmetric_conv == '0') {
-      is_symmetric_conv_ = true;
-    } else if (is_symmetric_conv == '1') {
-      is_symmetric_gemm_ = true;
-    }
-
-    void* buffer_start = static_cast<void*>(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 2);
-    packed_W_size_ = *static_cast<size_t*>(buffer_start);
-    size_t weight_shape_buffer_size = *(static_cast<size_t*>(buffer_start) + 1);
-    auto weight_shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, weight_shape_buffer_size, true);
-    std::memcpy(weight_shape_buffer.get(),
-                static_cast<char*>(buffer_start) + 2 * sizeof(size_t),
-                weight_shape_buffer_size);
-    auto weight_shape_vector = static_cast<const InlinedVector<int64_t>*>(weight_shape_buffer.get());
-    W_shape_ = TensorShape(*weight_shape_vector);
-
-    size_t column_sums_buffer_size = *(static_cast<size_t*>(buffer_start) + 2 * sizeof(size_t) + weight_shape_buffer_size);
-    size_t column_sums_vector_size = column_sums_buffer_size / sizeof(int32_t);
-    auto column_sums_buffer = IAllocator::MakeUniquePtr<void>(alloc, weight_shape_buffer_size, true);
-    std::memcpy(column_sums_buffer.get(),
-                static_cast<char*>(buffer_start) + 2 * sizeof(size_t) + weight_shape_buffer_size,
-                column_sums_buffer_size);
-    int32_t* vector_ptr = static_cast<int32_t*>(column_sums_buffer.get());
-    column_sums_ = std::vector<int32_t>(vector_ptr, vector_ptr + column_sums_vector_size);
-
-    std::memcpy(packed_W_buffer_.get(),
-                static_cast<char*>(buffer_start) + 2 * sizeof(size_t) + weight_shape_buffer_size + column_sums_buffer_size,
-                packed_W_size_ * 1);
-
-    is_W_signed_ = packed_tensor_->IsDataType<int8_t>();
-  } else {
-    // buffer of packed_tensor is combine of:
-    // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
-    // 2. original packed reordered w buffer
-    reordered_W_buffer_ = BufferUniquePtr(static_cast<void*>(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 1));
-  }
-  is_W_packed_ = true;
 
   return Status::OK();
 }

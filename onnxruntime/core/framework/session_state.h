@@ -390,6 +390,8 @@ class SessionState {
   /**
    * Prepack the constant initialized tensors for better performance.
    * The original constant initialized tensors will be removed to save memory.
+   * For model with prepacked initializer serialized into ONNX data file,
+   * PrePack will be skipped to save memory.
    */
   Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,

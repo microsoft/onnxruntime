@@ -17,7 +17,6 @@
 
 #include "core/providers/cpu/nn/conv_transpose.h"
 
-#include "core/framework/utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/common/safeint.h"
 #include "core/util/math.h"
@@ -39,9 +38,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <typename T>
 Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
+                                 [[maybe_unused]] bool save_prepacked_initializers,
                                  /*out*/ bool& is_packed,
-                                 /*out*/ PrePackedWeights* /*prepacked_weights*/,
-                                 bool save_prepacked_initializers
+                                 /*out*/ PrePackedWeights* /*prepacked_weights*/
 ) {
   is_packed = false;
   return Status::OK();
@@ -49,9 +48,9 @@ Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, Al
 
 template <>
 Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     [[maybe_unused]] bool save_prepacked_initializers,
                                      /*out*/ bool& is_packed,
-                                     /*out*/ PrePackedWeights* prepacked_weights,
-                                     bool save_prepacked_initializers) {
+                                     /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack filter tensor
@@ -69,13 +68,14 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     }
 
     size_t packed_filter_data_size = SafeInt<size_t>(packed_elements_per_group) * sizeof(float) * conv_transpose_attrs_.group;
-    transposed_filter_ = IAllocator::MakeUniquePtr<void>(alloc, packed_filter_data_size, true);
-    auto* packed_filter_data = transposed_filter_.get();
+    auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
 
     // Initialize memory to 0 as there could be some padding associated with pre-packed
     // buffer memory and we don not want it uninitialized and generate different hashes
     // if and when we try to cache this pre-packed buffer for sharing between sessions.
     memset(packed_filter_data, 0, packed_filter_data_size);
+
+    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(std::move(alloc)));
 
     for (int64_t group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
       MlasTranspose(tensor.Data<float>() + (group_id * N * K),
@@ -87,11 +87,6 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     if (share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(transposed_filter_));
       prepacked_weights->buffer_sizes_.push_back(packed_filter_data_size);
-    }
-
-    if (save_prepacked_initializers) {
-      utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_filter_data_size, filter_shape_, 1,
-                                                 transposed_filter_, packed_tensor_, prepacked_weights);
     }
 
     is_packed = true;
@@ -116,32 +111,6 @@ Status ConvTranspose<float>::UseSharedPrePackedBuffers(std::vector<BufferUniqueP
   if (input_idx == 1) {
     used_shared_buffers = true;
     transposed_filter_ = std::move(prepacked_buffers[0]);
-  }
-
-  return Status::OK();
-}
-
-template <typename T>
-Tensor* ConvTranspose<T>::GetPrePackTensors() {
-  return nullptr;
-}
-
-template <>
-Tensor* ConvTranspose<float>::GetPrePackTensors() {
-  return packed_tensor_;
-}
-
-template <typename T>
-Status ConvTranspose<T>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
-  return Status::OK();
-}
-
-template <>
-Status ConvTranspose<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
-  if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-    size_t packed_b_size_;
-    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, filter_shape_, 1, transposed_filter_, packed_tensor_->MutableDataRaw());
   }
 
   return Status::OK();

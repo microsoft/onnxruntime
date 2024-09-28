@@ -1184,7 +1184,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   in the external file. Initializer smaller than this threshold are included in the onnx file.
   @param align_info offset alignment info.
   @param save_prepacked_constant_initializers whether to save prepacked initializer into onnx data file.
-  @param pre_packed_initializers_name_map hashmap used to store prepacked initializers.
+  @param pre_packed_initializers_name_map hashmap used to store all the prepacked initializers.
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
@@ -1514,6 +1514,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
  private:
   void InitializeStateFromModelFileGraphProto();
+
+  // Private method used to setup external initializer properly during model save,
+  // this external initializer could be oroginal initializer or prepacked initializer.
   static void SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_info,
                                        size_t tensor_bytes_size,
                                        int64_t& external_offset,

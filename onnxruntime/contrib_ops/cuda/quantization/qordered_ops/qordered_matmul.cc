@@ -51,10 +51,9 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                               [[maybe_unused]] bool save_prepacked_initializers,
                                /*out*/ bool& is_packed,
-                               /*out*/ PrePackedWeights* /* prepacked_weights */,
-                               bool save_prepacked_initializers) {
-  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
+                               /*out*/ PrePackedWeights* /* prepacked_weights */) {
   is_packed = false;
   if (order_B_ == CUBLASLT_ORDER_COL) {
     if (input_idx == QOrderedMatMulScaleA) {

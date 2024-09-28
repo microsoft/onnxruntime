@@ -5,7 +5,6 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 #include "core/common/safeint.h"
-#include "core/framework/utils.h"
 #include "core/quantization/quantization.h"
 
 namespace onnxruntime {
@@ -15,9 +14,9 @@ class MatMulIntegerBase : public OpKernel {
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 [[maybe_unused]] bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override {
+                 /*out*/ PrePackedWeights* prepacked_weights) override {
     is_packed = false;
 
     // only pack Matrix B
@@ -62,11 +61,6 @@ class MatMulIntegerBase : public OpKernel {
         prepacked_weights->buffer_sizes_.push_back(packed_b_size);
       }
 
-      if (save_prepacked_initializers) {
-        utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_b_size, b_shape_, 1,
-                                                  packed_b_, packed_tensor_, prepacked_weights);
-      }
-
       is_packed = true;
     }
     return Status::OK();
@@ -80,20 +74,6 @@ class MatMulIntegerBase : public OpKernel {
     if (input_idx == GetBIdx()) {
       used_shared_buffers = true;
       packed_b_ = std::move(prepacked_buffers[0]);
-    }
-
-    return Status::OK();
-  }
-
-  Tensor* GetPrePackTensors() {
-    return packed_tensor_;
-  }
-
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
-    if (input_idx == GetBIdx()) {
-      packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-      size_t packed_b_size_;
-      utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
     }
 
     return Status::OK();
@@ -148,7 +128,6 @@ class MatMulIntegerBase : public OpKernel {
   bool b_is_signed_{true};
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
-  Tensor* packed_tensor_;
 };
 
 }  // namespace onnxruntime

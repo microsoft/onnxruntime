@@ -225,9 +225,9 @@ static void UseSharedPrePackedBuffersImpl(std::vector<BufferUniquePtr>& prepacke
 }
 
 Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
+                              [[maybe_unused]] bool save_prepacked_initializers,
                               AllocatorPtr alloc, /*out*/ bool& is_packed,
-                              /*out*/ PrePackedWeights* prepacked_weights,
-                              bool save_prepacked_initializers) {
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   if (tensor.IsDataType<float>()) {
@@ -239,11 +239,6 @@ Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
         prepacked_weights->buffers_.push_back(std::move(packed_W_.buffer_));
         prepacked_weights->buffer_sizes_.push_back(packed_W_.buffer_size_);
       }
-
-      if (is_packed && save_prepacked_initializers) {
-        utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_W_.weights_size_, packed_W_.shape_, num_directions_,
-                                                   packed_W_.buffer_, packed_tensor_, prepacked_weights);
-      }
     } else if (input_idx == 2) {
       ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, alloc));
 
@@ -251,11 +246,6 @@ Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
       if (is_packed && share_prepacked_weights) {
         prepacked_weights->buffers_.push_back(std::move(packed_R_.buffer_));
         prepacked_weights->buffer_sizes_.push_back(packed_R_.buffer_size_);
-      }
-
-      if (is_packed && save_prepacked_initializers) {
-        utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_R_.weights_size_, packed_R_.shape_, num_directions_,
-                                                   packed_R_.buffer_, packed_tensor_, prepacked_weights);
       }
     }
   }
@@ -274,24 +264,6 @@ Status DeepCpuLstmOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
   } else if (input_idx == 2) {
     used_shared_buffers = true;
     UseSharedPrePackedBuffersImpl(prepacked_buffers, packed_R_);
-  }
-
-  return Status::OK();
-}
-
-Tensor* DeepCpuLstmOp::GetPrePackTensors() {
-  return packed_tensor_;
-}
-
-Status DeepCpuLstmOp::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
-  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-
-  if (input_idx == 1) {
-    utils::ConvertTensorToPackedBufferAndShape(packed_W_.weights_size_, packed_W_.shape_, num_directions_, packed_W_.buffer_, packed_tensor_->MutableDataRaw());
-    packed_W_.buffer_size_ = packed_W_.weights_size_ * num_directions_;
-  } else if (input_idx == 2) {
-    utils::ConvertTensorToPackedBufferAndShape(packed_R_.weights_size_, packed_R_.shape_, num_directions_, packed_R_.buffer_, packed_tensor_->MutableDataRaw());
-    packed_R_.buffer_size_ = packed_R_.weights_size_ * num_directions_;
   }
 
   return Status::OK();

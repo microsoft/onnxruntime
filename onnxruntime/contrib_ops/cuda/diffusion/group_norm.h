@@ -17,8 +17,8 @@ class GroupNorm final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool& is_packed, PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override;
+                 bool save_prepacked_initializers,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
  private:
   bool use_swish_activation_;  // use SiLU (also known as Swish) activation after group normalization?

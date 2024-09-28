@@ -8,7 +8,6 @@
 #include "lstm_base.h"
 
 #include "core/framework/op_kernel.h"
-#include "core/framework/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
@@ -20,17 +19,13 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
   DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override;
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
-
-  Tensor* GetPrePackTensors() override;
-
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -45,7 +40,6 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
 
   rnn::detail::PackedWeights packed_W_;
   rnn::detail::PackedWeights packed_R_;
-  Tensor* packed_tensor_;
 };
 
 }  // namespace onnxruntime

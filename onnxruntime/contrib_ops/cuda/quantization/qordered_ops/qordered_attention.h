@@ -20,9 +20,9 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
 
  public:
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights,
-                 bool save_prepacked_initializers) override;
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
  private:
   int64_t input_hidden_size_;
