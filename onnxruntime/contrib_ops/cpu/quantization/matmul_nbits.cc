@@ -289,6 +289,21 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_AMD64_IX86
   }
 
+  if (save_prepacked_initializers) {
+    if (!packed_tensor_) {
+      std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
+      packed_tensor_ = new Tensor(tensor.DataType(),
+                                  TensorShape(weights_dims),
+                                  packed_b_.get(),
+                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    } else {
+      packed_tensor_ = new Tensor(packed_tensor_->DataType(),
+                                  packed_tensor_->Shape(),
+                                  packed_b_.get(),
+                                  OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -365,11 +380,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 
 template <typename T1>
 Tensor* MatMulNBits<T1>::GetPrePackTensors() {
-  return nullptr;
+  return packed_tensor_;
 }
 
 template <typename T1>
-Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
   if (input_idx == 1) {
     packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
     packed_b_ = BufferUniquePtr(packed_tensor_->MutableDataRaw());
