@@ -2,7 +2,7 @@
 This directory contains [ONNXRuntime Lora Parameter format schema](lora_schema.fbs) and [the generated C++ header file](lora_schema.fbs.h) for the
 Lora Parameters file format. This file format is defined as a means to deliver Lora parameters so it can read by ONNXRuntime C++ code.
 
-The format is generally designed to house a single Lora adapter named Lora parameters.
+The format is generally designed to house a single Lora adapter with named Lora parameters.
 
 [ONNXRuntime Lora Parameter file format schema](lora_schema.fbs) uses the [FlatBuffers](https://github.com/google/flatbuffers) serialization library.
 

@@ -23,14 +23,6 @@ bool IsAdapterFormatModelBytes(const void* bytes, size_t num_bytes) {
          AdapterBufferHasIdentifier(bytes);
 }
 
-flatbuffers::Offset<flatbuffers::String> SaveStringToLoraFormat(flatbuffers::FlatBufferBuilder& builder,
-                                                                bool has_string, const std::string& src) {
-  if (has_string) return builder.CreateString(src);
-
-  // If the string does not exist, return 0 (the string does not exist in flatbuffer)
-  return 0;
-}
-
 void LoadStringFromLoraFormat(std::string& dst, const flatbuffers::String* fbs_string) {
   if (fbs_string) {
     dst = fbs_string->str();

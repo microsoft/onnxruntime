@@ -71,10 +71,6 @@ class AdapterFormatBuilder {
 /// <returns></returns>
 bool IsAdapterFormatModelBytes(const void* bytes, size_t num_bytes);
 
-// Will only create string in flatbuffers when has_string is true
-flatbuffers::Offset<flatbuffers::String> SaveStringToLoraFormat(flatbuffers::FlatBufferBuilder& builder,
-                                                                bool has_string, const std::string& src);
-
 void LoadStringFromLoraFormat(std::string& dst, const flatbuffers::String* fbs_string);
 
 /// <summary>

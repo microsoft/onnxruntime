@@ -1834,7 +1834,8 @@ class TestInferenceSession(unittest.TestCase):
     def test_adater_export_read(self):
         adapter_version = 1
         model_version = 1
-        exported_adapter_file = "test_adapter.onnx_adapter"
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter.onnx_adapter")
 
         float_data_type = 1
         int64_data_type = 7
@@ -1852,10 +1853,10 @@ class TestInferenceSession(unittest.TestCase):
         adapter_format.set_model_version(model_version)
         adapter_format.set_parameters(params)
 
-        adapter_format.export_adapter(exported_adapter_file)
+        adapter_format.export_adapter(file_path)
 
-        adapter_format_read = onnxrt.AdapterFormat.read_adapter(exported_adapter_file)
-        os.remove(exported_adapter_file)
+        adapter_format_read = onnxrt.AdapterFormat.read_adapter(file_path)
+        os.remove(file_path)
 
         self.assertEqual(adapter_version, adapter_format_read.get_adapter_version())
         self.assertEqual(model_version, adapter_format_read.get_model_version())
@@ -1871,8 +1872,9 @@ class TestInferenceSession(unittest.TestCase):
             np.testing.assert_allclose(expected_val.numpy(), value.numpy())
 
     def test_run_with_adapter(self):
-        adapter_path = get_name("lora/two_params_lora_model.onnx_adapter")
         model_path = get_name("lora/two_params_lora_model.onnx")
+        file_path = os.getcwd() + "/" + get_name("lora/two_params_lora_model.onnx_adapter")
+        adapter_path = os.path.abspath(file_path)
 
         expected_output = np.array(
             [
@@ -1888,7 +1890,7 @@ class TestInferenceSession(unittest.TestCase):
         adapter.Load(adapter_path)
 
         run_options = onnxrt.RunOptions()
-        run_options.set_adapter_active(adapter)
+        run_options.add_active_adapter(adapter)
         session = onnxrt.InferenceSession(model_path)
 
         inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}

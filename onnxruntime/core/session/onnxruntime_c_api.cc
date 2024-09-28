@@ -39,7 +39,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/common/string_helper.h"
 
-#include "lora_adapters.h"
+#include "core/session/lora_adapters.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -933,7 +933,8 @@ ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ cons
     status = session->Run(default_run_options, *binding_ptr->binding_);
   } else {
     if (!run_options->active_adapters.empty()) {
-      LOGS(*session->GetLogger(), WARNING) << "RunWithBinding() active adapters specified, but won't have effect";
+      LOGS(*session->GetLogger(), WARNING)
+          << "RunWithBinding() has active adapters specified, but won't have an effect";
     }
     status = session->Run(*run_options, *binding_ptr->binding_);
   }

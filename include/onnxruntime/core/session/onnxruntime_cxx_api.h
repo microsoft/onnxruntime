@@ -759,7 +759,7 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// \param num_bytes The number of bytes in the byte array
   /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
   ///        be copied to device if required by the model at inference time.
-  static LoraAdapter CreateLoraAdapterFromArray(const uint8_t* bytes, size_t num_bytes,
+  static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };
 

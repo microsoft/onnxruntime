@@ -4702,18 +4702,18 @@ struct OrtApi {
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    */
-  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const uint8_t* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
+  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
 
   /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
    */
   ORT_CLASS_RELEASE(LoraAdapter);
 
-  /** \brief Set the active Lora Adapter for the run options
+  /** \brief Add the Lora Adapter to the list of active adapters.
    *
    * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
    * OrtApi::CreateLoraAdapter or FromArray. The Lora Adapter will be used by the session to run the model.
-   * The instance of the OrtRunOptions will can then be then used to customize the Run() calls.
+   * The instance of the OrtRunOptions can then be used to customize the Run() calls.
    * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
    * Lora adapters that will be active at the same time must not overlap.
    * This setting does not affect RunWithBinding.
