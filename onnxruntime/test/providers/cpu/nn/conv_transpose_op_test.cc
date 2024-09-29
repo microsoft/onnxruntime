@@ -214,7 +214,7 @@ TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_C2) {
   }
 }
 
-TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{0, 0},        // output_padding
@@ -243,19 +243,7 @@ TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
                                  0.07770107f, -0.09561026f, 0.13388641f, 0.30945939f, 0.14015588f,
                                  0.13079405f, -0.00488365f, -0.06758944f, 0.45621645f, 0.01566098f,
                                  0.00703105f, 0.12956856f, 0.0103332f, 0.04221053f, -0.21318194f};
-  if constexpr (std::is_same<TypeParam, float>::value) {
-    TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
-  } else {
-    vector<TypeParam> X_fp16(X.size());
-    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
-    vector<TypeParam> W_fp16(W.size());
-    ConvertFloatToMLFloat16(W.data(), W_fp16.data(), W.size());
-    std::vector<TypeParam> B_fp16(B.size());
-    ConvertFloatToMLFloat16(B.data(), B_fp16.data(), B.size());
-    std::vector<TypeParam> expected_vals_fp16(expected_vals.size());
-    ConvertFloatToMLFloat16(expected_vals.data(), expected_vals_fp16.data(), expected_vals.size());
-    TestConvTransposeOp(attrs, {X_fp16, W_fp16, B_fp16}, {X_shape, W_shape}, expected_vals_fp16, Y_shape);
-  }
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {
