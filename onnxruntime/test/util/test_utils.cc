@@ -38,6 +38,10 @@ void VerifyOutput(const std::string& output_name,
       EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int64_t>(), tensor.DataAsSpan<int64_t>()))
           << " mismatch for " << output_name;
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint16_t>(), tensor.DataAsSpan<uint16_t>()))
+          << " mismatch for " << output_name;
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint8_t>(), tensor.DataAsSpan<uint8_t>()))
           << " mismatch for " << output_name;
