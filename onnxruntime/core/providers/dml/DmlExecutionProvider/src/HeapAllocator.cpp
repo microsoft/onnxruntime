@@ -97,7 +97,13 @@ namespace Dml
 
         if (requiredCapacity < actualCapacity)
         {
+            // If we are oversized we rebuild the whole heap for now
             return Clear();
+        }
+        else
+        {
+            // In case somehow we did not manage to complete an already requested clear before, then we should cancel it
+            m_clearRequested = false;
         }
 
         // We track the age of cached free resources and remove unused ones
