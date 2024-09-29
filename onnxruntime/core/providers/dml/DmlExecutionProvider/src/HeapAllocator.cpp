@@ -64,7 +64,7 @@ namespace Dml
         }
 
         // Register as free resource
-        m_freeResources[heapMappings].push_back(buffer);
+        m_freeResources[heapMappings] = buffer;
         return true;
     }
 
@@ -77,12 +77,9 @@ namespace Dml
             results.push_back(resource);
         }
 
-        for (auto& [mapping, resources] : m_freeResources)
+        for (auto& [mapping, resource] : m_freeResources)
         {
-            for (auto& resource : resources)
-            {
-                results.push_back(resource);
-            }
+            results.push_back(resource);
         }
 
         for (auto& heap : m_heaps)
@@ -127,23 +124,21 @@ namespace Dml
         auto heapMappings = CalculateHeapMappings(segments);
 
         // Check if we need a new resource
-        auto& reusableResources = m_freeResources[heapMappings];
-        if (reusableResources.empty())
+        ComPtr<ID3D12Resource> resource;
+        auto reusableResource = m_freeResources.extract(heapMappings);
+        if (reusableResource.empty())
         {
-            auto resource = CreateResource(size);
-            UpdateTileMappings(resource.Get(), heapMappings);
-
-            m_usedResources[resource] = heapMappings;
-            return resource;
+            resource = CreateResource(size);
+            UpdateTileMappings(resource.Get(), heapMappings);            
         }
         // Or can reuse an existing one
         else
         {
-            auto resource = std::move(reusableResources.back());
-            m_usedResources[resource] = heapMappings;
-            reusableResources.pop_back();
-            return resource;
+            resource = std::move(reusableResource.mapped());
         }
+
+        m_usedResources[resource] = heapMappings;
+        return resource;
     }
 
     std::vector<HeapMapping> HeapAllocator::CalculateHeapMappings(gsl::span<MemorySegment> segments) const
