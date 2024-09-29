@@ -205,13 +205,13 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
   auto nbits = static_cast<int>(nbits_);
   if (input_idx == InputIndex::B) {
-    packed_b_size_ = NSNBitsGemmPackBSize(N_, K_, block_size_, nbits, is_asym_, compute_type_);
+    packed_b_size_ = NSNBitsGemmPackBSize(N_, K_, block_size_, nbits, is_asym_, NS_SQNBIT_COMPUTE_TYPE(compute_type_));
     if (packed_b_size_ == 0) return Status::OK();
     auto qptr = tensor.Data<uint8_t>();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     std::memset(packed_b_.get(), 0, packed_b_size_);
     NSNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, false,
-                     compute_type_, pool);
+                     NS_SQNBIT_COMPUTE_TYPE(compute_type_), pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -221,7 +221,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
     auto sptr = tensor.Data<float>();
     NSNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, !is_asym_,
-                     compute_type_, pool);
+                     NS_SQNBIT_COMPUTE_TYPE(compute_type_), pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -231,7 +231,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
     auto zptr = tensor.Data<uint8_t>();
     NSNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits, is_asym_, is_asym_,
-                     compute_type_, pool);
+                     NS_SQNBIT_COMPUTE_TYPE(compute_type_), pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -786,10 +786,10 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
     const size_t lda = helper.Lda(false);
     InlinedVector<NS_SQNBITS_GEMM_DATA_PACKED_PARAMS> gemm_params(batch_count);
     for (size_t i = 0; i < batch_count; i++) {
-      gemm_params[i].A = a_data + helper.LeftOffsets()[i];
+      gemm_params[i].A = reinterpret_cast<const float*>(a_data + helper.LeftOffsets()[i]);
       gemm_params[i].lda = lda;
       gemm_params[i].B = packed_b_.get();
-      gemm_params[i].C = y_data + helper.OutputOffsets()[i];
+      gemm_params[i].C = reinterpret_cast<float*>(y_data + helper.OutputOffsets()[i]);
       gemm_params[i].ldc = N;
     }
     auto ws_size = NSSQNBitsGemmBatchWorkspaceSize(M, N, K, batch_count, gemm_params.data());
