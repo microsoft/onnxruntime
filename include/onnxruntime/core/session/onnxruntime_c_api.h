@@ -4679,7 +4679,7 @@ struct OrtApi {
    * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *
-   * \param[in] adapter_file_path Absolute file path to the adapter file.
+   * \param[in] adapter_file_path adapter file path.
    * \param[in] allocator optional pointer to a device allocator. If specified
    *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
    *            The data would still be copied to device if required by the model at inference time.

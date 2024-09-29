@@ -557,10 +557,10 @@ inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
 }
 
-inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path,
+inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                                   OrtAllocator* allocator) {
   OrtLoraAdapter* p;
-  ThrowOnError(GetApi().CreateLoraAdapter(absolute_adapter_path.c_str(), allocator, &p));
+  ThrowOnError(GetApi().CreateLoraAdapter(adapter_path.c_str(), allocator, &p));
   return LoraAdapter{p};
 }
 

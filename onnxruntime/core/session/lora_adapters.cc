@@ -31,14 +31,7 @@ LoraAdapter::Param::Param(OrtValue ort_value_mapped, OrtValue ort_value_device) 
     : ort_value_mapped_(std::move(ort_value_mapped)), ort_value_device_(std::move(ort_value_device)) {
 }
 
-static void CheckPathIsAbsolute(const std::filesystem::path& file_path) {
-  if (!file_path.is_absolute()) {
-    ORT_THROW("Expecting an absolute path: ", file_path);
-  }
-}
-
 void LoraAdapter::Load(const std::filesystem::path& file_path) {
-  CheckPathIsAbsolute(file_path);
   auto buffer = adapters::utils::LoadLoraAdapterBytes(file_path);
   Load(std::move(buffer));
 }
@@ -50,7 +43,6 @@ void LoraAdapter::Load(std::vector<uint8_t> buffer) {
 }
 
 void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
-  CheckPathIsAbsolute(file_path);
   auto [mapped_memory, file_size] = adapters::utils::MemoryMapAdapterFile(file_path);
   auto u8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(mapped_memory.get(), file_size));
   adapter_ = adapters::utils::ValidateAndGetAdapterFromBytes(u8_span);

@@ -4448,9 +4448,7 @@ static void TestRunWithLoraAdapter(const Ort::LoraAdapter& adapter) {
 
 static Ort::LoraAdapter CreateAdapterFromFile() {
   constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
-  // std::filesystem::absolute is not supported by all compilers
-  auto adapter_abs_path = std::filesystem::current_path().append(adapter_path);
-  return Ort::LoraAdapter::CreateLoraAdapter(adapter_abs_path, nullptr);
+  return Ort::LoraAdapter::CreateLoraAdapter(adapter_path, nullptr);
 }
 
 static Ort::LoraAdapter CreateAdapterFromArray() {
