@@ -34,6 +34,8 @@ namespace Dml
 
         std::vector<HeapBlock> m_heaps;
         MemoryAllocator m_allocator;
+        uint64_t m_usedHeapSpace = 0, m_maxUsedHeapSpace = 0;
+        bool m_clearRequested = false;
 
         std::unordered_map<ComPtr<ID3D12Resource>, HeapMappings, ResourceHasher, ResourceComparer> m_usedResources;
         std::unordered_map<HeapMappings, ResourceCache, HeapMappingsHasher, HeapMappingsComparer> m_freeResources;

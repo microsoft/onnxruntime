@@ -28,6 +28,10 @@ namespace Dml
         // Round up to tile size
         auto allocationSize = RoundToBlockSize(requestedSize, D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
 
+        // Track memory usage
+        m_usedHeapSpace += allocationSize;
+        m_maxUsedHeapSpace = std::max(m_usedHeapSpace, m_maxUsedHeapSpace);
+
         // Ensure heap space
         EnsureHeapSpace(allocationSize);
 
@@ -49,6 +53,9 @@ namespace Dml
         auto heap = m_heaps.begin();
         for (auto& mapping : heapMappings)
         {
+            // Track memory usage
+            m_usedHeapSpace -= mapping.ResourceSegment.Size;
+
             // Find current heap
             while (heap->Heap.Get() != mapping.Heap)
             {
@@ -65,12 +72,33 @@ namespace Dml
 
         // Register as free resource
         m_freeResources[heapMappings] = { buffer, 0 };
+
+        // Clear heap if requested
+        if (m_clearRequested && m_usedHeapSpace == 0)
+        {
+            m_clearRequested = false;
+            m_usedResources.clear();
+            m_freeResources.clear();
+            m_heaps.clear();
+            m_allocator.Reset();
+        }
+
         return true;
     }
 
     std::vector<ComPtr<IUnknown>> HeapAllocator::Clean()
     {
         std::vector<ComPtr<IUnknown>> results;
+
+        // Check if we should decrease the size of the heap
+        auto requiredCapacity = RoundToBlockSize(m_maxUsedHeapSpace, m_blockSize);
+        auto actualCapacity = m_allocator.Capacity();
+        m_maxUsedHeapSpace = 0;
+
+        if (requiredCapacity < actualCapacity)
+        {
+            return Clear();
+        }
 
         // We track the age of cached free resources and remove unused ones
         for (auto it = m_freeResources.begin(); it != m_freeResources.end();)
@@ -92,6 +120,7 @@ namespace Dml
 
     std::vector<ComPtr<IUnknown>> HeapAllocator::Clear()
     {
+        // Collect possibly in use resources for deferred deletion
         std::vector<ComPtr<IUnknown>> results;
 
         for (auto& [resource, mapping] : m_usedResources)
@@ -109,10 +138,8 @@ namespace Dml
             results.push_back(heap.Heap);
         }
 
-        m_usedResources.clear();
-        m_freeResources.clear();
-        m_heaps.clear();
-        m_allocator.Reset();
+        // Schedule deletion
+        m_clearRequested = true;
 
         return results;
     }
