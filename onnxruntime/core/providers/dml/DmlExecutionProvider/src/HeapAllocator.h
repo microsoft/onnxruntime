@@ -11,12 +11,19 @@ namespace Dml
             ComPtr<ID3D12Heap> Heap;
         };
 
+        struct ResourceCache
+        {
+            ComPtr<ID3D12Resource> Resource;
+            uint32_t Age = 0;
+        };
+
     public:
         HeapAllocator(ID3D12Device* device, ID3D12CommandQueue* queue);
 
         ComPtr<ID3D12Resource> AllocateBuffer(uint64_t size);
         bool TryReleaseBuffer(const ComPtr<ID3D12Resource>& buffer);
 
+        std::vector<ComPtr<IUnknown>> Clean();
         std::vector<ComPtr<IUnknown>> Clear();
 
     private:
@@ -29,8 +36,7 @@ namespace Dml
         MemoryAllocator m_allocator;
 
         std::unordered_map<ComPtr<ID3D12Resource>, HeapMappings, ResourceHasher, ResourceComparer> m_usedResources;
-        std::unordered_map<HeapMappings, ComPtr<ID3D12Resource>, HeapMappingsHasher, HeapMappingsComparer>
-            m_freeResources;
+        std::unordered_map<HeapMappings, ResourceCache, HeapMappingsHasher, HeapMappingsComparer> m_freeResources;
 
         void EnsureHeapSpace(uint64_t size);
         ComPtr<ID3D12Resource> AllocateResource(uint64_t size);

@@ -64,8 +64,30 @@ namespace Dml
         }
 
         // Register as free resource
-        m_freeResources[heapMappings] = buffer;
+        m_freeResources[heapMappings] = { buffer, 0 };
         return true;
+    }
+
+    std::vector<ComPtr<IUnknown>> HeapAllocator::Clean()
+    {
+        std::vector<ComPtr<IUnknown>> results;
+
+        // We track the age of cached free resources and remove unused ones
+        for (auto it = m_freeResources.begin(); it != m_freeResources.end();)
+        {
+            auto& [mapping, cache] = *it;
+            if (3 < cache.Age++)
+            {
+                results.push_back(cache.Resource);
+                it = m_freeResources.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        return results;
     }
 
     std::vector<ComPtr<IUnknown>> HeapAllocator::Clear()
@@ -79,7 +101,7 @@ namespace Dml
 
         for (auto& [mapping, resource] : m_freeResources)
         {
-            results.push_back(resource);
+            results.push_back(resource.Resource);
         }
 
         for (auto& heap : m_heaps)
@@ -129,12 +151,12 @@ namespace Dml
         if (reusableResource.empty())
         {
             resource = CreateResource(size);
-            UpdateTileMappings(resource.Get(), heapMappings);            
+            UpdateTileMappings(resource.Get(), heapMappings);
         }
         // Or can reuse an existing one
         else
         {
-            resource = std::move(reusableResource.mapped());
+            resource = std::move(reusableResource.mapped().Resource);
         }
 
         m_usedResources[resource] = heapMappings;
