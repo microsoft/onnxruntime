@@ -133,8 +133,8 @@ class WebGpuContext final {
     return validation_mode_;
   }
 
-  void StartProfiling(const std::string& profiling_mode);
-  void EndProfiling();
+  void StartProfiling(TimePoint);
+  void EndProfiling(TimePoint, profiling::Events&);
 
   Status Run(const ComputeContext& context, const ProgramBase& program);
 
@@ -157,6 +157,7 @@ class WebGpuContext final {
   void WriteTimestamp(uint32_t query_index);
 
   TimestampQueryType query_type_;
+  uint64_t query_time_base_;
   wgpu::QuerySet query_set_;
   wgpu::Buffer query_resolve_buffer_;
 

@@ -11,13 +11,13 @@ WebGPUProfiler::WebGPUProfiler(int context_id)
     : webgpu_context_{webgpu::WebGpuContextFactory::GetContext(context_id)} {
 }
 
-bool WebGPUProfiler::StartProfiling(TimePoint) {
-    webgpu_context_.StartProfiling("default");
-    return true;
+bool WebGPUProfiler::StartProfiling(TimePoint ts) {
+  webgpu_context_.StartProfiling(ts);
+  return true;
 }
 
-void WebGPUProfiler::EndProfiling(TimePoint, Events&) {
-    webgpu_context_.EndProfiling();
+void WebGPUProfiler::EndProfiling(TimePoint ts, Events& events) {
+  webgpu_context_.EndProfiling(ts, events);
 }
 
 }  // namespace profiling

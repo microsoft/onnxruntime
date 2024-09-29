@@ -458,34 +458,31 @@ void WebGpuContext::WriteTimestamp(uint32_t query_index) {
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
-void WebGpuContext::StartProfiling(const std::string& profiling_mode) {
-  // TODO: Add Trace check.
-  if (profiling_mode == "default") {
-    if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
-      query_type_ = TimestampQueryType::InsidePasses;
-    } else if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
-      query_type_ = TimestampQueryType::AtPasses;
-    }
+void WebGpuContext::StartProfiling(TimePoint) {
+  if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
+    query_type_ = TimestampQueryType::InsidePasses;
+  } else if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+    query_type_ = TimestampQueryType::AtPasses;
+  }
 
-    if (query_type_ != TimestampQueryType::None && query_set_ == NULL) {
-      // Create query set
-      uint32_t query_count = max_num_pending_dispatches_ * 2;
-      wgpu::QuerySetDescriptor querySetDescriptor;
-      querySetDescriptor.count = query_count;
-      querySetDescriptor.type = wgpu::QueryType::Timestamp;
-      query_set_ = device_.CreateQuerySet(&querySetDescriptor);
+  if (query_type_ != TimestampQueryType::None && query_set_ == NULL) {
+    // Create query set
+    uint32_t query_count = max_num_pending_dispatches_ * 2;
+    wgpu::QuerySetDescriptor querySetDescriptor;
+    querySetDescriptor.count = query_count;
+    querySetDescriptor.type = wgpu::QueryType::Timestamp;
+    query_set_ = device_.CreateQuerySet(&querySetDescriptor);
 
-      // Create resolve buffer
-      wgpu::BufferDescriptor bufferDescriptor;
-      bufferDescriptor.size = query_count * sizeof(uint64_t);
-      bufferDescriptor.usage = wgpu::BufferUsage::QueryResolve | wgpu::BufferUsage::CopySrc |
-                               wgpu::BufferUsage::CopyDst;
-      query_resolve_buffer_ = device_.CreateBuffer(&bufferDescriptor);
-    }
+    // Create resolve buffer
+    wgpu::BufferDescriptor bufferDescriptor;
+    bufferDescriptor.size = query_count * sizeof(uint64_t);
+    bufferDescriptor.usage = wgpu::BufferUsage::QueryResolve | wgpu::BufferUsage::CopySrc |
+                             wgpu::BufferUsage::CopyDst;
+    query_resolve_buffer_ = device_.CreateBuffer(&bufferDescriptor);
   }
 }
 
-void WebGpuContext::EndProfiling() {
+void WebGpuContext::EndProfiling(TimePoint, profiling::Events& events) {
   if (query_type_ != TimestampQueryType::None) {
     for (size_t p = 0; p < pending_queries_buffers_.size(); p++) {
       wgpu::Buffer query_read_buffer = pending_queries_buffers_[p];
@@ -510,9 +507,18 @@ void WebGpuContext::EndProfiling() {
           const auto& output = outputs[s];
           shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
         }
-        const uint64_t start_time = mapped_data[i * 2];
-        const uint64_t end_time = mapped_data[i * 2 + 1];
-        LOGS_DEFAULT(VERBOSE) << "[profiling] " << program_name << " | " << shapes.str() << " | " << end_time - start_time << " ns";
+        uint64_t start_time = mapped_data[i * 2];
+        uint64_t end_time = mapped_data[i * 2 + 1];
+
+        if (p == 0 && i == 0) {
+          query_time_base_ = start_time;
+        }
+        start_time -= query_time_base_;
+        end_time -= query_time_base_;
+        const std::unordered_map<std::string, std::string>& event_args = {{"shapes", shapes.str()}};
+
+        profiling::EventRecord event(profiling::API_EVENT, -1, -1, program_name, start_time, end_time - start_time, event_args);
+        events.emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
