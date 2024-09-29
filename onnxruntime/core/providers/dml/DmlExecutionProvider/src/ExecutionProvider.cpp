@@ -1272,6 +1272,7 @@ namespace Dml
         // Flush any pending work to the GPU, but don't block for completion, permitting it
         // to overlap other work.
         Flush();
+        m_allocator->Clean();
         return onnxruntime::common::Status::OK();
     }
 

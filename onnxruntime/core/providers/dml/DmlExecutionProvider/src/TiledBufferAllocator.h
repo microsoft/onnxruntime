@@ -27,9 +27,13 @@ namespace Dml
         using DmlBufferAllocator::Alloc;
         virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) override;
 
+        virtual void Clean() override;
         void Clear();
 
         virtual DmlAllocatorType Type() const override;
+
+    protected:
+        virtual void FreeResource(void* p, uint64_t resourceId) override;
 
     private:
         ComPtr<ID3D12Device> m_device;
@@ -50,6 +54,6 @@ namespace Dml
         uint64_t m_currentAllocationId = 0, m_currentResourceId = 0;
         std::unordered_map<uintptr_t, uint64_t> m_resourceIds;
 
-        virtual void FreeResource(void* p, uint64_t resourceId) override;
+        void FreeResources(std::vector<Microsoft::WRL::ComPtr<IUnknown>>& resources);
     };
 } // namespace Dml

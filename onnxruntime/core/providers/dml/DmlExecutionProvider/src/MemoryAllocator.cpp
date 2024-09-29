@@ -8,7 +8,7 @@ namespace Dml
     MemoryAllocator::MemoryAllocator(uint64_t size) :
         m_capacity(size)
     {
-        m_freeSpace.push_back({ 0, m_capacity });
+        if (size > 0) m_freeSpace.push_back({ 0, m_capacity });
     }
 
     void MemoryAllocator::GrowBy(uint64_t size)
@@ -39,7 +39,7 @@ namespace Dml
         m_freeSpace.clear();
 
         m_capacity = size;
-        m_freeSpace.push_back({ 0, m_capacity });
+        if (size > 0) m_freeSpace.push_back({ 0, m_capacity });
     }
 
     uint64_t MemoryAllocator::FreeSpace() const

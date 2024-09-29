@@ -28,6 +28,10 @@ namespace Dml
         // Round up to tile size
         auto allocationSize = RoundToBlockSize(requestedSize, D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
 
+        // Track memory usage
+        m_usedHeapSpace += allocationSize;
+        m_maxUsedHeapSpace = std::max(m_usedHeapSpace, m_maxUsedHeapSpace);
+
         // Ensure heap space
         EnsureHeapSpace(allocationSize);
 
@@ -49,6 +53,9 @@ namespace Dml
         auto heap = m_heaps.begin();
         for (auto& mapping : heapMappings)
         {
+            // Track memory usage
+            m_usedHeapSpace -= mapping.ResourceSegment.Size;
+
             // Find current heap
             while (heap->Heap.Get() != mapping.Heap)
             {
@@ -64,12 +71,56 @@ namespace Dml
         }
 
         // Register as free resource
-        m_freeResources[heapMappings].push_back(buffer);
+        m_freeResources[heapMappings] = { buffer, 0 };
+
+        // Clear heap if requested
+        if (m_clearRequested && m_usedHeapSpace == 0)
+        {
+            m_clearRequested = false;
+            m_usedResources.clear();
+            m_freeResources.clear();
+            m_heaps.clear();
+            m_allocator.Reset();
+        }
+
         return true;
+    }
+
+    std::vector<ComPtr<IUnknown>> HeapAllocator::Clean()
+    {
+        std::vector<ComPtr<IUnknown>> results;
+
+        // Check if we should decrease the size of the heap
+        auto requiredCapacity = RoundToBlockSize(m_maxUsedHeapSpace, m_blockSize);
+        auto actualCapacity = m_allocator.Capacity();
+        m_maxUsedHeapSpace = 0;
+
+        if (requiredCapacity < actualCapacity)
+        {
+            return Clear();
+        }
+
+        // We track the age of cached free resources and remove unused ones
+        for (auto it = m_freeResources.begin(); it != m_freeResources.end();)
+        {
+            auto& [mapping, cache] = *it;
+            if (3 < cache.Age++)
+            {
+                results.push_back(cache.Resource);
+                it = m_freeResources.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        return results;
     }
 
     std::vector<ComPtr<IUnknown>> HeapAllocator::Clear()
     {
+        // Collect possibly in use resources for deferred deletion
         std::vector<ComPtr<IUnknown>> results;
 
         for (auto& [resource, mapping] : m_usedResources)
@@ -77,12 +128,9 @@ namespace Dml
             results.push_back(resource);
         }
 
-        for (auto& [mapping, resources] : m_freeResources)
+        for (auto& [mapping, resource] : m_freeResources)
         {
-            for (auto& resource : resources)
-            {
-                results.push_back(resource);
-            }
+            results.push_back(resource.Resource);
         }
 
         for (auto& heap : m_heaps)
@@ -90,10 +138,8 @@ namespace Dml
             results.push_back(heap.Heap);
         }
 
-        m_usedResources.clear();
-        m_freeResources.clear();
-        m_heaps.clear();
-        m_allocator.Reset();
+        // Schedule deletion
+        m_clearRequested = true;
 
         return results;
     }
@@ -127,23 +173,21 @@ namespace Dml
         auto heapMappings = CalculateHeapMappings(segments);
 
         // Check if we need a new resource
-        auto& reusableResources = m_freeResources[heapMappings];
-        if (reusableResources.empty())
+        ComPtr<ID3D12Resource> resource;
+        auto reusableResource = m_freeResources.extract(heapMappings);
+        if (reusableResource.empty())
         {
-            auto resource = CreateResource(size);
+            resource = CreateResource(size);
             UpdateTileMappings(resource.Get(), heapMappings);
-
-            m_usedResources[resource] = heapMappings;
-            return resource;
         }
         // Or can reuse an existing one
         else
         {
-            auto resource = std::move(reusableResources.back());
-            m_usedResources[resource] = heapMappings;
-            reusableResources.pop_back();
-            return resource;
+            resource = std::move(reusableResource.mapped().Resource);
         }
+
+        m_usedResources[resource] = heapMappings;
+        return resource;
     }
 
     std::vector<HeapMapping> HeapAllocator::CalculateHeapMappings(gsl::span<MemorySegment> segments) const

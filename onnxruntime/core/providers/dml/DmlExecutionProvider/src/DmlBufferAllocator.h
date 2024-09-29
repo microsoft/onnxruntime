@@ -27,6 +27,8 @@ namespace Dml
 
         virtual DmlAllocatorType Type() const = 0;
 
+        virtual void Clean() { };
+
     protected:
         using onnxruntime::IAllocator::IAllocator;
 

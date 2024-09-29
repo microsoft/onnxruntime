@@ -30,14 +30,16 @@ namespace Dml
     {
     }
 
+    void TiledBufferAllocator::Clean()
+    {
+        auto resources = m_pooledAllocator.Clean();
+        FreeResources(resources);
+    }
+
     void TiledBufferAllocator::Clear()
     {
         auto resources = m_pooledAllocator.Clear();
-        for (auto& resource : resources)
-        {
-            m_resourceIds.erase(uintptr_t(resource.Get()));
-            m_context->QueueReference(resource.Get());
-        }
+        FreeResources(resources);
     }
 
     DmlAllocatorType TiledBufferAllocator::Type() const
@@ -119,5 +121,14 @@ namespace Dml
         }
 
         allocInfo->DetachResourceWrapper();
+    }
+
+    void TiledBufferAllocator::FreeResources(std::vector<Microsoft::WRL::ComPtr<IUnknown>>& resources)
+    {
+        for (auto& resource : resources)
+        {
+            m_resourceIds.erase(uintptr_t(resource.Get()));
+            m_context->QueueReference(resource.Get());
+        }
     }
 } // namespace Dml
