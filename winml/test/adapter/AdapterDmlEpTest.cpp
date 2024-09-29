@@ -1,5 +1,5 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "testPch.h"
 
@@ -65,7 +65,7 @@ UniqueOrtSession CreateUniqueOrtSession(
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
 
-UniqueOrtSession CreateDmlSession() {
+UniqueOrtSession CreateDmlSession(bool bfc_allocator_enabled) {
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
 
@@ -79,9 +79,10 @@ UniqueOrtSession CreateDmlSession() {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
+  constexpr bool metacommands_enabled = false;
   THROW_IF_NOT_OK_MSG(
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), false
+      session_options.get(), device.get(), queue.get(), metacommands_enabled, bfc_allocator_enabled
     ),
     ort_api
   );
@@ -95,18 +96,22 @@ UniqueOrtSession CreateCpuSession() {
 
 void DmlExecutionProviderFlushContext() {
   GPUTEST;
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
+    OrtExecutionProvider* ort_provider;
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
+  }
 }
 
 void DmlExecutionProviderReleaseCompletedReferences() {
   GPUTEST;
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderReleaseCompletedReferences(ort_provider), ort_api);
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
+    OrtExecutionProvider* ort_provider;
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderReleaseCompletedReferences(ort_provider), ort_api);
+  }
 }
 
 constexpr std::array<int64_t, 4> dimensions{1, 3, 720, 720};
@@ -168,27 +173,31 @@ void DmlGetD3D12ResourceFromAllocation() {
   void* gpu_allocation;
   THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
 
-  auto session = CreateDmlSession();
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
 
-  OrtMemoryInfo* ort_memory_info;
-  THROW_IF_NOT_OK_MSG(
-    ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
-    ),
-    ort_api
-  );
+    OrtMemoryInfo* ort_memory_info;
+    THROW_IF_NOT_OK_MSG(
+      ort_api->CreateMemoryInfo(
+        "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      ),
+      ort_api
+    );
 
-  OrtAllocator* ort_allocator;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateAllocator(session.get(), ort_memory_info, &ort_allocator), ort_api);
-  auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
+    OrtAllocator* ort_allocator;
+    THROW_IF_NOT_OK_MSG(ort_api->CreateAllocator(session.get(), ort_memory_info, &ort_allocator), ort_api);
+    auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
-  winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
-  THROW_IF_NOT_OK_MSG(
-    ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()),
-    ort_api
-  );
-  // Ensure resource is the same
-  WINML_EXPECT_EQUAL(d3d12_resource, d3d12_resource_from_allocation);
+    winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
+    THROW_IF_NOT_OK_MSG(
+      ort_dml_api->GetD3D12ResourceFromAllocation(
+        allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()
+      ),
+      ort_api
+    );
+    // Ensure resource is the same
+    WINML_EXPECT_EQUAL(d3d12_resource, d3d12_resource_from_allocation);
+  }
 
   THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(gpu_allocation), ort_api);
 }
@@ -212,28 +221,32 @@ UniqueOrtValue CreateTensorFromMemoryInfo(const OrtMemoryInfo* memory_info) {
 
 void GetTensorMemoryInfo() {
   GPUTEST;
-  auto session = CreateDmlSession();
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
 
-  OrtMemoryInfo* ort_memory_info;
-  THROW_IF_NOT_OK_MSG(
-    ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
-    ),
-    ort_api
-  );
-  auto tensor = CreateTensorFromMemoryInfo(ort_memory_info);
+    OrtMemoryInfo* ort_memory_info;
+    THROW_IF_NOT_OK_MSG(
+      ort_api->CreateMemoryInfo(
+        "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      ),
+      ort_api
+    );
+    auto tensor = CreateTensorFromMemoryInfo(ort_memory_info);
 
-  const OrtMemoryInfo* value_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(tensor.get(), &value_memory_info), ort_api);
-  CreateTensorFromMemoryInfo(value_memory_info);
+    const OrtMemoryInfo* value_memory_info;
+    THROW_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(tensor.get(), &value_memory_info), ort_api);
+    CreateTensorFromMemoryInfo(value_memory_info);
+  }
 }
 
 void ExecutionProviderSync() {
   GPUTEST;
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->ExecutionProviderSync(ort_provider), ort_api);
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
+    OrtExecutionProvider* ort_provider;
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->ExecutionProviderSync(ort_provider), ort_api);
+  }
 }
 
 void DmlCopyTensor() {
@@ -251,9 +264,11 @@ void DmlCopyTensor() {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
+  constexpr bool metacommands_enabled = false;
+  constexpr bool bfc_allocator_enabled = true;
   THROW_IF_NOT_OK_MSG(
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), false
+      session_options.get(), device.get(), queue.get(), metacommands_enabled, bfc_allocator_enabled
     ),
     ort_api
   );
@@ -315,41 +330,45 @@ void CreateCustomRegistry() {
 
 void ValueGetDeviceId() {
   GPUTEST;
-  auto session = CreateDmlSession();
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
 
-  OrtMemoryInfo* ort_memory_info;
-  THROW_IF_NOT_OK_MSG(
-    ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
-    ),
-    ort_api
-  );
-  auto gpu_tensor = CreateTensorFromMemoryInfo(ort_memory_info);
+    OrtMemoryInfo* ort_memory_info;
+    THROW_IF_NOT_OK_MSG(
+      ort_api->CreateMemoryInfo(
+        "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      ),
+      ort_api
+    );
+    auto gpu_tensor = CreateTensorFromMemoryInfo(ort_memory_info);
 
-  int16_t device_id;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(gpu_tensor.get(), &device_id), ort_api);
+    int16_t device_id;
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(gpu_tensor.get(), &device_id), ort_api);
 
-  OrtMemoryInfo* cpu_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
-  auto unique_cpu_memory_info = UniqueOrtMemoryInfo(cpu_memory_info, ort_api->ReleaseMemoryInfo);
-  auto cpu_tensor = CreateTensorFromMemoryInfo(unique_cpu_memory_info.get());
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(cpu_tensor.get(), &device_id), ort_api);
-  WINML_EXPECT_EQUAL(0, device_id);
+    OrtMemoryInfo* cpu_memory_info;
+    THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
+    auto unique_cpu_memory_info = UniqueOrtMemoryInfo(cpu_memory_info, ort_api->ReleaseMemoryInfo);
+    auto cpu_tensor = CreateTensorFromMemoryInfo(unique_cpu_memory_info.get());
+    THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(cpu_tensor.get(), &device_id), ort_api);
+    WINML_EXPECT_EQUAL(0, device_id);
+  }
 }
 
 void SessionGetInputRequiredDeviceId() {
   GPUTEST;
-  auto session = CreateDmlSession();
-  int16_t device_id;
-  THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->SessionGetInputRequiredDeviceId(session.get(), "inputImage", &device_id), ort_api
-  );
+  for (bool bfc_allocator_enabled : {false, true}) {
+    auto session = CreateDmlSession(bfc_allocator_enabled);
+    int16_t device_id;
+    THROW_IF_NOT_OK_MSG(
+      winml_adapter_api->SessionGetInputRequiredDeviceId(session.get(), "inputImage", &device_id), ort_api
+    );
 
-  auto cpu_session = CreateCpuSession();
-  THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->SessionGetInputRequiredDeviceId(cpu_session.get(), "inputImage", &device_id), ort_api
-  );
-  WINML_EXPECT_EQUAL(0, device_id);
+    auto cpu_session = CreateCpuSession();
+    THROW_IF_NOT_OK_MSG(
+      winml_adapter_api->SessionGetInputRequiredDeviceId(cpu_session.get(), "inputImage", &device_id), ort_api
+    );
+    WINML_EXPECT_EQUAL(0, device_id);
+  }
 }
 }  // namespace
 

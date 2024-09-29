@@ -6,19 +6,13 @@
 #include "core/session/onnxruntime_c_api.h"
 
 #include "BucketizedBufferAllocator.h"
-#include "DmlSubAllocator.h"
+#include "DmlAllocationInfo.h"
+#include "DmlCommittedResourceWrapper.h"
+#include "DmlAllocatorRoundingMode.h"
 // #define PRINT_OUTSTANDING_ALLOCATIONS
 
 namespace Dml
 {
-    AllocationInfo::~AllocationInfo()
-    {
-        if (m_owner)
-        {
-            m_owner->FreeResource(this, m_pooledResourceId);
-        }
-    }
-
     BucketizedBufferAllocator::~BucketizedBufferAllocator()
     {
 #ifdef PRINT_OUTSTANDING_ALLOCATIONS
@@ -40,23 +34,14 @@ namespace Dml
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
-        D3D12_RESOURCE_STATES initialState,
-        std::unique_ptr<DmlSubAllocator>&& subAllocator
-        )
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            )
-        ),
+        D3D12_RESOURCE_STATES initialState)
+        :
         m_device(device),
         m_heapProperties(heapProps),
         m_heapFlags(heapFlags),
         m_resourceFlags(resourceFlags),
         m_initialState(initialState),
-        m_context(context),
-        m_subAllocator(std::move(subAllocator))
+        m_context(context)
     {
     }
 
@@ -68,21 +53,50 @@ namespace Dml
         gsl::index index = static_cast<gsl::index>(ceil(log2(size)));
         assert((1ull << index) >= size); // This must be true unless there were some strange rounding issues
 
-        // The smallest bucket is 2^n bytes large, where n = c_minResourceSizeExponent
-        index = std::max<gsl::index>(index, c_minResourceSizeExponent);
-        index -= c_minResourceSizeExponent;
+        // The smallest bucket is 2^n bytes large, where n = MinResourceSizeExponent
+        index = std::max<gsl::index>(index, MinResourceSizeExponent);
+        index -= MinResourceSizeExponent;
 
         return index;
     }
 
     /*static*/ uint64_t BucketizedBufferAllocator::GetBucketSizeFromIndex(gsl::index index)
     {
-        return (1ull << (index + c_minResourceSizeExponent));
+        return (1ull << (index + MinResourceSizeExponent));
     }
 
-    void* BucketizedBufferAllocator::Alloc(size_t size)
+    ComPtr<DmlResourceWrapper> BucketizedBufferAllocator::AllocCommittedResource(size_t size)
     {
-        return Alloc(size, m_defaultRoundingMode);
+        ComPtr<ID3D12Resource> resource;
+        auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &buffer,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_GRAPHICS_PPV_ARGS(resource.GetAddressOf())
+        ));
+
+        ComPtr<DmlResourceWrapper> resourceWrapper;
+        wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
+        return resourceWrapper;
+    }
+
+    AllocationInfo* BucketizedBufferAllocator::GetAllocationInfo(void* opaquePointer)
+    {
+        return static_cast<AllocationInfo*>(opaquePointer);
+    }
+
+    D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(void* opaquePointer, uint64_t sizeInBytes) const
+    {
+        auto allocationInfo = static_cast<AllocationInfo*>(opaquePointer);
+
+        // Make sure that we are aligned to 4 bytes to satisfy DML's requirements
+        constexpr uint64_t DML_ALIGNMENT = 4;
+        sizeInBytes = (1 + (sizeInBytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
+
+        return D3D12BufferRegion(0, sizeInBytes, allocationInfo->GetD3D12Resource());
     }
 
     void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
@@ -114,7 +128,7 @@ namespace Dml
             if (bucket->resources.empty())
             {
                 // No more resources in this bucket - allocate a new one
-                resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
+                resourceWrapper = AllocCommittedResource(onnxruntime::narrow<size_t>(bucketSize));
                 resourceId = ++m_currentResourceId;
             }
             else
@@ -129,7 +143,7 @@ namespace Dml
         {
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
-            resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
+            resourceWrapper = AllocCommittedResource(onnxruntime::narrow<size_t>(bucketSize));
             resourceId = ++m_currentResourceId;
         }
 
@@ -160,10 +174,14 @@ namespace Dml
         allocInfo.Attach(static_cast<AllocationInfo*>(p));
     }
 
-    void BucketizedBufferAllocator::FreeResource(void* p, uint64_t pooledResourceId)
+    uint64_t BucketizedBufferAllocator::GetUniqueId(void* opaquePointer)
     {
-        AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);
+        const auto* allocInfo = static_cast<const AllocationInfo*>(opaquePointer);
+        return allocInfo->GetPooledResourceId();
+    }
 
+    void BucketizedBufferAllocator::FreeResource(AllocationInfo* allocInfo, uint64_t pooledResourceId)
+    {
         assert(allocInfo != nullptr); // Can't free nullptr
 
         if (allocInfo->GetOwner() != this)
@@ -174,7 +192,7 @@ namespace Dml
 
         // Free the resource to the pool if its size matches a bucket size
         gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
+        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetD3D12Resource()->GetDesc().Width)
         {
             assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
 
@@ -189,11 +207,11 @@ namespace Dml
             if (!m_context->IsClosed())
             {
                 // Free the underlying allocation once queued work has completed.
-    #ifdef _GAMING_XBOX
-                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
-    #else
-                m_context->QueueReference(allocInfo->GetResource());
-    #endif
+#ifdef _GAMING_XBOX
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetD3D12Resource()).Get());
+#else
+                m_context->QueueReference(allocInfo->GetD3D12Resource());
+#endif
             }
 
             allocInfo->DetachResourceWrapper();

@@ -68,13 +68,8 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
-                    m_persistentResource.ReleaseAndGetAddressOf(),
-                    m_persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
-
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                auto buffer = m_provider->AllocatePooledResource(static_cast<size_t>(persistentResourceSize), AllocatorRoundingMode::Disabled);
+                m_persistentResourceBinding = buffer.GetBufferBinding();
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
@@ -246,7 +241,6 @@ namespace Dml
                     m_persistentResourceBinding);
 
                 reusableCommandList->persistentResource = m_persistentResource;
-                reusableCommandList->persistentResourceAllocatorUnknown = m_persistentResourceAllocatorUnknown;
 
                 // Keep the temporary resource alive since we won't call ExecuteReusableCommandList again, but will merely replay
                 // the graph in the future. Therefore, all executions of the graph will use the same temporary resource that was
@@ -264,7 +258,6 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get(),
                     keepTemporaryResourceAlive);
 
                 providerImpl->AppendCapturedGraph(providerImpl->GetCurrentGraphAnnotationId(), std::move(reusableCommandList));
@@ -298,7 +291,6 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get(),
                     keepTemporaryResourceAlive);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
@@ -330,7 +322,6 @@ namespace Dml
         mutable ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         mutable std::vector<bool> m_inputsUsed;
         mutable ComPtr<ID3D12Resource> m_persistentResource;
-        mutable ComPtr<IUnknown> m_persistentResourceAllocatorUnknown; // Controls when the persistent resource is returned to the allocator
         mutable Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
         mutable std::unordered_map<std::string, onnxruntime::TensorShape> m_inferredInputShapes;
         mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;

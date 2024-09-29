@@ -181,6 +181,8 @@ IMLOperatorRegistryPrivate : public IUnknown
         _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases = nullptr,
         uint32_t aliasCount = 0
         ) const noexcept PURE;
+
+    STDMETHOD_(bool, HasExternalOperators)() const noexcept PURE;
 };
 
 //! \interface IMLOperatorTensorShapeDescription1

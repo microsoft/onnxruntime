@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DmlDFT.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlAllocatorRoundingMode.h"
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
 //       should be removed from IsCustomOpShader(...) in
@@ -106,7 +107,7 @@ struct DmlSTFTParameters
 
 namespace DmlSTFTHelpers
 {
-    ComPtr<ID3D12Resource> GetResourceFromKernelContext(IMLOperatorKernelContext* context, uint32_t index, bool isInput)
+    Dml::D3D12BufferRegion GetBufferRegionFromKernelContext(IMLOperatorKernelContext* context, uint32_t index, bool isInput)
     {
         ComPtr<IMLOperatorTensor> tensor;
         if (isInput)
@@ -118,23 +119,18 @@ namespace DmlSTFTHelpers
             ORT_THROW_IF_FAILED(context->GetOutputTensor(index, &tensor));
         }
 
-        ComPtr<IUnknown> dataInterface;
-        tensor->GetDataInterface(&dataInterface);
-
-        ComPtr<ID3D12Resource> resource;
-        ORT_THROW_IF_FAILED(dataInterface.As(&resource));
-
-        return resource;
+        auto tensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(tensor.Get());
+        return tensorWrapper->GetBufferRegion();
     }
 
-    ComPtr<ID3D12Resource> GetInputResourceFromKernelContext(IMLOperatorKernelContext* context, uint32_t index)
+    Dml::D3D12BufferRegion GetInputBufferRegionFromKernelContext(IMLOperatorKernelContext* context, uint32_t index)
     {
-        return GetResourceFromKernelContext(context, index, true);
+        return GetBufferRegionFromKernelContext(context, index, true);
     }
 
-    ComPtr<ID3D12Resource> GetOutputResourceFromKernelContext(IMLOperatorKernelContext* context, uint32_t index)
+    Dml::D3D12BufferRegion GetOutputBufferRegionFromKernelContext(IMLOperatorKernelContext* context, uint32_t index)
     {
-        return GetResourceFromKernelContext(context, index, false);
+        return GetBufferRegionFromKernelContext(context, index, false);
     }
 }
 
@@ -197,9 +193,7 @@ private:
         ComPtr<ID3D12DescriptorHeap> descriptorHeap;
         ComPtr<IDMLBindingTable> bindingTable;
         ComPtr<IDMLCommandRecorder> commandRecorder;
-        ComPtr<ID3D12Resource> persistentResource;
-        ComPtr<IUnknown> persistentResourcePoolingUnk;
-        std::optional<DML_BUFFER_BINDING> persistentResourceBinding;
+        std::optional<Dml::DmlBuffer> persistentBufferRegion;
         bool hasWindowTensor = false;
         uint64_t signalBufferSizeInBytes = 0;
         uint64_t windowBufferSizeInBytes = 0;
@@ -320,28 +314,31 @@ public:
 
         // Initialize
         {
+            std::vector<DML_BUFFER_BINDING> initializationInputBindings(params.hasWindowTensor ? 2 : 1);
+
             uint64_t persistentResourceSize = m_framingOperator.op->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ORT_THROW_IF_FAILED(m_dmlProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_framingOperator.persistentResource.GetAddressOf(),
-                    m_framingOperator.persistentResourcePoolingUnk.GetAddressOf()));
-
-                m_framingOperator.persistentResourceBinding = DML_BUFFER_BINDING{
-                    m_framingOperator.persistentResource.Get(),
-                    0,
-                    persistentResourceSize
-                };
+                m_framingOperator.persistentBufferRegion = m_dmlProvider->AllocatePooledResource(
+                    persistentResourceSize,
+                    Dml::AllocatorRoundingMode::Enabled);
+                auto binding = m_framingOperator.persistentBufferRegion->GetBufferBinding();
+                ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
+                    m_framingOperator.op.Get(),
+                    &binding,
+                    gsl::make_span(initializationInputBindings)
+                ));
+            }
+            else
+            {
+                ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
+                    m_framingOperator.op.Get(),
+                    nullptr,
+                    gsl::make_span(initializationInputBindings)
+                ));
             }
 
-            std::vector<DML_BUFFER_BINDING> initializationInputBindings(params.hasWindowTensor ? 2 : 1);
-            ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
-                m_framingOperator.op.Get(),
-                m_framingOperator.persistentResourceBinding ? &*m_framingOperator.persistentResourceBinding : nullptr,
-                gsl::make_span(initializationInputBindings)
-            ));
+
         }
 
         auto execBindingProps = m_framingOperator.op->GetBindingProperties();
@@ -374,11 +371,12 @@ public:
             ComPtr<ID3D12GraphicsCommandList> commandList;
             ORT_THROW_IF_FAILED(executionObject.As(&commandList));
 
-            ComPtr<ID3D12Resource> framingOutputResource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(onnxruntime::narrow<size_t>(m_framingOperator.outputBufferSizeInBytes), &framingOutputResource));
-            DispatchFramingOperator(commandList.Get(), context, framingOutputResource.Get());
+            auto framingOutputBuffer = m_dmlProvider->AllocatePooledResource(
+                m_framingOperator.outputBufferSizeInBytes,
+                Dml::AllocatorRoundingMode::Enabled);
+            DispatchFramingOperator(commandList.Get(), context, framingOutputBuffer.Region());
 
-            ComPtr<ID3D12Resource> outputResource = DmlSTFTHelpers::GetOutputResourceFromKernelContext(context, 0);
+            Dml::D3D12BufferRegion outputBufferRegion = DmlSTFTHelpers::GetOutputBufferRegionFromKernelContext(context, 0);
 
             D3D12_RESOURCE_BARRIER uavBarrier = { CD3DX12_RESOURCE_BARRIER::UAV(nullptr) };
             commandList->ResourceBarrier(1, &uavBarrier);
@@ -386,9 +384,9 @@ public:
             return m_dftOperator.op->Compute(
                 commandList.Get(),
                 context,
-                framingOutputResource.Get(),
+                framingOutputBuffer.Region(),
                 m_dftOperator.inputDims,
-                outputResource.Get(),
+                outputBufferRegion,
                 m_dftOperator.outputDims,
                 m_dftOperator.dftLength
             );
@@ -401,7 +399,7 @@ public:
         return S_OK;
     }
 
-    void DispatchFramingOperator(ID3D12GraphicsCommandList* commandList, IMLOperatorKernelContext* context, ID3D12Resource* outputResource)
+    void DispatchFramingOperator(ID3D12GraphicsCommandList* commandList, IMLOperatorKernelContext* context, const Dml::D3D12BufferRegion& outputBufferRegion)
     {
         ID3D12DescriptorHeap* descriptorHeaps[] = { m_framingOperator.descriptorHeap.Get() };
         commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -417,38 +415,34 @@ public:
         D3D12_RESOURCE_BARRIER barriers[3];
         uint32_t barrierCount = 0;
 
-        ComPtr<ID3D12Resource> signalResource = DmlSTFTHelpers::GetInputResourceFromKernelContext(context, DmlSTFTKernelInputIndex::Signal);
-        inputBuffers[0] = { signalResource.Get(), 0, m_framingOperator.signalBufferSizeInBytes };
+        Dml::D3D12BufferRegion signalBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Signal);
+        inputBuffers[0] = signalBufferRegion.GetBufferBinding();
         inputBindings[0] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[0] };
-        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(signalResource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(signalBufferRegion.GetD3D12Resource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-        ComPtr<ID3D12Resource> windowResource;
+        Dml::D3D12BufferRegion windowBufferRegion;
         if (m_framingOperator.hasWindowTensor)
         {
-            windowResource = DmlSTFTHelpers::GetInputResourceFromKernelContext(context, DmlSTFTKernelInputIndex::Window);
-            inputBuffers[1] = { windowResource.Get(), 0, m_framingOperator.windowBufferSizeInBytes };
+            windowBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Window);
+            inputBuffers[1] = windowBufferRegion.GetBufferBinding();
             inputBindings[1] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[1] };
-            barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(windowResource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(windowBufferRegion.GetD3D12Resource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             inputBindingsCount++;
         }
 
         m_framingOperator.bindingTable->BindInputs(inputBindingsCount, inputBindings.data());
 
-        DML_BUFFER_BINDING outputBuffer = {};
-        outputBuffer.Buffer = outputResource;
-        outputBuffer.SizeInBytes = m_framingOperator.outputBufferSizeInBytes;
+        DML_BUFFER_BINDING outputBuffer = outputBufferRegion.GetBufferBinding();
         DML_BINDING_DESC outputBinding = { DML_BINDING_TYPE_BUFFER, &outputBuffer };
-        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(outputResource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(outputBufferRegion.GetD3D12Resource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         m_framingOperator.bindingTable->BindOutputs(1, &outputBinding);
 
-        ComPtr<ID3D12Resource> tempBuffer;
         auto tempBufferSize = bindingProps.TemporaryResourceSize;
         if (tempBufferSize > 0)
         {
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(onnxruntime::narrow<size_t>(tempBufferSize), &tempBuffer));
-
-            DML_BUFFER_BINDING bufferBinding = { tempBuffer.Get(), 0, tempBufferSize };
+            auto buffer = m_dmlProvider->AllocatePooledResource(tempBufferSize, Dml::AllocatorRoundingMode::Enabled);
+            DML_BUFFER_BINDING bufferBinding = buffer.GetBufferBinding();
             DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
             m_framingOperator.bindingTable->BindTemporaryResource(&bindingDesc);
         }
@@ -456,8 +450,9 @@ public:
         auto persistentBufferSize = bindingProps.PersistentResourceSize;
         if (persistentBufferSize > 0)
         {
-            DML_BUFFER_BINDING bufferBinding = { m_framingOperator.persistentResource.Get(), 0, persistentBufferSize };
-            DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
+            assert(m_framingOperator.persistentBufferRegion.has_value());
+            auto persistentResourceBinding = m_framingOperator.persistentBufferRegion->GetBufferBinding();
+            DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &persistentResourceBinding };
             m_framingOperator.bindingTable->BindPersistentResource(&bindingDesc);
         }
 

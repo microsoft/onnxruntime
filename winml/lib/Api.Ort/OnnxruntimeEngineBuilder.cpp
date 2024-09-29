@@ -32,7 +32,12 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   } else {
 #ifdef USE_DML
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(
-      &onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_
+      &onnxruntime_session_builder,
+      engine_factory_.Get(),
+      device_.Get(),
+      queue_.Get(),
+      metacommands_enabled_,
+      bfc_allocator_enabled_
     ));
 #endif
   }
@@ -104,6 +109,11 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetD3D12Resources(ID3D12Device* device, I
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetMetacommandsEnabled(int enabled) {
   metacommands_enabled_ = static_cast<bool>(enabled);
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetBfcAllocatorEnabled(int enabled) {
+  bfc_allocator_enabled_ = static_cast<bool>(enabled);
   return S_OK;
 }
 

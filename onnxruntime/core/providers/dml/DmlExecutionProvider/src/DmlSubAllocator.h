@@ -10,7 +10,7 @@ namespace Dml
     class DmlSubAllocator
     {
     public:
-        virtual Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size) = 0;
-        virtual ~DmlSubAllocator(){}
+        virtual void FreeResource(AllocationInfo* allocInfo, uint64_t resourceId) = 0;
+        virtual ~DmlSubAllocator() = default;
     };
 }

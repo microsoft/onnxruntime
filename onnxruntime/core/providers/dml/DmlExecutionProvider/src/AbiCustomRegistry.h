@@ -50,6 +50,8 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         IMLOperatorKernelFactory* operatorKernelFactory,
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept override;
 
+    bool STDMETHODCALLTYPE HasExternalOperators() const noexcept override;
+
     std::list<std::shared_ptr<onnxruntime::CustomRegistry>> GetRegistries()
     {
         std::list<std::shared_ptr<onnxruntime::CustomRegistry>> registries;
@@ -107,6 +109,8 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
     // Map between Lotus KernelDefs and extended data used during partitioning
     mutable std::shared_ptr<InternalRegistrationInfoMap> m_internalRegInfoMap;
+
+    mutable bool m_hasExternalOperators = false;
 
 };
 

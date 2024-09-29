@@ -1,6 +1,9 @@
 #pragma once
 
 #include "DmlGraphFusionHelper.h"
+#include "DmlBufferRegion.h"
+#include "DmlTaggedPointer.h"
+#include "DmlAllocationInfo.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
@@ -90,19 +93,23 @@ namespace DmlGraphFusionHelper
         return buffer;
     }
 
-    void UnwrapTensor(
+    D3D12BufferRegion UnwrapTensor(
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
         const onnxruntime::Tensor* tensor,
-        ID3D12Resource** resource,
         uint64_t* allocId)
     {
-        IUnknown* allocationUnknown = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
-        Microsoft::WRL::ComPtr<IUnknown> resourceUnknown;
-        winmlProvider->GetABIDataInterface(false, allocationUnknown, &resourceUnknown);
+        void* opaqueData = const_cast<void*>(tensor->DataRaw());
 
-        *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnknown, 0);
+        if (tensor->Location().device.MemType() == OrtDevice::MemType::DML_EXTERNAL)
+        {
+            // The allocation is not pooled
+            auto allocInfo = static_cast<AllocationInfo*>(opaqueData);
+            *allocId = 0;
+            return D3D12BufferRegion(0, allocInfo->GetD3D12Resource()->GetDesc().Width, allocInfo->GetD3D12Resource());
+        }
 
-        ORT_THROW_IF_FAILED(resourceUnknown->QueryInterface(resource));
+        *allocId = winmlProvider->GetUniqueId(opaqueData);
+        return winmlProvider->GetBufferRegion(opaqueData, tensor->SizeInBytes());
     }
 
     std::tuple<std::unique_ptr<std::byte[]>, std::vector<uint8_t>, std::byte*, size_t> UnpackInitializer(
@@ -935,7 +942,6 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnknown,
         bool keepTemporaryResourceAlive)
     {
         DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
@@ -970,10 +976,9 @@ namespace DmlGraphFusionHelper
                     const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(i));
 
                     uint64_t allocId;
-                    DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &inputBindings[i].Buffer, &allocId);
+                    auto bufferRegion = DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &allocId);
+                    inputBindings[i] = bufferRegion.GetBufferBinding();
                     inputBindingsChanged = inputBindingsChanged || (!allocId || commandListState.inputBindingAllocIds[i] != allocId);
-                    inputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                    inputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                     inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
                     commandListState.inputBindingAllocIds[i] = allocId;
                 }
@@ -1007,10 +1012,9 @@ namespace DmlGraphFusionHelper
                 );
 
             uint64_t allocId;
-            DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &outputBindings[i].Buffer, &allocId);
+            auto bufferRegion = DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &allocId);
+            outputBindings[i] = bufferRegion.GetBufferBinding();
             outputBindingsChanged = outputBindingsChanged || (!allocId || commandListState.outputBindingAllocIds[i] != allocId);
-            outputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-            outputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
             outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
             commandListState.outputBindingAllocIds[i] = allocId;
         }
@@ -1022,23 +1026,14 @@ namespace DmlGraphFusionHelper
 
         if (execBindingProps.TemporaryResourceSize > 0)
         {
-            // Allocate temporary data which will automatically be freed when the GPU work
-            // which is scheduled up to the point that this method returns has completed.
-            ComPtr<IUnknown> tempAlloc;
+            // TODO (pavignol): Handle alloc ID
             uint64_t tempAllocId = 0;
-            ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
-
-            ComPtr<IUnknown> tempResourceUnknown;
-            winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnknown);
-
-            // Bind the temporary resource.
-            ComPtr<ID3D12Resource> tempResource;
-            ORT_THROW_IF_FAILED(tempResourceUnknown->QueryInterface(tempResource.GetAddressOf()));
-            DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
-            DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
+            auto buffer = provider->AllocatePooledResource(execBindingProps.TemporaryResourceSize, AllocatorRoundingMode::Enabled);
 
             if (!tempAllocId || commandListState.tempBindingAllocId != tempAllocId)
             {
+                DML_BUFFER_BINDING tempBufferBinding = buffer.GetBufferBinding();
+                DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
                 commandListState.bindingTable->BindTemporaryResource(&tempBindingDesc);
             }
 
@@ -1046,7 +1041,7 @@ namespace DmlGraphFusionHelper
 
             if (keepTemporaryResourceAlive)
             {
-                commandListState.temporaryResource = std::move(tempResource);
+                commandListState.temporaryBuffer = std::move(buffer);
             }
         }
 
@@ -1071,7 +1066,6 @@ namespace DmlGraphFusionHelper
         winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.graphicsCommandList).Get());
         winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.heap).Get());
         winmlProvider->QueueReference(commandListState.bindingTable.Get());
-        winmlProvider->QueueReference(persistentResourceAllocatorUnknown);
     }
 }
 }

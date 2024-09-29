@@ -3,6 +3,8 @@
 
 #include "precomp.h"
 #include "DmlOperator.h"
+#include "../DmlManagedBuffer.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlAllocatorRoundingMode.h"
 
 namespace Dml
 {
@@ -101,13 +103,9 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
-
-                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Enabled);
+                m_persistentResourceBinding = buffer.GetBufferBinding();
+                m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
@@ -205,13 +203,9 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
-
-                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Enabled);
+                m_persistentResourceBinding = buffer.GetBufferBinding();
+                m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
@@ -239,17 +233,12 @@ namespace Dml
         UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
         if (persistentResourceSize > 0)
         {
-            if (!m_persistentResource || m_persistentResource->GetDesc().Width < persistentResourceSize)
+            if (!m_managedPersistentBuffer || m_managedPersistentBuffer->SizeInBytes() < persistentResourceSize)
             {
-                m_persistentResource = nullptr;
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
+                auto buffer = m_executionProvider->AllocatePooledResource(persistentResourceSize, AllocatorRoundingMode::Enabled);
+                m_persistentResourceBinding = buffer.GetBufferBinding();
+                m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
             }
-
-            m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
         }
 
         ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(

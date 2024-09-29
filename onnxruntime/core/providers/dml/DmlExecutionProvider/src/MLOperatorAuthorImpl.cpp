@@ -9,9 +9,13 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
+#include "DmlBufferRegion.h"
 
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorPrivate.h"
+#include "DmlGpuAllocator.h"
+#include "DmlAllocationInfo.h"
+#include "DmlTaggedPointer.h"
 
 using namespace Microsoft::WRL;
 
@@ -99,27 +103,6 @@ namespace Windows::AI::MachineLearning::Adapter
     bool IsAllocationInterface(const ::OrtMemoryInfo& info)
     {
         return strcmp(info.name, onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
-    }
-
-    // Translate the data object stored in a tensor to the type which will be returned through
-    // the ABI. The translation is determined by the provider and based on options with which the
-    // kernels are registered.
-    void TranslateAllocationDataToAbi(
-        IWinmlExecutionProvider* winmlProvider,
-        bool isInternalOperator,
-        const ::OrtMemoryInfo& allocInfo,
-        IUnknown* allocation,
-        IUnknown** abiAllocation)
-    {
-        if (winmlProvider)
-        {
-            winmlProvider->GetABIDataInterface(isInternalOperator, allocation, abiAllocation);
-        }
-        else
-        {
-            ComPtr<IUnknown> tmp = allocation;
-            *abiAllocation = tmp.Detach();
-        }
     }
 
     //
@@ -1671,41 +1654,19 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         if (impl)
         {
-            if (isDataInterface)
-            {
-                // We assume that all data handles derive from IUnknown as their first base.
-                m_dataInterface = static_cast<IUnknown*>(m_impl->MutableDataRaw());
-
-                if (m_dataInterface)
-                {
-                    if (m_winmlExecutionProvider)
-                    {
-                        // The resource may require conversion to the layout expected according to the kernel options.
-                        // This will return either the original object or a shadow copy which uses a different layout.
-                        // This pattern assumes that Lotus is not re-using tensor allocations, so each output is
-                        // a fresh allocation which will not trigger a conversion in the provider.
-                        m_winmlExecutionProvider->GetShadowCopyIfRequired(m_internalOperator, m_dataInterface.Get(), m_dataInterfaceOrShadowCopy.GetAddressOf());
-
-                        // Get the actual object to be returned from the ABI, which varies for internal and external
-                        // kernels (i.e. ID3D12Resource, versus something that tracks the layout).
-                        TranslateAllocationDataToAbi(
-                            m_winmlExecutionProvider.Get(),
-                            m_internalOperator,
-                            m_impl->Location(),
-                            m_dataInterfaceOrShadowCopy ? m_dataInterfaceOrShadowCopy.Get() : m_dataInterface.Get(),
-                            m_abiDataInterface.GetAddressOf());
-                    }
-                    else
-                    {
-                        m_abiDataInterface = m_dataInterface;
-                    }
-                }
-            }
-            else
-            {
-                m_tensorData = m_impl->MutableDataRaw();
-            }
+            m_tensorData = m_impl->MutableDataRaw();
         }
+    }
+
+    Dml::D3D12BufferRegion TensorWrapper::GetBufferRegion() const
+    {
+        if (m_impl->Location().device.MemType() == OrtDevice::MemType::DML_EXTERNAL)
+        {
+            auto allocInfo = static_cast<Dml::AllocationInfo*>(m_tensorData);
+            return Dml::D3D12BufferRegion(0, allocInfo->GetD3D12Resource()->GetDesc().Width, allocInfo->GetD3D12Resource());
+        }
+
+        return m_winmlExecutionProvider->GetBufferRegion(m_tensorData, m_impl->SizeInBytes());
     }
 
     uint32_t STDMETHODCALLTYPE TensorWrapper::GetDimensionCount() const noexcept
@@ -1782,7 +1743,7 @@ namespace Windows::AI::MachineLearning::Adapter
             return nullptr;
         }
 
-        return m_isDataInterface ? nullptr : m_tensorData;
+        return m_tensorData;
     }
 
     void STDMETHODCALLTYPE TensorWrapper::GetDataInterface(IUnknown** dataInterface) noexcept
@@ -1794,7 +1755,9 @@ namespace Windows::AI::MachineLearning::Adapter
         }
         else
         {
-            m_abiDataInterface.CopyTo(dataInterface);
+            auto bufferRegion = GetBufferRegion();
+            bufferRegion.GetD3D12Resource()->AddRef();
+            *dataInterface = bufferRegion.GetD3D12Resource();
         }
     }
 
@@ -1808,7 +1771,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 totalInputTensorCount += static_cast<uint32_t>(inputTensor.size());
             }
             std::vector<IUnknown*> resourcesToTransition;
-            resourcesToTransition.reserve(totalInputTensorCount + m_outputTensors.size() + m_temporaryAllocations.size());
+            resourcesToTransition.reserve(totalInputTensorCount + m_outputTensors.size() + m_temporaryBuffers.size());
 
             for (uint32_t i = 0; i < m_inputTensors.size(); ++i)
             {
@@ -1849,9 +1812,9 @@ namespace Windows::AI::MachineLearning::Adapter
                 }
             }
 
-            for (auto& tempAlloc : m_temporaryAbiAllocations)
+            for (auto& tempBuffer : m_temporaryBuffers)
             {
-                resourcesToTransition.push_back(tempAlloc.Get());
+                resourcesToTransition.push_back(tempBuffer.GetD3D12Resource());
             }
 
             m_winmlProvider->TransitionResourcesForOperator(
@@ -1903,8 +1866,7 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         if (m_winmlProvider)
         {
-            m_temporaryAllocations.clear();
-            m_temporaryAbiAllocations.clear();
+            m_temporaryBuffers.clear();
         }
     }
 
@@ -2219,16 +2181,6 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-            uint64_t allocId;
-            return AllocateTemporaryData(size, abiAllocation, &allocId);
-        }
-        ORT_CATCH_RETURN
-    }
-
-    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation, uint64_t* allocId) const
-    {
-        ORT_TRY
-        {
             VerifyNotClosed();
 
             *abiAllocation = nullptr;
@@ -2240,25 +2192,33 @@ namespace Windows::AI::MachineLearning::Adapter
                 return E_FAIL;
             }
 
-            ComPtr<IUnknown> allocation;
-            allocation.Attach(static_cast<IUnknown*>(alloc->Alloc(size)));
-
-            *allocId = m_winmlProvider->TryGetPooledAllocationId(allocation.Get(), 0);
-
-            TranslateAllocationDataToAbi(m_winmlProvider.Get(), m_internalOperator, alloc->Info(), allocation.Get(), abiAllocation);
-
-            if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
-            {
-                m_winmlProvider->TransitionResourcesForOperator(true, 1, abiAllocation);
-            }
+            auto dml_gpu_allocator = static_cast<Dml::DmlGpuAllocator*>(alloc.get());
+            auto buffer = dml_gpu_allocator->AllocateDefaultBuffer(size);
+            buffer.GetD3D12Resource()->AddRef();
+            *abiAllocation = buffer.GetD3D12Resource();
 
             // Ensure the allocation is freed and transitioned when the context destructs
-            m_temporaryAllocations.push_back(allocation);
-            m_temporaryAbiAllocations.push_back(*abiAllocation);
+            m_temporaryBuffers.push_back(std::move(buffer));
 
             return S_OK;
         }
         ORT_CATCH_RETURN
+    }
+
+    const Dml::D3D12BufferRegion& OpKernelContextWrapper::AllocateDefaultBuffer(size_t size)
+    {
+        VerifyNotClosed();
+
+        onnxruntime::AllocatorPtr alloc;
+        THROW_IF_NOT_OK(m_impl->GetTempSpaceAllocator(&alloc));
+
+        ORT_THROW_HR_IF(E_FAIL, !IsAllocationInterface(alloc->Info()));
+        auto dml_gpu_allocator = static_cast<Dml::DmlGpuAllocator*>(alloc.get());
+        auto buffer = dml_gpu_allocator->AllocateDefaultBuffer(size);
+
+        // Ensure the allocation is freed and transitioned when the context destructs
+        m_temporaryBuffers.push_back(std::move(buffer));
+        return m_temporaryBuffers.back().Region();
     }
 
     void STDMETHODCALLTYPE OpKernelContextWrapper::GetExecutionInterface(IUnknown** executionInterface) const noexcept
@@ -2574,14 +2534,16 @@ namespace Windows::AI::MachineLearning::Adapter
             }
         }
 
-        ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
-            context,
-            Info().GetExecutionProvider(),
-            m_internalOperator,
-            m_requiresOutputShapesAtCreation ? &m_inferredOutputShapes : nullptr);
+        {
+            ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
+                context,
+                Info().GetExecutionProvider(),
+                m_internalOperator,
+                m_requiresOutputShapesAtCreation ? &m_inferredOutputShapes : nullptr);
 
-        ORT_THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
-        kernelContextWrapper->Close();
+            ORT_THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
+            kernelContextWrapper->Close();
+        }
 
         // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
         // provider requires this.

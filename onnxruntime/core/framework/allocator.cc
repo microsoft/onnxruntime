@@ -139,13 +139,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
     *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), id1, mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA) == 0 ||
              strcmp(name1, onnxruntime::OpenVINO_GPU) == 0 ||
-             strcmp(name1, onnxruntime::DML) == 0 ||
              strcmp(name1, onnxruntime::HIP) == 0 ||
              strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0 ||
              strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0) {
     *out = new OrtMemoryInfo(
         name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
         mem_type1);
+  } else if (strcmp(name1, onnxruntime::DML) == 0) {
+    // Since EPs cannot have 2 allocators with the same OrtMemType and Memory ID,
+    // we use -1 as the memory ID to represent external allocations that don't have any allocator.
+    *out = new OrtMemoryInfo(
+        name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DML_EXTERNAL, static_cast<OrtDevice::DeviceId>(id1)),
+        -1, mem_type1);
   } else if (strcmp(name1, onnxruntime::OpenVINO_RT_NPU) == 0) {
     *out = new OrtMemoryInfo(
         name1, type, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,

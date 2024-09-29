@@ -4,7 +4,6 @@
 #include "precomp.h"
 #include "DmlCommandRecorder.h"
 #include "CommandQueue.h"
-#include "BucketizedBufferAllocator.h"
 
 using namespace Dml;
 
@@ -22,9 +21,9 @@ DmlCommandRecorder::DmlCommandRecorder(
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
 }
 
-void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+void DmlCommandRecorder::SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator)
 {
-    m_bufferAllocator = allocator;
+    m_allocator = allocator;
 }
 
 void DmlCommandRecorder::InitializeOperator(
@@ -57,21 +56,14 @@ void DmlCommandRecorder::InitializeOperator(
     UINT64 temporaryResourceSize = initBindingProps.TemporaryResourceSize;
     if (temporaryResourceSize > 0)
     {
-        auto allocator = m_bufferAllocator.lock();
+        auto allocator = m_allocator.lock();
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
-        if (!tempResourceHandle)
-        {
-            ORT_THROW_HR(E_OUTOFMEMORY);
-        }
-
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResource();
-        allocator->Free(tempResourceHandle);
+        auto buffer = allocator->AllocateDefaultBuffer(temporaryResourceSize);
 
         // Bind the temporary resource.
-        DML_BUFFER_BINDING bufferBinding = { buffer, 0, temporaryResourceSize };
+        DML_BUFFER_BINDING bufferBinding = buffer.GetBufferBinding();
         DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
         bindingTable->BindTemporaryResource(&bindingDesc);
     }
@@ -133,21 +125,14 @@ void DmlCommandRecorder::ExecuteOperator(
     UINT64 temporaryResourceSize = execBindingProps.TemporaryResourceSize;
     if (temporaryResourceSize > 0)
     {
-        auto allocator = m_bufferAllocator.lock();
+        auto allocator = m_allocator.lock();
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
-        if (!tempResourceHandle)
-        {
-            ORT_THROW_HR(E_OUTOFMEMORY);
-        }
-
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResource();
-        allocator->Free(tempResourceHandle);
+        auto buffer = allocator->AllocateDefaultBuffer(temporaryResourceSize);
 
         // Bind the temporary resource.
-        DML_BUFFER_BINDING bufferBinding = { buffer, 0, temporaryResourceSize };
+        DML_BUFFER_BINDING bufferBinding = buffer.GetBufferBinding();
         DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
         bindingTable->BindTemporaryResource(&bindingDesc);
     }
@@ -186,6 +171,7 @@ void DmlCommandRecorder::CopyBufferRegion(
 
 void DmlCommandRecorder::FillBufferWithPattern(
     ID3D12Resource* dstBuffer,
+    uint64_t offset,
     gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
 {
     // The fill pattern for ClearUnorderedAccessViewUint is 16 bytes.
@@ -216,6 +202,7 @@ void DmlCommandRecorder::FillBufferWithPattern(
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
     uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    uavDesc.Buffer.FirstElement = gsl::narrow<uint32_t>(offset / sizeof(uint32_t));
     uavDesc.Buffer.NumElements = gsl::narrow<uint32_t>(dstBuffer->GetDesc().Width / sizeof(uint32_t));
     uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
 

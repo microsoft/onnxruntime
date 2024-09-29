@@ -103,9 +103,11 @@ void AppendExecutionProvider_DML() {
 
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
+  constexpr bool metacommands_enabled = true;
+  constexpr bool bfc_allocator_enabled = true;
   THROW_IF_NOT_OK_MSG(
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), true
+      session_options.get(), device.get(), queue.get(), metacommands_enabled, bfc_allocator_enabled
     ),
     ort_api
   );
@@ -130,9 +132,11 @@ void GetExecutionProvider_DML() {
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
+  constexpr bool metacommands_enabled = true;
+  constexpr bool bfc_allocator_enabled = true;
   THROW_IF_NOT_OK_MSG(
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), true
+      session_options.get(), device.get(), queue.get(), metacommands_enabled, bfc_allocator_enabled
     ),
     ort_api
   );
@@ -290,9 +294,11 @@ void CopyInputAcrossDevices_DML() {
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
+  constexpr bool metacommands_enabled = true;
+  constexpr bool bfc_allocator_enabled = true;
   THROW_IF_NOT_OK_MSG(
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), true
+      session_options.get(), device.get(), queue.get(), metacommands_enabled, bfc_allocator_enabled
     ),
     ort_api
   );

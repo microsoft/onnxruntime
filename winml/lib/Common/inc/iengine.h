@@ -12,7 +12,7 @@ interface IEngineFactory;
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
 
 // clang-format off
-MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
+MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
 IValue : IUnknown {
   STDMETHOD(IsEmpty)
   (bool* out) PURE;
@@ -211,12 +211,15 @@ IThreading : IUnknown {
 
 };
 
-MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
+MIDL_INTERFACE("edf7b6d1-f788-4057-9f99-28f9b05360e8")
 IEngineBuilder : IUnknown {
   STDMETHOD(SetD3D12Resources)
   (ID3D12Device* device, ID3D12CommandQueue* queue) PURE;
 
   STDMETHOD(SetMetacommandsEnabled)
+  (int enabled) PURE;
+
+  STDMETHOD(SetBfcAllocatorEnabled)
   (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)

@@ -4,6 +4,7 @@
 #include "../MLOperatorAuthorImpl.h"
 
 #include "../External/D3DX12/d3dx12.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlBufferRegion.h"
 #include "directx/d3d12.h"
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
@@ -259,15 +260,6 @@ private:
     ComPtr<ID3D12PipelineState> m_gridSamplePipelineState;
     DmlGridSampleParameters m_params = {};
 
-
-    // Allocate temporary buffers if needed
-    struct ResourceDesc
-    {
-        ComPtr<ID3D12Resource> Resource;
-        std::array<uint32_t, 4> Sizes;
-        std::array<uint32_t, 4> Strides;
-    };
-
     struct GridSampleShaderConstants
     {
         uint32_t StartIndex;
@@ -488,29 +480,18 @@ public:
             auto gridDims = GetTensorDimensions(gridTensor.Get());
             auto outputDims = GetTensorDimensions(outputTensor.Get());
 
-            ComPtr<IUnknown> inputUnknown;
-            ComPtr<ID3D12Resource> inputResource;
-            inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(inputUnknown.As(&inputResource));
-
-            ComPtr<IUnknown> gridUnknown;
-            ComPtr<ID3D12Resource> gridResource;
-            gridTensor->GetDataInterface(gridUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(gridUnknown.As(&gridResource));
-
-            ComPtr<IUnknown> outputUnknown;
-            ComPtr<ID3D12Resource> outputResource;
-            outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
+            auto inputTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(inputTensor.Get());
+            auto gridTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(gridTensor.Get());
+            auto outputTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(outputTensor.Get());
 
             return Compute(
                 commandList.Get(),
                 context,
-                inputResource.Get(),
+                inputTensorWrapper->GetBufferRegion(),
                 inputDims,
-                gridResource.Get(),
+                gridTensorWrapper->GetBufferRegion(),
                 gridDims,
-                outputResource.Get(),
+                outputTensorWrapper->GetBufferRegion(),
                 outputDims
             );
         }
@@ -525,21 +506,21 @@ public:
     HRESULT Compute(
         ID3D12GraphicsCommandList* commandList,
         IMLOperatorKernelContext* context,
-        ID3D12Resource* inputResource,
+        const Dml::D3D12BufferRegion& inputBufferRegion,
         gsl::span<const uint32_t> inputDims,
-        ID3D12Resource* gridResource,
+        const Dml::D3D12BufferRegion& gridBufferRegion,
         gsl::span<const uint32_t> gridDims,
-        ID3D12Resource* outputResource,
+        const Dml::D3D12BufferRegion& outputBufferRegion,
         gsl::span<const uint32_t> outputDims)
     {
         try
         {
             GridSample(
-                inputResource,
+                inputBufferRegion,
                 inputDims,
-                gridResource,
+                gridBufferRegion,
                 gridDims,
-                outputResource,
+                outputBufferRegion,
                 outputDims,
                 commandList);
         }
@@ -552,11 +533,11 @@ public:
     }
 
     void GridSample(
-        ID3D12Resource* inputResource,
+        const Dml::D3D12BufferRegion& inputBufferRegion,
         gsl::span<const uint32_t> inputDims,
-        ID3D12Resource* gridResource,
+        const Dml::D3D12BufferRegion& gridBufferRegion,
         gsl::span<const uint32_t> gridDims,
-        ID3D12Resource* outputResource,
+        const Dml::D3D12BufferRegion& outputBufferRegion,
         gsl::span<const uint32_t> outputDims,
         ID3D12GraphicsCommandList* commandList)
     {
@@ -571,26 +552,22 @@ public:
         D3D12_RESOURCE_BARRIER barriers[3];
 
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-            inputResource,
+            inputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-            gridResource,
+            gridBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
 
         barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-            outputResource,
+            outputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
-
-        inputResource->SetName(L"InputResource");
-        outputResource->SetName(L"OutputResource");
-        gridResource->SetName(L"GridResource");
 
         commandList->ResourceBarrier(3, barriers);
 
@@ -612,27 +589,27 @@ public:
         std::copy(outputStrides.begin(), outputStrides.end(), constants.OutputStrides);
 
         constants.ElementCount = ComputeElementCountFromDimensions(constants.OutputSizes);
-        std::array<ID3D12Resource*, 3> uav_resources = { inputResource, gridResource, outputResource };
-        Dispatch(uav_resources, constants, commandList);
+        std::array<Dml::D3D12BufferRegion, 3> uavBufferRegions = { inputBufferRegion, gridBufferRegion, outputBufferRegion };
+        Dispatch(uavBufferRegions, constants, commandList);
 
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-                inputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            inputBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-                gridResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            gridBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-                outputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            outputBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         commandList->ResourceBarrier(3, barriers);
     }
@@ -647,25 +624,25 @@ public:
 
     template <typename TConstants, uint32_t TSize>
     void Dispatch(
-        std::array<ID3D12Resource*, TSize>& resources,
+        std::array<Dml::D3D12BufferRegion, TSize>& bufferRegions,
         TConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
         D3D12_RESOURCE_BARRIER uav_barriers[TSize];
 
         std::transform(
-            resources.begin(), resources.end(),
+            bufferRegions.begin(), bufferRegions.end(),
             uav_barriers,
-            [](auto& resource) { return CD3DX12_RESOURCE_BARRIER::UAV(resource); } );
+            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.GetD3D12Resource()); } );
         commandList->ResourceBarrier(TSize, uav_barriers);
 
         for (uint32_t i = 0; i < TSize; i++)
         {
             // Set resource views
-            if (resources[i]) {
+            if (bufferRegions[i]) {
                 commandList->SetComputeRootUnorderedAccessView(
                     i, // root parameter index
-                    resources[i]->GetGPUVirtualAddress()
+                    bufferRegions[i].GetD3D12Resource()->GetGPUVirtualAddress() + bufferRegions[i].Offset()
                 );
             }
             else
@@ -707,7 +684,7 @@ public:
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
 
-        commandList->ResourceBarrier(2, uav_barriers);
+        commandList->ResourceBarrier(TSize, uav_barriers);
     }
 };
 

@@ -99,13 +99,19 @@ namespace Dml
         auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         auto buffer = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes);
 
-        ORT_THROW_IF_FAILED(device->CreateCommittedResource(
+        HRESULT hr = device->CreateCommittedResource(
             &heap,
             D3D12_HEAP_FLAG_NONE,
             &buffer,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_GRAPHICS_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf())));
+            IID_GRAPHICS_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf()));
+
+        if (hr == DXGI_ERROR_DEVICE_REMOVED)
+        {
+            ORT_THROW_IF_FAILED(device->GetDeviceRemovedReason());
+        }
+        ORT_THROW_IF_FAILED(hr);
 
         return Chunk{ sizeInBytes, std::move(uploadBuffer) };
     }

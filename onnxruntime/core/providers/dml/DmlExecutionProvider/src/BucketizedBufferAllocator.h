@@ -6,26 +6,16 @@
 #include "core/framework/allocator.h"
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
-#include "AllocationInfo.h"
+#include "DmlSubAllocator.h"
+#include "DmlAllocatorRoundingMode.h"
 
 namespace Dml
 {
-    class DmlSubAllocator;
-
-    class CPUAllocator : public onnxruntime::IAllocator
-    {
-    public:
-        explicit CPUAllocator(OrtMemType memType);
-
-        void* Alloc(size_t size) override;
-        void Free(void* p) override;
-    };
-
     // Implements a Lotus allocator for D3D12 heap buffers, using a bucket allocation strategy. The allocator
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
     // All requested allocation sizes are rounded up to the nearest bucket size, which ensures minimal fragmentation
     // while providing an upper bound on the amount of memory "wasted" with each allocation.
-    class BucketizedBufferAllocator : public onnxruntime::IAllocator
+    class BucketizedBufferAllocator : public DmlSubAllocator
     {
     public:
         ~BucketizedBufferAllocator();
@@ -38,21 +28,25 @@ namespace Dml
             const D3D12_HEAP_PROPERTIES& heapProps,
             D3D12_HEAP_FLAGS heapFlags,
             D3D12_RESOURCE_FLAGS resourceFlags,
-            D3D12_RESOURCE_STATES initialState,
-            std::unique_ptr<DmlSubAllocator>&& subAllocator);
+            D3D12_RESOURCE_STATES initialState);
+
+        ComPtr<DmlResourceWrapper> AllocCommittedResource(size_t size);
 
         // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
         const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
+        AllocationInfo* GetAllocationInfo(void* opaquePointer);
+        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t sizeInBytes) const;
+        uint64_t GetUniqueId(void* opaquePointer);
+
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
-        void* Alloc(size_t size) final;
-        void Free(void* p) final;
+        void Free(void* p);
 
     private:
-        static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
+        static const uint32_t MinResourceSizeExponent = 16; // 2^16 = 64KB
 
         // The pool consists of a number of buckets, and each bucket contains a number of resources of the same size.
         // The resources in each bucket are always sized as a power of two, and each bucket contains resources twice
@@ -72,7 +66,7 @@ namespace Dml
         static uint64_t GetBucketSizeFromIndex(gsl::index index);
 
         friend class AllocationInfo;
-        void FreeResource(void* p, uint64_t resourceId);
+        void FreeResource(AllocationInfo* allocInfo, uint64_t resourceId) final;
 
         ComPtr<ID3D12Device> m_device;
         D3D12_HEAP_PROPERTIES m_heapProperties;
@@ -84,12 +78,13 @@ namespace Dml
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
 
+        ComPtr<ExecutionContext> m_context;
+
         // Unless specifically requested, allocation sizes are not rounded to enable pooling
         // until SetDefaultRoundingMode is called.  This should be done at completion of session
         // initialization.
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
 
-        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
     #ifndef NDEBUG

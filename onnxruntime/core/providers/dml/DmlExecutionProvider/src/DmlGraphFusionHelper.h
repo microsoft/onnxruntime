@@ -6,6 +6,7 @@
 #include "GraphPartitioner.h"
 #include "FusedGraphKernel.h"
 #include "MLOperatorAuthorImpl.h"
+#include "DmlBufferRegion.h"
 #include "DmlReusedCommandListState.h"
 
 using Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider;
@@ -35,10 +36,9 @@ namespace DmlGraphFusionHelper
         const std::byte* tensorPtr,
         size_t tensorByteSize);
 
-    void UnwrapTensor(
+    D3D12BufferRegion UnwrapTensor(
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
         const onnxruntime::Tensor* tensor,
-        ID3D12Resource** resource,
         uint64_t* allocId);
 
     std::unordered_map<const onnx::TensorProto*, std::vector<uint32_t>>
@@ -120,7 +120,6 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnknown,
         bool keepTemporaryResourceAlive);
 }
 }

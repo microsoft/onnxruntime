@@ -4,6 +4,7 @@
 #pragma once
 
 #include "OperatorUtility.h"
+#include "../DmlManagedBuffer.h"
 
 namespace Dml
 {
@@ -25,8 +26,7 @@ namespace Dml
         std::vector<TensorDesc> m_outputTensorDescs;
 
         ComPtr<IDMLCompiledOperator> m_compiledOperator;
-        ComPtr<ID3D12Resource> m_persistentResource;
-        ComPtr<IUnknown> m_persistentResourcePoolingUnk; // Controls when the persistent resource is returned to the pool
+        ComPtr<DmlManagedBuffer> m_managedPersistentBuffer;
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
 
         void Initialize(

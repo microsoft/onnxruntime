@@ -517,15 +517,11 @@ public:
     // needing to agnostically copy memory.
     const void* GetByteData() const
     {
-        ML_CHECK_BOOL(!IsDataInterface());
-
         return m_impl->GetData();
     }
 
     void* GetByteData()
     {
-        ML_CHECK_BOOL(!IsDataInterface());
-
         return m_impl->GetData();
     }
 

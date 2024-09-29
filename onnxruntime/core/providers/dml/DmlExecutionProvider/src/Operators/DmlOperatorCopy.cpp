@@ -16,7 +16,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 1);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
-        std::vector<std::optional<uint32_t>> kernelInputOutputIndices  = {0};
+        std::vector<std::optional<uint32_t>> kernelInputOutputIndices = {0};
 
         Initialize(kernelInfo, kernelInputOutputIndices);
 
@@ -29,30 +29,39 @@ public:
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
-        if (contextPrivate->IsDmlGraphNode())
-        {
-            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+        // Although we always compile the operator because we don't know where the memory will be allocated in the future,
+        // we may not always end up executing it.
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-            DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
-            opDesc.InputTensor = inputDescs.data();
-            opDesc.OutputTensor = outputDescs.data();
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
 
-            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelInfo);
-        }
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelInfo);
     }
 
-    void Compute(const MLOperatorKernelContext& kernelContext)
+    void Compute(const MLOperatorKernelContext& kernelContext) final
     {
         MLOperatorTensor inputTensor = kernelContext.GetInputTensor(0);
-
-        // Reshape the output tensor.
         MLOperatorTensor outputTensor = kernelContext.GetOutputTensor(0);
 
-        // Avoid self copying.
-        if (inputTensor.GetDataInterface().Get() != outputTensor.GetDataInterface().Get())
+        // If the input is aliasing the output (i.e. they share the same resource at the same offset),
+        // we don't need to do anything. This is essentially a no-op.
+        if (inputTensor.GetByteData() == outputTensor.GetByteData())
         {
-            // Copy elements from input tensor to output tensor.
+            return;
+        }
+
+        // If the input is not aliasing the output but shares the same resource, we have to use an Identity operation
+        // because the resource cannot simultaneously be in both the COPY_SOURCE and COPY_DEST states.
+        if (inputTensor.GetDataInterface().Get() == outputTensor.GetDataInterface().Get())
+        {
+            DmlOperator::Compute(kernelContext);
+        }
+        else
+        {
+            // The input and the output don't share the same resource, so we can do a simple copy.
             ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
                 outputTensor.GetInterface().Get(),
                 inputTensor.GetInterface().Get()));

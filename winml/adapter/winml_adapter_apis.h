@@ -82,7 +82,8 @@ ORT_API_STATUS(
   _In_ OrtSessionOptions* options,
   _In_ ID3D12Device* d3d_device,
   _In_ ID3D12CommandQueue* cmd_queue,
-  bool metacommands_enabled
+  bool metacommands_enabled,
+  bool bfc_allocator_enabled
 );
 
 // OrtSession methods

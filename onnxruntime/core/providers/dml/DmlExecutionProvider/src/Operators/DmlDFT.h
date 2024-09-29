@@ -2,8 +2,8 @@
 
 #include "../MLOperatorAuthorImpl.h"
 #include "../../../OperatorAuthorHelper/OperatorHelper.h"
-
 #include "../External/D3DX12/d3dx12.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlBufferRegion.h"
 #include "directx/d3d12.h"
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
@@ -111,7 +111,7 @@ private:
     // Allocate temporary buffers if needed
     struct ResourceDesc
     {
-        ComPtr<ID3D12Resource> Resource;
+        Dml::D3D12BufferRegion BufferRegion;
         std::array<uint32_t, 4> Sizes;
         std::array<uint32_t, 4> Strides;
     };
@@ -417,16 +417,6 @@ public:
             auto outputDims = GetTensorDimensions(outputTensor.Get());
             ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
-            ComPtr<IUnknown> inputUnknown;
-            ComPtr<ID3D12Resource> inputResource;
-            inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(inputUnknown.As(&inputResource));
-
-            ComPtr<IUnknown> outputUnknown;
-            ComPtr<ID3D12Resource> outputResource;
-            outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
-
             // Get optional dft_length input
             uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(m_axis)];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
@@ -436,12 +426,15 @@ public:
                 dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
             }
 
+            auto inputTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(inputTensor.Get());
+            auto outputTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(outputTensor.Get());
+
             return Compute(
                 commandList.Get(),
                 context,
-                inputResource.Get(),
+                inputTensorWrapper->GetBufferRegion(),
                 inputDims,
-                outputResource.Get(),
+                outputTensorWrapper->GetBufferRegion(),
                 outputDims,
                 dftLength
             );
@@ -457,16 +450,16 @@ public:
     HRESULT Compute(
         ID3D12GraphicsCommandList* commandList,
         IMLOperatorKernelContext* context,
-        ID3D12Resource* inputResource,
+        const Dml::D3D12BufferRegion& inputBufferRegion,
         gsl::span<const uint32_t> inputDims,
-        ID3D12Resource* outputResource,
+        const Dml::D3D12BufferRegion& outputBufferRegion,
         gsl::span<const uint32_t> outputDims,
         uint32_t dftLength
         )
     {
         try
         {
-            auto dftParams = PrepareDFT(context, inputResource, inputDims, outputResource, outputDims, dftLength);
+            auto dftParams = PrepareDFT(context, inputBufferRegion, inputDims, outputBufferRegion, outputDims, dftLength);
 
             switch (dftParams.Type)
             {
@@ -509,9 +502,9 @@ public:
 
     void PrepareStockhamFFTParams(
         IMLOperatorKernelContext* context,
-        ID3D12Resource* inputResource,
+        const Dml::D3D12BufferRegion& inputBufferRegion,
         gsl::span<const uint32_t> inputDims,
-        ID3D12Resource* outputResource,
+        const Dml::D3D12BufferRegion& outputBufferRegion,
         gsl::span<const uint32_t> outputDims,
         uint32_t dftLength,
         int64_t inAxis,
@@ -571,36 +564,34 @@ public:
         // Create the resource loop list
         // Add the input resource to the loop list
         params.ResourceLoopList.push_back({});
-        params.ResourceLoopList.back().Resource = inputResource;
+        params.ResourceLoopList.back().BufferRegion = inputBufferRegion;
         params.ResourceLoopList.back().Sizes = reshapedInputSize;
         params.ResourceLoopList.back().Strides = reshapedInputStrides;
+
+        auto kernelContext = static_cast<Windows::AI::MachineLearning::Adapter::OpKernelContextWrapper*>(context);
 
         // If 1 temporary should be placed first, or multiple temporaries, then
         // Add a temp in the list
         if (oscillateFirstTemporaryThenOutput || oscillateBetweenTwoTemporaries)
         {
             params.ResourceLoopList.push_back({});
+            params.ResourceLoopList.back().BufferRegion = kernelContext->AllocateDefaultBuffer(temporaryBufferByteSize);
             params.ResourceLoopList.back().Sizes = temporarySize;
             params.ResourceLoopList.back().Strides = temporaryStrides;
-
-            auto& resource = params.ResourceLoopList.back().Resource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
         }
 
         // If 2 temps, add another
         if (oscillateBetweenTwoTemporaries)
         {
             params.ResourceLoopList.push_back({});
+            params.ResourceLoopList.back().BufferRegion = kernelContext->AllocateDefaultBuffer(temporaryBufferByteSize);
             params.ResourceLoopList.back().Sizes = temporarySize;
             params.ResourceLoopList.back().Strides = temporaryStrides;
-
-            auto& resource = params.ResourceLoopList.back().Resource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
         }
 
         // Add output resource
         params.ResourceLoopList.push_back({});
-        params.ResourceLoopList.back().Resource = outputResource;
+        params.ResourceLoopList.back().BufferRegion = outputBufferRegion;
         params.ResourceLoopList.back().Sizes = reshapedOutputSize;
         params.ResourceLoopList.back().Strides = reshapedOutputStrides;
         params.OutputIndex = static_cast<uint32_t>(params.ResourceLoopList.size() - 1);
@@ -609,11 +600,9 @@ public:
         if (oscillateFirstOutputThenTemporary)
         {
             params.ResourceLoopList.push_back({});
+            params.ResourceLoopList.back().BufferRegion = kernelContext->AllocateDefaultBuffer(temporaryBufferByteSize);
             params.ResourceLoopList.back().Sizes = temporarySize;
             params.ResourceLoopList.back().Strides = temporaryStrides;
-
-            auto& resource = params.ResourceLoopList.back().Resource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
         }
 
         // Define the loop range
@@ -622,16 +611,15 @@ public:
         if (oscillateFirstOutputThenTemporary) { params.LoopRange = { 1, 2, params.NumberOfPasses + 1 }; }
         if (oscillateFirstTemporaryThenOutput) { params.LoopRange = { 1, 2, params.NumberOfPasses + 1 }; }
 
-        params.Window.Resource = nullptr;
         params.Window.Sizes = std::array<uint32_t, 4> {0, 0, 0, 0};
         params.Window.Strides = std::array<uint32_t, 4> {0, 0, 0, 0};
     }
 
     DFTParameters PrepareDFT(
         IMLOperatorKernelContext* context,
-        ID3D12Resource* inputResource,
+        const Dml::D3D12BufferRegion& inputBufferRegion,
         gsl::span<const uint32_t> inputDims,
-        ID3D12Resource* outputResource,
+        const Dml::D3D12BufferRegion& outputBufferRegion,
         gsl::span<const uint32_t> outputDims,
         uint32_t dftLength
         )
@@ -647,9 +635,9 @@ public:
             params.Type = DFTType::Stockham;
             PrepareStockhamFFTParams(
                 context,
-                inputResource,
+                inputBufferRegion,
                 inputDims,
-                outputResource,
+                outputBufferRegion,
                 outputDims,
                 dftLength,
                 m_axis,
@@ -681,14 +669,17 @@ public:
             auto aIntermediateBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(params.BluesteinZChirpParams.AFFT.Sizes);
             auto bIntermediateBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(params.BluesteinZChirpParams.BFFT.Sizes);
 
-            auto& zChirpResource = params.BluesteinZChirpParams.ZChirp.Resource;
-            auto& aFFTResource = params.BluesteinZChirpParams.AFFT.Resource;
-            auto& bResource = params.BluesteinZChirpParams.B.Resource;
-            auto& bFFTResource = params.BluesteinZChirpParams.BFFT.Resource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(zChirpBufferByteSize, &zChirpResource));
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(aIntermediateBufferByteSize, &aFFTResource));
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(bIntermediateBufferByteSize, &bResource));
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(bIntermediateBufferByteSize, &bFFTResource));
+            auto& zChirpBufferRegion = params.BluesteinZChirpParams.ZChirp.BufferRegion;
+            auto& aFFTBufferRegion = params.BluesteinZChirpParams.AFFT.BufferRegion;
+            auto& bBufferRegion = params.BluesteinZChirpParams.B.BufferRegion;
+            auto& bFFTBufferRegion = params.BluesteinZChirpParams.BFFT.BufferRegion;
+
+            auto kernelContext = static_cast<Windows::AI::MachineLearning::Adapter::OpKernelContextWrapper*>(context);
+
+            zChirpBufferRegion = kernelContext->AllocateDefaultBuffer(zChirpBufferByteSize);
+            aFFTBufferRegion = kernelContext->AllocateDefaultBuffer(aIntermediateBufferByteSize);
+            bBufferRegion = kernelContext->AllocateDefaultBuffer(bIntermediateBufferByteSize);
+            bFFTBufferRegion = kernelContext->AllocateDefaultBuffer(bIntermediateBufferByteSize);
 
             // The AFFT call takes input A, and produces output A_FFT.
             //
@@ -699,8 +690,10 @@ public:
             // Padding should be handled by the shader.
             PrepareStockhamFFTParams(
                 context,
-                inputResource, inputDims,
-                aFFTResource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
+                inputBufferRegion,
+                inputDims,
+                aFFTBufferRegion,
+                params.BluesteinZChirpParams.AFFT.Sizes,
                 M,
                 m_axis,
                 1,
@@ -712,8 +705,10 @@ public:
             // Therefore the window function logic shold hangle complex multiplication, and B_FTT should be used like a window function.
             PrepareStockhamFFTParams(
                 context,
-                aFFTResource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
-                outputResource, outputDims,
+                aFFTBufferRegion,
+                params.BluesteinZChirpParams.AFFT.Sizes,
+                outputBufferRegion,
+                outputDims,
                 M,
                 1,
                 m_axis,
@@ -729,8 +724,10 @@ public:
             // The BFFT call takes input B, and produces output B_FFT.
             PrepareStockhamFFTParams(
                 context,
-                bResource.Get(), params.BluesteinZChirpParams.B.Sizes,
-                bFFTResource.Get(), params.BluesteinZChirpParams.BFFT.Sizes,
+                bBufferRegion,
+                params.BluesteinZChirpParams.B.Sizes,
+                bFFTBufferRegion,
+                params.BluesteinZChirpParams.BFFT.Sizes,
                 M,
                 2,
                 2,
@@ -744,25 +741,23 @@ public:
     {
         const auto& bluesteinZChirpParams = dftParams.BluesteinZChirpParams;
 
-        // Get input and output resources
-        auto inputResource =  bluesteinZChirpParams.AFFTParams.ResourceLoopList.front().Resource.Get();
-        auto outputResource = bluesteinZChirpParams.AFFTInverseParams.ResourceLoopList[bluesteinZChirpParams.AFFTInverseParams.OutputIndex].Resource.Get();
-        auto zChirpResource = bluesteinZChirpParams.ZChirp.Resource.Get();
-        auto aFFTResource = bluesteinZChirpParams.AFFT.Resource.Get();
-        auto bResource = bluesteinZChirpParams.B.Resource.Get();
-        auto bFFTResource = bluesteinZChirpParams.BFFT.Resource.Get();
+        // Get resources
+        auto inputBufferRegion =  bluesteinZChirpParams.AFFTParams.ResourceLoopList.front().BufferRegion;
+        auto outputBufferRegion = bluesteinZChirpParams.AFFTInverseParams.ResourceLoopList[bluesteinZChirpParams.AFFTInverseParams.OutputIndex].BufferRegion;
+        auto zChirpBufferRegion = bluesteinZChirpParams.ZChirp.BufferRegion;
+        auto bBufferRegion = bluesteinZChirpParams.B.BufferRegion;
 
         // Transition resources from common to UAV state
         D3D12_RESOURCE_BARRIER barriers[2];
 
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-            inputResource,
+            inputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-            outputResource,
+            outputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
@@ -781,8 +776,8 @@ public:
         auto totalElementCount = ComputeElementCountFromDimensions(bluesteinZChirpParams.B.Sizes);
         constants.ElementCount = totalElementCount / bluesteinZChirpParams.B.Sizes[3];
 
-        std::array<ID3D12Resource*, 2> uav_resources = { zChirpResource, bResource };
-        Dispatch(uav_resources, constants, commandList);
+        std::array<Dml::D3D12BufferRegion, 2> uavBufferRegions = { zChirpBufferRegion, bBufferRegion };
+        Dispatch(uavBufferRegions, constants, commandList);
 
         DFTParameters fft_params = {};
         fft_params.Type = DFTType::Stockham;
@@ -806,16 +801,16 @@ public:
 
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-                inputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            inputBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-                outputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            outputBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         commandList->ResourceBarrier(2, barriers);
     }
@@ -833,21 +828,21 @@ public:
         const auto& loopList = stockhamParams.ResourceLoopList;
 
         // Get input and output resources
-        auto inputResource = loopList[0].Resource.Get();
-        auto outputResource = loopList[stockhamParams.OutputIndex].Resource.Get();
-        auto windowResource = dftParams.StockhamParams.Window.Resource.Get();
+        auto inputBufferRegion = loopList[0].BufferRegion;
+        auto outputBufferRegion = loopList[stockhamParams.OutputIndex].BufferRegion;
+        auto windowBufferRegion = dftParams.StockhamParams.Window.BufferRegion;
 
         // Transition resources from common to UAV state
         D3D12_RESOURCE_BARRIER barriers[2];
 
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-            inputResource,
+            inputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-            outputResource,
+            outputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
@@ -872,11 +867,11 @@ public:
             auto inIdx = stockhamParams.LoopRange.CalculateIndex(index);
             auto outIdx = stockhamParams.LoopRange.CalculateIndex(index + 1);
 
-            auto in = loopList[inIdx].Resource.Get();
+            const auto& in = loopList[inIdx].BufferRegion;
             std::copy(loopList[inIdx].Sizes.begin(), loopList[inIdx].Sizes.end(), constants.InputSizes);
             std::copy(loopList[inIdx].Strides.begin(), loopList[inIdx].Strides.end(), constants.InputStrides);
 
-            auto out = loopList[outIdx].Resource.Get();
+            const auto& out = loopList[outIdx].BufferRegion;
             std::copy(loopList[outIdx].Sizes.begin(), loopList[outIdx].Sizes.end(), constants.OutputSizes);
             std::copy(loopList[outIdx].Strides.begin(), loopList[outIdx].Strides.end(), constants.OutputStrides);
 
@@ -890,24 +885,24 @@ public:
             constants.ElementCount = totalElementCount / constants.OutputSizes[3];
             constants.DFTIteration = index + 1;
             constants.ChirpLength = isLastPass ? chirpLength : 0;
-            constants.HasWindow = isFirstPass && windowResource != nullptr;
-            auto window = constants.HasWindow ? windowResource : out;
-            std::array<ID3D12Resource*, 3> uav_resources = { in, out, window };
+            constants.HasWindow = isFirstPass && windowBufferRegion.GetD3D12Resource() != nullptr;
+            auto window = constants.HasWindow ? windowBufferRegion : out;
+            std::array<Dml::D3D12BufferRegion, 3> uav_resources = { in, out, window };
             Dispatch(uav_resources, constants, commandList);
         }
 
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-                inputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            inputBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-                outputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
+            outputBufferRegion.GetD3D12Resource(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
 
         commandList->ResourceBarrier(2, barriers);
     }
@@ -922,25 +917,25 @@ public:
 
     template <typename TConstants, uint32_t TSize>
     void Dispatch(
-        std::array<ID3D12Resource*, TSize>& resources,
+        std::array<Dml::D3D12BufferRegion, TSize>& bufferRegions,
         TConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
         D3D12_RESOURCE_BARRIER uav_barriers[TSize];
 
         std::transform(
-            resources.begin(), resources.end(),
+            bufferRegions.begin(), bufferRegions.end(),
             uav_barriers,
-            [](auto& resource) { return CD3DX12_RESOURCE_BARRIER::UAV(resource); } );
+            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.GetD3D12Resource()); } );
         commandList->ResourceBarrier(TSize, uav_barriers);
 
         for (uint32_t i = 0; i < TSize; i++)
         {
             // Set resource views
-            if (resources[i]) {
+            if (bufferRegions[i]) {
                 commandList->SetComputeRootUnorderedAccessView(
                     i, // root parameter index
-                    resources[i]->GetGPUVirtualAddress()
+                    bufferRegions[i].GetD3D12Resource()->GetGPUVirtualAddress() + bufferRegions[i].Offset()
                 );
             }
             else
@@ -982,7 +977,7 @@ public:
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
 
-        commandList->ResourceBarrier(2, uav_barriers);
+        commandList->ResourceBarrier(TSize, uav_barriers);
     }
 };
 

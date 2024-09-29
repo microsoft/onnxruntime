@@ -77,6 +77,11 @@ class BFCArena : public IAllocator {
 
   ~BFCArena() override;
 
+  // Allows the caller to change the arena extend strategy after the allocator is done initializing.
+  // For example, kSameAsRequested may be desirable in certain situations and kNextPowerOfTwo may be
+  // desirable in others.
+  void SetArenaExtendStrategy(ArenaExtendStrategy arena_extend_strategy);
+
   // If size is 0, then this function returns either NULL,
   // or a unique pointer value that can later be successfully
   // passed to free(). Whatever, do not dereference that pointer
@@ -122,6 +127,9 @@ class BFCArena : public IAllocator {
 
  private:
   void DeallocateRawInternal(void* ptr);
+
+  // Updates whether the first allocation should be considered for shrinkage depending on the strategy type.
+  void UpdateFirstAllocationShrinkageLogic();
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk

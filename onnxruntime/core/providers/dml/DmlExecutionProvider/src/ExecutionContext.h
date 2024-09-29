@@ -10,6 +10,7 @@
 namespace Dml
 {
     class CommandQueue;
+    class DmlGpuAllocator;
 
     // Asynchronously performs GPU work, and automatically manages command list recording and submission to queues.
     // Work submitted to the ExecutionContext is typically recorded onto a command list and may not immediately begin
@@ -26,7 +27,7 @@ namespace Dml
             bool cpuSyncSpinningEnabled,
             bool keepOpen);
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+        void SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator);
 
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
@@ -46,7 +47,8 @@ namespace Dml
 
         void FillBufferWithPattern(
             ID3D12Resource* dstBuffer,
-            gsl::span<const std::byte> pattern /* Data type agnostic value, treated as raw bits */);
+            uint64_t offset,
+            gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
 
         void InitializeOperator(
             IDMLCompiledOperator* op,
@@ -88,6 +90,8 @@ namespace Dml
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
         bool CpuSyncSpinningEnabled() const { return m_cpuSyncSpinningEnabled; }
         bool IsClosed() const { return m_closed; }
+
+        bool Closed() const { return m_closed; }
 
     private:
         Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;

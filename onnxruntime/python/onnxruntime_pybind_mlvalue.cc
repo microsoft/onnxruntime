@@ -24,13 +24,13 @@
 #include "core/framework/provider_options_utils.h"
 
 #ifdef USE_DML
+#include "core/providers/dml/DmlExecutionProvider/src/DmlExternalGpuAllocator.h"
 using Microsoft::WRL::ComPtr;
 
 #include <wil/wrl.h>
 #include "core/providers/dml/DmlExecutionProvider/src/External/D3DX12/d3dx12.h"
 #include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
 #include "core/providers/dml/DmlExecutionProvider/src/DescriptorPool.h"
-#include "core/providers/dml/DmlExecutionProvider/src/DmlCommittedResourceAllocator.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/DmlExecutionProvider/src/BucketizedBufferAllocator.h"
 #include "core/providers/dml/DmlExecutionProvider/src/PooledUploadHeap.h"
@@ -208,46 +208,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
 
   auto hit = id_to_allocator_map->find(id);
   if (hit == id_to_allocator_map->end()) {
-    constexpr uint32_t device_id = 0;
-    auto d3d12_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
-
-    ComPtr<Dml::ExecutionContext> context;
-    uint32_t execution_context_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(context.GetAddressOf()));
-
-    // First, check if an I/O binding API that was used before this session or another session has already created a queue
-    if (FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &execution_context_ptr_size, context.GetAddressOf()))) {
-      D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-      cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-      cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
-
-      ComPtr<ID3D12CommandQueue> cmd_queue;
-      ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
-
-      auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
-      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_device_guid, dml_device.Get()));
-
-      context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true, true);
-      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, context.Get()));
-    }
-
-    // We leak the readback and upload heap to keep them alive, just like the map
-    auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get(), context.Get()).release();
-    auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context.Get()).release();
-
-    auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
-        d3d12_device.Get(),
-        context.Get(),
-        CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        std::make_unique<Dml::DmlCommittedResourceAllocator>(d3d12_device.Get()));
-    dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
-    context->SetAllocator(dml_allocator);
-
-    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_readback_heap_guid, sizeof(readback_heap), &readback_heap));
-    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));
-
+    auto dml_allocator = std::make_shared<Dml::DmlExternalGpuAllocator>(id);
     hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
   }
 

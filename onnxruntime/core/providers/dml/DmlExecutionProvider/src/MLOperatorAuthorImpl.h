@@ -12,6 +12,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include <wrl/client.h>
 #include <wrl/implements.h>
+#include "core/providers/dml/DmlExecutionProvider/src/DmlBuffer.h"
+#include "DmlBufferRegion.h"
+#include "DmlBuffer.h"
 
 interface IDMLOperator;
 
@@ -251,6 +254,8 @@ class TensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 
     MLOperatorTensorDataType STDMETHODCALLTYPE GetTensorDataType() const noexcept override;
 
+    Dml::D3D12BufferRegion GetBufferRegion() const;
+
     bool STDMETHODCALLTYPE IsCpuData() const noexcept override;
 
     bool STDMETHODCALLTYPE IsDataInterface() const noexcept override;
@@ -270,14 +275,7 @@ class TensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
     bool m_internalOperator = false;
 
     void* m_tensorData = nullptr;
-    ComPtr<IUnknown> m_dataInterface;
     bool m_isDataInterface = false;
-
-    // The returned data may be a converted shadow copy, and the piece of it which
-    // is returned may vary according to kernel registration options.
-    ComPtr<IUnknown> m_dataInterfaceOrShadowCopy;
-    ComPtr<IUnknown> m_abiDataInterface;
-
 };
 
 class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
@@ -476,9 +474,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept override;
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept override;
-
     HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const noexcept override;
-    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data, uint64_t* allocId) const;
 
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
 
@@ -486,6 +482,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     std::vector<IMLOperatorTensor*> GetInputTensors();
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
+    const Dml::D3D12BufferRegion& AllocateDefaultBuffer(uint64_t size);
 
     onnxruntime::OpKernelContext* GetOpKernelContext() { return m_impl; }
 
@@ -510,8 +507,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     // Temporary allocations created by the kernel.  These will be freed to the allocator following
     // Compute being called on the kernel.  This list is used to maintain their lifetime.
-    mutable std::vector<ComPtr<IUnknown>> m_temporaryAllocations;
-    mutable std::vector<ComPtr<IUnknown>> m_temporaryAbiAllocations;
+    mutable std::vector<Dml::DmlBuffer> m_temporaryBuffers;
 };
 
 class AbiOpKernel : public onnxruntime::OpKernel

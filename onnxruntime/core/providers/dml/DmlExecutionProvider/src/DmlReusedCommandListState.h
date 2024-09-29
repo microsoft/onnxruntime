@@ -15,8 +15,7 @@ namespace Dml
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> heap;
         Microsoft::WRL::ComPtr<IDMLBindingTable> bindingTable;
         Microsoft::WRL::ComPtr<ID3D12Resource> persistentResource;
-        Microsoft::WRL::ComPtr<ID3D12Resource> temporaryResource;
-        Microsoft::WRL::ComPtr<IUnknown> persistentResourceAllocatorUnknown;
+        std::optional<DmlBuffer> temporaryBuffer;
 
         // Bindings from previous executions of a re-used command list
         mutable std::vector<uint64_t> inputBindingAllocIds;
