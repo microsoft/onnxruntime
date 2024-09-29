@@ -36,7 +36,9 @@ class AttentionCPUBase : public AttentionBase {
                         int v_head_size,           // head size of V (H_v)
                         int v_hidden_size,         // hidden size of V (D_v)
                         const Tensor* attn_bias,   // additive bias applied on scaled QK.
-                        OpKernelContext* context) const {
+                        OpKernelContext* context,
+                        Tensor* scaled_qk = nullptr  // output buffer for QK (if needed)
+  ) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -71,7 +73,7 @@ class AttentionCPUBase : public AttentionBase {
 
     if (mask_data != nullptr) {
       // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
-      // Merge padding mask with causual mask, and broadcast to 3D (BxSxT).
+      // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
       PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
                   causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
@@ -85,6 +87,7 @@ class AttentionCPUBase : public AttentionBase {
     T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
     const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
     T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
+    T* scaled_qk_data = scaled_qk != nullptr ? scaled_qk->MutableData<T>() : nullptr;
 
     const T* attn_bias_data = (attn_bias != nullptr) ? attn_bias->Data<T>() : nullptr;
     auto attn_bias_dims = (attn_bias != nullptr) ? attn_bias->Shape().GetDims() : gsl::span<const int64_t>{};
@@ -97,7 +100,7 @@ class AttentionCPUBase : public AttentionBase {
                              static_cast<T*>(mask_data),
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
-                             present_data, present_key_data, tp, scale, attn_bias_data, attn_bias_dims);
+                             present_data, present_key_data, tp, scale, attn_bias_data, attn_bias_dims, scaled_qk_data);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
@@ -117,23 +120,24 @@ class AttentionCPUBase : public AttentionBase {
   //                                1 x mask_data(B, N, S, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,                      // output buffer with size BxNxSxT
-                             const T* Q,                              // Q data. Its size is BxNxSxH
-                             const T* K,                              // k data. Its size is BxNxLxH
-                             T* mask_data,                            // buffer for mask data.
-                             int batch_size,                          // batch size of self-attention
-                             int sequence_length,                     // sequence length of self-attention (S)
-                             int kv_sequence_length,                  // sequence length of cross-attention (L)
-                             int past_sequence_length,                // sequence length of past state
-                             int head_size,                           // head size of self-attention
-                             const T* past,                           // past state
-                             const T* past_key,                       // past key only (if not using past state)
-                             T* present,                              // present state
-                             T* present_key,                          // present key only (if not using present state)
-                             ThreadPool* tp,                          // thread pool
-                             float scale,                             // scale factor
-                             const T* attn_bias_data,                 // attention bias
-                             gsl::span<const int64_t> attn_bias_dims  // attention bias shape
+  void ComputeAttentionProbs(T* attention_probs,                       // output buffer with size BxNxSxT
+                             const T* Q,                               // Q data. Its size is BxNxSxH
+                             const T* K,                               // k data. Its size is BxNxLxH
+                             T* mask_data,                             // buffer for mask data.
+                             int batch_size,                           // batch size of self-attention
+                             int sequence_length,                      // sequence length of self-attention (S)
+                             int kv_sequence_length,                   // sequence length of cross-attention (L)
+                             int past_sequence_length,                 // sequence length of past state
+                             int head_size,                            // head size of self-attention
+                             const T* past,                            // past state
+                             const T* past_key,                        // past key only (if not using past state)
+                             T* present,                               // present state
+                             T* present_key,                           // present key only (if not using present state)
+                             ThreadPool* tp,                           // thread pool
+                             float scale,                              // scale factor
+                             const T* attn_bias_data,                  // attention bias
+                             gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
+                             T* scaled_qk_data = nullptr               // scaled output QK buffer
   ) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;    // P x H
@@ -228,6 +232,12 @@ class AttentionCPUBase : public AttentionBase {
                                     output, nullptr);
         }
       });
+    }
+
+    if (scaled_qk_data != nullptr) {
+      // Output the scaled Q*K^T if needed.
+      memcpy(scaled_qk_data, attention_probs,
+             SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T));
     }
 
     DUMP_CPU_TENSOR("QK (scaled)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
