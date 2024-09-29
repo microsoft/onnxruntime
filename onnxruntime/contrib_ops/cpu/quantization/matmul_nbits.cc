@@ -786,10 +786,10 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
     const size_t lda = helper.Lda(false);
     InlinedVector<NS_SQNBITS_GEMM_DATA_PACKED_PARAMS> gemm_params(batch_count);
     for (size_t i = 0; i < batch_count; i++) {
-      gemm_params[i].A = reinterpret_cast<const float*>(a_data) + helper.LeftOffsets()[i];
+      gemm_params[i].A = reinterpret_cast<const float*>(a_data + helper.LeftOffsets()[i]);
       gemm_params[i].lda = lda;
       gemm_params[i].B = packed_b_.get();
-      gemm_params[i].C = reinterpret_cast<float*>(y_data) + helper.OutputOffsets()[i];
+      gemm_params[i].C = reinterpret_cast<float*>(y_data + helper.OutputOffsets()[i]);
       gemm_params[i].ldc = N;
     }
     auto ws_size = NSSQNBitsGemmBatchWorkspaceSize(M, N, K, batch_count, gemm_params.data());
