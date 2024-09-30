@@ -394,7 +394,7 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Tensor* GetPrePackTensors() {
+  Tensor* GetPrePackTensors() override {
     ++get_prepack_tensors_count;
 
     std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
