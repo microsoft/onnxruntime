@@ -12,10 +12,10 @@ namespace webgpu {
 Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | additional_usage_);
   const auto& output = shader.AddOutput("y", ShaderUsage::UseUniform);
-  shader.AppendImplementation(additional_impl_);
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
-                             output.SetByOffset("global_idx", expression_));
+  shader.AdditionalImplementation() << additional_impl_;
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                            << "  let a = " << input.GetByOffset("global_idx") << ";\n  "
+                            << output.SetByOffset("global_idx", expression_);
 
   return Status::OK();
 }

@@ -246,9 +246,9 @@ class ProgramBase {
   //
 
   // set the cache hint for the program
-  template <typename T>
-  ProgramBase& CacheHint(T&& hint) {
-    cache_hint_ = std::forward<T>(hint);
+  template <typename... T>
+  ProgramBase& CacheHint(T&&... hints) {
+    cache_hint_ = absl::StrJoin(std::forward_as_tuple(std::forward<T>(hints)...), "|");
     return *this;
   }
 
@@ -327,7 +327,7 @@ class ProgramBase {
  private:
   // Make the constructor private to prevent direct instantiation or inheritance from this class
   // Use the Program template class as base class to create a new program class
-  explicit ProgramBase(const std::string& name, ProgramMetadata&& metadata);
+  explicit ProgramBase(std::string_view name, ProgramMetadata&& metadata);
 
   std::string name_;
   ProgramMetadata metadata_;
