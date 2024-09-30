@@ -13,7 +13,7 @@ nav_order: 2
 ## Introduction
 {: .no_toc }
 
-Phi-3 ONNX models are hosted on HuggingFace and you can run them with the ONNX Runtime generate() API.
+Phi-3 and Phi 3.5 ONNX models are hosted on HuggingFace and you can run them with the ONNX Runtime generate() API.
 
 The mini (3.3B) and medium (14B) versions available now, with support. Both mini and medium have a short (4k) context version and a long (128k) context version. The long context version can accept much longer prompts and produce longer output text, but it does consume more memory.
 
@@ -28,6 +28,9 @@ Available models are:
 * [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu)
 * [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda)
 * [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml/)
+* [https://huggingface.co/microsoft/Phi-3.5-mini-instruct-onnx](https://huggingface.co/microsoft/Phi-3.5-mini-instruct-onnx) 
+
+This tutorial demonstrates how to download and run the short context (4k) mini (3B) model variant pf Phi 3 model. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
 
 
 This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
@@ -263,4 +266,17 @@ python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cuda/cuda-int4-rtn-block-32
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml
 python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-directml/directml-int4-awq-block-128
+```
+
+### Phi-3.5 mini 128k context CUDA
+```bash
+huggingface-cli download microsoft/Phi-3.5-mini-instruct-onnx --include cuda/cuda-int4-awq-block-128/* --local-dir .
+python phi3-qa.py -m cuda/cuda-int4-awq-block-128
+```
+
+### Phi-3.5 mini 128k context CPU
+
+```bash
+huggingface-cli download microsoft/Phi-3.5-mini-instruct-onnx --include cpu_and_mobile/cpu-int4-awq-block-128-acc-level-4/* --local-dir .
+python phi3-qa.py -m cpu_and_mobile/cpu-int4-awq-block-128-acc-level-4
 ```
