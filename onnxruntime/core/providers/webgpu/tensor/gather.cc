@@ -13,31 +13,28 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& indices = shader.AddInput("input_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  std::ostringstream calc_data_indices;
-  calc_data_indices.imbue(std::locale::classic());
-  calc_data_indices << "  var indices_indices = input_indices_indices_t(0);\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size")
+                            << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+                            << "  var indices_indices = input_indices_indices_t(0);\n";
   for (int i = 0; i < indices.Rank(); i++) {
-    calc_data_indices << "  " << indices.IndicesSet("indices_indices", i, output.IndicesGet("output_indices", axis_ + i)) << ";\n";
+    shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", i, output.IndicesGet("output_indices", axis_ + i)) << ";\n";
   }
-  calc_data_indices << "  var idx = " << indices.GetByIndices("indices_indices") << ";\n"
-                    << "  if (idx < 0) {\n"
-                    << "    idx = idx + input_indices_value_t(uniforms.data_shape[" << axis_ << "]);\n"
-                    << "  }\n"
-                    << "  var data_indices : data_indices_t;\n";
+  shader.MainFunctionBody() << "  var idx = " << indices.GetByIndices("indices_indices") << ";\n"
+                            << "  if (idx < 0) {\n"
+                            << "    idx = idx + input_indices_value_t(uniforms.data_shape[" << axis_ << "]);\n"
+                            << "  }\n"
+                            << "  var data_indices : data_indices_t;\n";
   for (int i = 0, j = 0; i < data.Rank(); i++) {
     if (i == SafeInt<int>(axis_)) {
-      calc_data_indices << "  " << data.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
+      shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
       j += indices.Rank();
     } else {
-      calc_data_indices << "  " << data.IndicesSet("data_indices", i, output.IndicesGet("output_indices", j)) << ";\n";
+      shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", i, output.IndicesGet("output_indices", j)) << ";\n";
       j++;
     }
   }
 
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size"),
-                             "  let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
-                             calc_data_indices.str(), "  ",
-                             output.SetByOffset("global_idx", data.GetByIndices("data_indices")));
+  shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", data.GetByIndices("data_indices"));
 
   return Status::OK();
 }

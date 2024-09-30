@@ -3,14 +3,21 @@
 
 #include "core/providers/webgpu/program_cache_key.h"
 
-#include "core/providers/webgpu/shader_macros.h"
+#include "core/providers/webgpu/string_macros.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
+// macro "D" - append to the ostream only in debug build
+#ifndef NDEBUG  // if debug build
+#define D(str) << str
+#else
+#define D(str)
+#endif
+
 namespace {
 // append the info of an input or output to the cachekey
-void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
+void AppendTensorInfo(std::ostream& ss, const Tensor& tensor, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
                       bool& first) {
   if (first) {
     first = false;
@@ -36,8 +43,7 @@ void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramVaria
 }  // namespace
 
 std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_dispatch) {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
+  SS(ss, kStringInitialSizeCacheKey);
 
   // final key format:
   // <KEY>=<PROGRAM_NAME>[<CUSTOM_CACHE_HINT>]:<WORKGROUP_SIZE>:<DISPATCH_FLAG>:<UNIFORMS>:<INPUTS_INFO>
@@ -100,7 +106,7 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
     AppendTensorInfo(ss, *output.tensor, output.var_type, output.dependency, first);
   }
 
-  return ss.str();
+  return SS_GET(ss);
 }
 
 }  // namespace webgpu

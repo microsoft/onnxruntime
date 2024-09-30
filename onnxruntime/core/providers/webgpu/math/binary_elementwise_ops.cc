@@ -12,15 +12,27 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  std::string common;
-  std::string get_a_data = is_lhs_scalar_ ? "let a = input_a_value_t(" + a.GetByOffset("0") + ".x" + ");\n"
-                                          : "let a = " + a.GetByOffset("global_idx") + ";\n";
-  std::string get_b_data = is_rhs_scalar_ ? "let b = input_b_value_t(" + b.GetByOffset("0") + ".x" + ");\n"
-                                          : "let b = " + b.GetByOffset("global_idx") + ";\n";
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
+
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
-  if (!is_lhs_scalar_ && !is_rhs_scalar_ && is_broadcast_) {
+  if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
+    // get A data
+    if (is_lhs_scalar_) {
+      shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+    } else {
+      shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
+    }
+
+    // get B data
+    if (is_rhs_scalar_) {
+      shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
+    } else {
+      shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
+    }
+  } else {
     const auto& c_indices = shader.AddIndices("bcast_indices");
     // check whether can use vectorize mode.
     // If either last dimension of A or B is divisible by 4, or the shared dimension is divisible by 4, vectorize mode
@@ -30,67 +42,54 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     if (vectorize_) {
       const auto& a_indices = shader.AddIndices("a_indices");
       const auto& b_indices = shader.AddIndices("b_indices");
-      common = "let outputIndices = " + c_indices.OffsetToIndices("global_idx * 4") +
-               ";\n"
-               "let offset_a = " +
-               a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "let offset_b = " +
-               b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) + ";\n";
-      get_a_data = a.NumComponents() == 4 ? "let a = " + a.GetByOffset("offset_a / 4") + ";\n"
-                                          : "let a = input_b_value_t(" + a.GetByOffset("offset_a") + ");\n";
-      get_b_data = b.NumComponents() == 4 ? "let b = " + b.GetByOffset("offset_b / 4") + ";\n"
-                                          : "let b = input_a_value_t(" + b.GetByOffset("offset_b") + ");\n";
+
+      shader.MainFunctionBody() << "let outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
+      // get A data
+      if (a.NumComponents() == 4) {
+        shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << ";\n";
+      } else {
+        shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("offset_a") << ");\n";
+      }
+
+      // get B data
+      if (b.NumComponents() == 4) {
+        shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << ";\n";
+      } else {
+        shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("offset_b") << ");\n";
+      }
     } else {
       // In broadcast mode, each element of the vec4 value of A and B will be loaded separately to calculate the output value.
-      common = "var outputIndices = " + c_indices.OffsetToIndices("global_idx * 4") +
-               ";\n"
-               "let offset_a0 = " +
-               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "let offset_b0 = " +
-               b.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "outputIndices = " +
-               c_indices.OffsetToIndices("global_idx * 4 + 1") +
-               ";\n"
-               "let offset_a1 = " +
-               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "let offset_b1 = " +
-               b.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "outputIndices = " +
-               c_indices.OffsetToIndices("global_idx * 4 + 2") +
-               ";\n"
-               "let offset_a2 = " +
-               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "let offset_b2 = " +
-               b.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "outputIndices = " +
-               c_indices.OffsetToIndices("global_idx * 4 + 3") +
-               ";\n"
-               "let offset_a3 = " +
-               a.BroadcastedIndicesToOffset("outputIndices", c_indices) +
-               ";\n"
-               "let offset_b3 = " +
-               b.BroadcastedIndicesToOffset("outputIndices", c_indices) + ";\n";
-      get_a_data = "let a = vec4<input_a_value_t>(" + a.GetByOffset("offset_a0") + ", " +
-                   a.GetByOffset("offset_a1") + ", " +
-                   a.GetByOffset("offset_a2") + ", " +
-                   a.GetByOffset("offset_a3") + ");\n";
-      get_b_data = "let b = vec4<input_b_value_t>(" + b.GetByOffset("offset_b0") + ", " +
-                   b.GetByOffset("offset_b1") + ", " +
-                   b.GetByOffset("offset_b2") + ", " +
-                   b.GetByOffset("offset_b3") + ");\n";
+      shader.MainFunctionBody() << "var outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "let offset_a0 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b0 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 1") << ";\n"
+                                << "let offset_a1 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b1 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 2") << ";\n"
+                                << "let offset_a2 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b2 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 3") << ";\n"
+                                << "let offset_a3 = " << a.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b3 = " << b.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
+
+      // get A data
+      shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
+                                << a.GetByOffset("offset_a0") << ", "
+                                << a.GetByOffset("offset_a1") << ", "
+                                << a.GetByOffset("offset_a2") << ", "
+                                << a.GetByOffset("offset_a3") << ");\n";
+      // get B data
+      shader.MainFunctionBody() << "let b = vec4<input_b_value_t>("
+                                << b.GetByOffset("offset_b0") << ", "
+                                << b.GetByOffset("offset_b1") << ", "
+                                << b.GetByOffset("offset_b2") << ", "
+                                << b.GetByOffset("offset_b3") << ");\n";
     }
   }
 
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             common, get_a_data, get_b_data,
-                             c.SetByOffset("global_idx", expression_));
+  shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
   return Status::OK();
 }
 
