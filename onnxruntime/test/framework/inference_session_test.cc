@@ -734,10 +734,13 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
                                          lines[i].find("hipLaunch") != string::npos;
 #endif
+#ifdef USE_WEBGPU
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos;
+#endif
     }
   }
 
-#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || USE_WEBGPU
   ASSERT_TRUE(has_api_info);
 #else
   ASSERT_TRUE(has_api_info || true);

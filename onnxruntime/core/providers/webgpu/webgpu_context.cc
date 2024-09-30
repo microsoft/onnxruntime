@@ -482,7 +482,7 @@ void WebGpuContext::StartProfiling(TimePoint) {
   }
 }
 
-void WebGpuContext::EndProfiling(TimePoint, profiling::Events& events) {
+void WebGpuContext::EndProfiling(TimePoint tp, profiling::Events& events) {
   if (query_type_ != TimestampQueryType::None) {
     for (size_t p = 0; p < pending_queries_buffers_.size(); p++) {
       wgpu::Buffer query_read_buffer = pending_queries_buffers_[p];
@@ -513,11 +513,13 @@ void WebGpuContext::EndProfiling(TimePoint, profiling::Events& events) {
         if (p == 0 && i == 0) {
           query_time_base_ = start_time;
         }
+        long long time_offset = TimeDiffMicroSeconds(tp);
         start_time -= query_time_base_;
         end_time -= query_time_base_;
         const std::unordered_map<std::string, std::string>& event_args = {{"shapes", shapes.str()}};
 
-        profiling::EventRecord event(profiling::API_EVENT, -1, -1, program_name, start_time, end_time - start_time, event_args);
+        // Add time_offset to start_time to avoid gpu time always starting from zero to align with cpu timeline.
+        profiling::EventRecord event(profiling::API_EVENT, -1, -1, program_name, start_time + time_offset, end_time - start_time, event_args);
         events.emplace_back(std::move(event));
       }
 
