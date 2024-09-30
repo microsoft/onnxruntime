@@ -15,18 +15,38 @@ namespace onnxruntime {
 
 namespace {
 
-template <typename T>
-std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded(const T* p_input, int num_elems);
+double* OnlyCreateBufferIfMLFloat16(double* p_output, int num_elems)
+{
+  return p_output;
+}
+
+float* OnlyCreateBufferIfMLFloat16(float* p_output, int num_elems)
+{
+  return p_output;
+}
+
+float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems)
+{
+  if (!p_output) {
+    return nullptr;
+  }
+
+  return new float[num_elems];
+}
+
 
 template <typename T>
-std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded(
-  const std::enable_if_t<std::is_same_v<T,float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(const T* p_input, int num_elems);
+
+template <typename T>
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
+  const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
 {
   return nullptr;
 }
 
 template<>
-std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
 {
   if (!p_input) {
     return nullptr;
@@ -38,6 +58,17 @@ std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded<MLFloat16>(c
 
   return vec;
 }
+
+
+void ConvertFloatBufferToMLFloat16(const float* output_buffer, MLFloat16* p_output, int num_elems)
+{
+  if (!output_buffer || !p_output) {
+    return;
+  }
+
+  MlasConvertFloatToHalfBuffer(output_buffer, p_output, num_elems);
+}
+
 
 ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(float val) {
   return val;
@@ -172,13 +203,16 @@ Status LayerNormImpl::ComputeWithoutContext(
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
 
-        std::shared_ptr<std::vector<float>> float_input = ConvertMLFloat16ToFloatIfNeeded<T>(p_input, norm_size);
+        std::shared_ptr<std::vector<float>> float_input = ConvertMLFloat16ToFloatBufferIfNeeded<T>(p_input, norm_size);
         const DoubleOrFloat* converted_input =
           float_input == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(p_input)
           : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
 
-        std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(norm_size);
+        // If T is float or double, then output_buffer will be the same as p_output, so we don't allocate new memory.
+        // If T is MLFloat16, then we allocate norm_size floats in output_buffer.
+        DoubleOrFloat* output_buffer = static_cast<DoubleOrFloat*>(OnlyCreateBufferIfMLFloat16(p_output, norm_size));
+
         for (int64_t h = 0; h < norm_size; h++) {
           output_buffer[h] = converted_input[h];
           mean += converted_input[h];
@@ -192,12 +226,12 @@ Status LayerNormImpl::ComputeWithoutContext(
           mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
         }
 
-        std::shared_ptr<std::vector<float>> float_scale = ConvertMLFloat16ToFloatIfNeeded<T>(scale_data, norm_size);
+        std::shared_ptr<std::vector<float>> float_scale = ConvertMLFloat16ToFloatBufferIfNeeded<T>(scale_data, norm_size);
         const DoubleOrFloat* converted_scale =
           float_scale == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(scale_data)
           : reinterpret_cast<const DoubleOrFloat*>(&(*float_scale)[0]);
-        std::shared_ptr<std::vector<float>> float_bias = ConvertMLFloat16ToFloatIfNeeded<T>(bias_data, norm_size);
+        std::shared_ptr<std::vector<float>> float_bias = ConvertMLFloat16ToFloatBufferIfNeeded<T>(bias_data, norm_size);
         const DoubleOrFloat* converted_bias =
           float_bias == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
@@ -205,13 +239,18 @@ Status LayerNormImpl::ComputeWithoutContext(
 
         for (int64_t h = 0; h < norm_size; h++) {
           if (simplified) {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * converted_scale[h]);
+            output_buffer[h] = output_buffer[h] / mean_square * converted_scale[h];
           } else if (nullptr == bias_data) {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * converted_scale[h]);
+            output_buffer[h] = (output_buffer[h] - mean) / mean_square * converted_scale[h];
           } else {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>(
-              (output_buffer[h] - mean) / mean_square * converted_scale[h] + converted_bias[h]);
+            output_buffer[h] = (output_buffer[h] - mean) / mean_square * converted_scale[h] + converted_bias[h];
           }
+        }
+
+        if (std::is_same_v<decltype(p_output), MLFloat16>) {
+          ConvertFloatBufferToMLFloat16(
+            reinterpret_cast<float*>(output_buffer), reinterpret_cast<MLFloat16*>(p_output), norm_size);
+          delete[] output_buffer;
         }
 
         if (mean_data != nullptr) {

@@ -39,17 +39,17 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 
 template <typename T>
-std::shared_ptr<std::vector<float>> ConvertHalfToFloatIfNeeded(const T* p_input, int num_elems);
+std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(const T* p_input, int num_elems);
 
 template <typename T>
-std::shared_ptr<std::vector<float>> ConvertHalfToFloatIfNeeded(
+std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(
   const std::enable_if_t<std::is_same_v<T,float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
 {
   return nullptr;
 }
 
 template<>
-std::shared_ptr<std::vector<float>> ConvertHalfToFloatIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
+std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
 {
   if (!p_input) {
     return nullptr;
@@ -148,17 +148,17 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
 
-        std::shared_ptr<std::vector<float>> float_input = ConvertHalfToFloatIfNeeded<T>(p_input, hidden_size);
+        std::shared_ptr<std::vector<float>> float_input = ConvertHalfToFloatBufferIfNeeded<T>(p_input, hidden_size);
         const DoubleOrFloat* converted_input =
           float_input == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(p_input)
           : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
-        std::shared_ptr<std::vector<float>> float_skip = ConvertHalfToFloatIfNeeded<T>(p_skip, hidden_size);
+        std::shared_ptr<std::vector<float>> float_skip = ConvertHalfToFloatBufferIfNeeded<T>(p_skip, hidden_size);
         const DoubleOrFloat* converted_skip =
           float_skip == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(p_skip)
           : reinterpret_cast<const DoubleOrFloat*>(&(*float_skip)[0]);
-        std::shared_ptr<std::vector<float>> float_bias = ConvertHalfToFloatIfNeeded<T>(bias_data, hidden_size);
+        std::shared_ptr<std::vector<float>> float_bias = ConvertHalfToFloatBufferIfNeeded<T>(bias_data, hidden_size);
         const DoubleOrFloat* converted_bias =
           float_bias == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
@@ -189,12 +189,12 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
         }
 
-        std::shared_ptr<std::vector<float>> float_gamma = ConvertHalfToFloatIfNeeded<T>(gamma_data, hidden_size);
+        std::shared_ptr<std::vector<float>> float_gamma = ConvertHalfToFloatBufferIfNeeded<T>(gamma_data, hidden_size);
         const DoubleOrFloat* converted_gamma =
           float_gamma == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(gamma_data)
           : reinterpret_cast<const DoubleOrFloat*>(&(*float_gamma)[0]);
-        std::shared_ptr<std::vector<float>> float_beta = ConvertHalfToFloatIfNeeded<T>(beta_data, hidden_size);
+        std::shared_ptr<std::vector<float>> float_beta = ConvertHalfToFloatBufferIfNeeded<T>(beta_data, hidden_size);
         const DoubleOrFloat* converted_beta =
           float_beta == nullptr
           ? reinterpret_cast<const DoubleOrFloat*>(beta_data)
