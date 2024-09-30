@@ -172,7 +172,7 @@ def run_torch(config: TestConfig):
     with torch.inference_mode(), torch.autocast(device_type=device_type, dtype=config.dtype, enabled=enabled_auto_cast):
         sam2_model = load_sam2_model(config.sam2_dir, config.model_type, device=config.device)
         if config.component == "image_encoder":
-            if is_cuda:
+            if is_cuda and config.torch_compile_mode != "none":
                 sam2_model.image_encoder.forward = torch.compile(
                     sam2_model.image_encoder.forward,
                     mode=config.torch_compile_mode,  # "reduce-overhead" if you want to reduce latency of first run.
@@ -184,8 +184,9 @@ def run_torch(config: TestConfig):
             img = torch.randn(image_shape).to(device=config.device, dtype=config.dtype)
             sam2_encoder = SAM2ImageEncoder(sam2_model)
 
-            if is_cuda:
+            if is_cuda and config.torch_compile_mode != "none":
                 print(f"Running warm up. It will take a while since torch compile mode is {config.torch_compile_mode}.")
+
             for _ in range(config.warm_up):
                 _image_features_0, _image_features_1, _image_embeddings = sam2_encoder(img)
 
@@ -208,6 +209,10 @@ def run_torch(config: TestConfig):
                     with torch.profiler.record_function("encoder"):
                         sam2_encoder(img)
                 print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+                prof.export_chrome_trace("torch_image_encoder.json")
+
+            if config.repeats == 0:
+                return
 
             print(f"Start {config.repeats} runs of performance tests...")
             start = time.time()
@@ -232,6 +237,14 @@ def run_torch(config: TestConfig):
                 multimask_output=config.multi_mask_output,
             )
 
+            if is_cuda and config.torch_compile_mode != "none":
+                sam2_decoder.forward = torch.compile(
+                    sam2_decoder.forward,
+                    mode=config.torch_compile_mode,
+                    fullgraph=True,
+                    dynamic=False,
+                )
+
             # warm up
             for _ in range(config.warm_up):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
@@ -255,6 +268,10 @@ def run_torch(config: TestConfig):
                     with torch.profiler.record_function("decoder"):
                         sam2_decoder(*torch_inputs)
                 print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+                prof.export_chrome_trace("torch_image_decoder.json")
+
+            if config.repeats == 0:
+                return
 
             print(f"Start {config.repeats} runs of performance tests...")
             start = time.time()
@@ -304,6 +321,7 @@ def run_test(
         warm_up=args.warm_up,
         enable_nvtx_profile=args.enable_nvtx_profile,
         enable_torch_profile=args.enable_torch_profile,
+        torch_compile_mode=args.torch_compile_mode,
         verbose=False,
     )
 
@@ -336,6 +354,9 @@ def run_test(
             cudart.cudaProfilerStop()
             session.ort_session.end_profiling()
 
+        if repeats == 0:
+            return
+
         latency_list = []
         for _ in range(repeats):
             latency = measure_latency(session, input_dict)
@@ -350,6 +371,9 @@ def run_test(
             except Exception as e:
                 print(f"Failed to run {config=}. Exception: {e}")
                 return
+
+        if repeats == 0:
+            return
 
     engine = args.engine + ":" + ("cuda" if use_gpu else "cpu")
     row = {
@@ -371,6 +395,7 @@ def run_test(
         "warm_up": config.warm_up,
         "repeats": repeats,
         "enable_nvtx_profile": args.enable_nvtx_profile,
+        "torch_compile_mode": args.torch_compile_mode,
         "engine": engine,
         "average_latency": average_latency,
     }
@@ -409,6 +434,7 @@ def run_perf_test(args):
             "warm_up",
             "repeats",
             "enable_nvtx_profile",
+            "torch_compile_mode",
             "engine",
             "average_latency",
         ]
@@ -564,6 +590,15 @@ def _parse_arguments():
         help="path of onnx model",
     )
 
+    parser.add_argument(
+        "--torch_compile_mode",
+        required=False,
+        type=str,
+        default=None,
+        choices=["reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs", "none"],
+        help="torch compile mode. none will disable torch compile.",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -572,6 +607,10 @@ def _parse_arguments():
 if __name__ == "__main__":
     args = _parse_arguments()
     print(f"arguments:{args}")
+
+    if args.torch_compile_mode is None:
+        # image decoder will fail with compile modes other than "none".
+        args.torch_compile_mode = "max-autotune" if args.component == "image_encoder" else "none"
 
     if args.use_gpu:
         assert torch.cuda.is_available()

@@ -100,7 +100,9 @@ install_sam2()
 
     cd segment-anything-2
 
-    if ! [ pip show SAM-2 2>/dev/null ]; then
+    if pip show SAM-2 > /dev/null 2>&1; then
+        echo "SAM-2 is already installed."
+    else
         pip install -e .
     fi
 
@@ -151,14 +153,19 @@ run_gpu()
     $python convert_to_onnx.py  --sam2_dir $sam2_dir --optimize --use_gpu --dtype fp16 --demo
 
     echo "Benchmarking SAM2 model $model image encoder for PyTorch ..."
-    $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype fp16
     $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype bf16
     $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype fp32
 
+    # Test different torch compile modes on image encoder (none will disable compile and use eager mode).
+    for torch_compile_mode in none max-autotune reduce-overhead max-autotune-no-cudagraphs
+    do
+        $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype fp16 --component image_encoder --torch_compile_mode $torch_compile_mode
+    done
+
     echo "Benchmarking SAM2 model $model image decoder for PyTorch ..."
-    $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype fp16 --component image_decoder
     $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype bf16 --component image_decoder
     $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype fp32 --component image_decoder
+    $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir $sam2_dir --repeats $repeats --use_gpu --dtype fp16 --component image_decoder
 
     echo "Benchmarking SAM2 model $model image encoder for ORT ..."
     $python benchmark_sam2.py --model_type $model --engine ort --sam2_dir $sam2_dir --repeats $repeats --onnx_path ${onnx_dir}/${model}_image_encoder_fp16_gpu.onnx --use_gpu --dtype fp16
@@ -173,7 +180,7 @@ run_gpu()
 build_onnxruntime_gpu_for_profiling()
 {
     pushd $install_dir
-    if ! [ -d $install_dir/onnxruntime ]; then
+    if ! [ -d onnxruntime ]; then
         git clone https://github.com/microsoft/onnxruntime
     fi
     cd onnxruntime
@@ -204,7 +211,7 @@ build_onnxruntime_gpu_for_profiling()
 }
 
 # Run profiling with NVTX.
-run_gpu_profile()
+run_nvtx_profile()
 {
     pip install nvtx cuda-python==12.5.0
 
@@ -235,6 +242,18 @@ run_gpu_profile()
                                           --component $component \
                                           --use_gpu --dtype fp16 --enable_nvtx_profile
         done
+    done
+}
+
+# Run profiling with PyTorch
+run_torch_profile()
+{
+    for component in image_encoder image_decoder
+    do
+        $python benchmark_sam2.py --model_type $model --engine torch \
+                                  --sam2_dir  $sam2_dir --warm_up 1 --repeats 0 \
+                                  --component $component \
+                                  --use_gpu --dtype fp16 --enable_torch_profile
     done
 }
 
@@ -278,8 +297,10 @@ if [ "$cpu_or_gpu" = "gpu" ]; then
         rm -f *.nsys-rep
         rm -f *.sqlite
         build_onnxruntime_gpu_for_profiling
-        run_gpu_profile
+        run_nvtx_profile
     else
         echo "sam2_fp16_profile_ort.nsys-rep already exists, skipping GPU profiling..."
     fi
+
+    run_torch_profile
 fi
