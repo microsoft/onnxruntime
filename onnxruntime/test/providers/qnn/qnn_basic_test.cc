@@ -912,10 +912,28 @@ static GetTestModelFn BuildCastAddTestCase() {
   };
 }
 
-// A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)
-// the value pair(1, 0.00392156886) at index #1 don't match,
-// which is -0.996078 from 1
-TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
+TEST_F(QnnHTPBackendTests, ProfilingTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "detailed";
+  provider_options["profiling_file_path"] = "detailed_profile.csv";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
+
+TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

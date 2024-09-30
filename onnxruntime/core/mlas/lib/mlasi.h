@@ -893,6 +893,10 @@ extern "C" {
     MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelAvx2;
 #endif
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelNeon;
+    MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelNeon;
+#endif
 }
 
 //
@@ -2603,4 +2607,3 @@ MlasPackInt4Elements(uint8_t* Output, UnpackedType ValueLow, UnpackedType ValueH
     static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
     *Output = static_cast<uint8_t>(((ValueHigh & 0xF) << 4) | (ValueLow & 0xF));
 }
-
