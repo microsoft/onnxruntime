@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
@@ -36,29 +37,31 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
-template <typename T, typename Ret>
-ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
 
-template <>
-ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val) {
-  return val.ToFloat();
+template <typename T>
+std::shared_ptr<std::vector<float>> ConvertHalfToFloatIfNeeded(const T* p_input, int num_elems);
+
+template <typename T>
+std::shared_ptr<std::vector<float>> ConvertHalfToFloatIfNeeded(
+  const std::enable_if_t<std::is_same_v<T,float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
+{
+  return nullptr;
 }
 
-template <>
-ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val) {
-  return static_cast<double>(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
+template<>
+std::shared_ptr<std::vector<float>> ConvertHalfToFloatIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
+{
+  if (!p_input) {
+    return nullptr;
+  }
+
+  // Efficiently convert all the MLFloat16 values to floats.
+  std::shared_ptr<std::vector<float>> vec = std::make_shared<std::vector<float>>(num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, &(*vec)[0], num_elems);
+
+  return vec;
 }
 
-template <>
-ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val) {
-  return val;
-}
-
-template <>
-ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val) {
-  return val;
-}
 
 // Function template that only converts the input value to MLFloat16 if T is MLFloat16.
 template <typename T>
@@ -145,15 +148,28 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
 
+        std::shared_ptr<std::vector<float>> float_input = ConvertHalfToFloatIfNeeded<T>(p_input, hidden_size);
+        const DoubleOrFloat* converted_input =
+          float_input == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(p_input)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
+        std::shared_ptr<std::vector<float>> float_skip = ConvertHalfToFloatIfNeeded<T>(p_skip, hidden_size);
+        const DoubleOrFloat* converted_skip =
+          float_skip == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(p_skip)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_skip)[0]);
+        std::shared_ptr<std::vector<float>> float_bias = ConvertHalfToFloatIfNeeded<T>(bias_data, hidden_size);
+        const DoubleOrFloat* converted_bias =
+          float_bias == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_bias)[0]);
+
         std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(hidden_size);
         for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
-          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
-          DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
-
-          DoubleOrFloat value = input_value + skip_value;
+          DoubleOrFloat value = converted_input[h] + converted_skip[h];
 
           if (nullptr != bias_data) {
-            value += ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
+            value += converted_bias[h];
           }
 
           output_buffer[h] = value;
@@ -173,15 +189,26 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
         }
 
+        std::shared_ptr<std::vector<float>> float_gamma = ConvertHalfToFloatIfNeeded<T>(gamma_data, hidden_size);
+        const DoubleOrFloat* converted_gamma =
+          float_gamma == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(gamma_data)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_gamma)[0]);
+        std::shared_ptr<std::vector<float>> float_beta = ConvertHalfToFloatIfNeeded<T>(beta_data, hidden_size);
+        const DoubleOrFloat* converted_beta =
+          float_beta == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(beta_data)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_beta)[0]);
         for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
-          DoubleOrFloat gamma_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(gamma_data[h]);
           if (simplified) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
+              output_buffer[h] / mean_square * converted_gamma[h]);
           } else if (nullptr == beta_data) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
+              (output_buffer[h] - mean) / mean_square * converted_gamma[h]);
           } else {
-            DoubleOrFloat beta_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(beta_data[h]);
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
+            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(
+              (output_buffer[h] - mean) / mean_square * converted_gamma[h] + converted_beta[h]);
           }
         }
       },

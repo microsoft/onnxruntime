@@ -5,6 +5,7 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/force_inline.h"
@@ -14,23 +15,28 @@ namespace onnxruntime {
 
 namespace {
 
-// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
-template <typename T, typename Ret>
-ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
+template <typename T>
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded(const T* p_input, int num_elems);
 
-template <>
-ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val) {
-  return val.ToFloat();
+template <typename T>
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded(
+  const std::enable_if_t<std::is_same_v<T,float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
+{
+  return nullptr;
 }
 
-template <>
-ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val) {
-  return val;
-}
+template<>
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
+{
+  if (!p_input) {
+    return nullptr;
+  }
 
-template <>
-ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val) {
-  return val;
+  // Efficiently convert all the MLFloat16 values to floats.
+  std::shared_ptr<std::vector<float>> vec = std::make_shared<std::vector<float>>(num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, &(*vec)[0], num_elems);
+
+  return vec;
 }
 
 ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(float val) {
@@ -138,8 +144,7 @@ Status LayerNormImpl::ComputeWithoutContext(
   onnxruntime::concurrency::ThreadPool* thread_pool,
   int64_t axis,
   float epsilon,
-  bool simplified
-) const {
+  bool simplified) const {
   int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
   int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
@@ -167,10 +172,17 @@ Status LayerNormImpl::ComputeWithoutContext(
         DoubleOrFloat mean(0.0f);
         DoubleOrFloat mean_square(0.0f);
 
+        std::shared_ptr<std::vector<float>> float_input = ConvertMLFloat16ToFloatIfNeeded<T>(p_input, norm_size);
+        const DoubleOrFloat* converted_input =
+          float_input == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(p_input)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
+
+        std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(norm_size);
         for (int64_t h = 0; h < norm_size; h++) {
-          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
-          mean += input_value;
-          mean_square += input_value * input_value;
+          output_buffer[h] = converted_input[h];
+          mean += converted_input[h];
+          mean_square += converted_input[h] * converted_input[h];
         }
 
         mean = mean / norm_size;
@@ -180,16 +192,25 @@ Status LayerNormImpl::ComputeWithoutContext(
           mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
         }
 
+        std::shared_ptr<std::vector<float>> float_scale = ConvertMLFloat16ToFloatIfNeeded<T>(scale_data, norm_size);
+        const DoubleOrFloat* converted_scale =
+          float_scale == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(scale_data)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_scale)[0]);
+        std::shared_ptr<std::vector<float>> float_bias = ConvertMLFloat16ToFloatIfNeeded<T>(bias_data, norm_size);
+        const DoubleOrFloat* converted_bias =
+          float_bias == nullptr
+          ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
+          : reinterpret_cast<const DoubleOrFloat*>(&(*float_bias)[0]);
+
         for (int64_t h = 0; h < norm_size; h++) {
-          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
-          DoubleOrFloat scale_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(scale_data[h]);
           if (simplified) {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>(input_value / mean_square * scale_value);
+            p_output[h] = ConvertToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * converted_scale[h]);
           } else if (nullptr == bias_data) {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value);
+            p_output[h] = ConvertToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * converted_scale[h]);
           } else {
-            DoubleOrFloat bias_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value + bias_value);
+            p_output[h] = ConvertToMLFloat16IfNeeded<T>(
+              (output_buffer[h] - mean) / mean_square * converted_scale[h] + converted_bias[h]);
           }
         }
 
