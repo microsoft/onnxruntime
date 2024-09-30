@@ -228,7 +228,7 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
   // It's incorrect and CoreML 6+ (iOS16, CoreML spec version >= 7) is required otherwise only float is supported.
   // CoreML 5:https://github.com/apple/coremltools/blob/89d058ffdcb0b39a03031782d8a448b6889ac425/coremltools/converters/mil/mil/ops/defs/tensor_transformation.py#L515
   // CoreML 6:https://github.com/apple/coremltools/blob/c3ea4cf56fef1176417246c1b85363417f3e713d/coremltools/converters/mil/mil/ops/defs/iOS15/tensor_transformation.py#L495
-  if (input_params.create_mlprogram && input_params.coreml_version >= 7 &&
+  if (input_params.create_mlprogram && input_params.coreml_version >= 6 &&
       input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
   } else
 #endif  // nolint
