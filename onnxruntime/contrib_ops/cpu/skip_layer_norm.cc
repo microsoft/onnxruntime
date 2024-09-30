@@ -40,31 +40,27 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 namespace {
 
-double* CreateBufferIfMLFloat16(double* p_output, int num_elems)
+ORT_FORCEINLINE double* CreateBufferIfMLFloat16(double* p_output, int num_elems)
 {
   return p_output;
 }
 
-float* CreateBufferIfMLFloat16(float* p_output, int num_elems)
+ORT_FORCEINLINE float* CreateBufferIfMLFloat16(float* p_output, int num_elems)
 {
   return p_output;
 }
 
-float* CreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems)
+ORT_FORCEINLINE float* CreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems)
 {
-  if (!p_output) {
-    return nullptr;
-  }
-
-  return new float[num_elems];
+  return p_output == nullptr ? nullptr : new float[num_elems];
 }
 
 
 template <typename T>
-std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(const T* p_input, int num_elems);
+ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(const T* p_input, int num_elems);
 
 template <typename T>
-std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(
+ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(
   const std::enable_if_t<std::is_same_v<T,float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
 {
   return nullptr;
