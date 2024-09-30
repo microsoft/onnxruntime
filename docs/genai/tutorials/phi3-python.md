@@ -30,7 +30,7 @@ Available models are:
 * [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml/)
 * [https://huggingface.co/microsoft/Phi-3.5-mini-instruct-onnx](https://huggingface.co/microsoft/Phi-3.5-mini-instruct-onnx) 
 
-This tutorial demonstrates how to download and run the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
+This tutorial demonstrates how to download and run the short context (4k) mini (3B) model variant pf Phi 3 model. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
 
 
 This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
