@@ -223,20 +223,20 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
   }
 
 #ifdef COREML_ENABLE_MLPROGRAM
-// The [Doc](https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.slice_by_index)
-// says slice_by_index is support fp16 by ML Program. It's something wrong and it requires coreml version >= 7 otherwise
-// only float is supported.
-// refs 1:https://github.com/apple/coremltools/blob/89d058ffdcb0b39a03031782d8a448b6889ac425/coremltools/converters/mil/mil/ops/defs/tensor_transformation.py#L515
-// refs 2:https://github.com/apple/coremltools/blob/c3ea4cf56fef1176417246c1b85363417f3e713d/coremltools/converters/mil/mil/ops/defs/iOS15/tensor_transformation.py#L495
+  // The [Doc](https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.slice_by_index)
+  // says slice_by_index is support fp16 by ML Program. It's something wrong and it requires coreml version >= 7 otherwise
+  // only float is supported.
+  // refs 1:https://github.com/apple/coremltools/blob/89d058ffdcb0b39a03031782d8a448b6889ac425/coremltools/converters/mil/mil/ops/defs/tensor_transformation.py#L515
+  // refs 2:https://github.com/apple/coremltools/blob/c3ea4cf56fef1176417246c1b85363417f3e713d/coremltools/converters/mil/mil/ops/defs/iOS15/tensor_transformation.py#L495
   if (input_params.create_mlprogram && input_params.coreml_version >= 7 &&
       input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
   } else
-#endif // nolint
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-          input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
-    return false;
-  }
+#endif  // nolint
+    if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
+      return false;
+    }
 
   return true;
 }
