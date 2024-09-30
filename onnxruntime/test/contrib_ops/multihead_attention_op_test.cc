@@ -305,8 +305,7 @@ static void RunMultiHeadAttentionKernel(
     bool disable_cuda = false,
     bool disable_webgpu = false,
     bool disable_rocm = DISABLE_ROCM,
-    bool disable_dml = false
-    ) {
+    bool disable_dml = false) {
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{

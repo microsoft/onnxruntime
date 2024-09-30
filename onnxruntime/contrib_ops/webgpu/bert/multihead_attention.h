@@ -26,16 +26,15 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
                                           {"head_offset", ProgramUniformVariableDataType::Uint32},
                                           {"bias_offset", ProgramUniformVariableDataType::Uint32});
 
-private:
+ private:
   bool has_bias_;
 };
 
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-      bool has_attention_bias,int tile_size, int components)
-    : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key),
-      has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components) {
+                        bool has_attention_bias, int tile_size, int components)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -50,7 +49,7 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
-private:
+ private:
   bool feed_past_key_;
   bool has_present_key_;
   bool has_attention_bias_;
@@ -61,7 +60,7 @@ private:
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  public:
   InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components)
-    : Program{kernel_name}, work_group_size_(work_group_size), components_(components) {
+      : Program{kernel_name}, work_group_size_(work_group_size), components_(components) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -70,16 +69,15 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
                                           {"d_comp", ProgramUniformVariableDataType::Uint32},
                                           {"elements_per_thread", ProgramUniformVariableDataType::Uint32});
 
-private:
+ private:
   int work_group_size_;
   int components_;
 };
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
-  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value,int tile_size)
-    : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value),
-      tile_size_(tile_size) {
+  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size)
+      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -94,7 +92,7 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
-private:
+ private:
   bool feed_past_value_;
   bool has_present_value_;
   int tile_size_;
