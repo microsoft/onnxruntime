@@ -144,7 +144,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       }
     }
 
-    // Only int32 and float are supported by CoreML slice_by_index.
+    // Int32, float and float16 are supported by CoreML slice_by_index.
     // We convert any int64 model input to int32 when running the CoreML model for the partition.
     // Any other integer data created at runtime is the output from CoreML operations, and should int32 not int64.
     // Based on that, we assume that the actual input when running will be int32, so we override the output data
@@ -214,15 +214,21 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
+bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
+                                            [[maybe_unused]] const OpBuilderInputParams& input_params,
                                             const logging::Logger& logger) const {
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type, logger)) {
     return false;
   }
 
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-      input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+#ifdef COREML_ENABLE_MLPROGRAM
+  if (input_params.create_mlprogram && input_params.coreml_version >= 7 &&
+      input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+  } else
+#endif
+      if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+          input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
     return false;
   }
