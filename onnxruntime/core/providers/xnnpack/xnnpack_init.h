@@ -53,7 +53,7 @@ namespace xnnpack {
 // the source files require a hardware specific compilation flag.
 // When building an universial binary for APPLE, this flag would
 // cause trouble for x64 target.
-// reference from MLAS
+// referenced from MLAS
 #define XNNPACK_FP16_SUPPORTED
 #endif  //
 #endif  // ARM64
