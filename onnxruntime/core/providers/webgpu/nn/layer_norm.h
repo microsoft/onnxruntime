@@ -9,20 +9,22 @@
 namespace onnxruntime {
 namespace webgpu {
 
-using namespace onnxruntime::webgpu;
-using onnxruntime::webgpu::ComputeContext;
-
 class LayerNormProgram final : public Program<LayerNormProgram> {
  public:
-  LayerNormProgram(int64_t axis, float epsilon, int64_t stash_type, bool has_bias, size_t x_size, bool isFP16, bool simplified) : Program{"LayerNorm"} {
-    axis_ = axis;
-    epsilon_ = epsilon;
-    stash_type_ = stash_type;
-    has_bias_ = has_bias;
-    x_size_ = x_size;
-    isFP16_ = isFP16;
-    simplified_ = simplified;
-  }
+  LayerNormProgram(int64_t axis,
+                   float epsilon,
+                   int64_t stash_type,
+                   bool has_bias,
+                   size_t x_size,
+                   bool is_fp16,
+                   bool simplified) : Program{"LayerNorm"},
+                                      axis_{axis},
+                                      epsilon_{epsilon},
+                                      stash_type_{stash_type},
+                                      has_bias_{has_bias},
+                                      x_size_{x_size},
+                                      is_fp16_{is_fp16},
+                                      simplified_{simplified} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -37,8 +39,8 @@ class LayerNormProgram final : public Program<LayerNormProgram> {
   float epsilon_;
   int64_t stash_type_;
   bool has_bias_;
-  int x_size_;
-  bool isFP16_;
+  size_t x_size_;
+  bool is_fp16_;
   bool simplified_;
 };
 
@@ -47,7 +49,7 @@ class LayerNorm final : public WebGpuKernel {
  public:
   LayerNorm(const OpKernelInfo& info) : WebGpuKernel(info) {
     info.GetAttrOrDefault<int64_t>("axis", &axis_, -1);
-    info.GetAttrOrDefault<float>("epsilon", &epsilon_, 1e-05);
+    info.GetAttrOrDefault<float>("epsilon", &epsilon_, 1e-05f);
     info.GetAttrOrDefault<int64_t>("stash_type", &stash_type_, 1);
   }
 

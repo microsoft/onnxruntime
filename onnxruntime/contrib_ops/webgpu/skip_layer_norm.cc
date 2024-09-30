@@ -72,7 +72,7 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string simpl2 = (simplified_) ? "" : "- element_t(mean) ";
   std::string fillvec = fillVar("f32", components, "0");
   std::string beta = (hasBeta_) ? " + beta[offset1d + i] " : "";
-  std::string element_type = (isFP16_) ? "f16;\n" : "f32;\n";
+  std::string element_type = (is_fp16_) ? "f16;\n" : "f32;\n";
 
   shader.AdditionalImplementation()
       << "alias element_t = " << element_type
@@ -139,7 +139,7 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   }
 
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-  const int hidden_size = x_shape[x_shape.NumDimensions() - 1];
+  const uint32_t hidden_size = SafeInt<uint32_t>(x_shape[x_shape.NumDimensions() - 1]);
   const int components = getMaxComponents(hidden_size);
 
   SkipLayerNormProgram program{beta != nullptr, bias != nullptr, epsilon_, hidden_size, is_fp16, simplified};
@@ -149,7 +149,7 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
       .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::None, components}})
-      .SetDispatchGroupSize(ceil(data_size / hidden_size))
+      .SetDispatchGroupSize(SafeInt<uint32_t>(ceil(1.0 * data_size / hidden_size)))
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })

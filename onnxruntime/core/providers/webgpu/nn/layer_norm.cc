@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-static uint32_t getMaxComponents(int size) {
+static int GetMaxComponents(int64_t size) {
   if (size % 4 == 0) {
     return 4;
   } else if (size % 2 == 0) {
@@ -18,28 +18,29 @@ static uint32_t getMaxComponents(int size) {
   return 1;
 }
 
-static int normalizeAxis(int axis, int tensorRank) {
-  if (axis < -tensorRank && axis >= tensorRank) {
+static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
+  int64_t rank = static_cast<int64_t>(tensor_rank);
+  if (axis < -rank && axis >= rank) {
     ORT_THROW("invalid axis: ", axis);
   }
-  return axis < 0 ? axis + tensorRank : axis;
+  return SafeInt<size_t>(axis < 0 ? axis + rank : axis);
 }
 
-static std::string fillVar(std::string dataType, int components, std::string value) {
+static std::string FillVar(std::string dataType, int components, std::string value) {
   if (components == 1) {
     return dataType + "(" + value + ")";
   }
   return "vec" + std::to_string(components) + "<" + dataType + ">(" + value + ")";
 }
 
-static std::string castToF32(int components, std::string value) {
+static std::string CastToF32(int components, std::string value) {
   if (components == 1) {
     return "f32(" + value + ")";
   }
   return "vec" + std::to_string(components) + "<f32>(" + value + ")";
 };
 
-static std::string sumVector(std::string x, int components) {
+static std::string SumVector(std::string x, int components) {
   switch (components) {
     case 1:
       return x;
@@ -64,8 +65,8 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string bias = (has_bias_) ? " + bias[j] " : "";
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
   std::string simpl2 = (simplified_) ? "" : "- mean ";
-  std::string fillvec = fillVar("f32", components, "0");
-  std::string element_type = (isFP16_) ? "f16;\n" : "f32;\n";
+  std::string fillvec = FillVar("f32", components, "0");
+  std::string element_type = (is_fp16_) ? "f16;\n" : "f32;\n";
 
   shader.AdditionalImplementation() << "alias element_t = " << element_type;
 
@@ -74,15 +75,15 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
      << "var mean_vector = " << fillvec << ";\n"
      << "var mean_square_vector = " << fillvec << ";\n"
      << "for (var h: u32 = 0u; h < uniforms.norm_size_vectorized; h++) {\n"
-     << "   let value = " << castToF32(components, "x[h + offset]") << ";\n"
+     << "   let value = " << CastToF32(components, "x[h + offset]") << ";\n"
      << "   mean_vector += value;\n"
      << "   mean_square_vector += value * value;\n"
      << "}\n"
-     << "let mean = " << sumVector("mean_vector", components) << " / f32(uniforms.norm_size);\n"
-     << "let inv_std_dev = inverseSqrt(" << sumVector("mean_square_vector", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
+     << "let mean = " << SumVector("mean_vector", components) << " / f32(uniforms.norm_size);\n"
+     << "let inv_std_dev = inverseSqrt(" << SumVector("mean_square_vector", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
      << "for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {\n"
-     << "   let f32input = " << castToF32(components, "x[j + offset]") << ";\n"
-     << "   let f32scale = " << castToF32(components, "scale[j]") << ";\n"
+     << "   let f32input = " << CastToF32(components, "x[j + offset]") << ";\n"
+     << "   let f32scale = " << CastToF32(components, "scale[j]") << ";\n"
      << "   output[j + offset] =  x_value_t((f32input " << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
      << "}\n";
 
@@ -107,11 +108,11 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
-  const int axis = normalizeAxis(axis_, x_shape.NumDimensions());
-  const int norm_count = x_shape.SizeToDimension(axis);
-  const int norm_size = x_shape.SizeFromDimension(axis);
-  const int components = getMaxComponents(norm_size);
-  const int norm_size_vectorized = (norm_size + components - 1) / components;
+  const size_t axis = NormalizeAxis(axis_, x_shape.NumDimensions());
+  const uint32_t norm_count = SafeInt<uint32_t>(x_shape.SizeToDimension(axis));
+  const int64_t norm_size = x_shape.SizeFromDimension(axis);
+  const int components = GetMaxComponents(norm_size);
+  const uint32_t norm_size_vectorized = SafeInt<uint32_t>((norm_size + components - 1) / components);
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias) ? bias->Shape().Size() : 0;
