@@ -316,8 +316,8 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
     test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
     test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
   }
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test
-  // is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
