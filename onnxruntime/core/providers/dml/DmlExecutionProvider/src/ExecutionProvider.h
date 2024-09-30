@@ -221,36 +221,7 @@ namespace Dml
         static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
     };
 
-    class DataTransfer : public onnxruntime::IDataTransfer
-    {
-    public:
-        DataTransfer() = delete;
-
-        DataTransfer(ExecutionProvider* executionProvider) : m_executionProvider(executionProvider)
-        {
-        }
-
-        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
-        {
-            return m_executionProvider->GetImpl()->CopyTensor(src, dst);
-        }
-
-        onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
-        {
-            return m_executionProvider->GetImpl()->CopyTensors(src_dst_pairs);
-        }
-
-        bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
-        {
-              return (srcDevice.Type() == OrtDevice::GPU) ||
-                     (dstDevice.Type() == OrtDevice::GPU);
-        }
-
-    private:
-        ComPtr<ExecutionProvider> m_executionProvider;
-    };
-
-    class ExecutionProvider : public onnxruntime::IExecutionProvider
+    class ExecutionProvider : public onnxruntime::IExecutionProvider, public std::enable_shared_from_this<ExecutionProvider>
     {
     public:
         virtual ~ExecutionProvider();
@@ -265,10 +236,7 @@ namespace Dml
             bool disableMemoryArena
         );
 
-        std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
-        {
-            return std::make_unique<DataTransfer>(this);
-        }
+        std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override;
 
         const void* GetExecutionHandle() const noexcept final override
         {
@@ -349,6 +317,35 @@ namespace Dml
 
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
+    };
+
+    class DataTransfer : public onnxruntime::IDataTransfer
+    {
+    public:
+        DataTransfer() = delete;
+
+        DataTransfer(std::shared_ptr<const ExecutionProvider>&& executionProvider) : m_executionProvider(std::move(executionProvider))
+        {
+        }
+
+        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
+        {
+            return m_executionProvider->GetImpl()->CopyTensor(src, dst);
+        }
+
+        onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
+        {
+            return m_executionProvider->GetImpl()->CopyTensors(src_dst_pairs);
+        }
+
+        bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
+        {
+              return (srcDevice.Type() == OrtDevice::GPU) ||
+                     (dstDevice.Type() == OrtDevice::GPU);
+        }
+
+    private:
+        std::shared_ptr<const ExecutionProvider> m_executionProvider;
     };
 
 } // namespace Dml

@@ -101,6 +101,11 @@ namespace Dml
 #endif
     }
 
+    std::unique_ptr<onnxruntime::IDataTransfer> ExecutionProvider::GetDataTransfer() const
+    {
+        return std::make_unique<DataTransfer>(shared_from_this());
+    }
+
     void ExecutionProviderImpl::Close()
     {
         // Release the cached command list references before closing the context
