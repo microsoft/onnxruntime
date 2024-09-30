@@ -12,7 +12,7 @@ import csv
 import statistics
 import time
 from datetime import datetime
-from typing import List, Mapping
+from typing import List, Mapping, Optional
 
 import torch
 from image_decoder import SAM2ImageDecoder
@@ -45,6 +45,8 @@ class TestConfig:
         dtype=torch.float32,
         prefer_nhwc: bool = False,
         warm_up: int = 5,
+        enable_nvtx_profile: bool = False,
+        enable_torch_profile: bool = False,
         repeats: int = 1000,
         verbose: bool = False,
     ):
@@ -70,7 +72,9 @@ class TestConfig:
         self.enable_cuda_graph = enable_cuda_graph
         self.dtype = dtype
         self.prefer_nhwc = prefer_nhwc
-        self.warm_up = 5
+        self.warm_up = warm_up
+        self.enable_nvtx_profile = enable_nvtx_profile
+        self.enable_torch_profile = enable_torch_profile
         self.repeats = repeats
         self.verbose = verbose
 
@@ -185,6 +189,26 @@ def run_torch(config: TestConfig):
             for _ in range(config.warm_up):
                 _image_features_0, _image_features_1, _image_embeddings = sam2_encoder(img)
 
+            if is_cuda and config.enable_nvtx_profile:
+                import nvtx
+                from cuda import cudart
+
+                cudart.cudaProfilerStart()
+                print("Start nvtx profiling on encoder ...")
+                with nvtx.annotate("one_run"):
+                    sam2_encoder(img, enable_nvtx_profile=True)
+                cudart.cudaProfilerStop()
+
+            if is_cuda and config.enable_torch_profile:
+                with torch.profiler.profile(
+                    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                    record_shapes=True,
+                ) as prof:
+                    print("Start torch profiling on encoder ...")
+                    with torch.profiler.record_function("encoder"):
+                        sam2_encoder(img)
+                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+
             print(f"Start {config.repeats} runs of performance tests...")
             start = time.time()
             for _ in range(config.repeats):
@@ -203,11 +227,34 @@ def run_torch(config: TestConfig):
                 ort_inputs["original_image_size"],
             )
 
-            sam2_decoder = SAM2ImageDecoder(sam2_model, multimask_output=config.multi_mask_output)
+            sam2_decoder = SAM2ImageDecoder(
+                sam2_model,
+                multimask_output=config.multi_mask_output,
+            )
 
             # warm up
-            for _ in range(3):
+            for _ in range(config.warm_up):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
+
+            if is_cuda and config.enable_nvtx_profile:
+                import nvtx
+                from cuda import cudart
+
+                cudart.cudaProfilerStart()
+                print("Start nvtx profiling on decoder...")
+                with nvtx.annotate("one_run"):
+                    sam2_decoder(*torch_inputs, enable_nvtx_profile=True)
+                cudart.cudaProfilerStop()
+
+            if is_cuda and config.enable_torch_profile:
+                with torch.profiler.profile(
+                    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                    record_shapes=True,
+                ) as prof:
+                    print("Start torch profiling on decoder ...")
+                    with torch.profiler.record_function("decoder"):
+                        sam2_decoder(*torch_inputs)
+                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
             print(f"Start {config.repeats} runs of performance tests...")
             start = time.time()
@@ -215,13 +262,14 @@ def run_torch(config: TestConfig):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
                 if is_cuda:
                     torch.cuda.synchronize()
+
         end = time.time()
         return (end - start) / config.repeats
 
 
 def run_test(
-    csv_writer: csv.DictWriter,
     args: argparse.Namespace,
+    csv_writer: Optional[csv.DictWriter] = None,
 ):
     use_gpu: bool = args.use_gpu
     enable_cuda_graph: bool = args.use_cuda_graph
@@ -254,12 +302,18 @@ def run_test(
         prefer_nhwc=args.prefer_nhwc,
         repeats=args.repeats,
         warm_up=args.warm_up,
+        enable_nvtx_profile=args.enable_nvtx_profile,
+        enable_torch_profile=args.enable_torch_profile,
         verbose=False,
     )
 
     if args.engine == "ort":
         sess_options = SessionOptions()
         sess_options.intra_op_num_threads = args.intra_op_num_threads
+        if config.enable_nvtx_profile:
+            sess_options.enable_profiling = True
+            sess_options.log_severity_level = 4
+            sess_options.log_verbosity_level = 0
 
         session = create_session(config, sess_options)
         input_dict = config.random_inputs()
@@ -271,6 +325,16 @@ def run_test(
         except Exception as e:
             print(f"Failed to run {config=}. Exception: {e}")
             return
+
+        if config.enable_nvtx_profile:
+            import nvtx
+            from cuda import cudart
+
+            cudart.cudaProfilerStart()
+            with nvtx.annotate("one_run"):
+                _ = session.infer(input_dict)
+            cudart.cudaProfilerStop()
+            session.ort_session.end_profiling()
 
         latency_list = []
         for _ in range(repeats):
@@ -304,18 +368,21 @@ def run_test(
         "num_points": config.num_points,
         "num_masks": config.num_masks,
         "intra_op_num_threads": args.intra_op_num_threads,
-        "engine": engine,
         "warm_up": config.warm_up,
         "repeats": repeats,
+        "enable_nvtx_profile": args.enable_nvtx_profile,
+        "engine": engine,
         "average_latency": average_latency,
     }
-    csv_writer.writerow(row)
+
+    if csv_writer is not None:
+        csv_writer.writerow(row)
 
     print(f"{vars(config)}")
     print(f"{row}")
 
 
-def run_tests(args):
+def run_perf_test(args):
     features = "gpu" if args.use_gpu else "cpu"
     csv_filename = "benchmark_sam_{}_{}_{}.csv".format(
         features,
@@ -339,15 +406,16 @@ def run_tests(args):
             "num_points",
             "num_masks",
             "intra_op_num_threads",
-            "engine",
             "warm_up",
             "repeats",
+            "enable_nvtx_profile",
+            "engine",
             "average_latency",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
 
-        run_test(csv_writer, args)
+        run_test(args, csv_writer)
 
 
 def _parse_arguments():
@@ -456,6 +524,22 @@ def _parse_arguments():
     )
 
     parser.add_argument(
+        "--enable_nvtx_profile",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Enable nvtx profiling. It will add an extra run for profiling before performance test.",
+    )
+
+    parser.add_argument(
+        "--enable_torch_profile",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Enable PyTorch profiling. It will add an extra run for profiling before performance test.",
+    )
+
+    parser.add_argument(
         "--model_type",
         required=False,
         type=str,
@@ -493,5 +577,13 @@ if __name__ == "__main__":
         assert torch.cuda.is_available()
         if args.engine == "ort":
             assert "CUDAExecutionProvider" in get_available_providers()
+            args.enable_torch_profile = False
+    else:
+        # Only support cuda profiling for now.
+        assert not args.enable_nvtx_profile
+        assert not args.enable_torch_profile
 
-    run_tests(args)
+    if args.enable_nvtx_profile or args.enable_torch_profile:
+        run_test(args)
+    else:
+        run_perf_test(args)
