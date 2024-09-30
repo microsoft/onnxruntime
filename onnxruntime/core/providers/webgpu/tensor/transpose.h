@@ -11,26 +11,28 @@
 namespace onnxruntime {
 namespace webgpu {
 
+class Transpose final : public WebGpuKernel, public TransposeBase {
+ public:
+  Transpose(const OpKernelInfo& info) : WebGpuKernel{info}, TransposeBase{info} {
+  }
+  Status ComputeInternal(ComputeContext& context) const override;
+  constexpr static uint32_t TILE_SIZE = 16;
+};
+
 class TransposeProgram final : public Program<TransposeProgram> {
  public:
-  TransposeProgram(const gsl::span<const size_t>& permutations)
-      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()) {
+  TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared)
+      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()), use_shared_(use_shared) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_CONSTANTS({"tile_size", Transpose::TILE_SIZE});
 
  private:
-  InlinedVector<size_t> perm_;
-};
-
-class Transpose final : public WebGpuKernel, public TransposeBase {
- public:
-  Transpose(const OpKernelInfo& info) : WebGpuKernel{info}, TransposeBase{info} {
-  }
-
-  Status ComputeInternal(ComputeContext& context) const override;
+  InlinedVector<int64_t> perm_;
+  const bool use_shared_;
 };
 
 }  // namespace webgpu

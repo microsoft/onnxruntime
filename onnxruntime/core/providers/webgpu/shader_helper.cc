@@ -114,27 +114,27 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
   switch (element_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Float32 ||
-                            var_type == ProgramVariableDataType::Vec2Float32 ||
-                            var_type == ProgramVariableDataType::Vec4Float32,
+                            var_type == ProgramVariableDataType::Float32x2 ||
+                            var_type == ProgramVariableDataType::Float32x4,
                         "Unexpected program variable type ", int(var_type), " for float32 tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Float16 ||
-                            var_type == ProgramVariableDataType::Vec2Float16 ||
-                            var_type == ProgramVariableDataType::Vec4Float16,
+                            var_type == ProgramVariableDataType::Float16x2 ||
+                            var_type == ProgramVariableDataType::Float16x4,
                         "Unexpected program variable type ", int(var_type), " for float16 tensor");
 
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
       ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 ||
-                            var_type == ProgramVariableDataType::Vec2Int32 ||
-                            var_type == ProgramVariableDataType::Vec4Int32,
+                            var_type == ProgramVariableDataType::Int32x2 ||
+                            var_type == ProgramVariableDataType::Int32x4,
                         "Unexpected program variable type ", int(var_type), " for int32 tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
       ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint32 ||
-                            var_type == ProgramVariableDataType::Vec2Uint32 ||
-                            var_type == ProgramVariableDataType::Vec4Uint32,
+                            var_type == ProgramVariableDataType::Uint32x2 ||
+                            var_type == ProgramVariableDataType::Uint32x4,
                         "Unexpected program variable type ", int(var_type), " for uint32 tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
@@ -146,8 +146,14 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
                         "Unexpected program variable type ", int(var_type), " for uint64 tensor");
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Vec4Bool,
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Boolx4,
                         "Unexpected program variable type ", int(var_type), " for bool tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint8x4 ||
+                            var_type == ProgramVariableDataType::Uint8x8 ||
+                            var_type == ProgramVariableDataType::Uint8x16,
+                        "Unexpected program variable type ", int(var_type), " for uint8 tensor");
       break;
     default:
       ORT_RETURN_IF(true, "Unsupported data type: ", element_type);

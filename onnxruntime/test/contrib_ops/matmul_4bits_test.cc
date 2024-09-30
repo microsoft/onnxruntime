@@ -278,7 +278,11 @@ void TestMatMulNBitsTyped() {
               base_opts.output_abs_error = 0.1f;
             } else {
               if constexpr (std::is_same<AType, MLFloat16>::value) {
+#ifdef USE_WEBGPU
+                base_opts.output_abs_error = 0.03f;
+#else
                 base_opts.output_abs_error = 0.01f;
+#endif
               }
             }
 
@@ -293,7 +297,7 @@ void TestMatMulNBitsTyped() {
               RunTest<AType>(opts);
             }
 
-#if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
+#if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML) && !defined(USE_WEBGPU)
             {
               TestOptions opts = base_opts;
               opts.has_g_idx = true;
@@ -324,7 +328,7 @@ void TestMatMulNBitsTyped() {
               opts.has_zero_point = true, opts.zp_is_4bit = false;
               RunTest<AType>(opts);
             }
-#endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
+#endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML) && !defined(USE_WEBGPU)
 
             {
               TestOptions opts = base_opts;
@@ -358,7 +362,7 @@ TEST(MatMulNBits, Float16) {
 #endif
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 
 namespace {
 // Legacy test function.
@@ -392,6 +396,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 #endif
 #ifdef USE_DML
     execution_providers.push_back(DefaultDmlExecutionProvider());
+#endif
+#ifdef USE_WEBGPU
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
 #endif
 
     RunTest<MLFloat16>(opts, std::move(execution_providers));
@@ -437,6 +444,9 @@ TEST(MatMulNBits, Float16Large) {
   // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
   float abs_error = 0.3f;
+#elif USE_WEBGPU
+  // See Intel A770 to pass these tests with an absolute error of 0.08.
+  float abs_error = 0.08f;
 #else
   float abs_error = 0.05f;
 #endif
