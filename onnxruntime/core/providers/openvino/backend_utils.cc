@@ -285,6 +285,10 @@ void LoadConfig(const std::string& filename, std::map<std::string, ov::AnyMap>& 
     throw std::runtime_error("Unknown exception for config file \"" + filename + "\".\n");
   }
 
+  if (json_config.empty()) {
+    ORT_THROW("Empty JSON content passed \"" + filename + "\".");
+  }
+
   for (auto item = json_config.cbegin(), end = json_config.cend(); item != end; ++item) {
     const std::string& deviceName = item.key();
     const auto& item_value = item.value();
