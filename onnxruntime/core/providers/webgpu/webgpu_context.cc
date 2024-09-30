@@ -411,6 +411,7 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "lazy_clear_resource_on_first_use",
+      "timestamp_quantization"
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
