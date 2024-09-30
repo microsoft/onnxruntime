@@ -30,22 +30,18 @@ Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
-
-  ss << "var input_indices: input_indices_t;\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+                            << "var input_indices: input_indices_t;\n";
   for (auto i = 0; i < input.Rank(); i++) {
-    std::string input_dim_i = "input_dim_" + std::to_string(i);
-    std::string input_dim_value = "input_dim_" + std::to_string(i) + "_value";
-    ss << "let " << input_dim_i << " = " << input.IndicesGet("uniforms.input_shape", i) << ";\n";
-    ss << "let " << input_dim_value << " = " << output.IndicesGet("output_indices", i) << " % " << input_dim_i << ";\n";
-    ss << input.IndicesSet("input_indices", i, input_dim_value) << ";\n";
+    std::string input_dim_i = absl::StrCat("input_dim_", i);
+    std::string input_dim_value = absl::StrCat("input_dim_", i, "_value");
+    shader.MainFunctionBody() << "let " << input_dim_i << " = " << input.IndicesGet("uniforms.input_shape", i) << ";\n"
+                              << "let " << input_dim_value << " = " << output.IndicesGet("output_indices", i) << " % " << input_dim_i << ";\n"
+                              << input.IndicesSet("input_indices", i, input_dim_value) << ";\n";
   }
 
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"),
-                             "let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
-                             ss.str(),
-                             output.SetByOffset("global_idx", input.GetByIndices("input_indices")));
+  shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
 
   return Status::OK();
 }
