@@ -209,7 +209,7 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                                output_min, output_max, flags, &p);
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
-    ORT_THROW("unsupported Conv in maxpool, we have FLOAT|UINT8|FP16, but got ", stype);
+    ORT_THROW("unsupported Conv in maxpool, we have FLOAT|UINT8|FLOAT16, but got ", stype);
   }
   ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_",
               OpTypeToString(maxpool_type_), "failed. Status:", status);
