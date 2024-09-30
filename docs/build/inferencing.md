@@ -318,7 +318,7 @@ There are a few options for building ONNX Runtime for Arm®-based devices.
 
 First, you may do it on a real Arm-based device, or on a x86_64 device with an emulator(like qemu), or on a x86_64 device with a docker container with an emulator(you can run an Arm-based container on a x86_64 PC). Then the build instructions are essentially the same as the instructions for Linux x86_64. However, it wouldn't work if your the CPU you are targeting is not 64-bit since the build process needs more than 2GB memory.  
 
-* [Cross compiling for Arm-based devices with simulation (Linux/Windows)](#cross-compiling-for-arm-with-simulation-linuxwindows) - **Recommended**;  Easy, slow, ARM64 only(no support for ARM32)
+* [Cross compiling for Arm-based devices with simulation (Linux/Windows)](#cross-compiling-for-arm-based-devices-with-simulation-linuxwindows) - **Recommended**;  Easy, slow, ARM64 only(no support for ARM32)
 * [Cross compiling on Linux](#cross-compiling-on-linux) - Difficult, fast
 * [Cross compiling on Windows](#cross-compiling-on-windows)
 
