@@ -99,6 +99,7 @@ ORT_FORCEINLINE constexpr double ConvertToMLFloat16IfNeeded(double val) {
 
 } // namespace
 
+
 LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified, bool contrib_op)
     : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op} {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
