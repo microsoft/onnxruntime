@@ -29,6 +29,51 @@ Abstract:
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen32.h"
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h"
 
+void
+MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, size_t size)
+{
+    size_t i = 0;
+
+    // Process 16 elements at a time using AVX2
+    for (; i + 15 < size; i += 16) {
+        // Load 16 FP16 values into an AVX2 register
+        __m256i fp16_values = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_fp16 + i));
+
+        // Convert FP16 values to FP32
+        __m256 fp32_values1 = _mm256_cvtph_ps(_mm256_castsi256_si128(fp16_values));
+        __m256 fp32_values2 = _mm256_cvtph_ps(_mm256_extracti128_si256(fp16_values, 1));
+
+        // Store the converted FP32 values into the output vector
+        _mm256_storeu_ps(dst_fp32 + i, fp32_values1);
+        _mm256_storeu_ps(dst_fp32 + i + 8, fp32_values2);
+    }
+
+    // Process any remaining elements
+    const MLAS_FP16* fp16 = reinterpret_cast<const MLAS_FP16*>(src_fp16);
+    for (; i < size; ++i) {
+        dst_fp32[i] = fp16[i].ToFloat();
+    }
+}
+
+void
+MlasCastF32ToF16KernelAvx2(const float* src_fp32, unsigned short* dst_fp16, size_t size)
+{
+    size_t i = 0;
+
+    // Process 8 elements at a time using AVX2
+    for (; i + 8 <= size; i += 8) {
+        __m256 fp32_chunk = _mm256_loadu_ps(&src_fp32[i]);
+        __m128i fp16_chunk = _mm256_cvtps_ph(fp32_chunk, _MM_FROUND_TO_NEAREST_INT);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(&dst_fp16[i]), fp16_chunk);
+    }
+
+    // Process any remaining elements
+    for (; i < size; ++i) {
+        MLAS_FP16 fp16(src_fp32[i]);
+        dst_fp16[i] = fp16.val;
+    }
+}
+
 MLAS_FORCEINLINE
 __m256
 load_float_n_avx2(const float* data, int n)

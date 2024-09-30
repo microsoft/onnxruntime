@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "contrib_ops/webgpu/bert/fast_gelu.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
@@ -20,26 +21,26 @@ ONNX_OPERATOR_KERNEL_EX(
     FastGelu);
 
 Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderVariable::UseUniform | ShaderVariable::UseValueTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderVariable::UseUniform);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
-  std::string add_bias = "";
+  shader.AdditionalImplementation() << TanhImpl;
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                            << "  var a = " << x.GetByOffset("global_idx") << ";\n";
   if (Inputs().size() > 1) {
-    const auto& bias = shader.AddInput("bias", ShaderVariable::UseUniform | ShaderVariable::UseShapeAndStride);
-    add_bias = bias_components_ == 1 ? "  let bias_offset = global_idx * 4;\n"
-                                       "  x += input_value_t(" +
-                                           bias.GetByOffset("bias_offset % uniforms.bias_shape") + ", " +
-                                           bias.GetByOffset("(bias_offset + 1) % uniforms.bias_shape") + ", " +
-                                           bias.GetByOffset("(bias_offset + 2) % uniforms.bias_shape") + ", " +
-                                           bias.GetByOffset("(bias_offset + 3) % uniforms.bias_shape") + ");\n"
-                                     : "  x += " + bias.GetByOffset("global_idx % uniforms.bias_shape") + ";\n";
+    const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
+    if (bias_components_ == 1) {
+      shader.MainFunctionBody() << "  let bias_offset = global_idx * 4;\n"
+                                   "  a += x_value_t("
+                                << bias.GetByOffset("bias_offset % uniforms.bias_shape") << ", "
+                                << bias.GetByOffset("(bias_offset + 1) % uniforms.bias_shape") << ", "
+                                << bias.GetByOffset("(bias_offset + 2) % uniforms.bias_shape") << ", "
+                                << bias.GetByOffset("(bias_offset + 3) % uniforms.bias_shape") << ");\n";
+    } else {
+      shader.MainFunctionBody() << "  a += " << bias.GetByOffset("global_idx % uniforms.bias_shape") + ";\n";
+    }
   }
-
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             "  var x = ", input.GetByOffset("global_idx"), ";\n",
-                             add_bias,
-                             "  let y = x * (0.5 + 0.5 * tanh(x * (0.035677408136300125 * x * x + 0.7978845608028654)));\n  ",
-                             output.SetByOffset("global_idx", "y"));
+  shader.MainFunctionBody() << y.SetByOffset("global_idx", onnxruntime::webgpu::FastGeluExpr);
 
   return Status::OK();
 }

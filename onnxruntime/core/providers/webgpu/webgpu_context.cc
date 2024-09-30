@@ -4,6 +4,9 @@
 #include <memory>
 #include <cmath>
 
+#include "dawn/dawn_proc.h"
+#include "dawn/native/DawnNative.h"
+
 #include "core/common/common.h"
 
 #include "core/providers/webgpu/compute_context.h"
@@ -21,6 +24,8 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
   std::call_once(init_flag_, [this, &webgpu_ep_info]() {
     // Initialization.Step.1 - Create wgpu::Instance
     if (instance_ == nullptr) {
+      dawnProcSetProcs(&dawn::native::GetProcs());
+
       wgpu::InstanceDescriptor instance_desc{};
       instance_desc.features.timedWaitAnyEnable = true;
       instance_ = wgpu::CreateInstance(&instance_desc);
@@ -33,6 +38,9 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequestAdapterOptions req_adapter_options = {};
       wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       req_adapter_options.nextInChain = &adapter_toggles_desc;
+#ifdef WIN32
+      req_adapter_options.backendType = wgpu::BackendType::D3D12;
+#endif
 
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
       adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
@@ -145,7 +153,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                 "All outputs must be tensors on WebGPU buffers.");
   }
 
-  const ProgramMetadata metadata = program.GetMetadata();
+  const ProgramMetadata& metadata = program.Metadata();
 
   // validate program metadata
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -229,17 +237,16 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   std::vector<ProgramUniformVariableValue> shape_uniforms;
   shape_uniforms.reserve(program_artifact->shape_uniform_ranks.size() * 2);
   if (ValidationMode() >= ValidationMode::Basic) {
-    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size(),
+    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size() + program.Indices().size(),
                       "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
-                      ") does not match current program (input: ", inputs.size(), ", output: ", outputs.size(), ")");
+                      ") does not match current program (input: ", inputs.size(),
+                      ", output: ", outputs.size(),
+                      ", indices: ", program.Indices().size(), ")");
   }
-  for (size_t i = 0; i < program_artifact->shape_uniform_ranks.size(); ++i) {
+
+  auto append_shape_uniforms = [&shape_uniforms, program_artifact](size_t i, const TensorShape& shape) {
     SafeInt<int> expected_rank = program_artifact->shape_uniform_ranks[i];
     if (expected_rank > 0) {
-      const auto& shape = i < inputs.size() ? (inputs[i].use_override_shape ? inputs[i].override_shape
-                                                                            : inputs[i].tensor->Shape())
-                                            : (outputs[i - inputs.size()].use_override_shape ? outputs[i - inputs.size()].override_shape
-                                                                                             : outputs[i - inputs.size()].tensor->Shape());
       ORT_RETURN_IF(expected_rank != shape.NumDimensions(),
                     "Invalid program artifact: variable[", i, "] rank mismatch. Expected: ", (int)expected_rank,
                     ", Actual: ", shape.NumDimensions());
@@ -258,6 +265,19 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
         shape_uniforms.emplace_back(gsl::make_span(stride));
       }
     }
+    return Status::OK();
+  };
+
+  for (size_t i = 0; i < inputs.size(); i++) {
+    ORT_RETURN_IF_ERROR(append_shape_uniforms(i,
+                                              inputs[i].use_override_shape ? inputs[i].override_shape : inputs[i].tensor->Shape()));
+  }
+  for (size_t i = 0; i < outputs.size(); i++) {
+    ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size(),
+                                              outputs[i].use_override_shape ? outputs[i].override_shape : outputs[i].tensor->Shape()));
+  }
+  for (size_t i = 0; i < program.Indices().size(); i++) {
+    ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size() + outputs.size(), program.Indices()[i]));
   }
 
   const size_t uniform_count = shape_uniforms.size() + program.UniformVariables().size();
@@ -375,7 +395,6 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
       "disable_robustness",
-      "disable_workgroup_init",
       "d3d_disable_ieee_strictness",
   };
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly

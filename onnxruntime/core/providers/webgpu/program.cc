@@ -84,21 +84,24 @@ std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) 
 
 #ifndef NDEBUG
 constexpr std::string_view ProgramVariableDataTypeName[] = {
-    "f32",     // f32
-    "f32x2",   // vec2f32
-    "f32x4",   // vec4f32
-    "f16",     // f16
-    "f16x2",   // vec2f16
-    "f16x4",   // vec4f16
-    "i32",     // i32
-    "i32x2",   // vec2i32
-    "i32x4",   // vec4i32
-    "u32",     // u32
-    "u32x2",   // vec2u32
-    "u32x4",   // vec4u32
-    "i64",     // int64
-    "u64",     // uint64
-    "boolx4",  // vec4bool
+    "f32",     // Float32
+    "f32x2",   // Float32x2
+    "f32x4",   // Float32x4
+    "f16",     // Float16
+    "f16x2",   // Float16x2
+    "f16x4",   // Float16x4
+    "i32",     // Int32
+    "i32x2",   // Int32x2
+    "i32x4",   // Int32x4
+    "u32",     // Uint32
+    "u32x2",   // Uint32x2
+    "u32x4",   // Uint32x4
+    "i64",     // Int64
+    "u64",     // Uint64
+    "boolx4",  // Boolx4
+    "u8x4",    // Uint8x4
+    "u8x8",    // Uint8x8
+    "u8x16",   // Uint8x16
 };
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
   os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
@@ -115,17 +118,22 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Uint64:
     case ProgramVariableDataType::Float16:
       return 1;
-    case ProgramVariableDataType::Vec2Float32:
-    case ProgramVariableDataType::Vec2Int32:
-    case ProgramVariableDataType::Vec2Uint32:
-    case ProgramVariableDataType::Vec2Float16:
+    case ProgramVariableDataType::Float32x2:
+    case ProgramVariableDataType::Int32x2:
+    case ProgramVariableDataType::Uint32x2:
+    case ProgramVariableDataType::Float16x2:
       return 2;
-    case ProgramVariableDataType::Vec4Float32:
-    case ProgramVariableDataType::Vec4Int32:
-    case ProgramVariableDataType::Vec4Uint32:
-    case ProgramVariableDataType::Vec4Float16:
-    case ProgramVariableDataType::Vec4Bool:
+    case ProgramVariableDataType::Float32x4:
+    case ProgramVariableDataType::Int32x4:
+    case ProgramVariableDataType::Uint32x4:
+    case ProgramVariableDataType::Float16x4:
+    case ProgramVariableDataType::Boolx4:
+    case ProgramVariableDataType::Uint8x4:
       return 4;
+    case ProgramVariableDataType::Uint8x8:
+      return 8;
+    case ProgramVariableDataType::Uint8x16:
+      return 16;
     default:
       return -1;
   }
@@ -152,28 +160,44 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   } else if (component == 2) {
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        return ProgramVariableDataType::Vec2Float32;
+        return ProgramVariableDataType::Float32x2;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-        return ProgramVariableDataType::Vec2Float16;
+        return ProgramVariableDataType::Float16x2;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        return ProgramVariableDataType::Vec2Int32;
+        return ProgramVariableDataType::Int32x2;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        return ProgramVariableDataType::Vec2Uint32;
+        return ProgramVariableDataType::Uint32x2;
       default:
         return ProgramVariableDataType::InvalidType;
     }
   } else if (component == 4) {
     switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Uint8x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        return ProgramVariableDataType::Vec4Float32;
+        return ProgramVariableDataType::Float32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-        return ProgramVariableDataType::Vec4Float16;
+        return ProgramVariableDataType::Float16x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        return ProgramVariableDataType::Vec4Int32;
+        return ProgramVariableDataType::Int32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        return ProgramVariableDataType::Vec4Uint32;
+        return ProgramVariableDataType::Uint32x4;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-        return ProgramVariableDataType::Vec4Bool;
+        return ProgramVariableDataType::Boolx4;
+      default:
+        return ProgramVariableDataType::InvalidType;
+    }
+  } else if (component == 8) {
+    switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Uint8x8;
+      default:
+        return ProgramVariableDataType::InvalidType;
+    }
+  } else if (component == 16) {
+    switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Uint8x16;
       default:
         return ProgramVariableDataType::InvalidType;
     }
@@ -182,8 +206,60 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   }
 }
 
-ProgramBase::ProgramBase(const std::string& name)
+namespace {
+TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
+  ORT_ENFORCE(shape.NumDimensions() > 0 && shape.GetDims()[shape.NumDimensions() - 1] % component == 0,
+              "Cannot reduce shape ", shape.ToString(), " by component=", component);
+  TensorShape reduced_shape = shape;
+  reduced_shape[reduced_shape.NumDimensions() - 1] /= component;
+  return reduced_shape;
+}
+}  // namespace
+
+ProgramInput::ProgramInput(const Tensor* tensor) : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
+
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{component > 1},
+      override_shape{} {
+  if (use_override_shape) {
+    override_shape = GetReducedShape(tensor->Shape(), component);
+  }
+}
+
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{true},
+      override_shape{override_shape} {}
+
+ProgramOutput::ProgramOutput(Tensor* tensor)
+    : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
+
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{component > 1},
+      override_shape{} {
+  if (use_override_shape) {
+    override_shape = GetReducedShape(tensor->Shape(), component);
+  }
+}
+
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      use_override_shape{true},
+      override_shape{override_shape} {}
+
+ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
     : name_{name},
+      metadata_{metadata},
       dispatch_group_size_x_{0},
       dispatch_group_size_y_{0},
       dispatch_group_size_z_{0},
@@ -209,6 +285,16 @@ ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddIndices(const TensorShape& shape) {
+  indices_.emplace_back(shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddIndices(TensorShape&& shape) {
+  indices_.emplace_back(shape);
   return *this;
 }
 

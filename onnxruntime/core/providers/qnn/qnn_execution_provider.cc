@@ -36,7 +36,7 @@ constexpr const char* QNN = "QNN";
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {
-  OrtMutex mutex;
+  static OrtMutex mutex;
   std::lock_guard<OrtMutex> guard(mutex);
   if (!s_run_on_unload_) {
     s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
@@ -789,10 +789,10 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
     ORT_UNUSED_PARAMETER(state);
   };
 
-  compute_info.compute_func = [](FunctionState state, const OrtApi*, OrtKernelContext* context) {
+  compute_info.compute_func = [&logger](FunctionState state, const OrtApi*, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
     qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-    Status result = model->ExecuteGraph(ctx);
+    Status result = model->ExecuteGraph(ctx, logger);
     return result;
   };
 
@@ -843,16 +843,15 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                               qnn_backend_manager_.get());
+    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(qnn_backend_manager_.get());
 
     qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t> graph_configs_builder(QNN_GRAPH_CONFIG_INIT,
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_builder.GetQnnConfigs()));
-    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
-    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, logger, graph_configs_builder.GetQnnConfigs()));
+    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
+    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
     qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
@@ -894,8 +893,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
           std::string key = ep_context_node->Name();
           auto qnn_model_shared = SharedContext::GetInstance().GetSharedQnnModel(key);
           ORT_RETURN_IF(nullptr == qnn_model_shared, "Graph: " + key + " not found from shared EP contexts.");
-          ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node));
-          ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput());
+          ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
+          ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput(logger));
           qnn_models_shared_.emplace(graph_meta_id, qnn_model_shared);
           use_shared_model_ = true;
           ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
@@ -929,8 +928,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       std::string key = ep_context_node->Name();
       ORT_RETURN_IF(qnn_models.find(key) == qnn_models.end(), key + " key name not exist in table qnn_models.");
       auto qnn_model = std::move(qnn_models[key]);
-      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
-      ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
+      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
+      ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
       // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
       // the name here must be same with context->node_name in compute_info

@@ -16,6 +16,7 @@
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_variable.h"
+#include "core/providers/webgpu/string_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -80,32 +81,26 @@ class ShaderHelper final {
   // Add an input variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
-  const ShaderVariable& AddInput(const std::string& name,
-                                 ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
+  const ShaderVariableHelper& AddInput(const std::string& name,
+                                       ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an output variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
-  const ShaderVariable& AddOutput(const std::string& name,
-                                  ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
+  const ShaderVariableHelper& AddOutput(const std::string& name,
+                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
-  // Append additional implementation code to the shader.
-  //
-  // can be called multiple times.
-  template <typename... Strs>
-  inline ShaderHelper& AppendImplementation(Strs&&... impl) {
-    onnxruntime::detail::MakeStringImpl(additional_implementation_, std::forward<Strs>(impl)...);
-    return *this;
+  // Add an indices variable to the shader.
+  const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform = true);
+
+  // Get the string stream for additional implementation code to the shader.
+  inline OStringStream& AdditionalImplementation() {
+    return additional_implementation_ss_;
   }
 
-  // Set the main function body of the shader.
-  //
-  // can be called only once.
-  template <typename... Strs>
-  inline void SetMainFunctionBody(const Strs&... body) {
-    ORT_ENFORCE(!body_set_, "Main function body is already set");
-    onnxruntime::detail::MakeStringImpl(body_, std::forward<onnxruntime::detail::if_char_array_make_ptr_t<Strs const&>>(body)...);
-    body_set_ = true;
+  // Get the string stream for the main function body of the shader.
+  inline OStringStream& MainFunctionBody() {
+    return body_ss_;
   }
 
   std::string GuardAgainstOutOfBoundsWorkgroupSizes(std::string_view size) const {
@@ -114,7 +109,7 @@ class ShaderHelper final {
 
  private:
   template <typename ConstantType>  // ConstantType is one of {ProgramConstant, ProgramOverridableConstantValue, ProgramOverridableConstantDefinition}
-  void WriteConstantValue(std::ostringstream& ss, const ConstantType& constant) const {
+  void WriteConstantValue(std::ostream& ss, const ConstantType& constant) const {
     switch (constant.type) {
       case ProgramConstantDataType::Float16:
         ss << constant.f16.ToFloat();
@@ -136,17 +131,19 @@ class ShaderHelper final {
     }
   }
 
-  const ShaderVariable& AddVariableImpl(ProgramVariableScope scope,
-                                        const std::string& name,
-                                        ShaderVariable::Usage usage,
-                                        const TensorShape& dims);
+  const ShaderVariableHelper& AddVariableImpl(bool is_input,
+                                              const std::string& name,
+                                              ShaderUsage usage,
+                                              const TensorShape& dims);
 
 #ifndef NDEBUG  // if debug build
-  Status ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const;
-  Status ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const;
+  Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;
+  Status ValidateVariable(const ProgramOutput& output, const ShaderVariableHelper& var) const;
 #endif
 
-  Status ValidateShapeForInputsAndOutputs() const;
+  Status ValidateShapeForInputs() const;
+  Status ValidateShapeForOutputs() const;
+  Status ValidateIndices() const;
 
   // Generate source code.
   //
@@ -171,11 +168,13 @@ class ShaderHelper final {
   const ProgramBase& program_;
   const ProgramMetadata& program_metadata_;
 
-  std::array<std::vector<std::unique_ptr<ShaderVariable>>, static_cast<size_t>(ProgramVariableScope::Count)> vars_;
-  std::ostringstream additional_implementation_;
-  std::ostringstream body_;
-
-  bool body_set_ = false;
+  std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
+  std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;
+  std::vector<std::unique_ptr<ShaderIndicesHelper>> indices_vars_;
+  std::string additional_implementation_;
+  OStringStream additional_implementation_ss_;
+  std::string body_;
+  OStringStream body_ss_;
 };
 
 }  // namespace webgpu

@@ -41,8 +41,8 @@ import { loadFile } from './wasm-utils-load-file';
  *    Refer to web/lib/index.ts for the backend registration.
  *
  * 2. WebAssembly artifact initialization.
- *    This happens when any registered wasm backend is used for the first time (ie. `ort.InferenceSession.create()` or
- * `ort.TrainingSession.create()` is called). In this step, onnxruntime-web does the followings:
+ *    This happens when any registered wasm backend is used for the first time (ie. `ort.InferenceSession.create()` is
+ * called). In this step, onnxruntime-web does the followings:
  *     - create a proxy worker and make sure the proxy worker is ready to receive messages, if proxy is enabled.
  *     - perform feature detection, locate correct WebAssembly artifact path and call the Emscripten generated
  * JavaScript code to initialize the WebAssembly runtime.
@@ -57,9 +57,8 @@ import { loadFile } from './wasm-utils-load-file';
  *     - logging level (ort.env.logLevel) and thread number (ort.env.wasm.numThreads) are set in this step.
  *
  * 4. Session initialization.
- *    This happens when `ort.InferenceSession.create()` or `ort.TrainingSession.create()` is called. Unlike the first 3
- * steps (they only called once), this step will be done for each session. In this step, onnxruntime-web does the
- * followings:
+ *    This happens when `ort.InferenceSession.create()` is called. Unlike the first 3 steps (they only called once),
+ * this step will be done for each session. In this step, onnxruntime-web does the followings:
  *    If the parameter is a URL:
  *    - download the model data from the URL.
  *    - copy the model data to the WASM heap. (proxy: 'copy-from')

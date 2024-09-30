@@ -149,11 +149,9 @@ downloadJson(
           void jszip.loadAsync(buffer).then((zip) => {
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
-            extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.wasm', folderName);
 
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.mjs', folderName);
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.mjs', folderName);
-            extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.mjs', folderName);
           });
         });
       },

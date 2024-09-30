@@ -133,6 +133,8 @@ def main():
             str(build_dir / "framework_out"),
             "--variant",
             package_variant.name,
+            "--test_project_stage_dir",  # use a specific directory so it's easier to debug
+            str(build_dir / "test_apple_packages_staging"),
         ]
 
         run(test_apple_packages_args)

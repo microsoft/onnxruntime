@@ -369,6 +369,28 @@ TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
 #endif
 }
 
+TEST(MathOpTest, Add_Broadcast_2x2x2_1x2x2) {
+  OpTester test("Add");
+
+  test.AddInput<float>("A", {2, 2, 2},
+                       {101.0f, 102.0f,
+                        103.0f, 104.0f,
+
+                        201.0f, 202.0f,
+                        203.0f, 204.0f});
+  test.AddInput<float>("B", {1, 2, 2},
+                       {010.0f, 020.0f,
+                        030.0f, 040.0f});
+  test.AddOutput<float>("C", {2, 2, 2},
+                        {111.0f, 122.0f,
+                         133.0f, 144.0f,
+
+                         211.0f, 222.0f,
+                         233.0f, 244.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
   OpTester test("Add");
 
@@ -1787,6 +1809,54 @@ TEST(MathOpTest, Min_12_MLFloat16_Scalar1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Min_12_MLFloat16_MatrixVector) {
+  OpTester test("Min", 12);
+  test.AddInput<MLFloat16>("data_0", {3, 3},
+                           MakeMLFloat16({1.0f, 1.0f, 1.0f,
+                                          -0.5f, 0.0f, -2.0f,
+                                          0.5f, 0.0f, 2.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 1},
+                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
+  test.AddOutput<MLFloat16>("min", {3, 3},
+                            MakeMLFloat16({0.0f, 0.0f, 0.0f,
+                                           -1.0f, -1.0f, -2.0f,
+                                           0.5f, 0.0f, 1.0f}));
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Min_12_MLFloat16_VectorMatrix) {
+  OpTester test("Min", 12);
+  test.AddInput<MLFloat16>("data_0", {3, 1},
+                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 4},
+                           MakeMLFloat16({1.0f, 1.0f, 1.0f, -1.0f,
+                                          -0.5f, 0.0f, -2.0f, -1.25f,
+                                          0.5f, 0.0f, 2.0f, 1.5f}));
+  test.AddOutput<MLFloat16>("min", {3, 4},
+                            MakeMLFloat16({0.0f, 0.0f, 0.0f, -1.0f,
+                                           -1.0f, -1.0f, -2.0f, -1.25f,
+                                           0.5f, 0.0f, 1.0f, 1.0f}));
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -2135,6 +2205,56 @@ TEST(MathOpTest, Max_12_MLFloat16_Scalar1) {
   test.AddOutput<MLFloat16>("max", {1, 3},
                             MakeMLFloat16({2.f, 2.f, 2.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_MLFloat16_MatrixVector) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {4, 3},
+                           MakeMLFloat16({1.0f, 1.0f, 1.0f,
+                                          -0.5f, 0.0f, -2.0f,
+                                          0.0f, 0.5f, 0.75f,
+                                          0.5f, 0.0f, 2.0f}));
+  test.AddInput<MLFloat16>("data_1", {4, 1},
+                           MakeMLFloat16({0.0f, -1.0f, 0.5f, 1.0f}));
+  test.AddOutput<MLFloat16>("max", {4, 3},
+                            MakeMLFloat16({1.0f, 1.0f, 1.0f,
+                                           -0.5f, 0.0f, -1.0f,
+                                           0.5f, 0.5f, 0.75f,
+                                           1.0f, 1.0f, 2.0f}));
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MathOpTest, Max_12_MLFloat16_VectorMatrix) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {3, 1},
+                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 3},
+                           MakeMLFloat16({1.0f, 1.0f, 1.0f,
+                                          -0.5f, 0.0f, -2.0f,
+                                          0.5f, 0.0f, 2.0f}));
+  test.AddOutput<MLFloat16>("max", {3, 3},
+                            MakeMLFloat16({1.0f, 1.0f, 1.0f,
+                                           -0.5f, 0.0f, -1.0f,
+                                           1.0f, 1.0f, 2.0f}));
+  if (nullptr != DefaultCpuExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Not) {

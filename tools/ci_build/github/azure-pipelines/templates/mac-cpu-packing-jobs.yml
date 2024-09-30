@@ -31,13 +31,13 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '11.0'
+    MACOSX_DEPLOYMENT_TARGET: '13.3'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: 'macOS-13'
   timeoutInMinutes: 300
   steps:
   - checkout: self
@@ -61,8 +61,6 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - template: use-xcode-version.yml
-    parameters:
-      xcodeVersion: 14.2
 
   - template: download-deps.yml
 
@@ -98,7 +96,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         BuildJava: false
         BuildNodejs: false
         WithCache: ${{ parameters.WithCache }}
@@ -110,7 +108,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml  --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         BuildJava: true
         BuildNodejs: true
         WithCache: ${{ parameters.WithCache }}
@@ -122,7 +120,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml  --use_webgpu
         BuildJava: true
         BuildNodejs: true
         WithCache: ${{ parameters.WithCache }}

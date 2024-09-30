@@ -110,11 +110,11 @@ class WebGpuContext final {
       : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
-  std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const;
-  std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const;
-  std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const;
-  std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
-  wgpu::RequiredLimits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const;
+  std::vector<const char*> GetEnabledAdapterToggles() const;
+  std::vector<const char*> GetEnabledDeviceToggles() const;
+  std::vector<const char*> GetDisabledDeviceToggles() const;
+  std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
+  wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
 
   std::once_flag init_flag_;
 
