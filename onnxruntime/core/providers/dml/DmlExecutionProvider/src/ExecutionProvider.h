@@ -226,18 +226,18 @@ namespace Dml
     public:
         DataTransfer() = delete;
 
-        DataTransfer(ExecutionProviderImpl* impl) : m_impl(impl)
+        DataTransfer(ExecutionProvider* executionProvider) : m_executionProvider(executionProvider)
         {
         }
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
         {
-            return m_impl->CopyTensor(src, dst);
+            return m_executionProvider->GetImpl()->CopyTensor(src, dst);
         }
 
         onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
         {
-            return m_impl->CopyTensors(src_dst_pairs);
+            return m_executionProvider->GetImpl()->CopyTensors(src_dst_pairs);
         }
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
@@ -247,7 +247,7 @@ namespace Dml
         }
 
     private:
-        ComPtr<ExecutionProviderImpl> m_impl;
+        ComPtr<ExecutionProvider> m_executionProvider;
     };
 
     class ExecutionProvider : public onnxruntime::IExecutionProvider
@@ -267,7 +267,7 @@ namespace Dml
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
         {
-            return std::make_unique<DataTransfer>(m_impl.Get());
+            return std::make_unique<DataTransfer>(this);
         }
 
         const void* GetExecutionHandle() const noexcept final override
