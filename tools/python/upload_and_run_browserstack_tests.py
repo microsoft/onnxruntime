@@ -8,7 +8,8 @@ import requests
 
 script_description = """
 After building ONNXRuntime for Android or iOS, use this script to upload the app and test files to BrowserStack then
-run the tests on the specified devices. \n
+run the tests on the specified devices.
+
 Find the source for Android here:
 https://github.com/microsoft/onnxruntime/tree/3846f84218a77b0071b5ed992832a328870bc84f/java/src/test/android/app/src
 """
