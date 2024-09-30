@@ -15,15 +15,15 @@ namespace onnxruntime {
 
 namespace {
 
-ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, int num_elems) {
+ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, int64_t num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, int num_elems) {
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, int64_t num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems) {
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int64_t num_elems) {
   return p_output == nullptr ? nullptr : new float[num_elems];
 }
 
