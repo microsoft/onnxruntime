@@ -1,3 +1,5 @@
+#ifdef _WIN32
+
 #include "core/platform/threadpool.h"
 #include "core/util/thread_utils.h"
 #include <benchmark/benchmark.h>
@@ -110,3 +112,5 @@ BENCHMARK(BM_LayerNormalization<MLFloat16, MLFloat16>)
     ->Arg(1)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+#endif
