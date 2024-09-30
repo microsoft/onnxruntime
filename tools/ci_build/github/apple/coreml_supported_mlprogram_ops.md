@@ -20,6 +20,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Mul||
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
+|ai.onnx:Reciprocal|this ask for a `epislon` (default 1e-4) where onnx don't provide|
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize|See [resize_op_builder.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/coreml/builders/impl/resize_op_builder.cc) implementation. There are too many permutations to describe the valid combinations.|
@@ -27,5 +28,6 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Split|If provided, `splits` must be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
+|ai.onnx:Sqrt||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||

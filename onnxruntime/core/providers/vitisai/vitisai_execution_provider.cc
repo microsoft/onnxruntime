@@ -97,4 +97,22 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
   return Status::OK();
 }
 
+common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  InlinedVector<const Node*> ep_context_node_ptrs;
+  auto get_config_entry = [](const void* state, const char* entry_name) -> vaip_core::DllSafe<std::string> {
+    const onnxruntime::RunOptions& run_options = *static_cast<const onnxruntime::RunOptions*>(state);
+    auto ret = run_options.GetConfigOptions().GetConfigEntry(std::string(entry_name));
+    if (ret) {
+      return vaip_core::DllSafe<std::string>(new std::string(ret.value()));
+    } else {
+      return {};
+    };
+  };
+  auto error_code = vitisai_ep_on_run_start(**execution_providers_, (const void*)&run_options, get_config_entry);
+  if (error_code) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, std::to_string(error_code));
+  }
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

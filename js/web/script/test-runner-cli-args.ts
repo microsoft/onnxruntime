@@ -62,6 +62,8 @@ Options:
                                  none            (default)
                                  gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
                                  gpu-location    use pre-allocated GPU tensors for inputs and set preferredOutputLocation to 'gpu-buffer'
+                                 ml-tensor       use pre-allocated MLTensor tensors for inputs and outputs
+                                 ml-location     use pre-allocated MLTensor tensors for inputs and set preferredOutputLocation to 'ml-tensor'
 
 *** Logging Options ***
 
@@ -133,7 +135,7 @@ export declare namespace TestRunnerCliArgs {
   type Backend = 'cpu' | 'webgl' | 'webgpu' | 'wasm' | 'onnxruntime' | 'webnn';
   type Environment = 'chrome' | 'chromecanary' | 'edge' | 'firefox' | 'electron' | 'safari' | 'node' | 'bs';
   type BundleMode = 'dev' | 'perf';
-  type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location';
+  type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location' | 'ml-tensor' | 'ml-location';
 }
 
 export interface TestRunnerCliArgs {
@@ -455,7 +457,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: -i=<...>, --io-binding=<...>
   const ioBindingArg = args['io-binding'] || args.i;
   const ioBindingMode = typeof ioBindingArg !== 'string' ? 'none' : ioBindingArg;
-  if (['none', 'gpu-tensor', 'gpu-location'].indexOf(ioBindingMode) === -1) {
+  if (['none', 'gpu-tensor', 'gpu-location', 'ml-tensor', 'ml-location'].indexOf(ioBindingMode) === -1) {
     throw new Error(`not supported io binding mode ${ioBindingMode}`);
   }
 
