@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/make_string.h"
 #include <absl/strings/internal/ostringstream.h>
 
 namespace onnxruntime {
@@ -33,6 +34,12 @@ inline void OStringStreamAppendImpl(std::ostream& ss, const T& t, const Args&...
   OStringStreamAppendImpl(ss, t);
   OStringStreamAppendImpl(ss, args...);
 }
+
+template <typename... Args>
+inline void OStringStreamAppend(std::ostream& ss, const Args&... args) {
+  return OStringStreamAppendImpl(ss, ::onnxruntime::detail::if_char_array_make_ptr_t<Args const&>(args)...);
+}
+
 }  // namespace detail
 
 }  // namespace webgpu

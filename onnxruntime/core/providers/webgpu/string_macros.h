@@ -15,4 +15,4 @@
 #define SS_GET(ss) ss##_str
 
 // macro "SS_APPEND" - use function call style to append to the ostream
-#define SS_APPEND(ss, ...) ::onnxruntime::webgpu::detail::OStringStreamAppendImpl(ss, __VA_ARGS__)
+#define SS_APPEND(ss, ...) ::onnxruntime::webgpu::detail::OStringStreamAppend(ss, __VA_ARGS__)
