@@ -394,7 +394,7 @@ Status Execution::LoadModel() {
 
       compiled_model_path_ = [compileUrl path];
 
-      MLModelConfiguration* config = [MLModelConfiguration alloc];
+      MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
       config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
                                 ? MLComputeUnitsCPUOnly
                                 : MLComputeUnitsAll;
