@@ -613,8 +613,8 @@ static Status SaveModelWithExternalInitializers(Model& model,
                                                 const std::filesystem::path& external_file_name,
                                                 size_t initializer_size_threshold,
                                                 const Graph::OffsetAlignmentInfo& align_info,
-                                                bool save_prepacked_constant_initializers = false,
-                                                std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map = {}) {
+                                                bool save_prepacked_constant_initializers,
+                                                std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);

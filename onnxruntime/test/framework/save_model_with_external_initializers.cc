@@ -148,8 +148,8 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffsetAndSa
   TensorShape shape = {178};
   // prepack both initializers for test purpose
   std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-  pre_packed_initializers_name_map["MatMul.Weight"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<UINT8>(), shape, alloc)}};
-  pre_packed_initializers_name_map["scales"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<FLOAT>(), shape, alloc)}};
+  pre_packed_initializers_name_map["MatMul.Weight"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<uint8_t>(), shape, alloc)}};
+  pre_packed_initializers_name_map["scales"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<float>(), shape, alloc)}};
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/prepack/model_with_matmul_nbits.onnx"), ORT_TSTR("model_with_matmul_nbits.onnx.data"), ORT_TSTR("testdata/prepack/model_with_matmul_nbits_opt.onnx"), ORT_TSTR("model_with_matmul_nbits_opt.onnx.data"), 0, align_info, pre_packed_initializers_name_map, true));
 }
 

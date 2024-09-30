@@ -557,14 +557,22 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
 
   // run inference with original model
   // Convert std::string to std::wstring
+#if defined(_WIN32) || defined(_WIN64)
   std::wstring test_model_wide = ToWideString(test_model);
   Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
+#else
+  Ort::Session session(*ort_env, test_model.c_str(), session_options);
+#endif
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
                                  output_names, 1);
 
   // run inference with optimized model which load serialized prepack initializer
+#if defined(_WIN32) || defined(_WIN64)
   std::wstring optimized_model_wide = ToWideString(optimized_model);
   Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
+#else
+  Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
+#endif
   auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
                                          output_names, 1);
 
