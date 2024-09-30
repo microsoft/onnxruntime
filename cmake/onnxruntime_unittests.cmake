@@ -263,6 +263,11 @@ file(GLOB onnxruntime_test_flatbuffers_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/flatbuffers/*.h"
 )
 
+file(GLOB onnxruntime_test_lora_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/lora/*.cc"
+  "${TEST_SRC_DIR}/lora/*.h"
+)
+
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
   file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
@@ -612,6 +617,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
+    onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
@@ -782,7 +788,7 @@ endif()
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
         ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantization_src}
-        ${onnxruntime_test_flatbuffers_src})
+        ${onnxruntime_test_flatbuffers_src} ${onnxruntime_test_lora_src})
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
@@ -1514,6 +1520,7 @@ endif()
       onnxruntime_optimizer
       onnxruntime_providers
       onnxruntime_util
+      onnxruntime_lora
       onnxruntime_framework
       onnxruntime_util
       onnxruntime_graph
@@ -1634,7 +1641,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
+      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 libprotobuf-lite onnx_proto nsync_cpp)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
@@ -1753,7 +1760,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
+    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 libprotobuf-lite ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
      endif()
 
   if(NOT WIN32)
