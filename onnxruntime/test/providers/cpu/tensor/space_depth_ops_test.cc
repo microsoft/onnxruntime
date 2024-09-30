@@ -44,8 +44,8 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test
-  // is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test  is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -111,8 +111,8 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2
-  // test is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -372,8 +372,8 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
     test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test
-  // is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -409,8 +409,8 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
     test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
     test.AddOutput<TypeParam>("output", {1, 1, 4, 6}, result_fp16);
   }
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test
-  // is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
