@@ -14,6 +14,7 @@ Status Einsum::DeviceCompute(OpKernelContext* /*context*/, const std::vector<con
 
 namespace cuda {
 
+#ifndef USE_ROCM
 ONNX_OPERATOR_KERNEL_EX(
     Einsum,
     kOnnxDomain,
@@ -21,6 +22,15 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
     Einsum);
+#else
+ONNX_OPERATOR_KERNEL_EX(
+    Einsum,
+    kOnnxDomain,
+    12,
+    kRocmExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
+    Einsum);
+#endif
 
 Status Einsum::Compute(OpKernelContext* context) const {
   return onnxruntime::Einsum::Compute(context);
@@ -54,17 +64,6 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
     return einsum_compute_processor->Run();
-  } else if (inputs[0]->IsDataType<double>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>::Create(context, allocator, tp,
-                                                                                *einsum_compute_preprocessor,
-                                                                                &einsum_cuda_assets);
-
-    // Set device specific methods (CPU methods) to be used during processing
-    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
-    return einsum_compute_processor->Run();
   } else if (inputs[0]->IsDataType<MLFloat16>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>::Create(context, allocator, tp,
                                                                                    *einsum_compute_preprocessor,
@@ -76,6 +75,20 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
     return einsum_compute_processor->Run();
   }
+#ifndef USE_ROCM
+  if (inputs[0]->IsDataType<double>()) {
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>::Create(context, allocator, tp,
+                                                                                *einsum_compute_preprocessor,
+                                                                                &einsum_cuda_assets);
+
+    // Set device specific methods (CPU methods) to be used during processing
+    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+    return einsum_compute_processor->Run();
+  }
+#endif
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Einsum op: An implementation for the input type ",

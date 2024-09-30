@@ -118,8 +118,6 @@ set(provider_excluded_files
   "math/einsum_utils/einsum_auxiliary_ops.h"
   "math/einsum_utils/einsum_auxiliary_ops_diagonal.cu"
   "math/einsum_utils/einsum_auxiliary_ops_diagonal.h"
-  "math/einsum.cc"
-  "math/einsum.h"
   "math/gemm.cc"
   "math/matmul.cc"
   "math/softmax_impl.cu"
