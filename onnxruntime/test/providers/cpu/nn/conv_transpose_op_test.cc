@@ -123,6 +123,17 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+template <typename T>
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    std::vector<T> inputs_fp16(inputs.size());
+    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
+    return inputs_fp16;
+  }
+}
+
 TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_outputpadding_strides2) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
@@ -201,20 +212,11 @@ TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_C2) {
       0.58575004f, 1.25774109f, 1.23472511f, 0.77670550f,
       0.25844323f, 0.88953220f, 0.77098041f, 0.27468451f};
 
-  if constexpr (std::is_same<TypeParam, float>::value) {
-    TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-  } else {
-    vector<TypeParam> X_fp16(X.size());
-    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
-    vector<TypeParam> W_fp16(W.size());
-    ConvertFloatToMLFloat16(W.data(), W_fp16.data(), W.size());
-    std::vector<TypeParam> expected_vals_fp16(expected_vals.size());
-    ConvertFloatToMLFloat16(expected_vals.data(), expected_vals_fp16.data(), expected_vals.size());
-    TestConvTransposeOp(attrs, {X_fp16, W_fp16}, {X_shape, W_shape}, expected_vals_fp16, Y_shape);
-  }
+  TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W)},
+                      {X_shape, W_shape}, GetTypedArray<TypeParam>(expected_vals), Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
+TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{0, 0},        // output_padding
@@ -243,7 +245,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
                                  0.07770107f, -0.09561026f, 0.13388641f, 0.30945939f, 0.14015588f,
                                  0.13079405f, -0.00488365f, -0.06758944f, 0.45621645f, 0.01566098f,
                                  0.00703105f, 0.12956856f, 0.0103332f, 0.04221053f, -0.21318194f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W), GetTypedArray<TypeParam>(B)},
+                      {X_shape, W_shape, B_shape}, GetTypedArray<TypeParam>(expected_vals), Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {

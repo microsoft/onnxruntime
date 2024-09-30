@@ -264,7 +264,7 @@ TEST(SliceTest, Slice3D) {
 }
 
 template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, T v = T(0.f)) {
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
   std::vector<T> inputs_T(inputs.size());
   if constexpr (std::is_same<T, float>::value) {
     return inputs;

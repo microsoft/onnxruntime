@@ -76,7 +76,7 @@ TEST(ConcatOpTest, Concat1D_2) {
 }
 
 template <typename T>
-std::vector<T> GetTypedArray(std::vector<float> inputs, T v = T(0.f)) {
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
   if constexpr (std::is_same<T, float>::value) {
     return inputs;
   } else {
