@@ -67,7 +67,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string fillvec = fillVar("f32", components, "0");
   std::string element_type = (isFP16_) ? "f16;\n" : "f32;\n";
 
-  shader.AppendImplementation("alias element_t = " + element_type);
+  shader.AdditionalImplementation() << "alias element_t = " << element_type;
 
   std::stringstream ss;
   ss << "let offset = global_idx * uniforms.norm_size_vectorized;\n"
@@ -86,7 +86,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
      << "   output[j + offset] =  x_value_t((f32input " << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
      << "}\n";
 
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.norm_count"), ss.str());
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.norm_count") << ss.str();
   return Status::OK();
 }
 

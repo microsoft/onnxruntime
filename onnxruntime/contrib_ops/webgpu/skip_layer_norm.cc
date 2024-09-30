@@ -74,12 +74,10 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string beta = (hasBeta_) ? " + beta[offset1d + i] " : "";
   std::string element_type = (isFP16_) ? "f16;\n" : "f32;\n";
 
-  shader.AppendImplementation(
-      "alias element_t = " + element_type +
-      "var<workgroup> sum_shared : array<" + vecDataType("f32", components) +
-      ",workgroup_size_x>;\n"
-      "var<workgroup> sum_squared_shared : array<" +
-      vecDataType("f32", components) + ",workgroup_size_x>;\n");
+  shader.AdditionalImplementation()
+      << "alias element_t = " << element_type
+      << "var<workgroup> sum_shared : array<" << vecDataType("f32", components) << ",workgroup_size_x>;\n"
+      << "var<workgroup> sum_squared_shared : array<" << vecDataType("f32", components) << ",workgroup_size_x>;\n";
 
   std::stringstream ss;
   ss << "let ix = local_idx;\n"
@@ -118,7 +116,7 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
      << " output[offset + i] = (output[offset + i] " << simpl2 << ") * element_t(inv_std_dev) * gamma[offset1d + i]" << beta << ";\n"
      << "};\n";
 
-  shader.SetMainFunctionBody(ss.str());
+  shader.MainFunctionBody() << ss.str();
   return Status::OK();
 }
 
