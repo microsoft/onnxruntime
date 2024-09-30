@@ -105,15 +105,15 @@ conda activate sam2_cpu
 sh benchmark_sam2.sh $HOME cpu
 ```
 
-The first parameter is a directory to clone git repositories or install CUDA/cuDNN for gpu benchmark.
+The first parameter is a directory to clone git repositories or install CUDA/cuDNN for benchmark.
 The second parameter can be either "gpu" or "cpu", which indicates the device to run benchmark.
 
-The script will automatically install required packages in the conda environment, download checkpoints, export onnx,
+The script will automatically install required packages in current conda environment, download checkpoints, export onnx,
 and run demo, benchmark and profiling.
 
 * The performance test result is in sam2.csv, which can be loaded into Excel.
 * The demo output is sam2_demo_fp16_gpu.png or sam2_demo_fp32_cpu.png.
-* The profiling results for CUDA fp16 are in sam2_fp16_profile_ort.nsys-rep or sam2_fp16_profile_ort.nsys-rep files.
+* The profiling results are in *.nsys-rep or *.json files in current directory.
 
 ## Limitations
 - The exported image_decoder model does not support batch mode for now.
