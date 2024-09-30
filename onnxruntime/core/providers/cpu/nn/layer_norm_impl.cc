@@ -15,35 +15,30 @@ namespace onnxruntime {
 
 namespace {
 
-ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, int num_elems)
-{
+ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, int num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, int num_elems)
-{
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, int num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems)
-{
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems) {
   return p_output == nullptr ? nullptr : new float[num_elems];
 }
 
 
 template <typename T>
-ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(const T* p_input, int num_elems);
+ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(const T* p_input, int64_t num_elems);
 
 template <typename T>
 ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
-  const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input, int num_elems)
-{
+  const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input, int64_t num_elems) {
   return nullptr;
 }
 
 template<>
-std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems)
-{
+std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded<MLFloat16>(const MLFloat16* p_input, int64_t num_elems) {
   if (!p_input) {
     return nullptr;
   }
@@ -56,8 +51,7 @@ std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded<MLFloa
 }
 
 
-void ConvertFloatBufferToMLFloat16(const float* output_buffer, MLFloat16* p_output, int num_elems)
-{
+void ConvertFloatBufferToMLFloat16(const float* output_buffer, MLFloat16* p_output, int64_t num_elems) {
   if (!output_buffer || !p_output) {
     return;
   }
