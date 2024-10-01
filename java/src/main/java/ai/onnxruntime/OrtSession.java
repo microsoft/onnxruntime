@@ -635,8 +635,8 @@ public class OrtSession implements AutoCloseable {
      * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum
      * in the C API.
      *
-     * <p>See <a
-     * href="https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html">Graph
+     * <p>See <a href=
+     * "https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html">Graph
      * Optimizations</a> for more details.
      */
     public enum OptLevel {
@@ -684,6 +684,7 @@ public class OrtSession implements AutoCloseable {
       SEQUENTIAL(0),
       /** Executes some nodes in parallel. */
       PARALLEL(1);
+
       private final int id;
 
       ExecutionMode(int id) {
@@ -1391,17 +1392,19 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     /*
-     * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
-     * functions to enable them in the session:
+     * To use additional providers, you must build ORT with the extra providers enabled. Then call
+     * one of these functions to enable them in the session:
+     *
      *   OrtSessionOptionsAppendExecutionProvider_CPU
      *   OrtSessionOptionsAppendExecutionProvider_CUDA
      *   OrtSessionOptionsAppendExecutionProvider_ROCM
      *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
-     * The order they care called indicates the preference order as well. In other words call this method
-     * on your most preferred execution provider first followed by the less preferred ones.
-     * If none are called Ort will use its internal CPU execution provider.
      *
-     * If a backend is unavailable then it throws an OrtException
+     * The order they are called indicates the preference order as well. In other words call this
+     * method on your most preferred execution provider first followed by the less preferred ones.
+     * If none are called ORT will use its internal CPU execution provider.
+     *
+     * If a backend is unavailable then it throws an OrtException.
      */
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
@@ -1579,6 +1582,18 @@ public class OrtSession implements AutoCloseable {
       addRunConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, key, value);
     }
 
+    /**
+     * Adds the specified adapter to the list of active adapters for this run.
+     *
+     * @param loraAdapter valid OrtLoraAdapter object
+     * @throws OrtException of the native library call failed
+     */
+    public void addActiveLoraAdapter(OrtLoraAdapter loraAdapter) throws OrtException {
+      checkClosed();
+      loraAdapter.checkClosed();
+      addActiveLoraAdapter(OnnxRuntime.ortApiHandle, nativeHandle, loraAdapter.getNativeHandle());
+    }
+
     /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
     private void checkClosed() {
       if (closed) {
@@ -1618,6 +1633,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void addRunConfigEntry(
         long apiHandle, long nativeHandle, String key, String value) throws OrtException;
+
+    private native void addActiveLoraAdapter(
+        long apiHandle, long nativeHandle, long loraAdapterHandle) throws OrtException;
 
     private static native void close(long apiHandle, long nativeHandle);
   }
