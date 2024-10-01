@@ -29,6 +29,10 @@ class Gemm : protected GemmBase, public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+
   static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                           T alpha,
@@ -41,6 +45,7 @@ class Gemm : protected GemmBase, public OpKernel {
  protected:
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
+  Tensor* packed_tensor_;
 
   // For fused gemm + activation
   std::unique_ptr<functors::ElementWiseRangedTransform<T>> activation_;

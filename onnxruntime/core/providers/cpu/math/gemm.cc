@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/gemm.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/framework/utils.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
