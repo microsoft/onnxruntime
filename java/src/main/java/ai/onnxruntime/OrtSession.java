@@ -403,8 +403,7 @@ public class OrtSession implements AutoCloseable {
         if (outputNames.contains(s)) {
           if (!pinnedOutputs.containsKey(s)) {
             outputNamesArray[i] = s;
-            // outputValues and outputHandles can be null/0 for these outputs as ORT will
-            // allocate
+            // outputValues and outputHandles can be null/0 for these outputs as ORT will allocate
             // them.
             i++;
           } else {
@@ -446,9 +445,9 @@ public class OrtSession implements AutoCloseable {
    */
   static long getHandle(OnnxValue v) {
     /*
-     * Note this method exists as interface methods are all public, but we do not
-     * want users to be able to access the native pointer via a public API so can't
-     * add a method to OnnxValue which exposes it.
+     * Note this method exists as interface methods are all public, but we do not want users to be
+     * able to access the native pointer via a public API so can't add a method to OnnxValue which
+     * exposes it.
      */
     if (v instanceof OnnxTensorLike) {
       return ((OnnxTensorLike) v).nativeHandle;
@@ -1365,18 +1364,19 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     /*
-     * To use additional providers, you must build ORT with the extra providers
-     * enabled. Then call one of these functions to enable them in the session:
-     * OrtSessionOptionsAppendExecutionProvider_CPU
-     * OrtSessionOptionsAppendExecutionProvider_CUDA
-     * OrtSessionOptionsAppendExecutionProvider_ROCM
-     * OrtSessionOptionsAppendExecutionProvider_<remaining providers...> The order
-     * they care called indicates the preference order as well. In other words call
-     * this method on your most preferred execution provider first followed by the
-     * less preferred ones. If none are called Ort will use its internal CPU
-     * execution provider.
+     * To use additional providers, you must build ORT with the extra providers enabled. Then call
+     * one of these functions to enable them in the session:
      *
-     * If a backend is unavailable then it throws an OrtException
+     *   OrtSessionOptionsAppendExecutionProvider_CPU
+     *   OrtSessionOptionsAppendExecutionProvider_CUDA
+     *   OrtSessionOptionsAppendExecutionProvider_ROCM
+     *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
+     *
+     * The order they are called indicates the preference order as well. In other words call this
+     * method on your most preferred execution provider first followed by the less preferred ones.
+     * If none are called ORT will use its internal CPU execution provider.
+     *
+     * If a backend is unavailable then it throws an OrtException.
      */
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
@@ -1420,9 +1420,8 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     /*
-     * The max length of providerOptionKey and providerOptionVal is 128, as
-     * specified by ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067
-     * for its location).
+     * The max length of providerOptionKey and providerOptionVal is 128, as specified by
+     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067 for its location).
      */
     private native void addExecutionProvider(
         long apiHandle,
