@@ -27,19 +27,18 @@ ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int64_t 
   return p_output == nullptr ? nullptr : new float[num_elems];
 }
 
+template <typename T>
+ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
+    [[maybe_unused]] const T* p_input, [[maybe_unused]] int64_t num_elems);
 
 template <typename T>
 ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
-  [[maybe_unused]] const T* p_input, [[maybe_unused]] int64_t num_elems);
-
-template <typename T>
-ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
-  [[maybe_unused]] const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input,
-  [[maybe_unused]] int64_t num_elems) {
+    [[maybe_unused]] const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input,
+    [[maybe_unused]] int64_t num_elems) {
   return nullptr;
 }
 
-template<>
+template <>
 std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded<MLFloat16>(const MLFloat16* p_input, int64_t num_elems) {
   if (!p_input) {
     return nullptr;
@@ -52,7 +51,6 @@ std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded<MLFloa
   return vec;
 }
 
-
 void ConvertFloatBufferToMLFloat16(const float* output_buffer, MLFloat16* p_output, int64_t num_elems) {
   if (!output_buffer || !p_output) {
     return;
@@ -60,7 +58,6 @@ void ConvertFloatBufferToMLFloat16(const float* output_buffer, MLFloat16* p_outp
 
   MlasConvertFloatToHalfBuffer(output_buffer, p_output, num_elems);
 }
-
 
 ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(float val) {
   return val;
@@ -89,8 +86,7 @@ ORT_FORCEINLINE constexpr double ConvertToMLFloat16IfNeeded(double val) {
   return val;
 }
 
-} // namespace
-
+}  // namespace
 
 LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified, bool contrib_op)
     : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op} {
@@ -142,7 +138,7 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   onnxruntime::concurrency::ThreadPool* thread_pool = p_ctx->GetOperatorThreadPool();
 
   return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape,
-    Y_data, mean_data, inv_std_dev_data, thread_pool, axis, epsilon, simplified);
+                                     Y_data, mean_data, inv_std_dev_data, thread_pool, axis, epsilon, simplified);
 }
 
 Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
@@ -156,19 +152,19 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
 
 template <typename T, typename U>
 Status LayerNormImpl::ComputeWithoutContext(
-  const T* X_data,
-  const TensorShape& x_shape,
-  const T* scale_data,
-  const TensorShape& scale_shape,
-  const T* bias_data,
-  const TensorShape& bias_shape,
-  T* Y_data,
-  U* mean_data,
-  U* inv_std_dev_data,
-  onnxruntime::concurrency::ThreadPool* thread_pool,
-  int64_t axis,
-  float epsilon,
-  bool simplified) const {
+    const T* X_data,
+    const TensorShape& x_shape,
+    const T* scale_data,
+    const TensorShape& scale_shape,
+    const T* bias_data,
+    const TensorShape& bias_shape,
+    T* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data,
+    onnxruntime::concurrency::ThreadPool* thread_pool,
+    int64_t axis,
+    float epsilon,
+    bool simplified) const {
   int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
   int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
@@ -198,9 +194,9 @@ Status LayerNormImpl::ComputeWithoutContext(
 
         std::shared_ptr<std::vector<float>> float_input = ConvertMLFloat16ToFloatBufferIfNeeded<T>(p_input, norm_size);
         const DoubleOrFloat* converted_input =
-          float_input == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(p_input)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
+            float_input == nullptr
+                ? reinterpret_cast<const DoubleOrFloat*>(p_input)
+                : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
 
         // If T is float or double, then output_buffer will be the same as p_output, so we don't allocate new memory.
         // If T is MLFloat16, then we allocate norm_size floats in output_buffer.
@@ -221,14 +217,14 @@ Status LayerNormImpl::ComputeWithoutContext(
 
         std::shared_ptr<std::vector<float>> float_scale = ConvertMLFloat16ToFloatBufferIfNeeded<T>(scale_data, norm_size);
         const DoubleOrFloat* converted_scale =
-          float_scale == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(scale_data)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_scale)[0]);
+            float_scale == nullptr
+                ? reinterpret_cast<const DoubleOrFloat*>(scale_data)
+                : reinterpret_cast<const DoubleOrFloat*>(&(*float_scale)[0]);
         std::shared_ptr<std::vector<float>> float_bias = ConvertMLFloat16ToFloatBufferIfNeeded<T>(bias_data, norm_size);
         const DoubleOrFloat* converted_bias =
-          float_bias == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_bias)[0]);
+            float_bias == nullptr
+                ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
+                : reinterpret_cast<const DoubleOrFloat*>(&(*float_bias)[0]);
 
         for (int64_t h = 0; h < norm_size; h++) {
           if (simplified) {
@@ -242,7 +238,7 @@ Status LayerNormImpl::ComputeWithoutContext(
 
         if (std::is_same_v<decltype(p_output), MLFloat16*>) {
           ConvertFloatBufferToMLFloat16(
-            reinterpret_cast<float*>(output_buffer), reinterpret_cast<MLFloat16*>(p_output), norm_size);
+              reinterpret_cast<float*>(output_buffer), reinterpret_cast<MLFloat16*>(p_output), norm_size);
           delete[] output_buffer;
         }
 

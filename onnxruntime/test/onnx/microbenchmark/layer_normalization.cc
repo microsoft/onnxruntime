@@ -33,23 +33,22 @@ static const size_t num_elems = dims[0] * dims[1] * dims[2];
 static const std::vector<float> float_vals(num_elems, 1.0f);
 static const std::vector<MLFloat16> MLFloat16_vals(num_elems, MLFloat16(1.0f));
 
-} // namespace
+}  // namespace
 
 template <typename T>
 const T* getVector();
 
 template <>
 const float* getVector<float>() {
-    return float_vals.data();
+  return float_vals.data();
 }
 
 template <>
 const MLFloat16* getVector<MLFloat16>() {
-    return MLFloat16_vals.data();
+  return MLFloat16_vals.data();
 }
 
-
-template<typename T, typename U>
+template <typename T, typename U>
 static void BM_LayerNormalization(benchmark::State& state) {
   bool simplified = false;
   const float epsilon = 1e-05f;
@@ -69,7 +68,7 @@ static void BM_LayerNormalization(benchmark::State& state) {
   ConfigOptions config_options;
 
   OpKernelInfo op_kernel_info(node, kernel_def, *execution_provider, constant_initialized_tensors, mlvalue_name_idx_map,
-    data_transfer_mgr, allocators, config_options);
+                              data_transfer_mgr, allocators, config_options);
 
   LayerNormImpl layer_norm_impl(op_kernel_info);
 
@@ -88,20 +87,18 @@ static void BM_LayerNormalization(benchmark::State& state) {
   OrtThreadPoolParams tp_params;
   tp_params.name = ORT_TSTR("intra-op");
   std::unique_ptr<concurrency::ThreadPool> thread_pool = concurrency::CreateThreadPool(
-    &Env::Default(), tp_params, concurrency::ThreadPoolType::INTRA_OP);
+      &Env::Default(), tp_params, concurrency::ThreadPoolType::INTRA_OP);
 
   for (auto _ : state) {
     auto status = layer_norm_impl.ComputeWithoutContext(x_data, x_shape, scale_data, scale_shape, bias_data, bias_shape,
-      Y_data, mean_data, inv_std_dev_data, thread_pool.get(), axis, epsilon, simplified);
+                                                        Y_data, mean_data, inv_std_dev_data, thread_pool.get(), axis, epsilon, simplified);
 
-    if (! status.IsOK())
-    {
-       std::cout << "ComputeWithoutContext status not OK: " << status.ErrorMessage() << std::endl;
-       break;
+    if (!status.IsOK()) {
+      std::cout << "ComputeWithoutContext status not OK: " << status.ErrorMessage() << std::endl;
+      break;
     }
   }
 }
-
 
 BENCHMARK(BM_LayerNormalization<float, float>)
     ->Arg(1)

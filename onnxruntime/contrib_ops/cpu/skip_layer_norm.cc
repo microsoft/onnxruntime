@@ -37,24 +37,22 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-
 namespace {
 
 template <typename T, typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
 void ComputeJob(
-  const T* input_data,
-  const T* skip_data,
-  const T* gamma_data,
-  const T* beta_data,
-  const T* bias_data,
-  ptrdiff_t task_idx,
-  int hidden_size,
-  int64_t skip_size,
-  float epsilon,
-  bool simplified,
-  T* output_data,
-  T* skip_input_bias_add_output_data
-) {
+    const T* input_data,
+    const T* skip_data,
+    const T* gamma_data,
+    const T* beta_data,
+    const T* bias_data,
+    ptrdiff_t task_idx,
+    int hidden_size,
+    int64_t skip_size,
+    float epsilon,
+    bool simplified,
+    T* output_data,
+    T* skip_input_bias_add_output_data) {
   auto offset = task_idx * hidden_size;
   const T* p_input = input_data + offset;
   const T* p_skip = skip_data + (offset % skip_size);
@@ -99,19 +97,18 @@ void ComputeJob(
 }
 
 void ComputeJob(
-  const MLFloat16* input_data,
-  const MLFloat16* skip_data,
-  const MLFloat16* gamma_data,
-  const MLFloat16* beta_data,
-  const MLFloat16* bias_data,
-  ptrdiff_t task_idx,
-  int hidden_size,
-  int64_t skip_size,
-  float epsilon,
-  bool simplified,
-  MLFloat16* output_data,
-  MLFloat16* skip_input_bias_add_output_data
-) {
+    const MLFloat16* input_data,
+    const MLFloat16* skip_data,
+    const MLFloat16* gamma_data,
+    const MLFloat16* beta_data,
+    const MLFloat16* bias_data,
+    ptrdiff_t task_idx,
+    int hidden_size,
+    int64_t skip_size,
+    float epsilon,
+    bool simplified,
+    MLFloat16* output_data,
+    MLFloat16* skip_input_bias_add_output_data) {
   auto offset = task_idx * hidden_size;
   const MLFloat16* p_input = input_data + offset;
   const MLFloat16* p_skip = skip_data + (offset % skip_size);
@@ -174,8 +171,7 @@ void ComputeJob(
   MlasConvertFloatToHalfBuffer(&float_output[0], p_output, hidden_size);
 }
 
-} // namespace
-
+}  // namespace
 
 template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
@@ -226,7 +222,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
         ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size, epsilon_,
-          simplified, output_data, skip_input_bias_add_output_data);
+                   simplified, output_data, skip_input_bias_add_output_data);
       },
       0);
 
