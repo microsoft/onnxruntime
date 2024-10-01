@@ -58,6 +58,9 @@ class DeepCpuGruOp final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
+  ~DeepCpuGruOp() override = default;
+
+ private:
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
@@ -66,13 +69,6 @@ class DeepCpuGruOp final : public OpKernel {
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
-
-  ~DeepCpuGruOp() override = default;
-
- private:
-  void ConvertZRAndHPrePackWeightToTensor(onnxruntime::AllocatorPtr& alloc, const onnxruntime::Tensor& tensor);
-
-  void ConvertTensorToZRAndHPrePackWeights();
 
   bool TryPackInputWeights(const Tensor& weight, AllocatorPtr& alloc);
 

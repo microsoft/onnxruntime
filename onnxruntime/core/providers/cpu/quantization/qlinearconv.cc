@@ -301,7 +301,6 @@ class QLinearConv : public OpKernel {
   bool is_symmetric_gemm_{false};
   bool channels_last_{false};
   std::vector<int32_t> column_sums_;
-  Tensor* packed_tensor_;
 };
 
 // uint8_t kernel supports weight being either uint8_t or int8_t
