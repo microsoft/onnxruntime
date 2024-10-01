@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
 namespace Microsoft.ML.OnnxRuntime
 {
