@@ -625,38 +625,6 @@ typedef struct OrtMIGraphXProviderOptions {
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
 
-/** \brief WebGPU Execution Provider Options
- *
- * When a user wants to use WebGPU as the execution provider, there are 2 ways to specify the WebGPU device:
- *
- * 1. Use the default WebGPU device. The default WebGPU device is managed by WebGPU EP internally. The user doesn't
- *    need to provide any device information in this case. All the fields should be set to nullptr or 0.
- *
- * 2. Use a custom WebGPU device. The user should create their own handles of `WGPUInstance`, `WGPUAdapter`, and
- *    `WGPUDevice` and use arbitrary number in [1..65536) as the device id. The user should provide the handles
- *    and the device id in the options.
- *
- *    When specifying an existing Device ID, the user should provide the handles of `WGPUInstance`, `WGPUAdapter`, and
- *    `WGPUDevice` in the options. The device id should be the same as the one used previously.
- *
- *    It's user's responsibility to manage the lifecycle of the handles and ensure the handles are valid during the
- *    lifetime of the inference session.
- *
- * About DawnProcTable:
- *
- * When using an ONNX Runtime build that is not directly linked dawn during the build, a pointer to the runtime memory
- * address of the DawnProcTable should be provided. Otherwise, keep it as nullptr.
- *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_WGPU
- */
-typedef struct OrtWGPUProviderOptions {
-  int device_id;          // WebGPU device id.
-  void* instance_handle;  // WebGPU instance handle.
-  void* adapter_handle;   // WebGPU adapter handle.
-  void* device_handle;    // WebGPU device handle.
-  void* dawn_proc_table;  // DawnProcTable pointer.
-} OrtWGPUProviderOptions;
-
 /** \brief OpenVINO Provider Options
  *
  * \see OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
