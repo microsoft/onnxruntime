@@ -127,8 +127,8 @@ TEST(ConvIntegerTest, WithGroup_2D_u8s8) {
                           26, 27, 28});
   std::vector<int64_t> w_dims{3, 1, 2, 2};
   test.AddInput<int8_t>("w", w_dims,
-                        {-2, -2,
-                         -1, -1,
+                        {-2, -1,
+                         -1, -2,
                          0, 1,
                          1, 0,
                          2, 3,
