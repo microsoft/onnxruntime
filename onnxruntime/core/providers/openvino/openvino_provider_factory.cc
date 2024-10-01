@@ -268,6 +268,8 @@ struct OpenVINO_Provider : Provider {
         enable_qdq_optimizer = true;
       else if (bool_flag == "false" || bool_flag == "False")
         enable_qdq_optimizer = false;
+      else
+        ORT_THROW("[ERROR] [OpenVINO-EP] enable_qdq_optimiser should be a boolean.\n");
       bool_flag = "";
     }
 
