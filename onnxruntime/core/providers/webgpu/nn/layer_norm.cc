@@ -26,20 +26,6 @@ static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
   return SafeInt<size_t>(axis < 0 ? axis + rank : axis);
 }
 
-static std::string FillVar(std::string dataType, int components, std::string value) {
-  if (components == 1) {
-    return dataType + "(" + value + ")";
-  }
-  return "vec" + std::to_string(components) + "<" + dataType + ">(" + value + ")";
-}
-
-static std::string CastToF32(int components, std::string value) {
-  if (components == 1) {
-    return "f32(" + value + ")";
-  }
-  return "vec" + std::to_string(components) + "<f32>(" + value + ")";
-};
-
 static std::string SumVector(std::string x, int components) {
   switch (components) {
     case 1:
@@ -62,32 +48,30 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
   int components = x.NumComponents();
-  std::string bias = (has_bias_) ? " + bias[j] " : "";
-  std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- mean ";
-  std::string fillvec = FillVar("f32", components, "0");
-  std::string element_type = (is_fp16_) ? "f16;\n" : "f32;\n";
+  std::string bias = (has_bias_) ? " + bias[j]" : "";
+  std::string simpl1 = (simplified_) ? "" : " - mean * mean";
+  std::string simpl2 = (simplified_) ? "" : " - mean";
 
-  shader.AdditionalImplementation() << "alias element_t = " << element_type;
+  shader.AdditionalImplementation() << "alias element_t = " << (is_fp16_ ? "f16;\n" : "f32;\n")
+                                    << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n";
 
-  std::stringstream ss;
-  ss << "let offset = global_idx * uniforms.norm_size_vectorized;\n"
-     << "var mean_vector = " << fillvec << ";\n"
-     << "var mean_square_vector = " << fillvec << ";\n"
-     << "for (var h: u32 = 0u; h < uniforms.norm_size_vectorized; h++) {\n"
-     << "   let value = " << CastToF32(components, "x[h + offset]") << ";\n"
-     << "   mean_vector += value;\n"
-     << "   mean_square_vector += value * value;\n"
-     << "}\n"
-     << "let mean = " << SumVector("mean_vector", components) << " / f32(uniforms.norm_size);\n"
-     << "let inv_std_dev = inverseSqrt(" << SumVector("mean_square_vector", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
-     << "for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {\n"
-     << "   let f32input = " << CastToF32(components, "x[j + offset]") << ";\n"
-     << "   let f32scale = " << CastToF32(components, "scale[j]") << ";\n"
-     << "   output[j + offset] =  x_value_t((f32input " << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
-     << "}\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.norm_count")
+                            << "let offset = global_idx * uniforms.norm_size_vectorized;\n"
+                            << "var mean_vector = f32_val_t(0);\n"
+                            << "var mean_square_vector = f32_val_t(0);\n"
+                            << "for (var h: u32 = 0u; h < uniforms.norm_size_vectorized; h++) {\n"
+                            << "   let value = f32_val_t(x[h + offset]);\n"
+                            << "   mean_vector += value;\n"
+                            << "   mean_square_vector += value * value;\n"
+                            << "}\n"
+                            << "let mean = " << SumVector("mean_vector", components) << " / f32(uniforms.norm_size);\n"
+                            << "let inv_std_dev = inverseSqrt(" << SumVector("mean_square_vector", components) << " / f32(uniforms.norm_size)" << simpl1 << " + uniforms.epsilon);\n"
+                            << "for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {\n"
+                            << "   let f32input = f32_val_t(x[j + offset]);\n"
+                            << "   let f32scale = f32_val_t(scale[j]);\n"
+                            << "   output[j + offset] =  x_value_t((f32input" << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
+                            << "}\n";
 
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.norm_count") << ss.str();
   return Status::OK();
 }
 
