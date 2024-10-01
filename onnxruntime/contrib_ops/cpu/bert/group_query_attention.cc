@@ -142,10 +142,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     const T* k_input;
     T* q_rotary;
     T* k_rotary;
+    // New OrtValues so data doesn't get freed
+    OrtValue Q_value_og;
+    OrtValue K_value_og;
     if (packed_qkv) {
       OrtValue RotaryQKV;
       Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size}), allocator, RotaryQKV);
-      q_input = Q.Get<Tensor>().Data<T>();
+      Q_value_og = Q;
+      q_input = Q_value_og.Get<Tensor>().Data<T>();
       k_input = q_input + num_heads_ * sequence_length * head_size;
       q_rotary = RotaryQKV.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = q_rotary + num_heads_ * sequence_length * head_size;
@@ -155,8 +159,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_, sequence_length, head_size}), allocator, RotaryQ);
       OrtValue RotaryK;
       Tensor::InitOrtValue(element_type, TensorShape({batch_size, kv_num_heads_, sequence_length, head_size}), allocator, RotaryK);
-      q_input = Q.Get<Tensor>().Data<T>();
-      k_input = K.Get<Tensor>().Data<T>();
+      Q_value_og = Q;
+      K_value_og = K;
+      q_input = Q_value_og.Get<Tensor>().Data<T>();
+      k_input = K_value_og.Get<Tensor>().Data<T>();
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = RotaryK.GetMutable<Tensor>()->MutableData<T>();
       Q = RotaryQ;
