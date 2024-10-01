@@ -55,7 +55,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.OS;
 
 /** Tests for the onnx-runtime Java interface. */
 public class InferenceTest {
@@ -66,7 +68,7 @@ public class InferenceTest {
   private static final Pattern inputPBPattern = Pattern.compile("input_*.pb");
   private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
-  private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+  private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
   public void environmentTest() {
@@ -711,6 +713,14 @@ public class InferenceTest {
 
   @Test
   @EnabledIfSystemProperty(named = "USE_DNNL", matches = "1")
+  // TODO see if this can be enabled on Windows.
+  // Error in CI build:
+  // ai.onnxruntime.OrtException: Error code - ORT_RUNTIME_EXCEPTION - message:
+  // D:\a\_work\1\s\onnxruntime\core\session\provider_bridge_ort.cc:1530
+  // onnxruntime::ProviderLibrary::Get [ONNXRuntimeError] : 1 : FAIL : LoadLibrary failed with error
+  // 126 "" when trying to load
+  // "C:\Users\cloudtest\AppData\Local\Temp\onnxruntime-java9085185608411256214\onnxruntime_providers_dnnl.dll"
+  @DisabledOnOs(value = OS.WINDOWS)
   public void testDNNL() throws OrtException {
     runProvider(OrtProvider.DNNL);
   }
@@ -731,6 +741,12 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
     runProvider(OrtProvider.DIRECT_ML);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
+  public void testQNN() throws OrtException {
+    runProvider(OrtProvider.QNN);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -2031,6 +2047,14 @@ public class InferenceTest {
         case XNNPACK:
           options.addXnnpack(Collections.emptyMap());
           break;
+        case QNN:
+          {
+            String backendPath = OS.WINDOWS.isCurrentOs() ? "/QnnCpu.dll" : "/libQnnCpu.so";
+            options.addQnn(
+                Collections.singletonMap(
+                    "backend_path", TestHelpers.getResourcePath(backendPath).toString()));
+            break;
+          }
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:
