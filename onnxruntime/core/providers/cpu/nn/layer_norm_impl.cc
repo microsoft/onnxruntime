@@ -15,11 +15,11 @@ namespace onnxruntime {
 
 namespace {
 
-ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, int64_t num_elems) {
+ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, [[maybe_unused]] int64_t num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, int64_t num_elems) {
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, [[maybe_unused]] int64_t num_elems) {
   return p_output;
 }
 
@@ -29,11 +29,13 @@ ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int64_t 
 
 
 template <typename T>
-ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(const T* p_input, int64_t num_elems);
+ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
+  [[maybe_unused]] const T* p_input, [[maybe_unused]] int64_t num_elems);
 
 template <typename T>
 ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertMLFloat16ToFloatBufferIfNeeded(
-  const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input, int64_t num_elems) {
+  [[maybe_unused]] const std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>* p_input,
+  [[maybe_unused]] int64_t num_elems) {
   return nullptr;
 }
 
