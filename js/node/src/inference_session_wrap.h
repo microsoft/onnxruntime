@@ -17,11 +17,11 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
  private:
   /**
    * [sync] initialize ONNX Runtime once.
-   * 
+   *
    * This function must be called before any other functions.
-   * 
+   *
    * @param arg0 a number specifying the log level.
-   * 
+   *
    * @returns undefined
    */
   static Napi::Value InitOrtOnce(const Napi::CallbackInfo& info);
