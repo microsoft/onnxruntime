@@ -42,11 +42,11 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 #ifdef XNNPACK_FP16_SUPPORTED
 #define KERNEL_CREATE_INFO_VERSIONED_FP16(Start, End, Op, Domain) \
   BuildKernelCreateInfo<                                          \
-      ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, MLFloat16, Op)>
+      ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, MLFloat16, Op)>,
 
 #define KERNEL_CREATE_INFO_FP16(Start, Op, Domain) \
   BuildKernelCreateInfo<                           \
-      ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, MLFloat16, Op)>
+      ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, MLFloat16, Op)>,
 
 #define CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(provider, domain, startver, endver, name) \
   class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, startver, endver, MLFloat16, name)
@@ -133,10 +133,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(10, 10, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO(12, MaxPool, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_VERSIONED_FP16(8, 9, MaxPool, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_VERSIONED_FP16(10, 10, MaxPool, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_VERSIONED_FP16(11, 11, MaxPool, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_FP16(12, MaxPool, kMSInternalNHWCDomain),
+      // because the F16 macro may be expanded to empty, so don't add ","
+      KERNEL_CREATE_INFO_VERSIONED_FP16(8, 9, MaxPool, kMSInternalNHWCDomain)
+      KERNEL_CREATE_INFO_VERSIONED_FP16(10, 10, MaxPool, kMSInternalNHWCDomain)
+      KERNEL_CREATE_INFO_VERSIONED_FP16(11, 11, MaxPool, kMSInternalNHWCDomain)
+      KERNEL_CREATE_INFO_FP16(12, MaxPool, kMSInternalNHWCDomain)
 
       KERNEL_CREATE_INFO(1, QLinearConvTranspose, kMSInternalNHWCDomain),
 
