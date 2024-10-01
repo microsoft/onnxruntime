@@ -43,6 +43,9 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
+  if (has_input_skip_bias_sum_) {
+    shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseUniform);
+  }
 
   int components = x.NumComponents();
 
@@ -50,6 +53,7 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
   std::string simpl2 = (simplified_) ? "" : "- element_t(mean) ";
   std::string beta = (hasBeta_) ? " + beta[offset1d + i] " : "";
+  std::string input_skip_bias_sum = (has_input_skip_bias_sum_) ? "input_skip_bias_sum[offset + i] = value;\n" : "";
 
   shader.AdditionalImplementation()
       << "alias element_t = " << (is_fp16_ ? "f16;\n" : "f32;\n")
@@ -72,6 +76,7 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << " let input_value = x[offset + i];\n"
       << " let value = input_value + skip_value" << bias << ";\n"
       << " output[offset + i] = value;\n"
+      << input_skip_bias_sum
       << " let f32_value = f32_val_t(value);\n"
       << " sum_shared[ix] += f32_value;\n"
       << " sum_squared_shared[ix] += f32_value * f32_value;\n"
@@ -109,6 +114,7 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   const auto x_shape = x->Shape();
 
   auto* output = context.Output(0, x_shape);
+  auto* input_skip_bias_sum = context.Output(3, x_shape);
 
   size_t data_size = x_shape.Size();
   if (data_size == 0) {
@@ -118,10 +124,11 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
   const uint32_t hidden_size = SafeInt<uint32_t>(x_shape[x_shape.NumDimensions() - 1]);
   const int components = GetMaxComponents(hidden_size);
+  const bool has_input_skip_bias_sum = input_skip_bias_sum != nullptr;
 
-  SkipLayerNormProgram program{beta != nullptr, bias != nullptr, epsilon_, hidden_size, is_fp16, simplified};
+  SkipLayerNormProgram program{beta != nullptr, bias != nullptr, epsilon_, hidden_size, has_input_skip_bias_sum, is_fp16, simplified};
   program
-      .CacheHint(simplified)
+      .CacheHint(simplified, has_input_skip_bias_sum)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
@@ -143,7 +150,9 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   if (bias != nullptr) {
     program.AddInput({bias, ProgramTensorMetadataDependency::Type, components});
   }
-
+  if (has_input_skip_bias_sum) {
+    program.AddOutputs({{input_skip_bias_sum, ProgramTensorMetadataDependency::None, components}});
+  }
   return context.RunProgram(program);
 }
 

@@ -15,12 +15,13 @@ using onnxruntime::webgpu::ComputeContext;
 
 class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
  public:
-  SkipLayerNormProgram(bool hasBeta, bool hasBias, float epsilon, uint32_t hidden_size, bool is_fp16, bool simplified) : Program{"SkipLayerNorm"} {
+  SkipLayerNormProgram(bool hasBeta, bool hasBias, float epsilon, uint32_t hidden_size, bool has_input_skip_bias_sum, bool is_fp16, bool simplified) : Program{"SkipLayerNorm"} {
     epsilon_ = epsilon;
     hasBeta_ = hasBeta;
     hasBias_ = hasBias;
     epsilon_ = epsilon;
     hidden_size_ = hidden_size;
+    has_input_skip_bias_sum_ = has_input_skip_bias_sum;
     simplified_ = simplified;
     is_fp16_ = is_fp16;
   }
@@ -37,6 +38,7 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
   bool hasBias_;
   float epsilon_;
   uint32_t hidden_size_;
+  bool has_input_skip_bias_sum_;
   bool is_fp16_;
   bool simplified_;
 };
