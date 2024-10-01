@@ -41,7 +41,7 @@ WEBGPU_CONCAT_KERNEL(13)
 void AppendCalCulateInputIndexFunction(std::ostream& os, size_t input_count) {
   os << "fn calculate_input_index(index: u32) -> u32 {\n"
      << "  for (var i = 0u; i < " << input_count << "; i = i + 1u) {\n"
-     << "    if (index < uniforms.size_in_concat_axis[i]) {\n"
+     << "    if (index < " << GetElementAt("uniforms.size_in_concat_axis", "i", input_count) << ") {\n"
      << "      return i;\n"
      << "    }\n"
      << "  }\n"
@@ -78,13 +78,13 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   AppendCalCulateInputIndexFunction(shader.AdditionalImplementation(), input_count);
   // add implementation of fn assign_output_data
   AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output);
-
+  const std::string size_in_concat_axis = GetElementAt("uniforms.size_in_concat_axis", "input_index - 1", input_count);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  var indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  let indices_axis = " << output.IndicesGet("indices", axis_) << ";\n"
                             << "  let input_index = calculate_input_index(indices_axis);\n"
-                               "  if (input_index != 0u) {\n"
-                            << "     " << output.IndicesSet("indices", axis_, "indices_axis - uniforms.size_in_concat_axis[input_index - 1]") << ";\n"
+                            << "  if (input_index != 0u) {\n"
+                            << "    " << output.IndicesSet("indices", axis_, "indices_axis - " + size_in_concat_axis) << ";\n"
                             << "  }\n"
                                "  assign_output_data(global_idx, input_index, indices);\n";
   return Status::OK();
