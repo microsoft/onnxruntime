@@ -115,8 +115,7 @@ public final class OrtLoraAdapter implements AutoCloseable {
    * @throws OrtException If the native call failed.
    * @return An OrtLoraAdapter instance.
    */
-  static OrtLoraAdapter create(String adapterPath, OrtAllocator allocator)
-      throws OrtException {
+  static OrtLoraAdapter create(String adapterPath, OrtAllocator allocator) throws OrtException {
     long allocatorHandle = allocator == null ? 0 : allocator.handle;
     return new OrtLoraAdapter(
         createLoraAdapter(OnnxRuntime.ortApiHandle, adapterPath, allocatorHandle));
