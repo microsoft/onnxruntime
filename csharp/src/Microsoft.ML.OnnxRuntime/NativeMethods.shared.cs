@@ -304,9 +304,29 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr RunAsync;
     }
 
+#if !__MOBILE__
+    [StructLayout(LayoutKind.Sequential)]
+#if NETSTANDARD2_0
+    public class OrtDmlApi
+#else
+    public struct OrtDmlApi
+#endif
+    {
+        public IntPtr SessionOptionsAppendExecutionProvider_DML;
+        public IntPtr SessionOptionsAppendExecutionProvider_DML1;
+        public IntPtr CreateGPUAllocationFromD3DResource;
+        public IntPtr FreeGPUAllocation;
+        public IntPtr GetD3D12ResourceFromAllocation;
+        public IntPtr SessionOptionsAppendExecutionProvider_DML2;
+    }
+#endif
+
     internal static class NativeMethods
     {
         static OrtApi api_;
+#if !__MOBILE__
+        static OrtDmlApi dmlApi_;
+#endif
 
 #if NETSTANDARD2_0
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -484,6 +504,14 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtGetTensorMemoryInfo = (DOrtGetTensorMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMemoryInfo, typeof(DOrtGetTensorMemoryInfo));
+            OrtGetExecutionProviderApi = (DOrtGetExecutionProviderApi)Marshal.GetDelegateForFunctionPointer(api_.GetExecutionProviderApi, typeof(DOrtGetExecutionProviderApi));
+#if !__MOBILE__
+            var utf8ProviderName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8("DML");
+            NativeApiStatus.VerifySuccess(OrtGetExecutionProviderApi(utf8ProviderName, ORT_API_VERSION, out var ortDmlApiPtr));
+            dmlApi_ = (OrtDmlApi)Marshal.PtrToStructure(ortDmlApiPtr, typeof(OrtDmlApi));
+            OrtSessionOptionsAppendExecutionProvider_DML1 = (DOrtSessionOptionsAppendExecutionProvider_DML1)Marshal.GetDelegateForFunctionPointer(
+                dmlApi_.SessionOptionsAppendExecutionProvider_DML1, typeof(DOrtSessionOptionsAppendExecutionProvider_DML1));
+#endif
             // MapTypeInfo
             OrtGetMapKeyType = (DGetMapKeyType)Marshal.GetDelegateForFunctionPointer(api_.GetMapKeyType, typeof(DGetMapKeyType));
             OrtCastTypeInfoToMapTypeInfo = (DCastTypeInfoToMapTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.CastTypeInfoToMapTypeInfo, typeof(DCastTypeInfoToMapTypeInfo));
@@ -2014,6 +2042,20 @@ namespace Microsoft.ML.OnnxRuntime
                                                                         out IntPtr /* const OrtMemoryInfo** */ ortMemoryInfo);
 
         public static DOrtGetTensorMemoryInfo OrtGetTensorMemoryInfo;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetExecutionProviderApi(byte[] /*(const char*)*/ provider_name,
+                                                                                uint /*(uint32_t)*/ version,
+                                                                                out IntPtr /* const OrtMemoryInfo** */ provider_api);
+
+        public static DOrtGetExecutionProviderApi OrtGetExecutionProviderApi;
+
+#if !__MOBILE__
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionOptionsAppendExecutionProvider_DML1(IntPtr /*(OrtSessionOptions*) */ options, IntPtr dml_device, IntPtr cmd_queue);
+
+        public static DOrtSessionOptionsAppendExecutionProvider_DML1 OrtSessionOptionsAppendExecutionProvider_DML1;
+#endif
 
         ///  Map Type API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
