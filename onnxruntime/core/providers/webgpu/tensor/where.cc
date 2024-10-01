@@ -84,16 +84,16 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
       const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
       const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << (component_c" + x + " * 8)))";
 
-      shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4u + " + x + "u") << ";\n"
+      shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4 + " + x) << ";\n"
                                 << "let offset_a" << x << " = " << a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
                                 << "let offset_b" << x << " = " << b_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
                                 << "let offset_c" << x << " = " << c_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
-                                << "let index_a" << x << " = offset_a" << x << " / 4u;\n"
-                                << "let index_b" << x << " = offset_b" << x << " / 4u;\n"
-                                << "let index_c" << x << " = offset_c" << x << " / 4u;\n"
-                                << "let component_a" << x << " = offset_a" << x << " % 4u;\n"
-                                << "let component_b" << x << " = offset_b" << x << " % 4u;\n"
-                                << "let component_c" << x << " = offset_c" << x << " % 4u;\n"
+                                << "let index_a" << x << " = offset_a" << x << " / 4;\n"
+                                << "let index_b" << x << " = offset_b" << x << " / 4;\n"
+                                << "let index_c" << x << " = offset_c" << x << " / 4;\n"
+                                << "let component_a" << x << " = offset_a" << x << " % 4;\n"
+                                << "let component_b" << x << " = offset_b" << x << " % 4;\n"
+                                << "let component_c" << x << " = offset_c" << x << " % 4;\n"
                                 << rest_str << "[" << x << "] = " << type_cast << "(" << expression(a_expression, b_expression, c_expression) << ");\n";
     };
 
@@ -134,9 +134,9 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   program
       .CacheHint(is_broadcast)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::None, {(cond_shape.Size() + 3) / 4}, 4},
-                  {x_tensor, ProgramTensorMetadataDependency::None, {(x_shape.Size() + 3) / 4}, 4},
-                  {y_tensor, ProgramTensorMetadataDependency::None, {(y_shape.Size() + 3) / 4}, 4}})
+      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Rank, {(cond_shape.Size() + 3) / 4}, 4},
+                  {x_tensor, ProgramTensorMetadataDependency::Rank, {(x_shape.Size() + 3) / 4}, 4},
+                  {y_tensor, ProgramTensorMetadataDependency::Rank, {(y_shape.Size() + 3) / 4}, 4}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
