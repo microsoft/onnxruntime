@@ -98,28 +98,28 @@ public final class OrtLoraAdapter implements AutoCloseable {
   /**
    * Creates an instance of OrtLoraAdapter.
    *
-   * @param absoluteAdapterPath path to the adapter file that is going to be memory mapped.
+   * @param adapterPath path to the adapter file that is going to be memory mapped.
    * @throws OrtException If the native call failed.
    * @return An OrtLoraAdapter instance.
    */
-  public static OrtLoraAdapter create(String absoluteAdapterPath) throws OrtException {
-    return create(absoluteAdapterPath, null);
+  public static OrtLoraAdapter create(String adapterPath) throws OrtException {
+    return create(adapterPath, null);
   }
 
   /**
    * Creates an instance of OrtLoraAdapter.
    *
-   * @param absoluteAdapterPath path to the adapter file that is going to be memory mapped.
+   * @param adapterPath path to the adapter file that is going to be memory mapped.
    * @param allocator optional allocator or null. If supplied, adapter parameters are copied to the
    *     allocator memory.
    * @throws OrtException If the native call failed.
    * @return An OrtLoraAdapter instance.
    */
-  static OrtLoraAdapter create(String absoluteAdapterPath, OrtAllocator allocator)
+  static OrtLoraAdapter create(String adapterPath, OrtAllocator allocator)
       throws OrtException {
     long allocatorHandle = allocator == null ? 0 : allocator.handle;
     return new OrtLoraAdapter(
-        createLoraAdapter(OnnxRuntime.ortApiHandle, absoluteAdapterPath, allocatorHandle));
+        createLoraAdapter(OnnxRuntime.ortApiHandle, adapterPath, allocatorHandle));
   }
 
   /**
