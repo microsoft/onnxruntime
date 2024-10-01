@@ -588,10 +588,20 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   }
 }
 
-bool DataOps::unsupported_op_mode(const Node* node) {
+bool DataOps::unsupported_op_mode(const Node* node, bool& has_external_weights_) {
   bool result = false;
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+
+  for (const auto& tensor_pair : initializers) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_pair.second;
+    // Check if the tensor exists and if it has an external data location
+    if (tensor_proto && tensor_proto->has_data_location() &&
+        tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      has_external_weights_ = true;
+      break;
+    }
+  }
 
   auto iter = op_list_.equal_range(optype);
   for (auto it = iter.first; it != iter.second; ++it) {
@@ -642,7 +652,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
-bool DataOps::node_is_supported(const NodeIndex node_idx) {
+bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_weights_) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -750,7 +760,7 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
   }
 
   // Check 3a
-  if (domain == kOnnxDomain && unsupported_op_mode(node)) {
+  if (domain == kOnnxDomain && unsupported_op_mode(node, has_external_weights_)) {
     if (optype == "GatherElements") {
       return true;
     }
@@ -765,11 +775,12 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
   return true;
 }
 
-std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
+std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers,
+                                                          bool& has_external_weights_) {
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (node_is_supported(node_idx)) {
+    if (node_is_supported(node_idx, has_external_weights_)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {

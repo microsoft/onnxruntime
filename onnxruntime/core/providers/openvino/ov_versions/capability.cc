@@ -59,7 +59,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
-  const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers);
+  const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers, has_external_weights_);
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;

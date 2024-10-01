@@ -22,6 +22,7 @@ struct GlobalContext {
   bool export_ep_ctx_blob = false;
   bool enable_qdq_optimizer = false;
   bool disable_cpu_fallback = false;
+  bool has_external_weights = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;

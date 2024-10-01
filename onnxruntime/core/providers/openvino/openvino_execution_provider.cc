@@ -125,6 +125,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
+  global_context_->has_external_weights = obj.HasExternalWeights();
 
   return result;
 }
