@@ -13,8 +13,10 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <typename TIdx>
-std::string GetElementAt(std::string_view var, const TIdx& idx, int rank, bool is_f16 = false) {
+template <typename TIdx,
+          typename TRank,
+          typename = std::enable_if_t<std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>>>
+std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool is_f16 = false) {
   // "std::string::rfind(str, 0) == 0" is equivalent to "std::string::starts_with(str)" before C++20.
   if (var.rfind("uniforms.", 0) == 0) {
     if (rank > 4) {
