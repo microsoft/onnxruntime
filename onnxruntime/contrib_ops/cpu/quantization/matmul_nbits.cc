@@ -190,7 +190,7 @@ class MatMulNBits final : public OpKernel {
 #if defined(ORT_NEURAL_SPEED)
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                                [[maybe_unused]] bool save_prepacked_initializers,
+                                bool /*save_prepacked_initializers*/,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
@@ -255,7 +255,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                                [[maybe_unused]] bool save_prepacked_initializers,
+                                bool save_prepacked_initializers,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -316,7 +316,7 @@ void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& 
 
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                                       [[maybe_unused]] bool save_prepacked_initializers,
+                                       bool save_prepacked_initializers,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);

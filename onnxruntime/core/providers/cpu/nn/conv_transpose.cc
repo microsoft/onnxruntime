@@ -38,7 +38,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <typename T>
 Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
-                                 [[maybe_unused]] bool save_prepacked_initializers,
+                                 bool /*save_prepacked_initializers*/,
                                  /*out*/ bool& is_packed,
                                  /*out*/ PrePackedWeights* /*prepacked_weights*/
 ) {
@@ -48,7 +48,7 @@ Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, Al
 
 template <>
 Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                                     [[maybe_unused]] bool save_prepacked_initializers,
+                                     bool /*save_prepacked_initializers*/,
                                      /*out*/ bool& is_packed,
                                      /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;

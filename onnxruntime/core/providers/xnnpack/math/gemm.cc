@@ -108,7 +108,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
 }
 
 Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
-                     [[maybe_unused]] bool save_prepacked_initializers,
+                     bool /*save_prepacked_initializers*/,
                      /*out*/ bool& is_packed,
                      /*out*/ PrePackedWeights*) {
   is_packed = false;

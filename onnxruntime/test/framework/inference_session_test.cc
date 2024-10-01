@@ -503,8 +503,8 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
   SessionOptions so;
   std::string model_name = "model_with_matmul_nbits";
 
-  std::string test_model = "testdata/prepack/" + model_name + ".onnx ";
-  std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx ";
+  const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
+  const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
 
   so.session_logid = "InferenceSessionTests.TestPrepackSerialization";
   so.enable_cpu_mem_arena = false;
@@ -579,7 +579,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
   // check output of original model and optimized model are equal
   ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
 
-  for (int i = 0; i < ort_outputs.size(); ++i) {
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
     const auto& sequences = ort_outputs[i];
     ASSERT_TRUE(sequences.IsTensor());
 
