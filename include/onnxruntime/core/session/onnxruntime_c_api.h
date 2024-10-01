@@ -3651,10 +3651,10 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Only used for float32 model.
+       "enable_htp_fp16_precision": Used for float32 model for HTP backend.
        Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": Default. With fp32 precision.
-         - "1": With fp16 precision.
+         - "0": With fp32 precision.
+         - "1": Default. With fp16 precision.
        "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
          - "0": Default. Disabled.
          - "1": Enabled.
@@ -4679,7 +4679,7 @@ struct OrtApi {
    * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *
-   * \param[in] adapter_file_path Absolute file path to the adapter file.
+   * \param[in] adapter_file_path adapter file path.
    * \param[in] allocator optional pointer to a device allocator. If specified
    *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
    *            The data would still be copied to device if required by the model at inference time.
@@ -4702,18 +4702,18 @@ struct OrtApi {
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    */
-  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const uint8_t* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
+  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
 
   /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
    */
   ORT_CLASS_RELEASE(LoraAdapter);
 
-  /** \brief Set the active Lora Adapter for the run options
+  /** \brief Add the Lora Adapter to the list of active adapters.
    *
    * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
    * OrtApi::CreateLoraAdapter or FromArray. The Lora Adapter will be used by the session to run the model.
-   * The instance of the OrtRunOptions will can then be then used to customize the Run() calls.
+   * The instance of the OrtRunOptions can then be used to customize the Run() calls.
    * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
    * Lora adapters that will be active at the same time must not overlap.
    * This setting does not affect RunWithBinding.

@@ -12,7 +12,7 @@ namespace adapters {
 // The current model versions for saving lora parameters in flatbuffers format.
 // Once this version is updated, the kSupportedAdapterFormatVersions in IsAdapterFormatVersionSupported
 // below will also need to be updated.
-// See src/flatbuffers/schema/README.md for more details on versioning.
+// See onnxruntime/lora/adapter_format/README.md for more details on versioning.
 // Version 1 - history begins
 constexpr const int kAdapterFormatVersion = 1;
 

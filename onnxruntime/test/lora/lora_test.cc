@@ -180,13 +180,20 @@ TEST(LoraAdapterTest, Load) {
   // Test different data types
   const auto data_types = gsl::make_span(adapters::EnumValuesTensorDataType());
   for (size_t i = 1, size = data_types.size(); i < size; ++i) {
-    if (i == 8 || i == 9 || i == 14 || i == 15 || (i > 16 && i < 21))
+    const auto dt = data_types[i];
+
+    using namespace adapters;
+    if (dt == TensorDataType::STRING ||
+        dt == TensorDataType::BOOL ||
+        dt == TensorDataType::COMPLEX64 ||
+        dt == TensorDataType::COMPLEX128 ||
+        static_cast<int>(dt) >= static_cast<int>(TensorDataType::BFLOAT16))
       continue;
 
-    utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,
-                                int16_t, uint16_t, int32_t, uint32_t,
-                                int64_t, uint64_t,
-                                BFloat16, MLFloat16>
+    onnxruntime::utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,
+                                             int16_t, uint16_t, int32_t, uint32_t,
+                                             int64_t, uint64_t,
+                                             BFloat16, MLFloat16>
         disp(static_cast<int32_t>(data_types[i]));
     disp.Invoke<TestDataType>();
   }

@@ -154,7 +154,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
         const auto element_size = element_type->Size();
         if (narrow<size_t>(data.itemsize()) != element_size) {
-          ORT_THROW("Items size in the incoming aray: ", data.itemsize(),
+          ORT_THROW("Items size in the incoming array: ", data.itemsize(),
                     " specified by onnxtype: ", element_size);
         }
 

@@ -47,7 +47,6 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
   auto u8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(mapped_memory.get(), file_size));
   adapter_ = adapters::utils::ValidateAndGetAdapterFromBytes(u8_span);
   buffer_.emplace<MemMapHolder>(std::move(mapped_memory), file_size);
-
   InitializeParamsValues();
 }
 
@@ -97,6 +96,7 @@ void LoraAdapter::InitializeParamsValues() {
   }
 
   const auto* params = adapter_->parameters();
+  ORT_ENFORCE(params != nullptr, "Params absent");
   std::unordered_map<std::string, Param> params_values;
   params_values.reserve(params->size());
   // Re-work in two separate loops due to compiler issues
@@ -141,7 +141,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_fi
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapterFromArray, _In_ const uint8_t* bytes, size_t num_bytes,
+ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes,
                     _In_ OrtAllocator* allocator, _Outptr_ OrtLoraAdapter** adapter) {
   API_IMPL_BEGIN
 
@@ -153,10 +153,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateLoraAdapterFromArray, _In_ const uint8_t* byt
     lora_adapter = std::make_unique<onnxruntime::lora::LoraAdapter>();
   }
 
-  auto span = gsl::make_span(bytes, num_bytes);
-  std::vector<uint8_t> buffer;
-  buffer.reserve(num_bytes);
-  buffer.assign(span.begin(), span.end());
+  std::vector<uint8_t> buffer(num_bytes);
+  memcpy(buffer.data(), bytes, num_bytes);
   lora_adapter->Load(std::move(buffer));
   *adapter = reinterpret_cast<OrtLoraAdapter*>(lora_adapter.release());
   return nullptr;

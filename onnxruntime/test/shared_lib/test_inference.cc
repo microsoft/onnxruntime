@@ -4467,12 +4467,12 @@ static Ort::LoraAdapter CreateAdapterFromArray() {
   return Ort::LoraAdapter::CreateLoraAdapterFromArray(buffer.data(), buffer.size(), nullptr);
 }
 
-TEST(CApi, RunWithLoraAdapterFromFile) {
+TEST(CApiTest, RunWithLoraAdapterFromFile) {
   auto adapter = CreateAdapterFromFile();
   TestRunWithLoraAdapter(adapter);
 }
 
-TEST(CApi, RunWithLoraAdapterFromArray) {
+TEST(CApiTest, RunWithLoraAdapterFromArray) {
   auto adapter = CreateAdapterFromArray();
   TestRunWithLoraAdapter(adapter);
 }

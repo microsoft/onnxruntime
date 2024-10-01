@@ -55,10 +55,6 @@
 // (This static var is referenced in GetCudaToHostMemCpyFunction())
 const OrtDevice::DeviceType OrtDevice::GPU;
 
-namespace onnxruntime {
-
-}  // namespace onnxruntime
-
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267 4996 4503)
 #endif  // _MSC_VER
@@ -167,6 +163,24 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
     // 2) create, manipulate, and destroy python objects
     py::gil_scoped_acquire acquire;
     invoke_callback();
+  }
+}
+
+void AppendLoraParametersAsInputs(const RunOptions& run_options,
+                                  size_t total_entries,
+                                  NameMLValMap& feeds) {
+  for (const auto* adapter : run_options.active_adapters) {
+    total_entries += adapter->GetParamNum();
+  }
+  feeds.reserve(total_entries + feeds.size());
+
+  // Append necessary inputs for active adapters
+  for (const auto* adapter : run_options.active_adapters) {
+    auto [begin, end] = adapter->GetParamIterators();
+    for (; begin != end; ++begin) {
+      const auto& [name, param] = *begin;
+      feeds.insert(std::make_pair(name, param.GetMapped()));
+    }
   }
 }
 
@@ -1905,10 +1919,10 @@ RunOptions instance. The individual calls will exit gracefully and return an err
           },
           R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc")
       .def(
-          "set_adapter_active", [](RunOptions* options, lora::LoraAdapter* adapter) {
+          "add_active_adapter", [](RunOptions* options, lora::LoraAdapter* adapter) {
             options->active_adapters.push_back(adapter);
           },
-          R"pbdoc(Activates the specified lora adapter)pbdoc");
+          R"pbdoc(Adds specified adapter as an active adapter)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -2030,20 +2044,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                -> py::list {
              NameMLValMap feeds;
              if (run_options != nullptr && !run_options->active_adapters.empty()) {
-               size_t total_entries = pyfeeds.size();
-               for (const auto* adapter : run_options->active_adapters) {
-                 total_entries += adapter->GetParamNum();
-               }
-               feeds.reserve(total_entries);
-
-               // Append necessary inputs for active adapters
-               for (const auto* adapter : run_options->active_adapters) {
-                 auto [begin, end] = adapter->GetParamIterators();
-                 for (; begin != end; ++begin) {
-                   const auto& [name, param] = *begin;
-                   feeds.insert(std::make_pair(name, param.GetMapped()));
-                 }
-               }
+               AppendLoraParametersAsInputs(*run_options, pyfeeds.size(), feeds);
              } else {
                feeds.reserve(pyfeeds.size());
              }
@@ -2104,6 +2105,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               PyCallback callback, py::object user_data = {},
               RunOptions* run_options = nullptr)
                -> void {
+             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+               LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+                   << "run_async has active adapters specified, but won't have an effect";
+             }
+
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
              async_resource->callback = callback;
              async_resource->user_data = user_data;
@@ -2149,7 +2155,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       /// a Tensor, SparseTensor or a TensorSequence.
       .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
         NameMLValMap ort_feeds;
-        ort_feeds.reserve(feeds.size());
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          AppendLoraParametersAsInputs(*run_options, feeds.size(), ort_feeds);
+        } else {
+          ort_feeds.reserve(feeds.size());
+        }
+
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks
         for (const auto& item : feeds) {
@@ -2172,6 +2183,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return fetches;
       })
       .def("run_with_ortvaluevector", [](PyInferenceSession* sess, RunOptions run_options, const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds, const std::vector<std::string>& fetch_names, std::vector<OrtValue>& fetches, const std::vector<OrtDevice>& fetch_devices) -> void {
+        if (!run_options.active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_ortvaluevector has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
