@@ -43,6 +43,7 @@ class SAM2ImageDecoder(nn.Module):
         input_masks: torch.Tensor,
         has_input_masks: torch.Tensor,
         original_image_size: torch.Tensor,
+        enable_nvtx_profile: bool = False,
     ):
         """
         Decode masks from image features and prompts. Batched images are not supported. H=W=1024.
@@ -60,18 +61,37 @@ class SAM2ImageDecoder(nn.Module):
                                         Typically coming from a previous iteration.
             has_input_masks (torch.Tensor): [L]. 1.0 if input_masks is used, 0.0 otherwise.
             original_image_size(torch.Tensor): [2]. original image size H_o, W_o.
+            enable_nvtx_profile (bool): enable NVTX profiling.
 
         Returns:
             masks (torch.Tensor): [1, M, H_o, W_o] where M=3 or 1. Masks of original image size.
             iou_predictions (torch.Tensor): [1, M]. scores for M masks.
             low_res_masks (torch.Tensor, optional): [1, M, H/4, W/4]. low resolution masks.
         """
+        nvtx_helper = None
+        if enable_nvtx_profile:
+            from nvtx_helper import NvtxHelper
+
+            nvtx_helper = NvtxHelper(["prompt_encoder", "mask_decoder", "post_process"])
+
+        if nvtx_helper is not None:
+            nvtx_helper.start_profile("prompt_encoder", color="blue")
+
         sparse_embeddings, dense_embeddings, image_pe = self.prompt_encoder(
             point_coords, point_labels, input_masks, has_input_masks
         )
+
+        if nvtx_helper is not None:
+            nvtx_helper.stop_profile("prompt_encoder")
+            nvtx_helper.start_profile("mask_decoder", color="red")
+
         low_res_masks, iou_predictions = self.mask_decoder(
             image_features_0, image_features_1, image_embeddings, image_pe, sparse_embeddings, dense_embeddings
         )
+
+        if nvtx_helper is not None:
+            nvtx_helper.stop_profile("mask_decoder")
+            nvtx_helper.start_profile("post_process", color="green")
 
         # Interpolate the low resolution masks back to the original image size.
         masks = F.interpolate(
@@ -84,6 +104,10 @@ class SAM2ImageDecoder(nn.Module):
         low_res_masks = torch.clamp(low_res_masks, -32.0, 32.0)
         if not self.return_logits:
             masks = masks > self.mask_threshold
+
+        if nvtx_helper is not None:
+            nvtx_helper.stop_profile("post_process")
+            nvtx_helper.print_latency()
 
         return masks, iou_predictions, low_res_masks
 

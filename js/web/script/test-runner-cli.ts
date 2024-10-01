@@ -161,6 +161,7 @@ async function main() {
     op: opTestGroups,
     log: args.logConfig,
     profile: args.profile,
+    downloadModel: args.downloadModel,
     options: {
       sessionOptions: {
         graphOptimizationLevel: args.graphOptimizationLevel,
