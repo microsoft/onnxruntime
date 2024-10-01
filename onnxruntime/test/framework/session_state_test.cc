@@ -642,14 +642,14 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
 
   // check pre_packed_initializers_name_map will be set properly when set save_prepacked_constant_initializers
   if (!test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
-    ASSERT_EQ(pre_packed_initializers_name_map.size(), 1);
-    ASSERT_EQ(pre_packed_initializers_name_map.count("node_0_input_1"), 1);
-    ASSERT_EQ(pre_packed_initializers_name_map["node_0_input_1"].count("node_0"), 1);
+    ASSERT_EQ(pre_packed_initializers_name_map.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers_name_map.count("node_0_input_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers_name_map["node_0_input_1"].count("node_0"), size_t(1));
   } else if (test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
-    ASSERT_EQ(pre_packed_initializers_name_map.size(), 1);
-    ASSERT_EQ(pre_packed_initializers_name_map.count("if_shared"), 1);
-    ASSERT_EQ(pre_packed_initializers_name_map["if_shared"].count("if_node_1"), 1);
-    ASSERT_EQ(pre_packed_initializers_name_map["if_shared"].count("if_node_0"), 1);
+    ASSERT_EQ(pre_packed_initializers_name_map.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers_name_map.count("if_shared"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers_name_map["if_shared"].count("if_node_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers_name_map["if_shared"].count("if_node_0"), size_t(1));
   }
 }
 

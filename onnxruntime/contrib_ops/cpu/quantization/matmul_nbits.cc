@@ -151,7 +151,7 @@ class MatMulNBits final : public OpKernel {
   size_t packed_b_size_{0};
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
-  Tensor* packed_tensor_;
+  Tensor* packed_tensor_{nullptr};
 
   bool has_zp_input_{false};
 #if defined(ORT_NEURAL_SPEED)
@@ -300,7 +300,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
 template <typename T1>
 void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor) {
-  if (!packed_tensor_) {
+  if (packed_tensor_ == nullptr) {
     std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
     packed_tensor_ = new Tensor(tensor.DataType(),
                                 TensorShape(weights_dims),

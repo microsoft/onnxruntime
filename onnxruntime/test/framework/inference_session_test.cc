@@ -499,6 +499,9 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
 }
 
+// Test feature serialize prepack weight is only used in PC with CPU on inference,
+// disable this test for training, other device and eps
+#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN)
 TEST(InferenceSessionTests, TestPrepackSerialization) {
   SessionOptions so;
   std::string model_name = "model_with_matmul_nbits";
@@ -602,6 +605,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
     ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
   }
 }
+#endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
