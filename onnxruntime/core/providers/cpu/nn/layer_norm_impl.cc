@@ -240,7 +240,7 @@ Status LayerNormImpl::ComputeWithoutContext(
           }
         }
 
-        if (std::is_same_v<decltype(p_output), MLFloat16>) {
+        if (std::is_same_v<decltype(p_output), MLFloat16*>) {
           ConvertFloatBufferToMLFloat16(
             reinterpret_cast<float*>(output_buffer), reinterpret_cast<MLFloat16*>(p_output), norm_size);
           delete[] output_buffer;

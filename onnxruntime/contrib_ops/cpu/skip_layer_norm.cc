@@ -224,7 +224,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
           }
         }
 
-        if (std::is_same_v<decltype(p_output), MLFloat16>) {
+        if (std::is_same_v<decltype(p_output), MLFloat16*>) {
           ConvertFloatBufferToMLFloat16(
             reinterpret_cast<float*>(output_buffer), reinterpret_cast<MLFloat16*>(p_output), hidden_size);
           delete[] output_buffer;
