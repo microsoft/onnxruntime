@@ -158,12 +158,6 @@ if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
   target_compile_options(onnxruntime_providers PRIVATE "-Wno-bitwise-instead-of-logical")
 endif()
 
-if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-  if(USE_NEURAL_SPEED)
-    onnxruntime_add_include_to_target(onnxruntime_providers neural_speed::bestla)
-  endif()
-endif()
-
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
 #   if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
