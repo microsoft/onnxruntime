@@ -739,13 +739,28 @@ struct CustomOpDomain : detail::Base<OrtCustomOpDomain> {
 
 /// \brief LoraAdapter holds a set of Lora Parameters loaded from a single file
 struct LoraAdapter : detail::Base<OrtLoraAdapter> {
+  using Base = detail::Base<OrtLoraAdapter>;
+  using Base::Base;
+
+  explicit LoraAdapter(std::nullptr_t) {}  ///< Create an empty LoraAdapter object, must be assigned a valid one to be used
   /// \brief Wraps OrtApi::CreateLoraAdapter
   ///
   /// The function attempts to load the adapter from the specified file
   /// \param absolute_adapter_path The absolute path to the Lora adapter
   /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
   ///        be copied to device if required by the model at inference time.
-  explicit LoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path, OrtAllocator* allocator);
+  static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path,
+                                       OrtAllocator* allocator);
+
+  /// \brief Wraps OrtApi::CreateLoraAdapterFromArray
+  ///
+  /// The function attempts to load the adapter from the specified byte array.
+  /// \param bytes The byte array containing file LoraAdapter format
+  /// \param num_bytes The number of bytes in the byte array
+  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
+  ///        be copied to device if required by the model at inference time.
+  static LoraAdapter CreateLoraAdapterFromArray(const uint8_t* bytes, size_t num_bytes,
+                                                OrtAllocator* allocator);
 };
 
 /** \brief RunOptions

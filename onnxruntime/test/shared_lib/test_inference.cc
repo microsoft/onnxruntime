@@ -4402,13 +4402,11 @@ TEST(CApiTest, RunAsyncFail) {
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
 
-TEST(CApiTest, RunWithLoraAdapter) {
+static void TestRunWithLoraAdapter(const Ort::LoraAdapter& adapter) {
   constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model.onnx");
-  constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
 
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
 
-  Ort::LoraAdapter adapter(adapter_path, nullptr);
   Ort::RunOptions run_options;
   run_options.AddActiveLoraAdapter(adapter);
 
@@ -4446,6 +4444,37 @@ TEST(CApiTest, RunWithLoraAdapter) {
   for (size_t i = 0; i < elements; ++i) {
     EXPECT_NEAR(expected_output[i], data[i], 0.06);
   }
+}
+
+static Ort::LoraAdapter CreateAdapterFromFile() {
+  constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+  return Ort::LoraAdapter::CreateLoraAdapter(adapter_path, nullptr);
+}
+
+static Ort::LoraAdapter CreateAdapterFromArray() {
+  constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+  std::ifstream adapter_file(adapter_path, std::ios::binary);
+
+  EXPECT_TRUE(adapter_file.is_open());
+  adapter_file.seekg(0, std::ios::end);
+  const size_t adapter_size = adapter_file.tellg();
+
+  std::vector<uint8_t> buffer(adapter_size);
+  adapter_file.seekg(0, std::ios::beg);
+  adapter_file.read(reinterpret_cast<char*>(buffer.data()), adapter_size);
+  adapter_file.close();
+
+  return Ort::LoraAdapter::CreateLoraAdapterFromArray(buffer.data(), buffer.size(), nullptr);
+}
+
+TEST(CApi, RunWithLoraAdapterFromFile) {
+  auto adapter = CreateAdapterFromFile();
+  TestRunWithLoraAdapter(adapter);
+}
+
+TEST(CApi, RunWithLoraAdapterFromArray) {
+  auto adapter = CreateAdapterFromArray();
+  TestRunWithLoraAdapter(adapter);
 }
 
 TEST(CApiTest, RunBaseLoraModel) {

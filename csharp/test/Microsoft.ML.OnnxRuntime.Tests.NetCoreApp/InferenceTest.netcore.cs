@@ -1251,8 +1251,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(DisplayName = "TestInferenceWithLoraAdapter")]
-        private void TestInferenceWithLoraAdapter()
+        private static OrtLoraAdapter CreateLoraAdapterFromFile()
+        {
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+            return OrtLoraAdapter.Create(adapterPath, null);
+        }
+
+        private static OrtLoraAdapter CreateLoraAdapterFromArray()
+        {
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+            var adapterBytes = File.ReadAllBytes(adapterPath);
+            return OrtLoraAdapter.Create(adapterBytes, null);
+        }
+
+        private void testInferenceWithLoraAdapter(OrtLoraAdapter ortLoraAdapter)
         {
             var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
             var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
@@ -1269,9 +1281,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                   154, 176, 198, 220 };
 
             using var session = new InferenceSession(modelPath);
-            using var adapter = OrtLoraAdapter.Create(adapterPath, null);
             using var runOptions = new RunOptions();
-            runOptions.AddActiveLoraAdapter(adapter);
+            runOptions.AddActiveLoraAdapter(ortLoraAdapter);
 
             using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
             Assert.Single(outputs);
@@ -1279,6 +1290,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.Equal(expectedOutput.Length, output.Length);
             Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
         }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromFile")]
+        private void TestInferenceWithLoraAdapterFromFile()
+        {
+            using var ortAdapter = CreateLoraAdapterFromFile();
+            testInferenceWithLoraAdapter(ortAdapter);
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromArray")]
+        private void TestInferenceWithLoraAdapterFromArray()
+        {
+            using var ortAdapter = CreateLoraAdapterFromArray();
+            testInferenceWithLoraAdapter(ortAdapter);
+        }
+
 
         [Fact(DisplayName = "TestInferenceWithBaseLoraModel")]
         private void TestInferenceWithBaseLoraModel()
