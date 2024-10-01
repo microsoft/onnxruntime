@@ -57,7 +57,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 #define KERNEL_CREATE_INFO_VERSIONED_FP16(Start, End, Op, Domain)
 #define KERNEL_CREATE_INFO_FP16(Start, Op, Domain)
 #define CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(provider, domain, startver, endver, name)
-#define CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(provider, domain, startver, endver, name)
+#define CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(provider, domain, startver, name)
 #endif
 
 // Layout sensitive operators in NHWC domain
@@ -93,6 +93,7 @@ CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, 
 CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, MaxPool);
 CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
+
 
 // ONNX operators
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 8, Gemm);
