@@ -23,8 +23,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
       Ort::Global<void>::api_ == nullptr, env,
       "Failed to initialize ONNX Runtime API. It could happen when this nodejs binding was built with a higher version "
       "ONNX Runtime but now runs with a lower version ONNX Runtime DLL(or shared library).");
-  auto ortEnv = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
-  env.SetInstanceData(ortEnv);
+
   // initialize binding
   Napi::HandleScope scope(env);
 
@@ -42,7 +41,25 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   Napi::Function listSupportedBackends = Napi::Function::New(env, InferenceSessionWrap::ListSupportedBackends);
   exports.Set("listSupportedBackends", listSupportedBackends);
 
+  Napi::Function initOrtOnce = Napi::Function::New(env, InferenceSessionWrap::InitOrtOnce);
+  exports.Set("initOrtOnce", initOrtOnce);
+
   return exports;
+}
+
+Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  Napi::HandleScope scope(env);
+
+  int log_level = info[0].As<Napi::Number>().Int32Value();
+
+  Ort::Env* ortEnv = env.GetInstanceData<Ort::Env>();
+  if (ortEnv == nullptr) {
+    ortEnv = new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"};
+    env.SetInstanceData(ortEnv);
+  }
+
+  return env.Undefined();
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
@@ -241,6 +258,9 @@ Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo
 
 #ifdef USE_DML
   result.Set(result.Length(), createObject("dml", true));
+#endif
+#ifdef USE_WEBGPU
+  result.Set(result.Length(), createObject("webgpu", true));
 #endif
 #ifdef USE_CUDA
   result.Set(result.Length(), createObject("cuda", false));

@@ -15,6 +15,9 @@
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_factory.h"
+#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
@@ -76,6 +79,10 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_DML
     } else if (name == "dml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sessionOptions, deviceId));
+#endif
+#ifdef USE_WEBGPU
+    } else if (name == "webgpu") {
+      Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(sessionOptions, "WebGPU", nullptr, nullptr, 0));
 #endif
 #ifdef USE_COREML
     } else if (name == "coreml") {
@@ -194,5 +201,43 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
         "Invalid argument: sessionOptions.logSeverityLevel must be one of the following: 0, 1, 2, 3, 4.");
 
     sessionOptions.SetLogSeverityLevel(static_cast<int>(logLevelNumber));
+  }
+
+  // external data
+  if (options.Has("externalData")) {
+    auto externalDataValue = options.Get("externalData");
+    ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
+                                "Invalid argument: sessionOptions.externalData must be an array.");
+    auto externalData = externalDataValue.As<Napi::Array>();
+    std::vector<std::wstring> paths;
+    std::vector<char*> buffs;
+    std::vector<size_t> sizes;
+
+    for (const auto& kvp : externalData) {
+      Napi::Value value = kvp.second;
+      ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), options.Env(),
+                                  "Invalid argument: sessionOptions.externalData value must be an object in Node.js binding.");
+      Napi::Object obj = value.As<Napi::Object>();
+      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
+                                  "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
+      auto path = obj.Get("path").As<Napi::String>().Utf16Value();
+      paths.push_back(std::wstring{path.begin(), path.end()});
+      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
+                                      !obj.Get("data").IsBuffer() ||
+                                      !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
+                                  options.Env(),
+                                  "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
+
+      auto data = obj.Get("data");
+      if (data.IsBuffer()) {
+        buffs.push_back(data.As<Napi::Buffer<char>>().Data());
+        sizes.push_back(data.As<Napi::Buffer<char>>().Length());
+      } else {
+        auto typedArray = data.As<Napi::TypedArray>();
+        buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
+        sizes.push_back(typedArray.ByteLength());
+      }
+    }
+    sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
   }
 }

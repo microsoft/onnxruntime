@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InferenceSession, OnnxValue } from 'onnxruntime-common';
+import { InferenceSession, OnnxValue, env } from 'onnxruntime-common';
 
 type SessionOptions = InferenceSession.SessionOptions;
 type FeedsType = {
@@ -48,4 +48,36 @@ export const binding =
     // eslint-disable-next-line @typescript-eslint/naming-convention
     InferenceSession: Binding.InferenceSessionConstructor;
     listSupportedBackends: () => Binding.SupportedBackend[];
+    initOrtOnce: (logLevel: number) => void;
   };
+
+let ortInitialized = false;
+export const initOrt = (): void => {
+  if (!ortInitialized) {
+    ortInitialized = true;
+    if (env.logLevel) {
+      switch (env.logLevel) {
+        case 'verbose':
+          binding.initOrtOnce(0);
+          break;
+        case 'info':
+          binding.initOrtOnce(1);
+          break;
+        case 'warning':
+          binding.initOrtOnce(2);
+          break;
+        case 'error':
+          binding.initOrtOnce(3);
+          break;
+        case 'fatal':
+          binding.initOrtOnce(4);
+          break;
+        default:
+          throw new Error(`Unsupported log level: ${env.logLevel}`);
+      }
+    } else {
+      // default log level = warning
+      binding.initOrtOnce(2);
+    }
+  }
+};
