@@ -209,7 +209,7 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
     ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
                                 "Invalid argument: sessionOptions.externalData must be an array.");
     auto externalData = externalDataValue.As<Napi::Array>();
-    std::vector<std::wstring> paths;
+    std::vector<std::basic_string<ORTCHAR_T>> paths;
     std::vector<char*> buffs;
     std::vector<size_t> sizes;
 
@@ -220,8 +220,13 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
       Napi::Object obj = value.As<Napi::Object>();
       ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
                                   "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
+#ifdef _WIN32
       auto path = obj.Get("path").As<Napi::String>().Utf16Value();
       paths.push_back(std::wstring{path.begin(), path.end()});
+#else
+      auto path = obj.Get("path").As<Napi::String>().Utf8Value();
+      paths.push_back(path);
+#endif
       ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
                                       !obj.Get("data").IsBuffer() ||
                                       !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
