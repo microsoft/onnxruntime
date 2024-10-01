@@ -214,8 +214,6 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     }
   }
 
-  int64_t channels = x_shape->dim(3).dim_value();
-
   uint32_t flags = 0;
   ORT_ENFORCE(mode_ == UpsampleMode::LINEAR, "only support bilinear resize");
   if (coordinate_transform_mode_ == ResizeCoordinateTransformationMode::ALIGN_CORNERS) {
@@ -227,12 +225,14 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
 
   xnn_status xstatus = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
+  auto out_h = output_dims_[1];
+  auto out_w = output_dims_[2];
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_f32(channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_f32(out_h, out_w, flags, &p);
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_u8(channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_u8(out_h, out_w, flags, &p);
   } else {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_s8(channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_s8(out_h, out_w, flags, &p);
   }
 
   ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_resize_bilinear2d_nhwc_", OpTypeToString(op_type_), " failed. Status:",
@@ -248,6 +248,7 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
   auto N = X_shape[0];
   auto H = X_shape[1];
   auto W = X_shape[2];
+  auto C = X_shape[3];
   Tensor* output = ctx->Output(0, TensorShape(output_dims));
 
   pthreadpool_t threadpool = GetThreadPool();
@@ -266,7 +267,7 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
     reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_s8;
   }
 
-  auto status = reshape_fn(op0_.get(), N, H, W, output_dims[1], output_dims[2],
+  auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
                            &workspace_size, &workspace_alignment, threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_resize_bilinear2d_nhwc_", OpTypeToString(op_type_),

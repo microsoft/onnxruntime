@@ -22,9 +22,8 @@
 #include "Eigen/src/Core/arch/Default/BFloat16.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 
-#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 #include "core/mlas/inc/mlas.h"
-#endif
+#include "core/common/cpuid_info.h"
 
 namespace onnxruntime {
 
@@ -252,10 +251,6 @@ struct TensorCasterNoSat<std::string, DstType> {
 
 #endif
 
-#if defined(_M_AMD64) && !defined(_M_ARM64EC)
-// specializations to use optimized and Windows x64-specific
-// MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
-
 // tensor MLFloat16 -> float
 template <>
 struct TensorCaster<MLFloat16, float> {
@@ -263,9 +258,12 @@ struct TensorCaster<MLFloat16, float> {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = narrow<size_t>(shape.Size());
-    MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
+    MlasConvertHalfToFloatBuffer(in_data, out_data, shape_size);
   }
 };
+
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
+// specializations to use optimized and Windows x64-specific
 
 Tensor GetIntermediateMLFloat16ToFloatTensor(
     const OpKernelContext& context, const TensorShape& shape, const Tensor& in) {

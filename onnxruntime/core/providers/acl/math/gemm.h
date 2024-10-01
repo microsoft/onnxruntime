@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2019-2020, NXP Semiconductor, Inc. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
@@ -28,7 +29,6 @@ namespace acl {
 typedef struct {
   std::shared_ptr<arm_compute::IFunction> layer;
   std::shared_ptr<arm_compute::Tensor> a, b, c, d;
-  std::shared_ptr<arm_compute::MemoryManagerOnDemand> mm_layer;
 } ACLNEGEMM;
 
 typedef std::map<OpKernel*, ACLNEGEMM>::iterator GEMMLayersIterator;
@@ -37,6 +37,9 @@ template <typename T>
 class Gemm : public onnxruntime::Gemm<T> {
  public:
   Gemm(const OpKernelInfo& info) : onnxruntime::Gemm<T>(info) {
+    provider_ = (const_cast<ACLExecutionProvider*>(
+        static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
+
     int64_t temp;
 
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
@@ -49,12 +52,11 @@ class Gemm : public onnxruntime::Gemm<T> {
   }
 
   Status Compute(OpKernelContext* context) const override {
-#ifdef ACL_2308
     if (this->packed_b_) {
       // Prepacked RHS not supported, defaulting to cpu execution provider
       return onnxruntime::Gemm<T>::Compute(context);
     }
-#endif
+
     const auto A = context->Input<Tensor>(0);
     const auto B = context->Input<Tensor>(1);
     const auto C = context->Input<Tensor>(2);
@@ -96,19 +98,20 @@ class Gemm : public onnxruntime::Gemm<T> {
           (cShape[1] == 1 && cShape[0] != (long unsigned int)N)) {
         return onnxruntime::Gemm<T>::Compute(context);
       }
-#ifdef ACL_2308
       cShape = arm_compute::TensorShape(N);
       LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {" << N << "}";
-#else
-      cShape = arm_compute::TensorShape(1, N);
-      LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {1," << N << "}";
-#endif
     }
 
     int64_t K = helper.K();
-    if (A) LOGS_DEFAULT(VERBOSE) << "A " << A->Shape().ToString().c_str();
-    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
-    if (C) LOGS_DEFAULT(VERBOSE) << "C " << C->Shape().ToString().c_str();
+    if (A) {
+      LOGS_DEFAULT(VERBOSE) << "A " << A->Shape().ToString().c_str();
+    }
+    if (B) {
+      LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
+    }
+    if (C) {
+      LOGS_DEFAULT(VERBOSE) << "C " << C->Shape().ToString().c_str();
+    }
     LOGS_DEFAULT(VERBOSE) << "D " << D->Shape().ToString().c_str();
     LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K;
     LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_;
@@ -131,10 +134,8 @@ class Gemm : public onnxruntime::Gemm<T> {
       // dimensions are stored in the opposite order to ACL's
       tGEMM.d->allocator()->init(arm_compute::TensorInfo(arm_compute::TensorShape(N, M), arm_compute::Format::F32));
 
-      tGEMM.mm_layer = ACLCreateMemoryManager();
-
       if (FC) {
-        auto layer = std::make_shared<arm_compute::NEFullyConnectedLayer>(tGEMM.mm_layer);
+        auto layer = std::make_shared<arm_compute::NEFullyConnectedLayer>(provider_->memory_manager);
         arm_compute::FullyConnectedLayerInfo fc_info;
         fc_info.transpose_weights = trans_B_ == CblasTrans;
         layer->configure(tGEMM.a.get(), tGEMM.b.get(), useC ? tGEMM.c.get() : nullptr, tGEMM.d.get(), fc_info);
@@ -173,10 +174,7 @@ class Gemm : public onnxruntime::Gemm<T> {
     ACLPrintTensorShape("c", *pGEMM->c);
     ACLPrintTensorShape("d", *pGEMM->d);
 
-    arm_compute::Allocator alloc_mm{};
-    pGEMM->mm_layer->populate(alloc_mm, 1);
     pGEMM->layer->run();
-    pGEMM->mm_layer->clear();
 
     if (D->Shape().Size() != 0 && pGEMM->d->info()->has_padding()) {
       importDataFromTensor<T>(pGEMM->d.get(), d_data);
@@ -195,6 +193,7 @@ class Gemm : public onnxruntime::Gemm<T> {
   }
 
  private:
+  ACLExecutionProvider* provider_;
   static thread_local std::map<OpKernel*, ACLNEGEMM> gemmLayers;
 
   CBLAS_TRANSPOSE trans_A_;
