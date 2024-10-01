@@ -10,7 +10,7 @@ script_description = """
 After building ONNXRuntime for Android or iOS, use this script to upload the app and test files to BrowserStack then
 run the tests on the specified devices.
 
-Find the Android test app in the repo here:
+Find the Android test app in the repo here (as of rel-1.19.2):
 java/src/test/android
 """
 
@@ -77,19 +77,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test_platform", type=str, help="Testing platform", choices=["espresso", "xcuitest"], required=True
     )
-    # typically, the app apk is in {build output dir}/android_test/android/app/build/outputs/apk/debug/app-debug.apk
     parser.add_argument(
         "--app_apk_path",
         type=Path,
-        help="Path to the app APK -- run 'find . -iname *.apk' in the build output directory to find the path locally.",
+        help=(
+            "Path to the app APK. "
+            "Typically, the app APK is in "
+            "{build_output_dir}/android_test/android/app/build/outputs/apk/debug/app-debug.apk"
+        ),
         required=True,
     )
-    # typically, the test apk is in
-    # {build output dir}/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
     parser.add_argument(
         "--test_apk_path",
         type=Path,
-        help="Path to the test APK -- run 'find . -iname *.apk' in the build output directory to find the path locally.",
+        help=(
+            "Path to the test APK. "
+            "Typically, the test APK is in "
+            "{build_output_dir}/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+        ),
         required=True,
     )
     parser.add_argument(
