@@ -396,75 +396,24 @@ The DirectML execution provider supports building for both x64 and x86 architect
 
 ---
 
-## ARM Compute Library
+## Arm Compute Library
 See more information on the ACL Execution Provider [here](../execution-providers/community-maintained/ACL-ExecutionProvider.md).
-
-### Prerequisites
-{: .no_toc }
-
-* Supported backend: i.MX8QM Armv8 CPUs
-* Supported BSP: i.MX8QM BSP
-  * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
-* Set up the build environment
-```
-source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
-alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
-```
-* See [Build ARM](inferencing.md#arm) below for information on building for ARM devices
 
 ### Build Instructions
 {: .no_toc }
 
-1. Configure ONNX Runtime with ACL support:
+You must first build Arm Compute Library 24.07 for your platform as described in the [documentation](https://github.com/ARM-software/ComputeLibrary).
+See [here](inferencing.md#arm) for information on building for Arm®-based devices.
+
+Add the following options to `build.sh` to enable the ACL Execution Provider:
+
 ```
-cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
-```
-The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
-```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
-
-To use a library outside the normal environment you can set a custom path by using ```-Donnxruntime_ACL_HOME``` and ```-Donnxruntime_ACL_LIBS``` tags that defines the path to the ComputeLibrary directory and the build directory respectively.
-
-```-Donnxruntime_ACL_HOME=/path/to/ComputeLibrary```, ```-Donnxruntime_ACL_LIBS=/path/to/build```
-
-
-2. Build ONNX Runtime library, test and performance application:
-```
-make -j 6
+--use_acl --acl_home=/path/to/ComputeLibrary --acl_libs=/path/to/ComputeLibrary/build
 ```
 
-3. Deploy ONNX runtime on the i.MX 8QM board
-```
-libonnxruntime.so.0.5.0
-onnxruntime_perf_test
-onnxruntime_test_all
-```
+## Arm NN
 
-### Native Build Instructions 
-{: .no_toc }
-
-*Validated on Jetson Nano and Jetson Xavier*
-
-1. Build ACL Library (skip if already built)
-
-    ```bash
-    cd ~
-    git clone -b v20.02 https://github.com/Arm-software/ComputeLibrary.git
-    cd ComputeLibrary
-    sudo apt-get install -y scons g++-arm-linux-gnueabihf
-    scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
-    ```
-
-1. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.13,
-   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
-   and follow https://cmake.org/install/ to build from source. Version 3.17.5 and 3.18.4 have been tested on Jetson.
-
-1. Build onnxruntime with --use_acl flag with one of the supported ACL version flags. (ACL_1902 | ACL_1905 | ACL_1908 | ACL_2002)
-
----
-
-## ArmNN
-
-See more information on the ArmNN Execution Provider [here](../execution-providers/community-maintained/ArmNN-ExecutionProvider.md).
+See more information on the Arm NN Execution Provider [here](../execution-providers/community-maintained/ArmNN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -480,7 +429,7 @@ source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
 
-* See [Build ARM](inferencing.md#arm) below for information on building for ARM devices
+* See [here](inferencing.md#arm) for information on building for Arm-based devices
 
 ### Build Instructions
 {: .no_toc }
@@ -490,20 +439,20 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 ./build.sh --use_armnn
 ```
 
-The Relu operator is set by default to use the CPU execution provider for better performance. To use the ArmNN implementation build with --armnn_relu flag
+The Relu operator is set by default to use the CPU execution provider for better performance. To use the Arm NN implementation build with --armnn_relu flag
 
 ```bash
 ./build.sh --use_armnn --armnn_relu
 ```
 
-The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
+The Batch Normalization operator is set by default to use the CPU execution provider. To use the Arm NN implementation build with --armnn_bn flag
 
 ```bash
 ./build.sh --use_armnn --armnn_bn
 ```
 
-To use a library outside the normal environment you can set a custom path by providing the --armnn_home and --armnn_libs parameters to define the path to the ArmNN home directory and build directory respectively. 
-The ARM Compute Library home directory and build directory must also be available, and can be specified if needed using --acl_home and --acl_libs respectively.
+To use a library outside the normal environment you can set a custom path by providing the --armnn_home and --armnn_libs parameters to define the path to the Arm NN home directory and build directory respectively. 
+The Arm Compute Library home directory and build directory must also be available, and can be specified if needed using --acl_home and --acl_libs respectively.
 
 ```bash
 ./build.sh --use_armnn --armnn_home /path/to/armnn --armnn_libs /path/to/armnn/build  --acl_home /path/to/ComputeLibrary --acl_libs /path/to/acl/build
@@ -519,7 +468,7 @@ See more information on the RKNPU Execution Provider [here](../execution-provide
 
 
 * Supported platform: RK1808 Linux
-* See [Build ARM](inferencing.md#arm) below for information on building for ARM devices
+* See [here](inferencing.md#arm) for information on building for Arm-based devices
 * Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
   
 ```

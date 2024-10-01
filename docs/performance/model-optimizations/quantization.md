@@ -202,7 +202,7 @@ ONNX Runtime quantization on GPU only supports S8S8.
 
 On x86-64 machines with AVX2 and AVX512 extensions, ONNX Runtime uses the VPMADDUBSW instruction for U8S8 for performance. This instruction might suffer from saturation issues: it can happen that the output does not fit into a 16-bit integer and has to be clamped (saturated) to fit. Generally, this is not a big issue for the final result. However, if you do encounter a large accuracy drop, it may be caused by saturation. In this case, you can either try [reduce_range](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/quantize.py) or the U8U8 format which doesn't have saturation issues.
 
-There is no such issue on other CPU architectures (x64 with VNNI and ARM).
+There is no such issue on other CPU architectures (x64 with VNNI and Arm®).
 
 ### List of Supported Quantized Ops
 {: .no_toc}
@@ -290,7 +290,7 @@ For AWQ and GTPQ quantization usage, please refer to [Gen-AI model builder](http
 
 The performance improvement depends on your model and hardware. The performance gain from quantization has two aspects: compute and memory. Old hardware has none or few of the instructions needed to perform efficient inference in int8. And quantization has overhead (from quantizing and dequantizing), so it is not rare to get worse performance on old devices.
 
-x86-64 with VNNI, GPU with Tensor Core int8 support and ARM with dot-product instructions can get better performance in general.
+x86-64 with VNNI, GPU with Tensor Core int8 support and Arm®-based processors with dot-product instructions can get better performance in general.
 
 ### Which quantization method should I choose, dynamic or static?
 {: .no_toc}

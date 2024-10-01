@@ -20,7 +20,7 @@
 		'QNN',
 		'Tensor RT',
 		'ACL (Preview)',
-		'ArmNN (Preview)',
+		'Arm NN (Preview)',
 		'Azure (Preview)',
 		'CANN (Preview)',
 		'Rockchip NPU (Preview)',

@@ -22,7 +22,7 @@ There are two Python packages for ONNX Runtime. Only one of these packages shoul
 
 ### Install ONNX Runtime CPU
 
-Use the CPU package if you are running on Arm CPUs and/or macOS.
+Use the CPU package if you are running on Arm®-based CPUs and/or macOS.
 
 ```bash
 pip install onnxruntime

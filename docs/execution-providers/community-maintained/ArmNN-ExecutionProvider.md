@@ -7,7 +7,7 @@ nav_order: 2
 redirect_from: /docs/reference/execution-providers/ArmNN-ExecutionProvider
 ---
 
-# ArmNN Execution Provider
+# Arm NN Execution Provider
 {: .no_toc}
 
 ## Contents
@@ -16,14 +16,14 @@ redirect_from: /docs/reference/execution-providers/ArmNN-ExecutionProvider
 * TOC placeholder
 {:toc}
 
-Accelerate performance of ONNX model workloads across Armv8 cores with the ArmNN execution provider. [ArmNN](https://github.com/ARM-software/armnn) is an open source inference engine maintained by Arm and Linaro companies. 
+Accelerate performance of ONNX model workloads across Arm®-based devices with the Arm NN execution provider. [Arm NN](https://github.com/ARM-software/armnn) is an open source inference engine maintained by Arm and Linaro companies. 
 
 ## Build
-For build instructions, please see the [BUILD page](../../build/eps.md#armnn).
+For build instructions, please see the [BUILD page](../../build/eps.md#arm-nn).
 
 ## Usage
 ### C/C++
-To use ArmNN as execution provider for inferencing, please register it as below.
+To use Arm NN as execution provider for inferencing, please register it as below.
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
