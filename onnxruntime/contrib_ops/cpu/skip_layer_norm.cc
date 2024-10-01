@@ -40,50 +40,138 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 namespace {
 
-ORT_FORCEINLINE double* CreateBufferIfMLFloat16(double* p_output, [[maybe_unused]] int num_elems) {
-  return p_output;
-}
+template <typename T, typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
+void ComputeJob(
+  const T* input_data,
+  const T* skip_data,
+  const T* gamma_data,
+  const T* beta_data,
+  const T* bias_data,
+  ptrdiff_t task_idx,
+  int hidden_size,
+  int64_t skip_size,
+  float epsilon,
+  bool simplified,
+  T* output_data,
+  T* skip_input_bias_add_output_data
+) {
+  auto offset = task_idx * hidden_size;
+  const T* p_input = input_data + offset;
+  const T* p_skip = skip_data + (offset % skip_size);
+  T* p_output = output_data + offset;
+  T* p_skip_input_bias_add_output = skip_input_bias_add_output_data == nullptr ? nullptr : skip_input_bias_add_output_data + offset;
 
-ORT_FORCEINLINE float* CreateBufferIfMLFloat16(float* p_output, [[maybe_unused]] int num_elems) {
-  return p_output;
-}
+  T mean(0.0f);
+  T mean_square(0.0f);
 
-ORT_FORCEINLINE float* CreateBufferIfMLFloat16(MLFloat16* p_output, int num_elems) {
-  return p_output == nullptr ? nullptr : new float[num_elems];
-}
+  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+    T val = p_input[h] + p_skip[h];
 
+    if (nullptr != bias_data) {
+      val += bias_data[h];
+    }
 
-template <typename T>
-ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(
-  [[maybe_unused]] const T* p_input, [[maybe_unused]] int num_elems);
+    if (nullptr != p_skip_input_bias_add_output) {
+      p_skip_input_bias_add_output[h] = val;
+    }
 
-template <typename T>
-ORT_FORCEINLINE std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded(
-  [[maybe_unused]] const std::enable_if_t<std::is_same_v<T,float> || std::is_same_v<T, double>, T>* p_input,
-  [[maybe_unused]] int num_elems) {
-  return nullptr;
-}
-
-template<>
-std::shared_ptr<std::vector<float>> ConvertHalfToFloatBufferIfNeeded<MLFloat16>(const MLFloat16* p_input, int num_elems) {
-  if (!p_input) {
-    return nullptr;
+    p_output[h] = val;
+    mean += val;
+    mean_square += val * val;
   }
 
-  // Efficiently convert all the MLFloat16 values to floats.
-  std::shared_ptr<std::vector<float>> vec = std::make_shared<std::vector<float>>(num_elems);
-  MlasConvertHalfToFloatBuffer(p_input, &(*vec)[0], num_elems);
-
-  return vec;
-}
-
-
-void ConvertFloatBufferToMLFloat16(const float* output_buffer, MLFloat16* p_output, int num_elems) {
-  if (!output_buffer || !p_output) {
-    return;
+  mean = mean / hidden_size;
+  if (simplified) {
+    mean_square = sqrt(mean_square / hidden_size + epsilon);
+  } else {
+    mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
   }
 
-  MlasConvertFloatToHalfBuffer(output_buffer, p_output, num_elems);
+  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+    if (simplified) {
+      p_output[h] = p_output[h] / mean_square * gamma_data[h];
+    } else if (nullptr == beta_data) {
+      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
+    } else {
+      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+    }
+  }
+}
+
+void ComputeJob(
+  const MLFloat16* input_data,
+  const MLFloat16* skip_data,
+  const MLFloat16* gamma_data,
+  const MLFloat16* beta_data,
+  const MLFloat16* bias_data,
+  ptrdiff_t task_idx,
+  int hidden_size,
+  int64_t skip_size,
+  float epsilon,
+  bool simplified,
+  MLFloat16* output_data,
+  MLFloat16* skip_input_bias_add_output_data
+) {
+  auto offset = task_idx * hidden_size;
+  const MLFloat16* p_input = input_data + offset;
+  const MLFloat16* p_skip = skip_data + (offset % skip_size);
+  MLFloat16* p_output = output_data + offset;
+  MLFloat16* p_skip_input_bias_add_output = skip_input_bias_add_output_data == nullptr ? nullptr : skip_input_bias_add_output_data + offset;
+
+  float mean(0.0f);
+  float mean_square(0.0f);
+
+  std::vector<float> float_input(hidden_size);
+  MlasConvertHalfToFloatBuffer(p_input, &float_input[0], hidden_size);
+  std::vector<float> float_skip(hidden_size);
+  MlasConvertHalfToFloatBuffer(p_skip, &float_skip[0], hidden_size);
+  std::vector<float> float_bias;
+  if (bias_data != nullptr) {
+    float_bias.resize(hidden_size);
+    MlasConvertHalfToFloatBuffer(bias_data, &float_bias[0], hidden_size);
+  }
+
+  std::vector<float> float_output(hidden_size);
+
+  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+    float val = float_input[h] + float_skip[h];
+
+    if (nullptr != bias_data) {
+      val += float_bias[h];
+    }
+
+    float_output[h] = val;
+    mean += val;
+    mean_square += val * val;
+  }
+
+  if (nullptr != p_skip_input_bias_add_output) {
+    MlasConvertFloatToHalfBuffer(&float_output[0], p_skip_input_bias_add_output, hidden_size);
+  }
+
+  mean = mean / hidden_size;
+  if (simplified) {
+    mean_square = sqrt(mean_square / hidden_size + epsilon);
+  } else {
+    mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
+  }
+
+  std::vector<float> float_gamma(hidden_size);
+  MlasConvertHalfToFloatBuffer(gamma_data, &float_gamma[0], hidden_size);
+  std::vector<float> float_beta(hidden_size);
+  MlasConvertHalfToFloatBuffer(beta_data, &float_beta[0], hidden_size);
+
+  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+    if (simplified) {
+      float_output[h] = float_output[h] / mean_square * float_gamma[h];
+    } else if (nullptr == beta_data) {
+      float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h];
+    } else {
+      float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h] + float_beta[h];
+    }
+  }
+
+  MlasConvertFloatToHalfBuffer(&float_output[0], p_output, hidden_size);
 }
 
 } // namespace
@@ -104,8 +192,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* beta = p_ctx->Input<Tensor>(3);
   const Tensor* bias = p_ctx->Input<Tensor>(4);
   Tensor* output = p_ctx->Output(0, input->Shape());
-  // For inferencing, we support one more optional output which is the sum
-  // of the input and skip tensors
+  // For inferencing, we support one more optional output which is the sum of the input and skip tensors
   Tensor* skip_input_bias_add_output = p_ctx->Output(3, input->Shape());
 
   const auto& input_dims = input->Shape().GetDims();
@@ -130,105 +217,16 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
   T* output_data = output->MutableData<T>();
 
-  // For inferencing, we support one more optional output which is the sum
-  // of the input and skip tensors
-  T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
+  // For inferencing, we support one more optional output which is the sum of the input and skip tensors
+  T* skip_input_bias_add_output_data = skip_input_bias_add_output == nullptr ? nullptr : skip_input_bias_add_output->MutableData<T>();
 
-  const auto& skip_size = skip->Shape().Size();
+  const int64_t& skip_size = skip->Shape().Size();
 
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        auto offset = task_idx * hidden_size;
-
-        const T* p_input = input_data + offset;
-        const T* p_skip = skip_data + (offset % skip_size);
-        T* p_output = output_data + offset;
-        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
-
-        using DoubleOrFloat = typename std::conditional<
-            std::is_same<T, double>::value,  // If T is double
-            double,                          // Use double
-            float                            // Otherwise, use float (covers float and MLFloat16)
-            >::type;
-
-        DoubleOrFloat mean(0.0f);
-        DoubleOrFloat mean_square(0.0f);
-
-        std::shared_ptr<std::vector<float>> float_input = ConvertHalfToFloatBufferIfNeeded<T>(p_input, hidden_size);
-        const DoubleOrFloat* converted_input =
-          float_input == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(p_input)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_input)[0]);
-        std::shared_ptr<std::vector<float>> float_skip = ConvertHalfToFloatBufferIfNeeded<T>(p_skip, hidden_size);
-        const DoubleOrFloat* converted_skip =
-          float_skip == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(p_skip)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_skip)[0]);
-        std::shared_ptr<std::vector<float>> float_bias = ConvertHalfToFloatBufferIfNeeded<T>(bias_data, hidden_size);
-        const DoubleOrFloat* converted_bias =
-          float_bias == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(bias_data)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_bias)[0]);
-
-        // If T is float or double, then output_buffer will be the same as p_output, so we don't allocate new memory.
-        // If T is MLFloat16, then we allocate hidden_size floats in output_buffer.
-        DoubleOrFloat* output_buffer = static_cast<DoubleOrFloat*>(CreateBufferIfMLFloat16(p_output, hidden_size));
-
-        for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
-          DoubleOrFloat val = converted_input[h] + converted_skip[h];
-
-          if (nullptr != bias_data) {
-            val += converted_bias[h];
-          }
-
-          output_buffer[h] = val;
-          mean += val;
-          mean_square += val * val;
-
-          if (nullptr != p_skip_input_bias_add_output_data && (std::is_same_v<T, float> || std::is_same_v<T, double>)) {
-            p_skip_input_bias_add_output_data[h] = *(reinterpret_cast<T*>(&val));
-          }
-        }
-
-        if (nullptr != p_skip_input_bias_add_output_data && std::is_same_v<T, MLFloat16>) {
-          ConvertFloatBufferToMLFloat16(reinterpret_cast<float*>(output_buffer),
-                                        reinterpret_cast<MLFloat16*>(p_skip_input_bias_add_output_data),
-                                        hidden_size);
-        }
-
-        mean = mean / hidden_size;
-        if (simplified) {
-          mean_square = sqrt(mean_square / hidden_size + epsilon_);
-        } else {
-          mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
-        }
-
-        std::shared_ptr<std::vector<float>> float_gamma = ConvertHalfToFloatBufferIfNeeded<T>(gamma_data, hidden_size);
-        const DoubleOrFloat* converted_gamma =
-          float_gamma == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(gamma_data)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_gamma)[0]);
-        std::shared_ptr<std::vector<float>> float_beta = ConvertHalfToFloatBufferIfNeeded<T>(beta_data, hidden_size);
-        const DoubleOrFloat* converted_beta =
-          float_beta == nullptr
-          ? reinterpret_cast<const DoubleOrFloat*>(beta_data)
-          : reinterpret_cast<const DoubleOrFloat*>(&(*float_beta)[0]);
-        for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
-          if (simplified) {
-            output_buffer[h] = output_buffer[h] / mean_square * converted_gamma[h];
-          } else if (nullptr == beta_data) {
-            output_buffer[h] = (output_buffer[h] - mean) / mean_square * converted_gamma[h];
-          } else {
-            output_buffer[h] = (output_buffer[h] - mean) / mean_square * converted_gamma[h] + converted_beta[h];
-          }
-        }
-
-        if (std::is_same_v<decltype(p_output), MLFloat16*>) {
-          ConvertFloatBufferToMLFloat16(
-            reinterpret_cast<float*>(output_buffer), reinterpret_cast<MLFloat16*>(p_output), hidden_size);
-          delete[] output_buffer;
-        }
+        ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size, epsilon_,
+          simplified, output_data, skip_input_bias_add_output_data);
       },
       0);
 
