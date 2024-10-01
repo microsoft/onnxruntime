@@ -63,6 +63,7 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     emscripten::val desc = emscripten::val::object();
     desc.set("dataType", "uint8");
     desc.set("dimensions", emscripten::val::array(dims));
+    desc.set("shape", emscripten::val::array(dims));
     const auto num_elements = narrow<uint32_t>(Product(mask_shape));
     emscripten::val ones_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
     ones_buffer.call<void>("fill", 1);

@@ -91,7 +91,6 @@ class QnnBackendManager {
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                         std::string node_name,
-                                        const logging::Logger& logger,
                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);

@@ -35,26 +35,34 @@ class SharedContext {
     return !shared_qnn_models_.empty();
   }
 
-  std::shared_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
+  bool HasQnnModel(const std::string& model_name) {
+    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+    return it != shared_qnn_models_.end();
+  }
+
+  std::unique_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
     const std::lock_guard<OrtMutex> lock(mtx_);
     auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-                      [&model_name](const std::shared_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
     if (it == shared_qnn_models_.end()) {
       return nullptr;
     }
-    return *it;
+    auto qnn_model = std::move(*it);
+    shared_qnn_models_.erase(it);
+    return qnn_model;
   }
 
-  bool SetSharedQnnModel(std::vector<std::shared_ptr<qnn::QnnModel>>& shared_qnn_models,
+  bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
                          std::string& duplicate_graph_names) {
     const std::lock_guard<OrtMutex> lock(mtx_);
     bool graph_exist = false;
     for (auto& shared_qnn_model : shared_qnn_models) {
       auto& model_name = shared_qnn_model->Name();
       auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-                        [&model_name](const std::shared_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+                        [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
       if (it == shared_qnn_models_.end()) {
-        shared_qnn_models_.push_back(shared_qnn_model);
+        shared_qnn_models_.push_back(std::move(shared_qnn_model));
       } else {
         duplicate_graph_names.append(model_name + " ");
         graph_exist = true;
@@ -70,7 +78,7 @@ class SharedContext {
   SharedContext(const SharedContext&) = delete;
   SharedContext& operator=(const SharedContext&) = delete;
 
-  std::vector<std::shared_ptr<qnn::QnnModel>> shared_qnn_models_;
+  std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
   // Producer sessions can be in parallel
   // Consumer sessions have to be after producer sessions initialized
   OrtMutex mtx_;
@@ -128,8 +136,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
-  std::unordered_map<std::string, std::shared_ptr<qnn::QnnModel>> qnn_models_shared_;
-  bool use_shared_model_ = false;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
   std::string context_node_name_prefix_ = "";
@@ -142,7 +148,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
-  bool enable_HTP_FP16_precision_ = false;
+  bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;

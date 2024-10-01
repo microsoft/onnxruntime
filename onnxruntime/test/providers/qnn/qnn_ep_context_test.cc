@@ -976,9 +976,14 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
   UpdateEpContextModel(ctx_model_paths_to_update, last_qnn_ctx_binary_file_name,
                        DefaultLoggingManager().DefaultLogger());
 
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
-  so.AppendExecutionProvider("QNN", provider_options);
+  Ort::SessionOptions so1;
+  so1.SetLogId("so1");
+  so1.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so1.AppendExecutionProvider("QNN", provider_options);
+  Ort::SessionOptions so2;
+  so2.SetLogId("so2");
+  so2.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so2.AppendExecutionProvider("QNN", provider_options);
 
   EXPECT_TRUE(2 == ctx_model_paths.size());
 #ifdef _WIN32
@@ -988,8 +993,8 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
   std::string ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
   std::string ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
 #endif
-  Ort::Session session1(*ort_env, ctx_model_file1.c_str(), so);
-  Ort::Session session2(*ort_env, ctx_model_file2.c_str(), so);
+  Ort::Session session1(*ort_env, ctx_model_file1.c_str(), so1);
+  Ort::Session session2(*ort_env, ctx_model_file2.c_str(), so2);
 
   std::vector<std::string> input_names;
   std::vector<std::string> output_names;

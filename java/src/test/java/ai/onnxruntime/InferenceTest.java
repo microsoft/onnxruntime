@@ -20,10 +20,14 @@ import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode;
 import ai.onnxruntime.OrtSession.SessionOptions.OptLevel;
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -339,6 +343,33 @@ public class InferenceTest {
   }
 
   @Test
+  public void createSessionFromByteBuffer() throws IOException, OrtException {
+    Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
+    try (RandomAccessFile file = new RandomAccessFile(modelPath.toFile(), "r");
+        FileChannel channel = file.getChannel()) {
+      MappedByteBuffer modelBuffer = channel.map(MapMode.READ_ONLY, 0, channel.size());
+      try (OrtSession.SessionOptions options = new SessionOptions();
+          OrtSession session = env.createSession(modelBuffer, options)) {
+        assertNotNull(session);
+        assertEquals(1, session.getNumInputs()); // 1 input node
+        Map<String, NodeInfo> inputInfoList = session.getInputInfo();
+        assertNotNull(inputInfoList);
+        assertEquals(1, inputInfoList.size());
+        NodeInfo input = inputInfoList.get("data_0");
+        assertEquals("data_0", input.getName()); // input node name
+        assertTrue(input.getInfo() instanceof TensorInfo);
+        TensorInfo inputInfo = (TensorInfo) input.getInfo();
+        assertEquals(OnnxJavaType.FLOAT, inputInfo.type);
+        int[] expectedInputDimensions = new int[] {1, 3, 224, 224};
+        assertEquals(expectedInputDimensions.length, inputInfo.shape.length);
+        for (int i = 0; i < expectedInputDimensions.length; i++) {
+          assertEquals(expectedInputDimensions[i], inputInfo.shape[i]);
+        }
+      }
+    }
+  }
+
+  @Test
   public void createSessionFromByteArray() throws IOException, OrtException {
     Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
     byte[] modelBytes = Files.readAllBytes(modelPath);
@@ -464,12 +495,12 @@ public class InferenceTest {
       container.put("wrong_name", OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect name.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unknown input name"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -491,12 +522,57 @@ public class InferenceTest {
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect type.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unexpected input data type"));
+      } finally {
+        OnnxValue.close(container.values());
+      }
+    }
+  }
+
+  @Test
+  public void throwWrongSizeInput() throws OrtException {
+    SqueezeNetTuple tuple = openSessionSqueezeNet();
+    try (OrtSession session = tuple.session) {
+
+      float[] inputData = tuple.inputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      float[] wrongSizeData = Arrays.copyOf(inputData, 2 * 224 * 224);
+      Object tensor = OrtUtil.reshape(wrongSizeData, new long[] {1, 2, 224, 224});
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try {
+        session.run(container);
+        fail("Should throw exception for incorrect size.");
+      } catch (OrtException e) {
+        String msg = e.getMessage();
+        assertTrue(msg.contains("Got invalid dimensions for input"));
+      } finally {
+        OnnxValue.close(container.values());
+      }
+    }
+  }
+
+  @Test
+  public void throwWrongRankInput() throws OrtException {
+    SqueezeNetTuple tuple = openSessionSqueezeNet();
+    try (OrtSession session = tuple.session) {
+
+      float[] inputData = tuple.inputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      Object tensor = OrtUtil.reshape(inputData, new long[] {1, 1, 3, 224, 224});
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try {
+        session.run(container);
+        fail("Should throw exception for incorrect size.");
+      } catch (OrtException e) {
+        String msg = e.getMessage();
+        assertTrue(msg.contains("Invalid rank for input"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -519,12 +595,12 @@ public class InferenceTest {
       container.put("extra", OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for too many inputs.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unexpected number of inputs"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -534,12 +610,11 @@ public class InferenceTest {
     int numThreads = 10;
     int loop = 10;
     SqueezeNetTuple tuple = openSessionSqueezeNet();
+    Map<String, OnnxTensor> container = new HashMap<>();
     try (OrtSession session = tuple.session) {
-
       float[] inputData = tuple.inputData;
       float[] expectedOutput = tuple.outputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
-      Map<String, OnnxTensor> container = new HashMap<>();
       long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
       Object tensor = OrtUtil.reshape(inputData, inputShape);
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
@@ -561,8 +636,9 @@ public class InferenceTest {
       }
       executor.shutdown();
       executor.awaitTermination(1, TimeUnit.MINUTES);
-      OnnxValue.close(container.values());
       assertTrue(executor.isTerminated());
+    } finally {
+      OnnxValue.close(container.values());
     }
   }
 
@@ -1232,6 +1308,7 @@ public class InferenceTest {
       options.setLoggerId("monkeys");
       options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
       options.setSessionLogVerbosityLevel(5);
+      options.setDeterministicCompute(true);
       Map<String, String> configEntries = options.getConfigEntries();
       assertTrue(configEntries.isEmpty());
       options.addConfigEntry("key", "value");

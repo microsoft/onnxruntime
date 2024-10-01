@@ -87,7 +87,6 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                const logging::Logger& logger,
                                 QnnModelLookupTable& qnn_models) {
   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
   NodeAttrHelper node_helper(main_context_node);
@@ -97,7 +96,6 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
                                                                main_context_node.Name(),
-                                                               logger,
                                                                qnn_models);
   }
 
@@ -147,7 +145,6 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
                                                              static_cast<uint64_t>(buffer_size),
                                                              main_context_node.Name(),
-                                                             logger,
                                                              qnn_models);
 }
 
@@ -158,7 +155,7 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const logging::Logger& logger) {
   ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
   Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager,
-                                           logger, qnn_models);
+                                           qnn_models);
 
   // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
   if (!status.IsOK()) {
