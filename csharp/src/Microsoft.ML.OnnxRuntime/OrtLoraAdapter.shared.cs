@@ -29,7 +29,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Creates an instance of OrtLoraAdapter from an array of bytes.
+        /// Creates an instance of OrtLoraAdapter from an array of bytes. The API
+        /// makes a copy of the bytes internally.
         /// </summary>
         /// <param name="bytes">array of bytes containing valid LoraAdapter format</param>
         /// <param name="ortAllocator">optional device allocator or null</param>

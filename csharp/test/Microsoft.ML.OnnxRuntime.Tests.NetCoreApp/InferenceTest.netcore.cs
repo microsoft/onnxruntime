@@ -1264,48 +1264,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return OrtLoraAdapter.Create(adapterBytes, null);
         }
 
-        private void testInferenceWithLoraAdapter(OrtLoraAdapter ortLoraAdapter)
-        {
-            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
-            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
-
-            var inputShape = new long[] { 4, 4 };
-            var inputData = new float[16];
-            Array.Fill(inputData, 1);
-            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
-
-            var expectedOutput = new float[] {
-                  154, 176, 198, 220,
-                  154, 176, 198, 220,
-                  154, 176, 198, 220,
-                  154, 176, 198, 220 };
-
-            using var session = new InferenceSession(modelPath);
-            using var runOptions = new RunOptions();
-            runOptions.AddActiveLoraAdapter(ortLoraAdapter);
-
-            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
-            Assert.Single(outputs);
-            var output = outputs.First().GetTensorDataAsSpan<float>();
-            Assert.Equal(expectedOutput.Length, output.Length);
-            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
-        }
-
-        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromFile")]
-        private void TestInferenceWithLoraAdapterFromFile()
-        {
-            using var ortAdapter = CreateLoraAdapterFromFile();
-            testInferenceWithLoraAdapter(ortAdapter);
-        }
-
-        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromArray")]
-        private void TestInferenceWithLoraAdapterFromArray()
-        {
-            using var ortAdapter = CreateLoraAdapterFromArray();
-            testInferenceWithLoraAdapter(ortAdapter);
-        }
-
-
+        // See tests below for running with Lora Adapters
         [Fact(DisplayName = "TestInferenceWithBaseLoraModel")]
         private void TestInferenceWithBaseLoraModel()
         {
@@ -1327,9 +1286,51 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
             Assert.Single(outputs);
-            var output = outputs.First().GetTensorDataAsSpan<float>();
+            var output = outputs[0].GetTensorDataAsSpan<float>();
             Assert.Equal(expectedOutput.Length, output.Length);
             Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+
+        private static void TestInferenceWithLoraAdapter(OrtLoraAdapter ortLoraAdapter)
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220 };
+
+            using var session = new InferenceSession(modelPath);
+            using var runOptions = new RunOptions();
+            runOptions.AddActiveLoraAdapter(ortLoraAdapter);
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs[0].GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromFile")]
+        private void TestInferenceWithLoraAdapterFromFile()
+        {
+            using var ortAdapter = CreateLoraAdapterFromFile();
+            TestInferenceWithLoraAdapter(ortAdapter);
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromArray")]
+        private void TestInferenceWithLoraAdapterFromArray()
+        {
+            using var ortAdapter = CreateLoraAdapterFromArray();
+            TestInferenceWithLoraAdapter(ortAdapter);
         }
 
         // TestGpu() will test
