@@ -95,14 +95,14 @@ We can create a conda environment then run GPU benchmark like the following:
 ```bash
 conda create -n sam2_gpu python=3.11 -y
 conda activate sam2_gpu
-sh benchmark_sam2.sh $HOME gpu
+bash benchmark_sam2.sh $HOME gpu
 ```
 
 or create a new conda environment for CPU benchmark:
 ```bash
 conda create -n sam2_cpu python=3.11 -y
 conda activate sam2_cpu
-sh benchmark_sam2.sh $HOME cpu
+bash benchmark_sam2.sh $HOME cpu
 ```
 
 The first parameter is a directory to clone git repositories or install CUDA/cuDNN for benchmark.
@@ -111,7 +111,7 @@ The second parameter can be either "gpu" or "cpu", which indicates the device to
 The script will automatically install required packages in current conda environment, download checkpoints, export onnx,
 and run demo, benchmark and profiling.
 
-* The performance test result is in sam2.csv, which can be loaded into Excel.
+* The performance test result is in sam2_gpu.csv or sam2_cpu.csv, which can be loaded into Excel.
 * The demo output is sam2_demo_fp16_gpu.png or sam2_demo_fp32_cpu.png.
 * The profiling results are in *.nsys-rep or *.json files in current directory.
 

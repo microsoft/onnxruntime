@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
@@ -8,11 +8,11 @@
 # For example, you can create a new conda environment like the following before running this script:
 #    conda create -n sam2_gpu python=3.11 -y
 #    conda activate sam2_gpu
-#    sh benchmark_sam2.sh $HOME gpu
+#    bash benchmark_sam2.sh $HOME gpu
 # Or create a new conda environment for CPU benchmark:
 #    conda create -n sam2_cpu python=3.11 -y
 #    conda activate sam2_cpu
-#    sh benchmark_sam2.sh $HOME cpu
+#    bash benchmark_sam2.sh $HOME cpu
 
 python=$CONDA_PREFIX/bin/python3
 
@@ -299,7 +299,7 @@ if [ "$cpu_or_gpu" = "gpu" ]; then
         build_onnxruntime_gpu_for_profiling
         run_nvtx_profile
     else
-        echo "sam2_fp16_profile_ort.nsys-rep already exists, skipping GPU profiling..."
+        echo "sam2_fp16_profile_image_decoder_ort_${cpu_or_gpu}.nsys-rep already exists, skipping GPU profiling..."
     fi
 
     run_torch_profile
