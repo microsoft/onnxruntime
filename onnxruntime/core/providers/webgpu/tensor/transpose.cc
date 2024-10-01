@@ -48,7 +48,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Transpose);
 
 auto SqueezeShape(const gsl::span<const int64_t>& shape, const gsl::span<const size_t>& adjusted_perm, InlinedVector<int64_t>& new_shape, InlinedVector<int64_t>& new_perm) {
-  for (auto i = 0; i < shape.size(); ++i) {
+  for (size_t i = 0; i < shape.size(); ++i) {
     if (shape[i] != 1) {
       new_shape.push_back(shape[i]);
     }
