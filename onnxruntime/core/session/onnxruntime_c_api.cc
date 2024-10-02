@@ -843,6 +843,28 @@ void CheckAndAdjustInputSpansForLora(const OrtRunOptions& run_options,
 
 }  // namespace
 
+ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _In_ OrtSession* sess, _In_ const char** keys,
+                  _In_ const char** values, _In_ size_t kv_len); {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+
+  // TODO: is this what we're supposed to do with strings?
+  auto keys_span = gsl::make_span(keys, kv_len);
+  auto values_span = gsl::make_span(values, kv_len);
+
+  Status status;
+
+  if (kv_len == 0) {
+    // TODO: how does one return OK or no_values_passed
+    status = 0;
+  } else {
+    status = session->SetEpDynamicOptions(keys_span,
+                                          values_span);
+  }
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -2785,6 +2807,8 @@ static constexpr OrtApi ort_api_1_to_20 = {
     &OrtApis::CreateLoraAdapterFromArray,
     &OrtApis::ReleaseLoraAdapter,
     &OrtApis::RunOptionsAddActiveLoraAdapter,
+
+    &OrtApis::SetEpDynamicOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

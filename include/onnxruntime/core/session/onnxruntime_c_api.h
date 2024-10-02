@@ -1312,6 +1312,24 @@ struct OrtApi {
   ORT_API2_STATUS(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 
   /// @}
+  /// \name OrtEpDynamicOptions
+  /// @{
+
+  /** \brief Set DynamicOptions for EPs
+   *
+   * \param[in] session
+   * \param[in] list of keys represented by null-terminated strings
+   * \param[in] list of values represented by null-terminated strings
+   * \param[in] number of key-value pairs
+   *
+   * \since Version xxx
+   * @TODO: update version number
+   * @TODO: should it be SetExecutionProvider... instead of SetEp...?
+   */
+  ORT_API2_STATUS(SetEpDynamicOptions, _In_ OrtSession* sess, _In_ const char** keys, _In_ const char** values,
+                  _In_ size_t kv_len);
+
+  /// @}
   /// \name OrtValue
   /// @{
 

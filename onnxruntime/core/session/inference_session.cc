@@ -2475,6 +2475,39 @@ struct ThreadPoolSpinningSwitch {
 };
 }  // namespace
 
+// TODO: are we going to do all the ttracing and logging and telemetry for this?
+// TODO: is this the right type?
+Status InferenceSession::SetEpDynamicOptions(gsl::span<const std::string> keys,
+                                             gsl::span<const std::string> values) {
+  Status retval = Status::OK();
+  const Env& env = Env::Default();
+
+  ORT_TRY {
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    // info all execution providers InferenceSession:Run started
+    // TODO: only call SetEpDynamicOptions for all providers in-use
+    for (auto& xp : execution_providers_) {
+      auto status = xp->SetEpDynamicOptions(keys, values);
+      ORT_CHECK_AND_SET_RETVAL(status);
+    }
+  }
+
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
+    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in SetEpDynamicOptions()");
+  }
+
+  return retval;
+}
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,

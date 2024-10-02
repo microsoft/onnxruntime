@@ -215,6 +215,15 @@ class IExecutionProvider {
   }
 
   /**
+     Called when InferenceSession::SetEpDynamicOptions is called
+     TODO: what is the right way of passing parameters?
+  */
+  virtual common::Status SetEpDynamicOptions(gsl::span<const std::string> /*keys*/,
+                                             gsl::span<const std::string> /*values*/) {
+    return Status::OK();
+  }
+
+  /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
      the provider.
    */
