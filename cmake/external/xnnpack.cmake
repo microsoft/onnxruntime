@@ -21,7 +21,12 @@ endif()
 FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
 onnxruntime_fetchcontent_makeavailable(psimd)
 set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
+FetchContent_Declare(
+    fp16
+    URL ${DEP_URL_fp16}
+    URL_HASH SHA1=${DEP_SHA1_fp16}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/fp16/remove_math_h_dependency_from_fp16_h.patch
+    )
 onnxruntime_fetchcontent_makeavailable(fp16)
 
 # pthreadpool depends on fxdiv
