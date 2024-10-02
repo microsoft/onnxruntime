@@ -47,9 +47,9 @@ namespace xnnpack {
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
-  #define XNN_ARCH_ARM64 1
+#define XNN_ARCH_ARM64 1
 #else
-  #define XNN_ARCH_ARM64 0
+#define XNN_ARCH_ARM64 0
 #endif
 
 // fp16 support can vary on a kernel by kernel basis. Keep it simple and limit to arm64 for now.
