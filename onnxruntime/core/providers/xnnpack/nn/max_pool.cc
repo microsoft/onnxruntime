@@ -55,7 +55,10 @@ bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // input of maxpool could be fp16/fp32/fp64,i8/u8 according to ONNX
     if (x_type == nullptr ||
         (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+// because pool_fp16_op_test can be enabled by other preprocessor, for example, COREML_ENABLE_MLPROGRAM
+if XNNPACK_FP16_SUPPORTED
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+#endif
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
       break;
