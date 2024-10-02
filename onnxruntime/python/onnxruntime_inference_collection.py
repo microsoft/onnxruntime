@@ -32,6 +32,52 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         raise Exception("Unsupported device type: " + device_type)
 
 
+class AdapterFormat:
+    """
+    This class is used to create adapter files from python structures
+    """
+
+    def __init__(self, adapter=None) -> None:
+        if adapter is None:
+            self._adapter = C.AdapterFormat()
+        else:
+            self._adapter = adapter
+
+    @staticmethod
+    def read_adapter(file_path: os.PathLike) -> AdapterFormat:
+        return AdapterFormat(C.AdapterFormat.read_adapter(file_path))
+
+    def export_adapter(self, file_path: os.PathLike):
+        """
+        This function writes a file at the specified location
+        in onnxrunitme adapter format containing Lora parameters.
+
+        :param file_path: absolute path for the adapter
+        """
+        self._adapter.export_adapter(file_path)
+
+    def get_format_version(self):
+        return self._adapter.format_version
+
+    def set_adapter_version(self, adapter_version: int):
+        self._adapter.adapter_version = adapter_version
+
+    def get_adapter_version(self):
+        return self._adapter.adapter_version
+
+    def set_model_version(self, model_version: int):
+        self._adapter.model_version = model_version
+
+    def get_model_version(self):
+        return self._adapter.model_version
+
+    def set_parameters(self, params: dict[str, OrtValue]):
+        self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
+
+    def get_parameters(self) -> dict[str, OrtValue]:
+        return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
+
+
 def check_and_normalize_provider_args(
     providers: Sequence[str | tuple[str, dict[Any, Any]]] | None,
     provider_options: Sequence[dict[Any, Any]] | None,
@@ -710,6 +756,20 @@ class OrtValue:
             ),
             numpy_obj if device_type.lower() == "cpu" else None,
         )
+
+    @staticmethod
+    def ortvalue_from_numpy_with_onnxtype(data: Sequence[int], onnx_element_type: int):
+        """
+        This method creates an instance of OrtValue on top of the numpy array
+        No data copy is made and the lifespan of the resulting OrtValue should never
+        exceed the lifespan of bytes object. The API attempts to reinterpret
+        the data type which is expected to be the same size. This is useful
+        when we want to use an ONNX data type that is not supported by numpy.
+
+        :param data: numpy array.
+        :param onnx_elemenet_type: a valid onnx TensorProto::DataType enum value
+        """
+        return OrtValue(C.OrtValue.ortvalue_from_numpy_with_onnxtype(data, onnx_element_type), data)
 
     @staticmethod
     def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):

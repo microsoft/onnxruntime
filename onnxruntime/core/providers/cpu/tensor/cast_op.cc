@@ -258,7 +258,7 @@ struct TensorCaster<MLFloat16, float> {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = narrow<size_t>(shape.Size());
-    MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
+    MlasConvertHalfToFloatBuffer(in_data, out_data, shape_size);
   }
 };
 

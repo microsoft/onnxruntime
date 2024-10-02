@@ -645,10 +645,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   TensorShapeVector axes;
 
   size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
+  const Tensor* axes_tensor = num_inputs == 2 ? ctx->Input<Tensor>(1) : nullptr;  // optional input. may be nullptr.
+  if (axes_tensor != nullptr) {
     // override the attribute value with the input value for reduction_axes
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->Data<int64_t>();

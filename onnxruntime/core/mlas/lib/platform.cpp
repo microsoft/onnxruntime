@@ -20,7 +20,7 @@ Abstract:
 #include <thread>
 #include <mutex>
 
-#if defined(MLAS_TARGET_POWER) 
+#if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
 #include <sys/auxv.h>
 #elif defined(_AIX)
@@ -245,6 +245,7 @@ Return Value:
     this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
     this->CastF16ToF32Kernel = nullptr;
+    this->CastF32ToF16Kernel = nullptr;
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
@@ -387,6 +388,9 @@ Return Value:
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
                 this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
+                this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
+                this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
+
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -470,6 +474,17 @@ Return Value:
                             this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
+                }
+
+                //
+                // Check if the processor supports AVX-VNNI-INT8
+                //
+                if ((Cpuid7_1[3] & 0x10) != 0) {
+                    this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2Vnni;
+                    this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchAvx2Vnni;
+                    this->GemmS8S8Kernel = MlasGemmS8S8KernelAvx2Vnni;
+                    this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
+                    this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
                 }
 
 #ifndef __APPLE__
@@ -559,6 +574,11 @@ Return Value:
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
     }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
+    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
 #endif
 
 #endif // MLAS_TARGET_ARM64

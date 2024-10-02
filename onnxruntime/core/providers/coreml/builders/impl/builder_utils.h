@@ -41,6 +41,9 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, const ONN
 // Copy the float array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const float> data);
 
+// Copy the MLFloat16 array to a coreml weight
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const MLFloat16> data);
+
 // Copy the int32_t array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int32_t> data);
 
