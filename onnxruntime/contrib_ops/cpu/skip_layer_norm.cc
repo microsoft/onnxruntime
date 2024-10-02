@@ -119,17 +119,19 @@ void ComputeJob(
   float mean_square(0.0f);
 
   const size_t num_elems = static_cast<size_t>(hidden_size);
-  float* float_input = new float[num_elems];
-  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
-  float* float_skip = new float[num_elems];
-  MlasConvertHalfToFloatBuffer(p_skip, float_skip, num_elems);
-  float* float_bias = nullptr;
+
+  std::unique_ptr<float[]> float_input = std::make_unique<float[]>(num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, float_input.get(), num_elems);
+
+  std::unique_ptr<float[]> float_skip = std::make_unique<float[]>(num_elems);
+  MlasConvertHalfToFloatBuffer(p_skip, float_skip.get(), num_elems);
+  std::unique_ptr<float[]> float_bias = nullptr;
   if (bias_data != nullptr) {
-    float_bias = new float[num_elems];
-    MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
+    float_bias = std::make_unique<float[]>(num_elems);
+    MlasConvertHalfToFloatBuffer(bias_data, float_bias.get(), num_elems);
   }
 
-  float* float_output = new float[num_elems];
+  std::unique_ptr<float[]> float_output = std::make_unique<float[]>(num_elems);
   for (size_t h = 0; h < num_elems; h++) {
     float val = float_input[h] + float_skip[h];
 
@@ -141,12 +143,9 @@ void ComputeJob(
     mean += val;
     mean_square += val * val;
   }
-  if (float_bias != nullptr) {
-    delete[] float_bias;
-  }
 
   if (nullptr != p_skip_input_bias_add_output) {
-    MlasConvertFloatToHalfBuffer(float_output, p_skip_input_bias_add_output, num_elems);
+    MlasConvertFloatToHalfBuffer(float_output.get(), p_skip_input_bias_add_output, num_elems);
   }
 
   mean = mean / hidden_size;
@@ -156,9 +155,9 @@ void ComputeJob(
     mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
   }
 
-  float* float_gamma = float_input; // overwrite float_input with gamma values, since they have the same size
+  float* float_gamma = float_input.get(); // overwrite float_input with gamma values, since they have the same size
   MlasConvertHalfToFloatBuffer(gamma_data, float_gamma, num_elems);
-  float* float_beta = float_skip; // overwrite float_input with beta values, since they have the same size
+  float* float_beta = float_skip.get(); // overwrite float_skip with beta values, since they have the same size
   MlasConvertHalfToFloatBuffer(beta_data, float_beta, num_elems);
   for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
@@ -169,11 +168,8 @@ void ComputeJob(
       float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h] + float_beta[h];
     }
   }
-  delete[] float_gamma; // also deletes float_input
-  delete[] float_beta; // also deletes float_skip
 
-  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
-  delete[] float_output;
+  MlasConvertFloatToHalfBuffer(float_output.get(), p_output, num_elems);
 }
 
 }  // namespace
