@@ -317,6 +317,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
+  addAdapterFormatMethods(m);
 
 #if !defined(__APPLE__) && \
     (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))

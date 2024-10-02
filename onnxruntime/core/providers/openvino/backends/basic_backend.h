@@ -23,7 +23,7 @@ namespace openvino_ep {
 
 struct ov_tensor_data_t {
   OVTensorPtr tensor_ptr;
-  bool copy_needed;
+  const void* ort_ptr;
 };
 
 class InferRequestsQueue;
@@ -67,7 +67,7 @@ class BasicBackend : public IBackend {
   OVRemoteContextPtr remote_context_;
 #endif
 
-  using ort_tensor_key_t = std::pair<const void*, const std::string>;
+  using ort_tensor_key_t = const std::string;
   std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
 };
 
