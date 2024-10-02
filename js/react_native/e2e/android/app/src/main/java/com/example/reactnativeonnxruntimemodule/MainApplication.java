@@ -51,7 +51,14 @@ public class MainApplication extends Application implements ReactApplication {
     initializeFlipper(
         this, getReactNativeHost().getReactInstanceManager()); // Remove this line if you don't want Flipper enabled
   }
-
+  @Override
+  public Intent registerReceiver(@Nullable BroadcastReceiver receiver, IntentFilter filter) {
+    if (Build.VERSION.SDK_INT >= 34 && getApplicationInfo().targetSdkVersion >= 34) {
+      return super.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED); // or RECEIVER_NOT_EXPORTED
+    } else {
+      return super.registerReceiver(receiver, filter);
+    }
+  }
   public static Context getAppContext() { return appContext; }
 
   /**
@@ -62,7 +69,7 @@ public class MainApplication extends Application implements ReactApplication {
   private static void initializeFlipper(Context context, ReactInstanceManager reactInstanceManager) {
     if (BuildConfig.DEBUG) {
       try {
-        /*
+        /*`
          We use reflection here to pick up the class that initializes Flipper,
         since Flipper library is not available in release mode
         */
