@@ -34,7 +34,7 @@ std::string GetUniqueGraphName(const Graph& graph) {
 }  // namespace
 
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
-// Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
+// Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this function again.
 bool TensorrtExecutionProvider::IsInputInitializerOrOutput(const Graph& graph,
                                                            const std::string& name,
                                                            bool check_ancestors) const {
@@ -125,7 +125,7 @@ void TensorrtExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
   }
 }
 
-// Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
+// Set outer scope values for subgraphs and add those values as top-level graph's inputs if needed.
 void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_build,
                                                                   const Graph& graph) const {
   // Iterate all the nodes and recurse into inner most subgraph first for both newly built graph and original graph

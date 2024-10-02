@@ -546,7 +546,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**
    * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
-   * Graph::ResolveContext::IsOuterScopeValue(). We have to implement this fuction again.
+   * Graph::ResolveContext::IsOuterScopeValue(). We have to implement this function again.
    */
   bool IsOuterScopeValue(const Graph& graph, const std::string& name) const;
 

@@ -233,6 +233,43 @@ void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so, const char* model) {
     for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
+void RunControlFlow(OrtEnv* p_env, OrtSessionOptions* so) {
+    OrtSession* session = nullptr;
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/control_flow/control_flow_model.onnx", so, &session));
+
+    OrtMemoryInfo* memory_info = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+
+    std::vector<OrtValue*> input_tensors(3, nullptr);
+    const int input_cnt = 2;
+    float input_data[input_cnt];
+    for (int i = 0; i < input_cnt; i++) input_data[i] = 1;
+    const size_t input_len = input_cnt * sizeof(float);
+    const int64_t input_shape[] = {1, 2};
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, sizeof(input_shape)/sizeof(input_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[0]));
+
+    float input2[2] = {0.36252614855766296, 0.030415434390306473};
+    const size_t input2_len = 8;    // 2 * sizeof(float)
+    const int64_t input2_shape[] = {1, 2};
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, input2, input2_len, input2_shape, sizeof(input2_shape)/sizeof(input2_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[1]));
+
+    float input3 = 0.5945659279823303;
+    const int64_t input3_shape[] = {1};
+    THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, &input3, 4, input3_shape, sizeof(input3_shape)/sizeof(input3_shape[0]), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensors[2]));
+
+    const char* input_names[] = {"x1.opt", "x2", "x3"};
+    const char* output_names[] = {"y"};
+
+    size_t output_count = sizeof(output_names)/sizeof(output_names[0]);
+    std::vector<OrtValue*> output_tensors(output_count, nullptr);
+    THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)input_tensors.data(), sizeof(input_names)/sizeof(input_names[0]), output_names, output_count, output_tensors.data()));
+
+    float* output_tensor_data = nullptr;
+    THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensors[0], (void**)&output_tensor_data));
+//    std::cout<<"Result:\n";
+//    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+}
+
 // ./TestOutTreeEp c/k/t/tc/otc relu/resnet/rcnn
 int main(int argc, char *argv[]) {
     OrtEnv* p_env = nullptr;
@@ -261,6 +298,8 @@ int main(int argc, char *argv[]) {
         RunFastRcnn(g_ort, p_env, so);
     } else if (!strcmp(argv[2], "tyolo") || !strcmp(argv[2], "yolo")) {
         RunTinyYolov3(p_env, so, argv[2]);
+    } else if (!strcmp(argv[2], "cf")) {
+        RunControlFlow(p_env, so);
     }
 
     g_ort->ReleaseEnv(p_env);

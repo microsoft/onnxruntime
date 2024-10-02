@@ -1083,7 +1083,8 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const OrtGraphViewer* 
 // Check whether all the nodes of the graph are assigned to specific ep
 bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const OrtGraphViewer* graph, const std::string& provider_type) const {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  std::vector<size_t> nodes_vector(api->OrtGraph_NumberOfNodes(graph));
+  const int number_of_ort_nodes = api->OrtGraph_NumberOfNodes(graph);
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   size_t node_count = 0;
   const size_t* nodes_index = nullptr;
@@ -1093,12 +1094,11 @@ bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const OrtGraphViewe
     api->OrtGraph_GetOrtNode(graph, nodes_index[index], &node);
     const char* node_ep_type;
     api->OrtNode_GetExecutionProviderType(node, &node_ep_type);
-    if (!strcmp(node_ep_type, provider_type.c_str())) {
+    if (strcmp(node_ep_type, provider_type.c_str())) {
       return false;
     }
   }
-  return true;
-
+  return number_of_ort_nodes != 0;
 }
 
 // Check whether all the nodes of subgraph are supported
@@ -1430,7 +1430,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                         break;
                     }
                     // Another subgraph of "If" control flow op has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
-                    else if (p->AllNodesAssignedToSpecificEP(subgraphs[i], "TensorrtExecutionProvider")) {
+                    else if (p->AllNodesAssignedToSpecificEP(subgraphs[i], "tensorrtEp")) {
                         all_subgraphs_are_supported = true;
                         break;
                     }
