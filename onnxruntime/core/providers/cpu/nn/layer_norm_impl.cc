@@ -170,9 +170,9 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   }
 
   int output_index = 1;
-  Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_dev_dim));
   U* mean_data = nullptr;
-  if (mean != nullptr) {
+  if (!simplified) {
+    Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_dev_dim));
     mean_data = mean->MutableData<U>();
   }
 
