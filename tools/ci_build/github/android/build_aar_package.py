@@ -79,6 +79,7 @@ def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
     ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
+    qnn_android_build = "--use_qnn" in build_settings["build_params"]
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
@@ -99,6 +100,9 @@ def _build_aar(args):
         abi_build_dir = os.path.join(intermediates_dir, abi)
         abi_build_command = [*base_build_command, "--android_abi=" + abi, "--build_dir=" + abi_build_dir]
 
+        if qnn_android_build:
+            qnn_home = os.getenv("QNN_HOME")
+            abi_build_command += ["--qnn_home=" + qnn_home]
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
 
@@ -156,6 +160,7 @@ def _build_aar(args):
             if "--enable_training_apis" in build_settings["build_params"]
             else "-DENABLE_TRAINING_APIS=0"
         ),
+        ("-DaddQnnDependency=1" if qnn_android_build else "-DaddQnnDependency=0"),
     ]
 
     # clean, build, and publish to a local directory
