@@ -2217,19 +2217,19 @@ def parse_arguments():
     parser.add_argument(
         "--percent_mismatch",
         required=False,
-        default=20.0,
+        default=5.0,
         help="Allowed percentage of mismatched elements in validation.",
     )
     parser.add_argument(
         "--rtol",
         required=False,
-        default=0,
+        default=1e-5,
         help="Relative tolerance for validating outputs.",
     )
     parser.add_argument(
         "--atol",
         required=False,
-        default=20,
+        default=1e-8,
         help="Absolute tolerance for validating outputs.",
     )
 
