@@ -16,6 +16,13 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 
+#ifdef USE_DML
+#include "core/framework/execution_provider.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/providers/dml/dml_provider_factory_creator.h"
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
+
 namespace onnxruntime {
 
 #ifdef USE_CUDA
@@ -63,6 +70,32 @@ static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_i
     if (cuda_provider_info != nullptr) {
       data_transfer = cuda_provider_info->CreateGPUDataTransfer();
     }
+#endif
+  } else if (strcmp(mem_info.name, onnxruntime::DML) == 0) {
+#ifdef USE_DML
+    auto ep_factory = onnxruntime::DMLProviderFactoryCreator::Create(ConfigOptions{}, 0, false, false, false);
+    auto dml_ep = ep_factory->CreateProvider();
+    data_transfer = dml_ep->GetDataTransfer();
+
+    //constexpr uint32_t dml_api_version = 0;  // This is ignored
+    //const void* dml_api = nullptr;
+    //auto* ort_status = OrtApis::GetExecutionProviderApi("DML", dml_api_version, &dml_api);
+    //if (ort_status == nullptr) {
+    //  const auto* dml_provider_api = reinterpret_cast<const OrtDmlApi*>(dml_api);
+    //  OrtSessionOptions sess_options;
+    //  OrtDmlDeviceOptions dml_dev_options{OrtDmlPerformancePreference::Default, OrtDmlDeviceFilter::Gpu};
+    //  ort_status = dml_provider_api->SessionOptionsAppendExecutionProvider_DML2(&sess_options, &dml_dev_options);
+    //  if (ort_status) {
+    //    Ort::Status status(ort_status);
+    //    ORT_THROW(status.GetErrorMessage());
+    //  }
+    //  ORT_ENFORCE(sess_options.provider_factories.size() == 1, "Expecting a single factory");
+    //  auto dml_ep = sess_options.provider_factories[0]->CreateProvider();
+    //  data_transfer = dml_ep->GetDataTransfer();
+    //} else {
+    //  Ort::Status status(ort_status);
+    //  ORT_THROW(status.GetErrorMessage());
+    //}
 #endif
   }
 
