@@ -15,15 +15,15 @@ namespace onnxruntime {
 
 namespace {
 
-ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, [[maybe_unused]] int64_t num_elems) {
+ORT_FORCEINLINE double* OnlyCreateBufferIfMLFloat16(double* p_output, [[maybe_unused]] size_t num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, [[maybe_unused]] int64_t num_elems) {
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(float* p_output, [[maybe_unused]] size_t num_elems) {
   return p_output;
 }
 
-ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, int64_t num_elems) {
+ORT_FORCEINLINE float* OnlyCreateBufferIfMLFloat16(MLFloat16* p_output, size_t num_elems) {
   return p_output == nullptr ? nullptr : new float[num_elems];
 }
 
@@ -201,7 +201,8 @@ Status LayerNormImpl::ComputeWithoutContext(
 
         // If T is float or double, then output_buffer will be the same as p_output, so we don't allocate new memory.
         // If T is MLFloat16, then we allocate norm_size floats in output_buffer.
-        DoubleOrFloat* output_buffer = static_cast<DoubleOrFloat*>(OnlyCreateBufferIfMLFloat16(p_output, norm_size));
+        DoubleOrFloat* output_buffer = static_cast<DoubleOrFloat*>(
+            OnlyCreateBufferIfMLFloat16(p_output, static_cast<size_t>(norm_size)));
 
         for (int64_t h = 0; h < norm_size; h++) {
           output_buffer[h] = converted_input[h];
