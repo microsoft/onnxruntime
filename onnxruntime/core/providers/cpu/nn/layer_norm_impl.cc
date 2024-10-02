@@ -104,7 +104,7 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  float* float_scale = float_input; // overwrite float_input with scale values, since they have the same size
+  float* float_scale = float_input;  // overwrite float_input with scale values, since they have the same size
   MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
   float* float_bias = new float[num_elems];
   MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
@@ -117,7 +117,7 @@ void ComputeJob(
       float_output[h] = (float_output[h] - mean) / mean_square * float_scale[h] + float_bias[h];
     }
   }
-  delete[] float_scale; // also deletes float_input
+  delete[] float_scale;  // also deletes float_input
   delete[] float_bias;
 
   MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
@@ -228,7 +228,7 @@ Status LayerNormImpl::ComputeWithoutContext(
       thread_pool, static_cast<int32_t>(norm_count),
       [&](ptrdiff_t task_idx) {
         ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, epsilon, simplified,
-            Y_data, mean_data, inv_std_dev_data);
+                   Y_data, mean_data, inv_std_dev_data);
       },
       0);
 

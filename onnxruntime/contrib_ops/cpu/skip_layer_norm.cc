@@ -156,9 +156,9 @@ void ComputeJob(
     mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
   }
 
-  float* float_gamma = float_input; // overwrite float_input with gamma values, since they have the same size
+  float* float_gamma = float_input;  // overwrite float_input with gamma values, since they have the same size
   MlasConvertHalfToFloatBuffer(gamma_data, float_gamma, num_elems);
-  float* float_beta = float_skip; // overwrite float_input with beta values, since they have the same size
+  float* float_beta = float_skip;  // overwrite float_skip with beta values, since they have the same size
   MlasConvertHalfToFloatBuffer(beta_data, float_beta, num_elems);
   for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
@@ -169,8 +169,8 @@ void ComputeJob(
       float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h] + float_beta[h];
     }
   }
-  delete[] float_gamma; // also deletes float_input
-  delete[] float_beta; // also deletes float_skip
+  delete[] float_gamma;  // also deletes float_input
+  delete[] float_beta;   // also deletes float_skip
 
   MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
   delete[] float_output;
