@@ -113,7 +113,7 @@ jobs:
     parameters:
       JarFileDirectory: '$(artifacts_directory)'
 
-  #- task: PublishBuildArtifacts@1
-  #  inputs:
-  #    pathtoPublish: '$(artifacts_directory)'
-  #    artifactName: '${{parameters.artifactName}}'
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(artifacts_directory)'
+      artifactName: '${{parameters.artifactName}}'

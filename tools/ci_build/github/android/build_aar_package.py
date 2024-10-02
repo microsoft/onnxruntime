@@ -104,7 +104,7 @@ def _build_aar(args):
             qnn_home = os.getenv("QNN_HOME")
             qnn_sdk_version = os.getenv("QNN_SDK_VERSION")
             if not qnn_sdk_version:
-                raise EnvironmentError("QNN_SDK_VERSION environment variable is not set.")
+                raise OSError("QNN_SDK_VERSION environment variable is not set.")
             abi_build_command += ["--qnn_home=" + qnn_home]
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
