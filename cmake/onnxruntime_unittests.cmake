@@ -1590,39 +1590,55 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
-        message(STATUS "Running Java tests")
+      block()
+        message(STATUS "Enabling Java tests")
+
         # native-test is added to resources so custom_op_lib can be loaded
-        # and we want to symlink it there
+        # and we want to copy it there
         set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
         file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
 
-        # delegate to gradle's test runner
-        if(WIN32)
-          add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
-                          ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
-          # On windows ctest requires a test to be an .exe(.com) file
-          # With gradle wrapper we get gradlew.bat. We delegate execution to a separate .cmake file
-          # That can handle both .exe and .bat
-          add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
-            -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
-            -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
-            -DREPO_ROOT=${REPO_ROOT}
-            ${ORT_PROVIDER_FLAGS}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
-        else()
-          add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
-                          ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-          if (onnxruntime_ENABLE_TRAINING_APIS)
-            message(STATUS "Running Java inference and training tests")
-            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS} -DENABLE_TRAINING_APIS=1
-                          WORKING_DIRECTORY ${REPO_ROOT}/java)
-          else()
-            message(STATUS "Running Java inference tests only")
-            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
-                          WORKING_DIRECTORY ${REPO_ROOT}/java)
-          endif()
+        set(CUSTOM_OP_LIBRARY_DST_FILE_NAME
+            $<IF:$<BOOL:${WIN32}>,$<TARGET_FILE_NAME:custom_op_library>,$<TARGET_LINKER_FILE_NAME:custom_op_library>>)
+
+        add_custom_command(TARGET custom_op_library POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:custom_op_library>
+                ${JAVA_NATIVE_TEST_DIR}/${CUSTOM_OP_LIBRARY_DST_FILE_NAME})
+
+        # also copy other library dependencies that may be required by tests to native-test
+        if(onnxruntime_USE_QNN)
+          add_custom_command(TARGET onnxruntime_providers_qnn POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} ${JAVA_NATIVE_TEST_DIR})
         endif()
+
+        # delegate to gradle's test runner
+
+        # On Windows, ctest requires a test to be an .exe(.com) file. With gradle wrapper, we get gradlew.bat.
+        # To work around this, we delegate gradle execution to a separate .cmake file that can be run with cmake.
+        # For simplicity, we use this setup for all supported platforms and not just Windows.
+
+        # Note: Here we rely on the values in ORT_PROVIDER_FLAGS to be of the format "-Doption=value".
+        # This happens to also match the gradle command line option for specifying system properties.
+        set(GRADLE_SYSTEM_PROPERTY_DEFINITIONS ${ORT_PROVIDER_FLAGS})
+
+        if(onnxruntime_ENABLE_TRAINING_APIS)
+          message(STATUS "Enabling Java tests for training APIs")
+
+          list(APPEND GRADLE_SYSTEM_PROPERTY_DEFINITIONS "-DENABLE_TRAINING_APIS=1")
+        endif()
+
+        add_test(NAME onnxruntime4j_test COMMAND
+            ${CMAKE_COMMAND}
+                -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
+                -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                -DREPO_ROOT=${REPO_ROOT}
+                # Note: Quotes are important here to pass a list of values as a single property.
+                "-DGRADLE_SYSTEM_PROPERTY_DEFINITIONS=${GRADLE_SYSTEM_PROPERTY_DEFINITIONS}"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
+
         set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+      endblock()
     endif()
   endif()
 
@@ -1641,7 +1657,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 libprotobuf-lite onnx_proto nsync_cpp)
+      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 libprotobuf-lite onnx_proto nsync_cpp)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
