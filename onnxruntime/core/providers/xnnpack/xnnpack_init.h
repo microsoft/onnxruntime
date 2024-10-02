@@ -46,16 +46,17 @@ namespace xnnpack {
 #define XNN_ALLOCATION_ALIGNMENT 16
 #endif
 
-#if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
-#if (defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM64EC)) && !XNN_ARCH_X86_64
-#if !defined(__APPLE__)
-// Had to temporary disable fp16 under APPLE ARM64, as compiling the source files
-// require a hardware specific compilation flag. When building an universial binary for APPLE,
-// this flag would cause trouble for x64 target. Referenced from MLAS
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+  #define XNN_ARCH_ARM64 1
+#else
+  #define XNN_ARCH_ARM64 0
+#endif
+
+// fp16 support can vary on a kernel by kernel basis. Keep it simple and limit to arm64 for now.
+// e.g. XNNPACK maxpool has x64 and arm64 fp16 kernels.
+#if XNN_ARCH_ARM64
 #define XNNPACK_FP16_SUPPORTED
-#endif  //
-#endif  // ARM64
-#endif  // Visual Studio 16 or earlier does not support fp16 intrinsic
+#endif
 
 std::pair<AllocatorPtr&, xnn_allocator*> GetStoredAllocator();
 
