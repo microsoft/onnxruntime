@@ -49,10 +49,12 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
       ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, MLFloat16, Op)>,
 
 #define CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(provider, domain, startver, endver, name) \
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, startver, endver, MLFloat16, name)
+  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, \
+                                                        startver, endver, MLFloat16, name)
 
 #define CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(provider, domain, startver, name) \
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, startver, MLFloat16, name)
+  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, startver, \
+                                              MLFloat16, name)
 #else
 #define KERNEL_CREATE_INFO_VERSIONED_FP16(Start, End, Op, Domain)
 #define KERNEL_CREATE_INFO_FP16(Start, Op, Domain)
