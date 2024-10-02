@@ -87,10 +87,10 @@ void ComputeJob(
   float mean_square(0.0f);
 
   const size_t num_elems = static_cast<size_t>(norm_size);
-  std::unique_ptr<float[]> float_input = std::make_unique<float[]>(num_elems);
-  MlasConvertHalfToFloatBuffer(p_input, float_input.get(), num_elems);
+  float* float_input = new float[num_elems];
+  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
 
-  std::unique_ptr<float[]> float_output = std::make_unique<float[]>(num_elems);
+  float* float_output = new float[num_elems];
   for (size_t h = 0; h < num_elems; h++) {
     float_output[h] = float_input[h];
     mean += float_input[h];
@@ -104,10 +104,10 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  float* float_scale = float_input.get(); // overwrite float_input with scale values, since they have the same size
+  float* float_scale = float_input; // overwrite float_input with scale values, since they have the same size
   MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
-  std::unique_ptr<float[]> float_bias = std::make_unique<float[]>(num_elems);
-  MlasConvertHalfToFloatBuffer(bias_data, float_bias.get(), num_elems);
+  float* float_bias = new float[num_elems];
+  MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
   for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
       float_output[h] = float_output[h] / mean_square * float_scale[h];
@@ -117,8 +117,11 @@ void ComputeJob(
       float_output[h] = (float_output[h] - mean) / mean_square * float_scale[h] + float_bias[h];
     }
   }
+  delete[] float_scale; // also deletes float_input
+  delete[] float_bias;
 
-  MlasConvertFloatToHalfBuffer(float_output.get(), p_output, num_elems);
+  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
+  delete[] float_output;
 
   if (mean_data != nullptr) {
     // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
