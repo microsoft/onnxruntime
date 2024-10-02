@@ -56,7 +56,7 @@ allprojects {
 }
 
 android {
-	compileSdkVersion 32
+	compileSdkVersion 34
 
 	defaultConfig {
 		minSdkVersion minSdkVer
