@@ -102,6 +102,9 @@ def _build_aar(args):
 
         if qnn_android_build:
             qnn_home = os.getenv("QNN_HOME")
+            qnn_sdk_version = os.getenv("QNN_SDK_VERSION")
+            if not qnn_sdk_version:
+                raise EnvironmentError("QNN_SDK_VERSION environment variable is not set.")
             abi_build_command += ["--qnn_home=" + qnn_home]
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
@@ -162,6 +165,10 @@ def _build_aar(args):
         ),
         ("-DaddQnnDependency=1" if qnn_android_build else "-DaddQnnDependency=0"),
     ]
+
+    # Add qnn specific parameters
+    if qnn_android_build:
+        gradle_command.append(f"-DqnnVersion={qnn_sdk_version}")
 
     # clean, build, and publish to a local directory
     subprocess.run([*gradle_command, "clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)

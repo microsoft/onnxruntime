@@ -171,7 +171,7 @@ publishing {
 
             if (addQnnDependency) {
 				println "Modifying the POM XML to include QNN dependency"
-				def qnnVersion = project.hasProperty('qnnVersion')
+				def qnnVersion = System.properties['qnnVersion']
 
 				qnnVersion = "$qnnVersion.+"
 				withXml {
