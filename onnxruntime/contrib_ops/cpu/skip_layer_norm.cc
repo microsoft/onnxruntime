@@ -118,19 +118,24 @@ void ComputeJob(
   float mean(0.0f);
   float mean_square(0.0f);
 
-  std::vector<float> float_input(hidden_size);
-  MlasConvertHalfToFloatBuffer(p_input, &float_input[0], hidden_size);
-  std::vector<float> float_skip(hidden_size);
-  MlasConvertHalfToFloatBuffer(p_skip, &float_skip[0], hidden_size);
-  std::vector<float> float_bias;
+  const size_t num_elems = static_cast<size_t>(hidden_size);
+  float* float_output = new float[num_elems];
+  float* float_input = new float[num_elems];
+  float* float_skip = new float[num_elems];
+  float* float_gamma = new float[num_elems];
+  float* float_beta = new float[num_elems];
+  float* float_bias = nullptr;
   if (bias_data != nullptr) {
-    float_bias.resize(hidden_size);
-    MlasConvertHalfToFloatBuffer(bias_data, &float_bias[0], hidden_size);
+    float_bias = new float[num_elems];
+    MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
   }
+  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
+  MlasConvertHalfToFloatBuffer(p_skip, float_skip, num_elems);
+  MlasConvertHalfToFloatBuffer(gamma_data, float_gamma, num_elems);
+  MlasConvertHalfToFloatBuffer(beta_data, float_beta, num_elems);
 
-  std::vector<float> float_output(hidden_size);
-
-  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+  for (size_t h = 0; h < num_elems; h++) {
     float val = float_input[h] + float_skip[h];
 
     if (nullptr != bias_data) {
@@ -143,7 +148,7 @@ void ComputeJob(
   }
 
   if (nullptr != p_skip_input_bias_add_output) {
-    MlasConvertFloatToHalfBuffer(&float_output[0], p_skip_input_bias_add_output, hidden_size);
+    MlasConvertFloatToHalfBuffer(float_output, p_skip_input_bias_add_output, num_elems);
   }
 
   mean = mean / hidden_size;
@@ -153,12 +158,7 @@ void ComputeJob(
     mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
   }
 
-  std::vector<float> float_gamma(hidden_size);
-  MlasConvertHalfToFloatBuffer(gamma_data, &float_gamma[0], hidden_size);
-  std::vector<float> float_beta(hidden_size);
-  MlasConvertHalfToFloatBuffer(beta_data, &float_beta[0], hidden_size);
-
-  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+  for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
       float_output[h] = float_output[h] / mean_square * float_gamma[h];
     } else if (nullptr == beta_data) {
@@ -168,7 +168,15 @@ void ComputeJob(
     }
   }
 
-  MlasConvertFloatToHalfBuffer(&float_output[0], p_output, hidden_size);
+  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
+  delete[] float_output;
+  delete[] float_input;
+  delete[] float_skip;
+  delete[] float_gamma;
+  delete[] float_beta;
+  if (float_bias != nullptr) {
+    delete[] float_bias;
+  }
 }
 
 }  // namespace

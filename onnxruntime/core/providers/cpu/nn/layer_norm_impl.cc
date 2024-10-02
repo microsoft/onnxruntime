@@ -86,11 +86,17 @@ void ComputeJob(
   float mean(0.0f);
   float mean_square(0.0f);
 
-  std::vector<float> float_input(norm_size);
-  MlasConvertHalfToFloatBuffer(p_input, &float_input[0], norm_size);
+  const size_t num_elems = static_cast<size_t>(norm_size);
+  float* float_input = new float[num_elems];
+  float* float_scale = new float[num_elems];
+  float* float_bias = new float[num_elems];
+  float* float_output = new float[num_elems];
+  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
+  MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
+  MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
+  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
 
-  std::vector<float> float_output(norm_size);
-  for (int64_t h = 0; h < norm_size; h++) {
+  for (size_t h = 0; h < num_elems; h++) {
     float_output[h] = float_input[h];
     mean += float_input[h];
     mean_square += float_input[h] * float_input[h];
@@ -103,12 +109,7 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  std::vector<float> float_scale(norm_size);
-  MlasConvertHalfToFloatBuffer(scale_data, &float_scale[0], norm_size);
-  std::vector<float> float_bias(norm_size);
-  MlasConvertHalfToFloatBuffer(bias_data, &float_bias[0], norm_size);
-
-  for (int64_t h = 0; h < norm_size; h++) {
+  for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
       float_output[h] = float_output[h] / mean_square * float_scale[h];
     } else if (nullptr == bias_data) {
@@ -118,8 +119,6 @@ void ComputeJob(
     }
   }
 
-  MlasConvertFloatToHalfBuffer(&float_output[0], p_output, static_cast<size_t>(norm_size));
-
   if (mean_data != nullptr) {
     // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
     mean_data[task_idx] = MLFloat16(mean);
@@ -128,6 +127,11 @@ void ComputeJob(
   if (inv_std_dev_data != nullptr) {
     inv_std_dev_data[task_idx] = MLFloat16(1 / mean_square);
   }
+
+  delete[] float_input;
+  delete[] float_output;
+  delete[] float_scale;
+  delete[] float_bias;
 }
 
 }  // namespace
