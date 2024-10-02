@@ -51,14 +51,6 @@ public class MainApplication extends Application implements ReactApplication {
     initializeFlipper(
         this, getReactNativeHost().getReactInstanceManager()); // Remove this line if you don't want Flipper enabled
   }
-  @Override
-  public Intent registerReceiver(@Nullable BroadcastReceiver receiver, IntentFilter filter) {
-    if (Build.VERSION.SDK_INT >= 34 && getApplicationInfo().targetSdkVersion >= 34) {
-      return super.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED); // or RECEIVER_NOT_EXPORTED
-    } else {
-      return super.registerReceiver(receiver, filter);
-    }
-  }
   public static Context getAppContext() { return appContext; }
 
   /**
