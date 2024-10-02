@@ -87,6 +87,8 @@ jobs:
 
     - uses: actions/checkout@v4
 
+    # Note: Setting onnxruntime_BUILD_UNIT_TESTS=OFF as a workaround for
+    # https://github.com/microsoft/onnxruntime/issues/22245.
     - name: Build
       shell: bash
       run: |
@@ -103,7 +105,8 @@ jobs:
           --ios \
           --apple_deploy_target=13.0 \
           --apple_sysroot=iphonesimulator \
-          --osx_arch=x86_64
+          --osx_arch=x86_64 \
+          --cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF
 
   Vcpkg:
     runs-on: macos-13
