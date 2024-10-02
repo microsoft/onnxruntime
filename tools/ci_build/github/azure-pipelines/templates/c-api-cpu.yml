@@ -82,8 +82,8 @@ stages:
   - template: android-qnn-java-api-aar.yml
     parameters:
       buildConfig: 'Release'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_full_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-full-aar'
+      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
+      artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
       publish_executables: '0'
   #TODO: Add test job for QNN Android AAR
