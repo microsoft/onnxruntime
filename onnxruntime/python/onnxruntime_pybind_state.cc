@@ -1062,12 +1062,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "precision") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "enable_npu_fast_compile") {
-          if (!(option.second == "True" || option.second == "true" ||
-                option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_npu_fast_compile: ", option.second);
-          }
-          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
@@ -1110,9 +1104,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "context") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "export_ep_ctx_blob") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "enable_qdq_optimizer") {

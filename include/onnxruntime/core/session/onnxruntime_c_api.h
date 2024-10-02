@@ -632,7 +632,6 @@ typedef struct OrtMIGraphXProviderOptions {
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
   OrtOpenVINOProviderOptions() : device_type{},
-                                 enable_npu_fast_compile{},
                                  device_id{},
                                  num_of_threads{},
                                  cache_dir{},
@@ -645,7 +644,6 @@ typedef struct OrtOpenVINOProviderOptions {
    * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"
    */
   const char* device_type;
-  unsigned char enable_npu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
   size_t num_of_threads;  ///< 0 = Use default number of threads
   const char* cache_dir;  // path is set to empty by default

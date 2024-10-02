@@ -79,7 +79,6 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 struct OpenVINOExecutionProviderInfo {
   std::string device_type_{""};
   std::string precision_{""};
-  bool enable_npu_fast_compile_{false};
   size_t num_of_threads_{0};
   std::string load_config_{""};
   std::string cache_dir_{""};
@@ -96,7 +95,7 @@ struct OpenVINOExecutionProviderInfo {
   OpenVINOExecutionProviderInfo() = delete;
 
   explicit OpenVINOExecutionProviderInfo(const std::string& dev_type, const std::string& precision,
-                                         bool enable_npu_fast_compile, size_t num_of_threads,
+                                         size_t num_of_threads,
                                          const std::string& load_config, const std::string& cache_dir,
                                          const std::string& model_priority, int num_streams,
                                          void* context, bool enable_opencl_throttling,
@@ -104,7 +103,6 @@ struct OpenVINOExecutionProviderInfo {
                                          bool enable_qdq_optimizer, bool disable_cpu_fallback,
                                          bool so_epctx_embed_mode)
       : precision_(std::move(precision)),
-        enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         load_config_(std::move(load_config)),
         cache_dir_(std::move(cache_dir)),

@@ -15,7 +15,6 @@ namespace openvino_ep {
 struct GlobalContext {
   OVCore ie_core;
   bool is_wholly_supported_graph = false;
-  bool enable_npu_fast_compile = false;
   bool enable_opencl_throttling = false;
   bool disable_dynamic_shapes = false;
   bool ep_context_embed_mode = true;
