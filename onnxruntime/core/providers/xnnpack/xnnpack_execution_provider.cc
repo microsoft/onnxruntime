@@ -94,7 +94,6 @@ CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, 
 CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 
-
 // ONNX operators
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 8, Gemm);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 10, Gemm);
@@ -136,11 +135,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(12, MaxPool, kMSInternalNHWCDomain),
       // because the F16 macro may be expanded to empty, so don't add ","
       KERNEL_CREATE_INFO_VERSIONED_FP16(8, 9, MaxPool, kMSInternalNHWCDomain)
-      KERNEL_CREATE_INFO_VERSIONED_FP16(10, 10, MaxPool, kMSInternalNHWCDomain)
-      KERNEL_CREATE_INFO_VERSIONED_FP16(11, 11, MaxPool, kMSInternalNHWCDomain)
-      KERNEL_CREATE_INFO_FP16(12, MaxPool, kMSInternalNHWCDomain)
+          KERNEL_CREATE_INFO_VERSIONED_FP16(10, 10, MaxPool, kMSInternalNHWCDomain)
+              KERNEL_CREATE_INFO_VERSIONED_FP16(11, 11, MaxPool, kMSInternalNHWCDomain)
+                  KERNEL_CREATE_INFO_FP16(12, MaxPool, kMSInternalNHWCDomain)
 
-      KERNEL_CREATE_INFO(1, QLinearConvTranspose, kMSInternalNHWCDomain),
+                      KERNEL_CREATE_INFO(1, QLinearConvTranspose, kMSInternalNHWCDomain),
 
       KERNEL_CREATE_INFO_VERSIONED(10, 10, Resize, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED(11, 12, Resize, kMSInternalNHWCDomain),
