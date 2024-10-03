@@ -77,6 +77,8 @@ struct XnnpackOperatorDeleter {
 
 bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
+bool IsComputeTypeSupported(uint8_t op_compute_type);
+
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation,
@@ -99,5 +101,6 @@ auto xnn_u8s8_quantize(float val, float scale, T zero_point) {
   auto zp = static_cast<float>(zero_point);
   return static_cast<T>(lrintf(fminf(fmaxf(val / scale + zp, typed_min), typed_max)));
 }
+
 }  // namespace xnnpack
 }  // namespace onnxruntime

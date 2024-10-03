@@ -154,6 +154,26 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         flags,
         code_cache, weights_cache,
         &p);
+  } else if (conv_type == OpComputeType::op_compute_type_fp16) {
+    const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
+    const float output_min = -65504.0;
+    const float output_max = 65504.0;
+    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f16
+                                    : xnn_create_convolution2d_nhwc_f16;
+    status = create_func(
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
+        kernel_height, kernel_width,
+        subsampling_height, subsampling_width,
+        dilation_height, dilation_width,
+        group_count,
+        group_input_channels,
+        group_output_channels,
+        C, M,                              // input channel stride, output channel stride
+        Weight.Data<MLFloat16>(), B_data,  // kernel, bias
+        output_min, output_max,
+        flags,
+        code_cache, weights_cache,
+        &p);
   }
 
   if (status != xnn_status_success) {
@@ -234,6 +254,13 @@ OpComputeType GetConvCompType(
           (!bias_datatype || *bias_datatype == TensorTypeInt32) &&
           output_datatype == TensorTypeUint8) {
         return op_compute_type_qu8;
+      }
+      break;
+    case TensorTypeFp16:
+      if (input_datatype == TensorTypeFp16 &&
+          (!bias_datatype || *bias_datatype == TensorTypeInt32) &&
+          output_datatype == TensorTypeFp16) {
+        return op_compute_type_fp16;
       }
       break;
     default:
@@ -326,10 +353,7 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+    if (x_type == nullptr || !IsComputeTypeSupported(x_type->tensor_type().elem_type())) {
       break;
     }
     // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
@@ -420,9 +444,11 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
              input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     weight_index = 3;
     conv_type_ = ParseQuantParamAndConType(info, quant_param_, input_dtype);
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    conv_type_ = OpComputeType::op_compute_type_fp16;
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
-    ORT_THROW("unsupported Conv in XnnpackEP, we have FLOAT|UINT8|INT8, but got ", stype);
+    ORT_THROW("unsupported Conv in XnnpackEP, we have FLOAT|UINT8|INT8|FLOAT16, but got ", stype);
   }
 
   ORT_ENFORCE(info.TryGetConstantInput(weight_index, &Weight),
@@ -491,7 +517,6 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 
     output_shape_.push_back(M_);
   }
-
   // have to delay creating the xnnpack kernel until after the weights are pre-packed.
 }
 
