@@ -21,7 +21,7 @@ Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   // only layout of weight input is adjusted via PrePack
   const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
                                    conv_type_ == OpComputeType::op_compute_type_fp16);
-  if ((conv_type_is_float && input_idx == 1) || (!conv_type_is_float && input_idx == 3)) { // InputTensors::IN_W
+  if ((conv_type_is_float && input_idx == 1) || (!conv_type_is_float && input_idx == 3)) {  // InputTensors::IN_W
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
 
@@ -187,16 +187,15 @@ ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpack
 
 #ifdef XNNPACK_FP16_SUPPORTED
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, MLFloat16,
-                                  kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint(
-                                      "T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  ConvTranspose);
+                                        kXnnpackExecutionProvider,
+                                        KernelDefBuilder().TypeConstraint(
+                                            "T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        ConvTranspose);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, MLFloat16, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint(
-                            "T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                        ConvTranspose);
-
+                              KernelDefBuilder().TypeConstraint(
+                                  "T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                              ConvTranspose);
 
 #endif
 }  // namespace xnnpack
