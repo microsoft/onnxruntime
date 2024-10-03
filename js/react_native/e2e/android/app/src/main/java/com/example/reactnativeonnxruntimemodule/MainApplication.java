@@ -51,6 +51,7 @@ public class MainApplication extends Application implements ReactApplication {
     initializeFlipper(
         this, getReactNativeHost().getReactInstanceManager()); // Remove this line if you don't want Flipper enabled
   }
+
   public static Context getAppContext() { return appContext; }
 
   /**
@@ -61,7 +62,7 @@ public class MainApplication extends Application implements ReactApplication {
   private static void initializeFlipper(Context context, ReactInstanceManager reactInstanceManager) {
     if (BuildConfig.DEBUG) {
       try {
-        /*`
+        /*
          We use reflection here to pick up the class that initializes Flipper,
         since Flipper library is not available in release mode
         */
