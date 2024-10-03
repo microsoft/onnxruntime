@@ -125,8 +125,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     // Disable Arena allocator for 32-bit builds because it may run into infinite loop when integer overflow happens
     if constexpr (sizeof(void*) == 4) {
       return false;
+    } else {
+      return mem_info.alloc_type == OrtArenaAllocator;
     }
-    return mem_info.alloc_type == OrtArenaAllocator;
 #endif
   }();
 
