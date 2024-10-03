@@ -10,8 +10,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
-#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 namespace onnxruntime {
 namespace xnnpack {
