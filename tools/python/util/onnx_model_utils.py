@@ -256,11 +256,10 @@ def fix_output_shapes_path(model: onnx.ModelProto, model_path: str | pathlib.Pat
     is used if not specified.
     :param model: Model that had input shapes fixed.
     """
-
-    # get a version of the model with shape inferencing info in it. this will provide fixed output shapes if possible.
-    onnx.shape_inference.infer_shapes_path(model_path, output_path)
     if output_path == "":
         output_path = model_path
+    # get a version of the model with shape inferencing info in it. this will provide fixed output shapes if possible.
+    onnx.shape_inference.infer_shapes_path(model_path, output_path)
     onnx.checker.check_model(output_path)
     m2 = onnx.load_model(output_path)
 
