@@ -183,13 +183,7 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   const Tensor* scale = p_ctx->Input<Tensor>(1);
   const Tensor* bias = p_ctx->Input<Tensor>(2);
   const T* X_data = X->Data<T>();
-  if (!X_data) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The input data should not be null.");
-  }
   const T* scale_data = scale->Data<T>();
-  if (!scale_data) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The scale data should not be null.");
-  }
   const T* bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
@@ -197,9 +191,6 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   const TensorShape& bias_shape = bias->Shape();
   Tensor* Y = p_ctx->Output(0, x_shape);
   T* Y_data = Y->MutableData<T>();
-  if (!Y_data) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The output data pointer should not be null.");
-  }
 
   const int64_t axis = HandleNegativeAxis(orig_axis, x_shape.NumDimensions());
 
