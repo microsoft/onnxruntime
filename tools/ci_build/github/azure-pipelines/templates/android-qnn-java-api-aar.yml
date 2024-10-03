@@ -80,6 +80,10 @@ jobs:
 
   - template: use-android-ndk.yml
 
+  - template: jobs/download_linux_qnn_sdk.yml
+    parameters:
+      QnnSDKVersion: ${{ parameters.QnnSdk }}
+
   - task: CmdLine@2
     displayName: Build Android AAR Packages
     inputs:
