@@ -32,7 +32,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
       ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
 
 #define KERNEL_CREATE_INFO_VERSIONED_TYPED(Start, End, Type, Op, Domain) \
-  BuildKernelCreateInfo<                                     \
+  BuildKernelCreateInfo<                                                 \
       ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Type, Op)>
 
 #define KERNEL_CREATE_INFO(Start, Op, Domain) \
