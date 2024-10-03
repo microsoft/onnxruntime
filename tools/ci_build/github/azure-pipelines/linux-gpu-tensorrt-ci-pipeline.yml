@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -43,9 +44,9 @@ variables:
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 10.3.0.26-1.cuda11.8
+      value: 10.4.0.26-1.cuda11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 10.3.0.26-1.cuda12.5
+      value: 10.4.0.26-1.cuda12.6
 
 jobs:
 - job: Linux_Build

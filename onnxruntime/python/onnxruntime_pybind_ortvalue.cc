@@ -142,6 +142,28 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
         }
       })
+      // Create an ortvalue value on top of the numpy array, but interpret the data
+      // as a different type with the same element size.
+      .def_static("ortvalue_from_numpy_with_onnxtype", [](py::array& data, int32_t onnx_element_type) -> std::unique_ptr<OrtValue> {
+        if (!ONNX_NAMESPACE::TensorProto_DataType_IsValid(onnx_element_type)) {
+          ORT_THROW("Not a valid ONNX Tensor data type: ", onnx_element_type);
+        }
+
+        const auto element_type = DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)
+                                      ->GetElementType();
+
+        const auto element_size = element_type->Size();
+        if (narrow<size_t>(data.itemsize()) != element_size) {
+          ORT_THROW("Items size in the incoming array: ", data.itemsize(),
+                    " specified by onnxtype: ", element_size);
+        }
+
+        auto cpu_allocator = GetAllocator();
+        auto ort_value = std::make_unique<OrtValue>();
+        Tensor::InitOrtValue(element_type, GetShape(data),
+                             const_cast<void*>(data.data()), cpu_allocator->Info(), *ort_value);
+        return ort_value;
+      })
       // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
       // The memory is left uninitialized
       .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& element_type, const OrtDevice& device) {

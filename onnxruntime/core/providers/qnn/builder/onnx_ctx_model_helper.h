@@ -19,6 +19,7 @@ namespace qnn {
 
 class QnnModel;
 class QnnBackendManager;
+using QnnModelLookupTable = std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>;
 
 static const std::string EPCONTEXT_OP = "EPContext";
 static const std::string MAIN_CONTEXT = "main_context";
@@ -33,10 +34,7 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer);
 bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs);
 
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                          QnnBackendManager* qnn_backend_manager,
-                          const logging::Logger& logger,
-                          std::vector<int>& main_context_pos,
-                          std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
+                          std::vector<int>& main_context_pos);
 
 Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
@@ -51,12 +49,12 @@ bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
+                                QnnModelLookupTable& qnn_models);
 
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
-                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                               QnnModelLookupTable& qnn_models,
                                const logging::Logger& logger);
 
 Status CreateEPContextNodes(Model* model,

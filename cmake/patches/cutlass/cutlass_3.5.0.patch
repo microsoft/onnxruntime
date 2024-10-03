@@ -1,8 +1,16 @@
 diff --git a/examples/41_fused_multi_head_attention/kernel_forward.h b/examples/41_fused_multi_head_attention/kernel_forward.h
-index 4c80f549..34327633 100644
+index 4c80f549..5ad610c8 100644
 --- a/examples/41_fused_multi_head_attention/kernel_forward.h
 +++ b/examples/41_fused_multi_head_attention/kernel_forward.h
-@@ -221,6 +221,8 @@ struct AttentionKernel {
+@@ -189,6 +189,7 @@ struct AttentionKernel {
+
+     // Scale
+     accum_t scale = 0.0;
++    accum_t softcap = 0.0;
+
+     // Dimensions/strides
+     int32_t head_dim = 0;
+@@ -221,6 +222,8 @@ struct AttentionKernel {
      int32_t num_batches = 0;
      int32_t num_heads = 0;
 
@@ -11,7 +19,23 @@ index 4c80f549..34327633 100644
      // dropout
      bool use_dropout = false;
      unsigned long long dropout_batch_head_rng_offset = 0;
-@@ -897,7 +899,8 @@ struct AttentionKernel {
+@@ -818,6 +821,15 @@ struct AttentionKernel {
+         accum =
+             cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.scale, accum);
+       }
++
++      // apply softcap if applicable
++      if (p.softcap > 0.0) {
++        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0 / p.softcap, accum);
++        for (int i = 0; i < accum.size(); ++i) {
++          accum[i] = cutlass::fast_tanh(accum[i]);
++        }
++        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.softcap, accum);
++      }
+
+       // apply attention bias if applicable
+       if (kSupportsBias && p.attn_bias_ptr != nullptr) {
+@@ -897,7 +909,8 @@ struct AttentionKernel {
            p.num_keys - iter_key_start,
            iter_key_start == 0,
            iteratorC_tile_offset,
@@ -21,7 +45,7 @@ index 4c80f549..34327633 100644
 
        // Output results to shared-memory
        int warp_idx_mn_0 = my_warp_id %
-@@ -1166,7 +1169,8 @@ struct AttentionKernel {
+@@ -1166,7 +1179,8 @@ struct AttentionKernel {
        int max_col,
        bool is_first,
        typename WarpIteratorC::TensorCoord const& tile_offset,
@@ -31,7 +55,7 @@ index 4c80f549..34327633 100644
      /* Iterates on the accumulator and corresponding position on result matrix
 
      (1) Update `mi[r]` to the max value of the row `r`
-@@ -1257,7 +1261,7 @@ struct AttentionKernel {
+@@ -1257,7 +1271,7 @@ struct AttentionKernel {
        accum_t mi_row, total_row;
        LambdaIterator::iterateRows(
            lane_offset,
@@ -40,7 +64,7 @@ index 4c80f549..34327633 100644
            [&](int accum_m, int accum_n, int idx) {
              frag[idx] =
                  (accum_n < max_col) ? exp2f(frag[idx] - mi_row) : accum_t(0.0);
-@@ -1294,7 +1298,7 @@ struct AttentionKernel {
+@@ -1294,7 +1308,7 @@ struct AttentionKernel {
        for (int i = 0; i < MM0::MmaCore::WarpCount::kN; ++i) {
          total_row += addition_storage[id + kQueriesPerBlock * i];
        }
@@ -50,7 +74,7 @@ index 4c80f549..34327633 100644
    }
 
 diff --git a/include/cutlass/functional.h b/include/cutlass/functional.h
-index 964d2ff3..b366bc14 100644
+index 964d2ff3..676ba768 100644
 --- a/include/cutlass/functional.h
 +++ b/include/cutlass/functional.h
 @@ -39,6 +39,7 @@

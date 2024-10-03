@@ -295,7 +295,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <code>
         /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
         /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
-        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// List{OrtValue} inputValues = new List{OrtValue} { x, label };
         /// using (var loss = trainingSession.TrainStep(inputValues))
         /// {
         ///     // process output values
@@ -420,7 +420,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <code>
         /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
         /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
-        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// List{OrtValue} inputValues = new List{OrtValue} { x, label };
         /// using (var loss = trainingSession.EvalSteps(inputValues))
         /// {
         ///     // process output values

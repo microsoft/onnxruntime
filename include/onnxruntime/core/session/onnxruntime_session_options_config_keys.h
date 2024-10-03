@@ -269,6 +269,9 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
 
+// Share EP related resources across EPs
+static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]

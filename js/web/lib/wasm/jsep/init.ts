@@ -12,6 +12,7 @@ import { LOG_DEBUG } from './log';
 import { TensorView } from './tensor-view';
 import { ShapeUtil } from './util';
 import { AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo } from './webgpu/types';
+import { WebNNBackend } from './backend-webnn';
 
 /* eslint-disable no-bitwise */
 
@@ -22,14 +23,6 @@ class TensorViewImpl implements TensorView {
     public readonly data: number,
     public readonly dims: readonly number[],
   ) {}
-
-  getUint16Array(): Uint16Array {
-    if (this.dataType !== DataType.float16 && this.dataType !== DataType.uint16) {
-      throw new Error('Invalid data type');
-    }
-    const elementCount = ShapeUtil.size(this.dims);
-    return elementCount === 0 ? new Uint16Array() : new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
-  }
 
   getFloat32Array(): Float32Array {
     if (this.dataType !== DataType.float) {
@@ -57,6 +50,14 @@ class TensorViewImpl implements TensorView {
     }
     const elementCount = ShapeUtil.size(this.dims);
     return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getUint16Array(): Uint16Array {
+    if (this.dataType !== DataType.float16 && this.dataType !== DataType.uint16) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Uint16Array() : new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
@@ -282,6 +283,22 @@ export const init = async (
       () => backend.replay(),
     ]);
   } else {
-    jsepInit('webnn');
+    const backend = new WebNNBackend(env);
+    jsepInit('webnn', [
+      backend,
+      // jsepReserveTensorId
+      () => backend.reserveTensorId(),
+      // jsepReleaseTensorId,
+      (tensorId: number) => backend.releaseTensorId(tensorId),
+      // jsepEnsureTensor
+      async (tensorId: number, onnxDataType: number, shape: number[], copyOld) =>
+        backend.ensureTensor(tensorId, onnxDataType, shape, copyOld),
+      // jsepUploadTensor
+      (tensorId: number, data: Uint8Array) => {
+        backend.uploadTensor(tensorId, data);
+      },
+      // jsepDownloadTensor
+      async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(tensorId, dstBuffer),
+    ]);
   }
 };
