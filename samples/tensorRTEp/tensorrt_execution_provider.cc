@@ -27,6 +27,52 @@ void CUDA_RETURN_IF_ERROR(cudaError_t res) { if (res != cudaSuccess) abort(); }
 
 namespace onnxruntime {
 
+//static const std::string
+
+struct MemcpyFromHost : OrtCustomOp {
+  MemcpyFromHost() {
+        OrtCustomOp::version = ORT_API_VERSION;
+        OrtCustomOp::GetName = [](const struct OrtCustomOp* op) { return "MemcpyFromHost"; };
+        OrtCustomOp::GetExecutionProviderType = [](const struct OrtCustomOp* op) { return "tensorrtEp"; };
+        OrtCustomOp::CreateKernelV2 = [](const struct OrtCustomOp* op, const OrtApi* api, const OrtKernelInfo* info, void** kernel) -> OrtStatusPtr {
+            return nullptr;
+        };
+        OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
+            const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+            void* stream = nullptr;
+            api->KernelContext_GetGPUComputeStream(context, &stream);
+
+            const OrtValue* input = nullptr;
+            api->KernelContext_GetInput(context, 0, &input);
+            OrtTensorTypeAndShapeInfo* shape_info;
+            api->GetTensorTypeAndShape(input, &shape_info);
+            size_t dim_count = 0;
+            api->GetDimensionsCount(shape_info, &dim_count);
+            std::vector<int64_t> dim(dim_count, 0);
+            api->GetDimensions(shape_info, dim.data(), dim_count);
+
+            OrtValue* output = nullptr;
+            api->KernelContext_GetOutput(context, 0, dim.data(), dim.size(), &output);
+
+            void* input_raw = nullptr, *output_raw = nullptr;
+            api->GetTensorMutableData(const_cast<OrtValue*>(input), &input_raw);
+            api->GetTensorMutableData(output, &output_raw);
+
+            size_t count = dim[0];
+            for (size_t i = 1; i < dim_count; i++) count *= dim[i];
+            cudaMemcpyAsync(output_raw, input_raw, count * sizeof(float) , cudaMemcpyHostToDevice, static_cast<cudaStream_t>(stream));  // TODO(leca): other data type
+
+            return nullptr;
+        };
+        OrtCustomOp::GetInputTypeCount = [](const struct OrtCustomOp* op) -> size_t { return 1; };
+        OrtCustomOp::GetOutputTypeCount = [](const struct OrtCustomOp* op) -> size_t { return 1; };
+        OrtCustomOp::GetInputMemoryType = [](const struct OrtCustomOp* op, size_t index) { return OrtMemType::OrtMemTypeCPUInput; };
+        OrtCustomOp::GetInputType = [](const struct OrtCustomOp* op, size_t index) { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+        OrtCustomOp::GetOutputType = [](const struct OrtCustomOp* op, size_t index) { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }; // TODO(leca): other data type
+        OrtCustomOp::GetStartVersion = [](const struct OrtCustomOp* op) { return 1; };
+  }
+};
+
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 const OrtApi* TensorrtExecutionProvider::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
@@ -1596,6 +1642,17 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         cudaStream_t stream = nullptr;
         cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
         return stream;
+    };
+
+    OrtExecutionProvider::RegisterKernels = [](OrtKernelRegistry* kernel_registry) {
+      const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+      OrtTypeConstraints* type_constraints = nullptr;
+      api->CreateOrtTypeConstraints(&type_constraints);
+      api->AddTypeConstraint(type_constraints, "T", ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);  // TODO(leca): other data type
+      OrtCustomOp* op = new MemcpyFromHost();
+      api->OrtKernelRegistry_RegisterKernel(kernel_registry, op, type_constraints);
+      api->ReleaseTypeConstraints(type_constraints);
     };
 
     info_ = TensorrtExecutionProviderInfo::FromProviderOptions(ep_info);

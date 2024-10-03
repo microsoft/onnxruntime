@@ -222,6 +222,11 @@ void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so, const char* model) {
 
     const char* input_names[] = {"input_1", "image_shape"};
     const char* output_names[] = {"yolonms_layer_1", "yolonms_layer_1:1", "yolonms_layer_1:2"};
+    if (!strcmp(model, "yolo")) {
+        output_names[0] = "yolonms_layer_1/ExpandDims_1:0";
+        output_names[1] = "yolonms_layer_1/ExpandDims_3:0";
+        output_names[2] = "yolonms_layer_1/concat_2:0";
+    }
 
     size_t output_count = sizeof(output_names)/sizeof(output_names[0]);
     std::vector<OrtValue*> output_tensors(output_count, nullptr);
@@ -266,8 +271,8 @@ void RunControlFlow(OrtEnv* p_env, OrtSessionOptions* so) {
 
     float* output_tensor_data = nullptr;
     THROW_ON_ERROR(g_ort->GetTensorMutableData(output_tensors[0], (void**)&output_tensor_data));
-//    std::cout<<"Result:\n";
-//    for (size_t i = 0; i < 4; i++) std::cout<<output_tensor_data[i]<<" \n";
+    std::cout<<"Result:\n";
+    for (size_t i = 0; i < 2; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
 // ./TestOutTreeEp c/k/t/tc/otc relu/resnet/rcnn
@@ -277,6 +282,46 @@ int main(int argc, char *argv[]) {
     THROW_ON_ERROR(g_ort->CreateEnv(log_level, "", &p_env));
     OrtSessionOptions* so = nullptr;
     THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
+
+    // sanity tests
+//    if (argc == 1) {
+//        std::cout<<"Compile based EP, relu:\n";
+//        TestCompileBasedEp(g_ort, p_env, so);
+//        RunRelu(g_ort, p_env, so);
+//
+//        std::cout<<"Kernel based EP, relu:\n";
+//        TestKernelBasedEp(g_ort, p_env, so);
+//        RunRelu(g_ort, p_env, so);
+//
+//        std::cout<<"TRT, relu:\n";
+//        TestTensorRTEp(g_ort, p_env, so);
+//        RunRelu(g_ort, p_env, so);
+//
+//        std::cout<<"out tree TRT + In tree cuda, relu:\n";
+//        TestTensorRTAndCudaEp(g_ort, p_env, so);
+//        RunRelu(g_ort, p_env, so);
+//
+//        std::cout<<"out tree TRT + In tree cuda, resnet:\n";
+//        TestTensorRTAndCudaEp(g_ort, p_env, so);
+//        RunResnet18v1_7(g_ort, p_env, so);
+//
+//        std::cout<<"out tree TRT + In tree cuda, fast rcnn:\n";
+//        TestTensorRTAndCudaEp(g_ort, p_env, so);
+//        RunFastRcnn(g_ort, p_env, so);
+//
+//        std::cout<<"out tree TRT + In tree cuda, tiny yoloV3:\n";
+//        TestTensorRTAndCudaEp(g_ort, p_env, so);
+//        RunTinyYolov3(p_env, so, "tyolo");
+//
+//        std::cout<<"out tree TRT + In tree cuda, yoloV3:\n";
+//        TestTensorRTAndCudaEp(g_ort, p_env, so);
+//        RunTinyYolov3(p_env, so, "yolo");
+//
+//        std::cout<<"out tree TRT + In tree cuda, control flow:\n";
+//        TestTensorRTAndCudaEp(g_ort, p_env, so);
+//        RunControlFlow(p_env, so);
+//        return 0;
+//    }
 
     if (strcmp(argv[1], "c") == 0) {
         TestCompileBasedEp(g_ort, p_env, so);

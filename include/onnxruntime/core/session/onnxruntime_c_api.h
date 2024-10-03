@@ -4909,6 +4909,13 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  * the implementor of the custom op.
  */
 struct OrtCustomOp {
+#ifdef __cplusplus
+  // TODO(leca): initialize all member function pointers to nullptr?
+  OrtCustomOp() : CreateKernel{nullptr}, KernelCompute{nullptr}, KernelDestroy{nullptr}, GetInputCharacteristic{nullptr},
+                  GetOutputCharacteristic{nullptr}, GetVariadicInputMinArity{nullptr}, GetVariadicOutputMinArity{nullptr},
+                  GetStartVersion{nullptr}, GetEndVersion{nullptr}, GetMayInplace{nullptr}, ReleaseMayInplace{nullptr},
+                  GetAliasMap{nullptr}, ReleaseAliasMap{nullptr} {}
+#endif
   uint32_t version;  // Must be initialized to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined
