@@ -17,7 +17,7 @@ using namespace onnxruntime::webgpu::options;
 namespace onnxruntime {
 
 struct WebGpuProviderFactory : IExecutionProviderFactory {
-  WebGpuProviderFactory(int context_id, const webgpu::WebGpuContext& context, const WebGpuExecutionProviderInfo& webgpu_ep_info)
+  WebGpuProviderFactory(int context_id, webgpu::WebGpuContext& context, const WebGpuExecutionProviderInfo& webgpu_ep_info)
       : context_id_{context_id}, context_{context}, info_{webgpu_ep_info} {
   }
 
@@ -27,7 +27,7 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
  private:
   int context_id_;
-  const webgpu::WebGpuContext& context_;
+  webgpu::WebGpuContext& context_;
   WebGpuExecutionProviderInfo info_;
 };
 

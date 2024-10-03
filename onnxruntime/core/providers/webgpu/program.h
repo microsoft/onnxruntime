@@ -229,7 +229,7 @@ enum class ValidationMode {
   Full
 };
 
-namespace detail {
+namespace details {
 class ProgramWrapper;
 }
 
@@ -348,10 +348,10 @@ class ProgramBase {
   std::vector<ProgramUniformVariableValue> variables_;
   std::vector<ProgramOverridableConstantValue> overridable_constants_;
 
-  friend class detail::ProgramWrapper;
+  friend class details::ProgramWrapper;
 };
 
-namespace detail {
+namespace details {
 // class ProgramWrapper is for accessing private constructor of ProgramBase.
 // only ProgramWrapper can access the constructor of ProgramBase because ProgramWrapper is the only friend class of
 // ProgramBase. This design is used to prevent direct instantiation or inheritance from ProgramBase.
@@ -489,21 +489,21 @@ static_assert(!TestTypeCheck<TestClass_StdArray_4>::has_a_with_correct_type);
 
 #undef ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK
 
-}  // namespace detail
+}  // namespace details
 
 template <typename T>
-class Program : public detail::ProgramWrapper {
+class Program : public details::ProgramWrapper {
  public:
   template <typename... Args>
-  Program(Args&&... args) : detail::ProgramWrapper{std::forward<Args>(args)..., GetMetadata()} {}
+  Program(Args&&... args) : details::ProgramWrapper{std::forward<Args>(args)..., GetMetadata()} {}
 
   static ProgramMetadata GetMetadata() {
     ProgramMetadata metadata;
-    if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_constants) {
+    if constexpr (details::DerivedProgramClassTypeCheck<T>::has_constants) {
       constexpr const ProgramConstant* ptr = T::constants.data();
       constexpr size_t len = T::constants.size();
 
-      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_constants_with_correct_type,
+      static_assert(details::DerivedProgramClassTypeCheck<T>::has_constants_with_correct_type,
                     "Derived class of \"Program\" has member \"constants\" but its type is incorrect. "
                     "Please use macro WEBGPU_PROGRAM_DEFINE_CONSTANTS() or WEBGPU_PROGRAM_EXTEND_CONSTANTS() to declare constants.");
 
@@ -512,11 +512,11 @@ class Program : public detail::ProgramWrapper {
       metadata.constants = {};
     }
 
-    if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_overridable_constants) {
+    if constexpr (details::DerivedProgramClassTypeCheck<T>::has_overridable_constants) {
       constexpr const ProgramOverridableConstantDefinition* ptr = T::overridable_constants.data();
       constexpr size_t len = T::overridable_constants.size();
 
-      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_overridable_constants_with_correct_type,
+      static_assert(details::DerivedProgramClassTypeCheck<T>::has_overridable_constants_with_correct_type,
                     "Derived class of \"Program\" has member \"overridable_constants\" but its type is incorrect. "
                     "Please use macro WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS() or WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS() to declare overridable constants.");
 
@@ -525,11 +525,11 @@ class Program : public detail::ProgramWrapper {
       metadata.overridable_constants = {};
     }
 
-    if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_uniform_variables) {
+    if constexpr (details::DerivedProgramClassTypeCheck<T>::has_uniform_variables) {
       constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables.data();
       constexpr size_t len = T::uniform_variables.size();
 
-      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_uniform_variables_with_correct_type,
+      static_assert(details::DerivedProgramClassTypeCheck<T>::has_uniform_variables_with_correct_type,
                     "Derived class of \"Program\" has member \"uniform_variables\" but its type is incorrect. "
                     "Please use macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES() or WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES() to declare uniform variables.");
 
@@ -542,7 +542,7 @@ class Program : public detail::ProgramWrapper {
   }
 };
 
-namespace detail {
+namespace details {
 // helper function to convert a C-style array to std::array
 //
 // This is basically the same as std::to_array in C++20.
@@ -572,16 +572,16 @@ constexpr std::array<std::remove_cv_t<T>, L + R> _concat2(const std::array<T, L>
   return _concat2_impl(lhs, rhs, std::make_index_sequence<L>{}, std::make_index_sequence<R>{});
 }
 
-}  // namespace detail
+}  // namespace details
 #define WEBGPU_PROGRAM_DEFINE_(identifier, T, ...)             \
   static constexpr const T identifier##_own[] = {__VA_ARGS__}; \
   static constexpr const auto identifier =                     \
-      onnxruntime::webgpu::detail::_to_std_array(identifier##_own)
+      onnxruntime::webgpu::details::_to_std_array(identifier##_own)
 
 #define WEBGPU_PROGRAM_EXTEND_(identifier, T, BASE, ...)       \
   static constexpr const T identifier##_own[] = {__VA_ARGS__}; \
   static constexpr const auto identifier =                     \
-      onnxruntime::webgpu::detail::_concat2(BASE::identifier, identifier##_own)
+      onnxruntime::webgpu::details::_concat2(BASE::identifier, identifier##_own)
 
 #define WEBGPU_PROGRAM_DEFINE_CONSTANTS(...) \
   WEBGPU_PROGRAM_DEFINE_(constants, onnxruntime::webgpu::ProgramConstant, __VA_ARGS__)

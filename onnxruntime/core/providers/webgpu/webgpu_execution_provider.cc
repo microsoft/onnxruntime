@@ -24,6 +24,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
 
 namespace onnxruntime {
@@ -737,7 +738,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace webgpu;
 
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
-                                                 const WebGpuContext& context,
+                                                 WebGpuContext& context,
                                                  const WebGpuExecutionProviderInfo& info)
     : IExecutionProvider{kWebGpuExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
       context_id_{context_id},
@@ -826,6 +827,8 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
     }
+  } else {
+    context_.Flush();
   }
 
   return Status::OK();
