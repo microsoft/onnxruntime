@@ -34,6 +34,8 @@ android {
 	namespace 'ai.onnxruntime.example.javavalidator'
 }
 
+ext.kotlin_version = '1.8.10'
+
 dependencies {
 	implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
 	implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
