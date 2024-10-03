@@ -888,25 +888,30 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
 
   auto transform_fcn = std::function<int64_t(int64_t)>();
+  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
   if (device_memory_name_.empty()) {
     transform_fcn = [](int64_t input) { return input; };
+    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
+      return Ort::Value(nullptr);
+    };
   } else {
     Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     custom_allocator_ = std::make_unique<Ort::Allocator>(session_, memory_info);
     allocator_ = *custom_allocator_;
+
+    // free dimensions are treated as 1 if not overridden
     transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
+      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+    };
   }
 
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
     Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-
-    // free dimensions are treated as 1 if not overridden
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
-
-    outputs_.push_back(Ort::Value::CreateTensor(allocator_, output_shape.data(),
-                                                output_shape.size(), tensor_info.GetElementType()));
+    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
   }
 }
 
