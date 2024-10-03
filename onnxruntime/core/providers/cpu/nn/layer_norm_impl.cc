@@ -89,20 +89,10 @@ Status ComputeJob(
   float mean_square(0.0f);
 
   const size_t num_elems = static_cast<size_t>(norm_size);
-  float* float_input = nullptr;
-  try {
-    float_input = new float[num_elems];
-    MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
-  } catch (const std::exception& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Failed to convert input data to float: ", e.what());
-  }
+  float* float_input = new float[num_elems];
+  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
 
-  float* float_output = nullptr;
-  try {
-    float_output = new float[num_elems];
-  } catch (const std::exception& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Failed to allocate memory for float output.", e.what());
-  }
+  float* float_output = new float[num_elems];
 
   for (size_t h = 0; h < num_elems; h++) {
     float_output[h] = float_input[h];
@@ -118,20 +108,12 @@ Status ComputeJob(
   }
 
   float* float_scale = float_input;  // overwrite float_input with scale values, since they have the same size
-  try {
-    MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
-  } catch (const std::exception& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Failed to convert scale data to float: ", e.what());
-  }
+  MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
 
   float* float_bias = nullptr;
   if (bias_data) {
-    try {
-      float_bias = new float[num_elems];
-      MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
-    } catch (const std::exception& e) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Failed to convert bias data to float: ", e.what());
-    }
+    float_bias = new float[num_elems];
+    MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
   }
 
   for (size_t h = 0; h < num_elems; h++) {
@@ -148,11 +130,7 @@ Status ComputeJob(
     delete[] float_bias;
   }
 
-  try {
-    MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
-  } catch (const std::exception& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Failed to convert float output data to MLFLoat16: ", e.what());
-  }
+  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
 
   delete[] float_output;
 
