@@ -81,6 +81,7 @@ jobs:
   - template: use-android-ndk.yml
 
   - template: jobs/download_linux_qnn_sdk.yml
+
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
 
@@ -99,7 +100,7 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
-          --volume QnnSDKRootDir:/qnn_home \
+          --volume $(QnnSDKRootDir):/qnn_home \
           --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
           -e QNN_SDK_VERSION=${{parameters.QnnSdk}} \
