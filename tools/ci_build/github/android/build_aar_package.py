@@ -9,6 +9,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import yaml
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
@@ -102,9 +103,19 @@ def _build_aar(args):
 
         if qnn_android_build:
             qnn_home = os.getenv("QNN_HOME")
-            qnn_sdk_version = os.getenv("QNN_SDK_VERSION")
-            if not qnn_sdk_version:
-                raise OSError("QNN_SDK_VERSION environment variable is not set.")
+            sdk_file = os.path.join(qnn_home, "sdk.yaml")
+            try:
+                with open(sdk_file) as f:
+                    version_data = yaml.safe_load(f)
+                    # get qnn sdk version from sdk.yaml file
+                    qnn_sdk_version = version_data.get("version")
+            except FileNotFoundError:
+                raise FileNotFoundError(f"QNN SDK file {sdk_file} not found")
+            except KeyError:
+                raise KeyError(f"'version' key not found in the YAML file at: {sdk_file}")
+
+            # only use major.minor version for qnn sdk version and truncate the patch/build_id info if any
+            qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:2])
             abi_build_command += ["--qnn_home=" + qnn_home]
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]

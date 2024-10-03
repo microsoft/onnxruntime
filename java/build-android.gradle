@@ -9,6 +9,9 @@ def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 boolean addQnnDependency = (System.properties['addQnnDependency'] ?: "0") == "1"
+// Expected format for qnnVersion: major.minor (e.g., 2.26)
+// For non qnn builds, qnnVersion will be null
+def qnnVersion = System.properties['qnnVersion']
 
 // Since Android requires a higher numbers indicating more recent versions
 // This function assume ORT version number will be in formart of A.B.C such as 1.7.0
@@ -39,8 +42,9 @@ def trainingDescription = 'The onnxruntime-training android package is designed 
 	'a focus on minimizing resource usage and maximizing accuracy.' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 def QNNDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network ' +
-	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime for QNN. It includes support for all ' +
-	'types and operators, for ONNX format models. All standard ONNX models can be executed with this package.'
+	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime with the QNN Execution Provider.' +
+	'It includes support for all types and operators, for ONNX format models. All standard ONNX models can be executed' +
+	'with this package.'
 
 buildscript {
 	repositories {
@@ -173,9 +177,7 @@ publishing {
 
             if (addQnnDependency) {
 				println "Modifying the POM XML to include QNN dependency"
-				def qnnVersion = System.properties['qnnVersion']
-
-				qnnVersion = "$qnnVersion.+"
+				qnnVersion = "$qnnVersion.*"
 				withXml {
 
 						def dependencynode = asNode().appendNode('dependencies').appendNode('dependency')
