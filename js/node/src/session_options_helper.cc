@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "session_options_helper.h"
+#include "tensor_helper.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
@@ -244,5 +245,50 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
       }
     }
     sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
+  }
+}
+
+void ParsePreferredOutputLocations(const Napi::Object options, const std::vector<std::string>& outputNames, std::vector<int>& preferredOutputLocations) {
+  if (options.Has("preferredOutputLocation")) {
+    auto polValue = options.Get("preferredOutputLocation");
+    if (polValue.IsNull() || polValue.IsUndefined()) {
+      return;
+    }
+    if (polValue.IsString()) {
+      DataLocation location = ParseDataLocation(polValue.As<Napi::String>().Utf8Value());
+      ORT_NAPI_THROW_TYPEERROR_IF(location == DATA_LOCATION_NONE, options.Env(),
+                                  "Invalid argument: preferredOutputLocation must be an array or a valid string.");
+
+      if (location == DATA_LOCATION_GPU_BUFFER || location == DATA_LOCATION_ML_TENSOR) {
+        preferredOutputLocations.resize(outputNames.size(), location);
+      }
+    } else if (polValue.IsObject()) {
+      preferredOutputLocations.resize(outputNames.size(), DATA_LOCATION_CPU);
+
+      auto pol = polValue.As<Napi::Object>();
+      for (const auto& it : pol.GetPropertyNames()) {
+        Napi::Value nameVar = it.second;
+        std::string name = nameVar.As<Napi::String>().Utf8Value();
+        // find the name in outputNames
+        auto it = std::find(outputNames.begin(), outputNames.end(), name);
+        ORT_NAPI_THROW_TYPEERROR_IF(it == outputNames.end(), options.Env(),
+                                    "Invalid argument: \"", name, "\" is not a valid output name.");
+
+        Napi::Value value = pol.Get(nameVar);
+        DataLocation location = DATA_LOCATION_NONE;
+        ORT_NAPI_THROW_TYPEERROR_IF(!value.IsString() || (location = ParseDataLocation(value.As<Napi::String>().Utf8Value())) == DATA_LOCATION_NONE,
+                                    options.Env(),
+                                    "Invalid argument: preferredOutputLocation[\"", name, "\"] must be a valid string.");
+
+        size_t index = it - outputNames.begin();
+        preferredOutputLocations[index] = location;
+      }
+
+      if (std::all_of(preferredOutputLocations.begin(), preferredOutputLocations.end(), [](int loc) { return loc == DATA_LOCATION_CPU; })) {
+        preferredOutputLocations.clear();
+      }
+    } else {
+      ORT_NAPI_THROW_TYPEERROR(options.Env(), "Invalid argument: preferredOutputLocation must be an array or a valid string.");
+    }
   }
 }
