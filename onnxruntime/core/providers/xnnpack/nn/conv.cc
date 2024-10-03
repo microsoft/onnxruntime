@@ -23,39 +23,39 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
   const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
-                    conv_type_ == OpComputeType::op_compute_type_fp16);
-  if((conv_type_is_float && input_idx == 1) ||(!conv_type_is_float && input_idx == 3)) {
-      // InputTensors::IN_W, Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
-      auto orig_shape = tensor.Shape();
-      const auto rank = orig_shape.NumDimensions();
+                                   conv_type_ == OpComputeType::op_compute_type_fp16);
+  if ((conv_type_is_float && input_idx == 1) || (!conv_type_is_float && input_idx == 3)) {
+    // InputTensors::IN_W, Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+    auto orig_shape = tensor.Shape();
+    const auto rank = orig_shape.NumDimensions();
 
-      if (rank == 4) {
-        InlinedVector<size_t> perm{0, 2, 3, 1};
-        TensorShapeVector new_dims{orig_shape[0],
-                                   orig_shape[2],
-                                   orig_shape[3],
-                                   orig_shape[1]};
+    if (rank == 4) {
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[1]};
 
-        packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-        SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
-      } else {
-        assert(rank == 3);  // ConvBase::IsOnnxNodeSupported validates this
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
+    } else {
+      assert(rank == 3);  // ConvBase::IsOnnxNodeSupported validates this
 
-        InlinedVector<size_t> perm{0, 2, 1};
-        TensorShapeVector new_dims{orig_shape[0],
-                                   orig_shape[2],
-                                   orig_shape[1]};
+      InlinedVector<size_t> perm{0, 2, 1};
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[1]};
 
-        packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-        SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 2);
-      }
-
-      is_packed = true;
-      // we can create the kernel now
-      ORT_RETURN_IF_ERROR(CreateKernel());
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 2);
     }
+
+    is_packed = true;
+    // we can create the kernel now
+    ORT_RETURN_IF_ERROR(CreateKernel());
+  }
   return Status::OK();
 }
 
