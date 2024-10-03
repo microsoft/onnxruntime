@@ -2476,11 +2476,10 @@ struct ThreadPoolSpinningSwitch {
 }  // namespace
 
 // TODO: are we going to do all the ttracing and logging and telemetry for this?
-// TODO: is this the right type?
-Status InferenceSession::SetEpDynamicOptions(gsl::span<const std::string> keys,
-                                             gsl::span<const std::string> values) {
+// TODO: is this the right type? How do we convert to string?
+Status InferenceSession::SetEpDynamicOptions(gsl::span<const char*> keys,
+                                             gsl::span<const char*> values) {
   Status retval = Status::OK();
-  const Env& env = Env::Default();
 
   ORT_TRY {
     if (!is_inited_) {

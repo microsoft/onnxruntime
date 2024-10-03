@@ -844,7 +844,7 @@ void CheckAndAdjustInputSpansForLora(const OrtRunOptions& run_options,
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _In_ OrtSession* sess, _In_ const char** keys,
-                  _In_ const char** values, _In_ size_t kv_len); {
+                  _In_ const char** values, _In_ size_t kv_len) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
@@ -856,7 +856,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _In_ OrtSession* sess, _In_ co
 
   if (kv_len == 0) {
     // TODO: how does one return OK or no_values_passed
-    status = 0;
+    status = Status::OK();
   } else {
     status = session->SetEpDynamicOptions(keys_span,
                                           values_span);
