@@ -2228,7 +2228,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
+
         Status status;
+
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_iobinding has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         if (!run_options)

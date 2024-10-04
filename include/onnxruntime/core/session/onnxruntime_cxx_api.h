@@ -797,7 +797,7 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   /** \brief Add the LoraAdapter to the list of active adapters.
    *  The setting does not affect RunWithBinding() calls.
    *
-   * Wraps OrtApi::RunOptionsSetLoraAdapterActive
+   * Wraps OrtApi::RunOptionsAddActiveLoraAdapter
    * \param adapter The LoraAdapter to be used as the active adapter
    */
   RunOptions& AddActiveLoraAdapter(const LoraAdapter& adapter);
