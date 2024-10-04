@@ -467,6 +467,47 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   }
 }
 
+#define ONNX_TO_ORT_TYPE_MAP(x, y) {onnx::TensorProto_DataType::TensorProto_DataType_##x, DataTypeImpl::GetType<y>()}
+
+MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type) {
+  static std::map<int, MLDataType> type_map{
+      ONNX_TO_ORT_TYPE_MAP(BOOL, bool),
+      ONNX_TO_ORT_TYPE_MAP(INT8, int8_t),
+      ONNX_TO_ORT_TYPE_MAP(INT16, int16_t),
+      ONNX_TO_ORT_TYPE_MAP(INT32, int32_t),
+      ONNX_TO_ORT_TYPE_MAP(INT64, int64_t),
+      ONNX_TO_ORT_TYPE_MAP(UINT8, uint8_t),
+      ONNX_TO_ORT_TYPE_MAP(UINT16, uint16_t),
+      ONNX_TO_ORT_TYPE_MAP(UINT32, uint32_t),
+      ONNX_TO_ORT_TYPE_MAP(UINT64, uint64_t),
+      ONNX_TO_ORT_TYPE_MAP(FLOAT16, MLFloat16),
+      ONNX_TO_ORT_TYPE_MAP(BFLOAT16, BFloat16),
+      ONNX_TO_ORT_TYPE_MAP(FLOAT, float),
+      ONNX_TO_ORT_TYPE_MAP(DOUBLE, double),
+#if !defined(DISABLE_FLOAT8_TYPES)
+      ONNX_TO_ORT_TYPE_MAP(FLOAT8E4M3FN, Float8E4M3FN),
+      ONNX_TO_ORT_TYPE_MAP(FLOAT8E4M3FNUZ, Float8E4M3FNUZ),
+      ONNX_TO_ORT_TYPE_MAP(FLOAT8E5M2, Float8E5M2),
+      ONNX_TO_ORT_TYPE_MAP(FLOAT8E5M2FNUZ, Float8E5M2FNUZ),
+#endif
+      ONNX_TO_ORT_TYPE_MAP(STRING, std::string),
+      ONNX_TO_ORT_TYPE_MAP(INT4, Int4x2),
+      ONNX_TO_ORT_TYPE_MAP(UINT4, UInt4x2)
+
+      // TODO: support FLOAT4E2M1, COMPLEX64, COMPLEX128
+  };
+
+  const auto it = type_map.find(onnx_element_type);
+  if (it == type_map.end()) {
+    throw std::runtime_error("Onnx_type " + std::to_string(onnx_element_type) +
+                             " can't be converted to MLDataType.");
+  } else {
+    return it->second;
+  }
+}
+
+#undef ONNX_TO_ORT_TYPE_MAP
+
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of
 // python array objects and use the underlying memory directly and
 // properly deallocated them when they are done.

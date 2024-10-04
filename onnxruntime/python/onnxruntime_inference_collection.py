@@ -602,7 +602,7 @@ class IOBinding:
         :param name: input name
         :param device_type: e.g. cpu, cuda, cann
         :param device_id: device id, e.g. 0
-        :param element_type: input element type
+        :param element_type: input element type, which can be either numpy type or onnx type.
         :param shape: input shape
         :param buffer_ptr: memory pointer to input data
         """
@@ -772,12 +772,12 @@ class OrtValue:
         return OrtValue(C.OrtValue.ortvalue_from_numpy_with_onnxtype(data, onnx_element_type), data)
 
     @staticmethod
-    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):
+    def ortvalue_from_shape_and_type(shape, element_type, device_type: str = "cpu", device_id: int = 0):
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
 
         :param shape: List of integers indicating the shape of the OrtValue
-        :param element_type: The data type of the elements in the OrtValue (numpy type)
+        :param element_type: The numpy data type of the elements in the OrtValue
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
@@ -786,6 +786,31 @@ class OrtValue:
 
         return OrtValue(
             C.OrtValue.ortvalue_from_shape_and_type(
+                shape,
+                element_type,
+                C.OrtDevice(
+                    get_ort_device_type(device_type, device_id),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                ),
+            )
+        )
+
+    @staticmethod
+    def ortvalue_from_shape_and_onnxtype(shape, element_type: int, device_type: str = "cpu", device_id: int = 0):
+        """
+        Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
+
+        :param shape: List of integers indicating the shape of the OrtValue
+        :param element_type: The onnx data type of the elements in the OrtValue
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
+        :param device_id: device id, e.g. 0
+        """
+        if shape is None or element_type is None:
+            raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+
+        return OrtValue(
+            C.OrtValue.ortvalue_from_shape_and_onnxtype(
                 shape,
                 element_type,
                 C.OrtDevice(

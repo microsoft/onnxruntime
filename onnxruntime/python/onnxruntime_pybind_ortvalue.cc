@@ -210,6 +210,44 @@ void addOrtValueMethods(pybind11::module& m) {
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
         return ml_value;
       })
+      // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
+      // The memory is left uninitialized
+      .def_static("ortvalue_from_shape_and_onnxtype", [](const std::vector<int64_t>& shape, int32_t element_type, const OrtDevice& device) {
+        if (element_type == onnx::TensorProto_DataType::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
+
+        AllocatorPtr allocator;
+        if (strcmp(GetDeviceName(device), CPU) == 0) {
+          allocator = GetAllocator();
+        } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+          allocator = GetCudaAllocator(device.Id());
+#else
+      throw std::runtime_error(
+          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+          "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else if (strcmp(GetDeviceName(device), DML) == 0) {
+#if USE_DML
+          allocator = GetDmlAllocator(device.Id());
+#else
+          throw std::runtime_error(
+              "Can't allocate memory on the DirectML device using this package of OnnxRuntime. "
+              "Please use the DirectML package of OnnxRuntime to use this feature.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+        }
+
+        auto ml_value = std::make_unique<OrtValue>();
+        auto ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
+        return ml_value;
+      })
 
 #if !defined(DISABLE_SPARSE_TENSORS)
       .def_static("ort_value_from_sparse_tensor", [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
