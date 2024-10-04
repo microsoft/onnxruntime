@@ -266,8 +266,8 @@ void ParsePreferredOutputLocations(const Napi::Object options, const std::vector
       preferredOutputLocations.resize(outputNames.size(), DATA_LOCATION_CPU);
 
       auto pol = polValue.As<Napi::Object>();
-      for (const auto& it : pol.GetPropertyNames()) {
-        Napi::Value nameVar = it.second;
+      for (const auto& nameIter : pol.GetPropertyNames()) {
+        Napi::Value nameVar = nameIter.second;
         std::string name = nameVar.As<Napi::String>().Utf8Value();
         // find the name in outputNames
         auto it = std::find(outputNames.begin(), outputNames.end(), name);
