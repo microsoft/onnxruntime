@@ -73,14 +73,14 @@
 		</div>
 	</div>
 	<h2 class="text-xl font-bold mt-2">Announcements</h2>
-	<p class="font-thin">
-		<strong>All ONNX Runtime Training packages have been deprecated.</strong> ORT 1.19.2 was the last
+	<ul class="list-disc ml-8">
+		<li><strong>All ONNX Runtime Training packages have been deprecated.</strong> ORT 1.19.2 was the last
 		release for which onnxruntime-training (PyPI), onnxruntime-training-cpu (PyPI), Microsoft.ML.OnnxRuntime.Training
 		(Nuget), onnxruntime-training-c (CocoaPods), onnxruntime-training-objc (CocoaPods), and onnxruntime-training-android
-		(Maven Central) were published. ONNX Runtime packages will stop supporting Python 3.8 and Python
-		3.9. This decision aligns with NumPy Python version support. To continue using ORT with Python 3.8
-		and Python 3.9, you can use ORT 1.19.2 and earlier.
-	</p>
+		(Maven Central) were published.</li>
+		<li><strong>ONNX Runtime packages will stop supporting Python 3.8 and Python 3.9.</strong> This decision aligns with 
+		NumPy Python version support. To continue using ORT with Python 3.8 and Python 3.9, you can use ORT 1.19.2 and earlier.</li>
+	</ul>
 	<h2 class="text-xl font-bold mt-2">New Packages</h2>
 	<p class="font-thin">We are planning to start releasing the following packages:</p>
 	<ul class="list-disc ml-8">
