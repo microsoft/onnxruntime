@@ -32,7 +32,10 @@ constexpr size_t A = 0,
                  bias = 5;
 };
 
-int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+// T: A data type
+template <typename T>
+MLAS_SQNBIT_GEMM_COMPUTE_TYPE
+GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
   const auto accuracy_level = std::clamp(accuracy_level_attr,
                                          static_cast<int64_t>(CompMostAccurate),
                                          static_cast<int64_t>(CompLeastAccurate));
@@ -48,7 +51,19 @@ int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level
     }
   }
 
-  return effective_accuracy_level;
+  return static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(effective_accuracy_level);
+}
+
+// For Fp16, only accuracy level 2 or 4 makes sense.
+template <>
+MLAS_SQNBIT_GEMM_COMPUTE_TYPE
+GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  if (accuracy_level_attr == static_cast<int64_t>(CompInt8) &&
+      MlasIsSQNBitGemmAvailable(nbits, block_size, CompInt8)) {
+    return CompInt8;
+  }
+  // Fallback to fp16. If fp16 optimized path is not available, it will further fall back to fp32.
+  return CompFp16;
 }
 }  // namespace
 
@@ -74,10 +89,9 @@ class MatMulNBits final : public OpKernel {
         N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
         block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
-        accuracy_level_{GetAccuracyLevel(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
-        compute_type_{static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_)} {
+        compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
     const auto& node = info.node();
     auto input_defs = node.InputDefs();
     const NodeArg* zero_point_arg =
@@ -109,7 +123,6 @@ class MatMulNBits final : public OpKernel {
   const size_t N_;
   const size_t block_size_;
   const size_t nbits_;
-  const int64_t accuracy_level_;
   const bool has_g_idx_;
   const bool has_bias_;
   const MLAS_SQNBIT_GEMM_COMPUTE_TYPE compute_type_;
@@ -122,7 +135,8 @@ class MatMulNBits final : public OpKernel {
 
   bool has_zp_input_{false};
 
-  // dequantize B first and then compute float gemm
+  // Dequantize B first and then compute sgemm. Computation is in fp32.
+  // This is the fallback if the optimized path is not available.
   Status ComputeBUnpacked(const Tensor* a,
                           const Tensor* b,
                           const Tensor* scales,
@@ -136,6 +150,7 @@ class MatMulNBits final : public OpKernel {
     ORT_THROW("ComputeBUnpacked is not supported for T1 type.");
   }
 
+  // Optimized path for quantized const B + A data type + specified compute type.
   Status ComputeBPacked(const Tensor* a,
                         const Tensor* scales,
                         const Tensor* zero_points,
@@ -188,6 +203,37 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   return Status::OK();
 }
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) // Non-Apple ARM64
+template <>
+Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                       /*out*/ bool& is_packed,
+                                       /*out*/ PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+
+  is_packed = false;
+  if (has_g_idx_ || has_unquantized_zero_point_) {
+    return Status::OK();
+  }
+
+  if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+    return Status::OK();
+  }
+  if (input_idx == InputIndex::B) {
+    packed_b_size_ = MlasSQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, compute_type_);
+    if (packed_b_size_ == 0) {
+      return Status::OK();
+    }
+    auto qptr = tensor.DataRaw();
+    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
+                                 nullptr, has_zp_input_, nullptr, nullptr);
+    is_packed = true;
+  } else if (compute_type_ == CompInt8) {
+  }
+
+  return Status::OK();
+}
+#else  // !MLAS_F16VEC_INTRINSICS_SUPPORTED
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
@@ -241,6 +287,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 
   return Status::OK();
 }
+#endif
 
 template <typename T1>
 Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
@@ -654,13 +701,13 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   // clang-format on
 
   if (has_single_b_matrix &&
-      packed_b_) {  // Assume that MlasSQNBitGemmBatch() always requires packed B.
-                    // If this changes, i.e., if MlasIsSQNBitGemmAvailable() can return true while
-                    // MlasSQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasSQNBitGemmBatch()
-                    // with B directly too.
-    if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
-      return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
-    }
+      packed_b_ &&
+      MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+        // Assume that MlasSQNBitGemmBatch() always requires packed B.
+        // If this changes, i.e., if MlasIsSQNBitGemmAvailable() can return true while
+        // MlasSQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasSQNBitGemmBatch()
+        // with B directly too.
+    return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
   }
 
   // If B is prepacked, B would have been removed from the context
