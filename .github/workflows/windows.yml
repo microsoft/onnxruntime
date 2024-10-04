@@ -73,6 +73,7 @@ jobs:
           flatc --version
           $FLATC_PATH = Join-Path "$FLATC_DIR" "flatc.exe"
           python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$FLATC_PATH"
+          python onnxruntime/lora/adapter_format/compile_schema.py --flatc "$FLATC_PATH"
         shell: pwsh
 
       - name: "Detect protoc"
