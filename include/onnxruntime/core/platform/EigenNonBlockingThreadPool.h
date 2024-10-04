@@ -226,8 +226,8 @@ class ThreadPoolProfiler {
   void LogStart() {};
   void LogEnd(ThreadPoolEvent){};
   void LogEndAndStart(ThreadPoolEvent){};
-  void LogStartAndCoreAndBlock(std::ptrdiff_t){};
-  void LogCoreAndBlock(std::ptrdiff_t){};
+  void LogStartAndCoreAndBlock(std::ptrdiff_t) {};
+  void LogCoreAndBlock(std::ptrdiff_t) {};
   void LogThreadId(int) {};
   void LogRun(int) {};
   std::string DumpChildThreadStat() { return {}; }
@@ -694,7 +694,7 @@ class RunQueue {
 
 static std::atomic<uint32_t> next_tag{1};
 
-template <typename Environment, bool kIsHybrid>
+template <typename Environment>
 class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInterface {
  private:
   struct PerThread;
@@ -768,34 +768,43 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   // Class for waiting w/ exponential backoff.
   // Template argument is maximum number of spins in backoff loop.
-  template <unsigned kMaxBackoff>
   class ThreadPoolWaiter {
     // Current number if spins in backoff loop
-    unsigned pause_time_;
+    unsigned pause_time_{0};
+    const unsigned max_backoff_;
 
    public:
+    explicit ThreadPoolWaiter(unsigned max_backoff)
+        : max_backoff_(max_backoff) {
+    }
+
     void wait() {
-      // If kMaxBackoff is zero don't do any pausing.
-      if constexpr (kMaxBackoff == 1) {
-        onnxruntime::concurrency::SpinPause();
-      } else if constexpr (kMaxBackoff > 1) {
-        // Exponential backoff
-        unsigned pause_time = pause_time_ + 1U;
-        for (unsigned i = 0; i < pause_time; ++i) {
+      switch (max_backoff_) {
+        case 1:
           onnxruntime::concurrency::SpinPause();
-        }
-        pause_time_ = (pause_time * 2U) % kMaxBackoff;
-      }
+          [[fallthrough]];
+        case 0:
+          // If kMaxBackoff is zero don't do any pausing.
+          return;
+        default:
+          // Exponential backoff
+          unsigned pause_time = pause_time_ + 1U;
+          for (unsigned i = 0; i < pause_time; ++i) {
+            onnxruntime::concurrency::SpinPause();
+          }
+          pause_time_ = (pause_time * 2U) % max_backoff_;
+      };
     }
   };
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
-                  const ThreadOptions& thread_options)
+                  const ThreadOptions& thread_options, bool is_hybrid)
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+        is_hybrid_{is_hybrid},
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -930,7 +939,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // finish dispatch work.  This avoids new tasks being started
     // concurrently with us attempting to end the parallel section.
     if (ps.dispatch_q_idx != -1) {
-      ThreadPoolWaiter<4> waiter{};
+      ThreadPoolWaiter waiter{4};
       while (!ps.dispatch_done.load(std::memory_order_acquire)) {
         waiter.wait();
       }
@@ -952,9 +961,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
     profiler_.LogEnd(ThreadPoolProfiler::WAIT_REVOKE);
 
+    ThreadPoolWaiter waiter{is_hybrid_ ? 0U : 1U};
+
     // Wait for the dispatch task's own work...
     if (ps.dispatch_q_idx > -1) {
-      ThreadPoolWaiter<kIsHybrid ? 0 : 1> waiter{};
       while (!ps.work_done.load(std::memory_order_acquire)) {
         waiter.wait();
       }
@@ -962,7 +972,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // ...and wait for any other tasks not revoked to finish their work
     auto tasks_to_wait_for = tasks_started - ps.tasks_revoked;
-    ThreadPoolWaiter<kIsHybrid ? 0 : 1> waiter{};
     while (ps.tasks_finished < tasks_to_wait_for) {
       waiter.wait();
     }
@@ -1281,8 +1290,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Increase the worker count if needed.  Each worker will pick up
     // loops to execute from the current parallel section.
-    std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
-      ThreadPoolWaiter<kIsHybrid ? 4 : 0> waiter{};
+    const auto is_hybrid = is_hybrid_;
+    std::function<void(unsigned)> worker_fn = [&ps, is_hybrid](unsigned par_idx) {
+      ThreadPoolWaiter waiter{is_hybrid ? 4U : 0U};
       while (ps.active) {
         if (ps.current_loop.load() == nullptr) {
           waiter.wait();
@@ -1306,7 +1316,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Wait for workers to exit the loop
     ps.current_loop = 0;
-    ThreadPoolWaiter<kIsHybrid ? 1 : 4> waiter{};
+    ThreadPoolWaiter waiter{is_hybrid_ ? 1U : 4U};
     while (ps.workers_in_loop) {
       waiter.wait();
     }
@@ -1524,6 +1534,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   const unsigned num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
+  const bool is_hybrid_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
@@ -1579,14 +1590,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // distributed the compute time won't stay synced. Typically in
     // the hybrid case the P cores finish first (and are thus waiting)
     // which is essentially a priority inversion.
-    constexpr int pref_spin_count = kIsHybrid ? 5000 : 10000;
+    const int pref_spin_count = is_hybrid_ ? 5000 : 10000;
     const int spin_count = allow_spinning_ ? pref_spin_count : 0;
-    constexpr int steal_count = pref_spin_count / (kIsHybrid ? 25 : 100);
+    const int steal_count = pref_spin_count / (is_hybrid_ ? 25 : 100);
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
-    ThreadPoolWaiter<kIsHybrid ? 1 : 8> waiter{};
+    ThreadPoolWaiter waiter{is_hybrid_ ? 1U : 8U};
     while (!should_exit) {
       Task t = q.PopFront();
       if (!t) {
