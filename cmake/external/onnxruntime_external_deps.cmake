@@ -668,9 +668,7 @@ if (onnxruntime_USE_WEBGPU)
   set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
 
   # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
-  endif()
+  set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
 
   if (WIN32)
     # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
