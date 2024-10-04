@@ -21,7 +21,8 @@ Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   // only layout of weight input is adjusted via PrePack
   const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
                                    conv_type_ == OpComputeType::op_compute_type_fp16);
-  if ((conv_type_is_float && input_idx == 1) || (!conv_type_is_float && input_idx == 3)) {  // InputTensors::IN_W
+  if ((conv_type_is_float && input_idx == 1) ||
+      (!conv_type_is_float && input_idx == 3)) {  // InputTensors::IN_W
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
 

@@ -24,8 +24,9 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   // only layout of weight input is adjusted via PrePack
   const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
                                    conv_type_ == OpComputeType::op_compute_type_fp16);
-  if ((conv_type_is_float && input_idx == 1) || (!conv_type_is_float && input_idx == 3)) {
-    // InputTensors::IN_W, Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+  if ((conv_type_is_float && input_idx == 1) ||
+      (!conv_type_is_float && input_idx == 3)) {// InputTensors::IN_W
+    // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
 
@@ -105,9 +106,6 @@ Status Conv::Compute(OpKernelContext* context) const {
     reshape_fn = xnn_reshape_convolution2d_nhwc_f16;
   }
 
-  if (!op0_.get()) {
-    throw std::invalid_argument("op0 ------");
-  }
   auto status = reshape_fn(op0_.get(), N, H, W,
                            &workspace_size, &workspace_alignment,
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
@@ -121,6 +119,9 @@ Status Conv::Compute(OpKernelContext* context) const {
   if (conv_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), workspace.get(), X.Data<float>(),
                                               Y->MutableData<float>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_convolution2d_nhwc_f16(op0_.get(), workspace.get(), X.Data<MLFloat16>(),
+                                              Y->MutableData<MLFloat16>());
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
     status = xnn_setup_convolution2d_nhwc_qs8(op0_.get(), workspace.get(), X.Data<int8_t>(),
                                               Y->MutableData<int8_t>());
@@ -130,9 +131,6 @@ Status Conv::Compute(OpKernelContext* context) const {
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
     status = xnn_setup_convolution2d_nhwc_qs8_qc8w(op0_.get(), workspace.get(), X.Data<int8_t>(),
                                                    Y->MutableData<int8_t>());
-  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
-    status = xnn_setup_convolution2d_nhwc_f16(op0_.get(), workspace.get(), X.Data<MLFloat16>(),
-                                              Y->MutableData<MLFloat16>());
   }
 
   if (status != xnn_status_success) {

@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
+#include <set>
 #include <unordered_map>
 #include <vector>
-#include <set>
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -116,10 +116,18 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad) {
 
 bool IsComputeTypeSupported(int32_t tp) {
 #ifdef XNNPACK_FP16_SUPPORTED
-  std::set<ONNX_NAMESPACE::TensorProto_DataType> SupportedComputeType = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_UINT8, ONNX_NAMESPACE::TensorProto_DataType_INT8,
-                                                                         ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> SupportedComputeType = {
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_INT8,
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                                                                        };
 #else
-  std::set<ONNX_NAMESPACE::TensorProto_DataType> SupportedComputeType = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_UINT8, ONNX_NAMESPACE::TensorProto_DataType_INT8};
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> SupportedComputeType = {
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                        ONNX_NAMESPACE::TensorProto_DataType_INT8
+                                                                        };
 #endif
   ONNX_NAMESPACE::TensorProto_DataType compute_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tp);
   return std::find(SupportedComputeType.begin(), SupportedComputeType.end(), compute_type) != SupportedComputeType.end();
