@@ -144,7 +144,7 @@ void addOrtValueMethods(pybind11::module& m) {
       })
       // Create an ortvalue value on top of the numpy array, but interpret the data
       // as a different type with the same element size.
-      .def_static("ortvalue_from_numpy_with_onnxtype", [](py::array& data, int32_t onnx_element_type) -> std::unique_ptr<OrtValue> {
+      .def_static("ortvalue_from_numpy_with_onnx_type", [](py::array& data, int32_t onnx_element_type) -> std::unique_ptr<OrtValue> {
         if (!ONNX_NAMESPACE::TensorProto_DataType_IsValid(onnx_element_type)) {
           ORT_THROW("Not a valid ONNX Tensor data type: ", onnx_element_type);
         }
@@ -212,8 +212,8 @@ void addOrtValueMethods(pybind11::module& m) {
       })
       // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
       // The memory is left uninitialized
-      .def_static("ortvalue_from_shape_and_onnxtype", [](const std::vector<int64_t>& shape, int32_t element_type, const OrtDevice& device) {
-        if (element_type == onnx::TensorProto_DataType::TensorProto_DataType_STRING) {
+      .def_static("ortvalue_from_shape_and_onnx_type", [](const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtDevice& device) {
+        if (onnx_element_type == onnx::TensorProto_DataType::TensorProto_DataType_STRING) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
@@ -244,7 +244,7 @@ void addOrtValueMethods(pybind11::module& m) {
         }
 
         auto ml_value = std::make_unique<OrtValue>();
-        auto ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
+        auto ml_type = OnnxTypeToOnnxRuntimeTensorType(onnx_element_type);
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
         return ml_value;
       })

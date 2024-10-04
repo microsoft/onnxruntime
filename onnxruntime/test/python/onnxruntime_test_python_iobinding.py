@@ -9,7 +9,7 @@ from helper import get_name
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
 from onnx.defs import onnx_opset_version
-from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE, TENSOR_TYPE_MAP
+from onnx.mapping import TENSOR_TYPE_MAP
 
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
@@ -104,7 +104,7 @@ class TestIOBinding(unittest.TestCase):
                     ]:
                         with self.subTest(dtype=dtype, inner_device=str(inner_device)):
                             x = np.arange(8).reshape((-1, 2)).astype(dtype)
-                            proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
+                            proto_dtype = helper.np_dtype_to_tensor_dtype(x.dtype)
 
                             X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])  # noqa: N806
                             Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])  # noqa: N806
@@ -262,7 +262,7 @@ class TestIOBinding(unittest.TestCase):
                     # Create ortvalue with onnx type
                     x = torch.arange(16).to(torch_dtype)
                     y = torch.empty(16, dtype=torch_dtype)
-                    temp = onnxrt.OrtValue.ortvalue_from_shape_and_onnxtype(x.shape, onnx_dtype, x.device.type)
+                    temp = onnxrt.OrtValue.ortvalue_from_shape_and_type(x.shape, onnx_dtype, x.device.type)
 
                     bind = sess.io_binding()
                     bind.bind_input("X", x.device.type, 0, onnx_dtype, x.shape, x.data_ptr())
