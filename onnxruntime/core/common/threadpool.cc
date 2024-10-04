@@ -391,19 +391,19 @@ ThreadPool::ThreadPool(Env* env,
 
     if (force_hybrid_) {
       extended_eigen_hybrid_threadpool_ =
-          std::make_unique<ThreadPoolTempl<Env, true> >(name,
-                                                        threads_to_create,
-                                                        low_latency_hint,
-                                                        *env,
-                                                        thread_options_);
+          std::make_unique<HybridThreadPoolTempl<Env>>(name,
+                                                       threads_to_create,
+                                                       low_latency_hint,
+                                                       *env,
+                                                       thread_options_);
       underlying_threadpool_ = extended_eigen_hybrid_threadpool_.get();
     } else {
       extended_eigen_normal_threadpool_ =
-          std::make_unique<ThreadPoolTempl<Env, false> >(name,
-                                                         threads_to_create,
-                                                         low_latency_hint,
-                                                         *env,
-                                                         thread_options_);
+          std::make_unique<NormalThreadPoolTempl<Env>>(name,
+                                                       threads_to_create,
+                                                       low_latency_hint,
+                                                       *env,
+                                                       thread_options_);
       underlying_threadpool_ = extended_eigen_normal_threadpool_.get();
     }
   }
