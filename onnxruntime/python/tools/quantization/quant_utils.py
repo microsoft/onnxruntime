@@ -736,10 +736,16 @@ def write_calibration_table(calibration_cache, dir="."):
             logging.info(key_value.Value())
 
     # write plain text
+    zero = np.array(0)
     with open(os.path.join(dir, "calibration.cache"), "w") as file:
         for key in sorted(calibration_cache.keys()):
             value = calibration_cache[key]
-            s = key + " " + str(value.to_dict())
+            d_values = value.to_dict()
+            floats = [
+                float(d_values.get("highest", zero).item()),
+                float(d_values.get("lowest", zero).item()),
+            ]
+            s = key + " " + str(max(floats))
             file.write(s)
             file.write("\n")
 
