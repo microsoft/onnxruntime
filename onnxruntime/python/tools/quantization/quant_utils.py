@@ -705,7 +705,7 @@ def write_calibration_table(calibration_cache, dir="."):
             float(d_values.get("highest", zero).item()),
             float(d_values.get("lowest", zero).item()),
         ]
-        value = key + " " + str(max(floats))
+        value = str(max(floats))
 
         flat_key = builder.CreateString(key)
         flat_value = builder.CreateString(value)
