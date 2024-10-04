@@ -11,18 +11,10 @@ namespace webgpu {
 
 class LayerNormProgram final : public Program<LayerNormProgram> {
  public:
-  LayerNormProgram(int64_t axis,
-                   float epsilon,
-                   int64_t stash_type,
-                   bool has_bias,
-                   size_t x_size,
+  LayerNormProgram(bool has_bias,
                    bool is_fp16,
                    bool simplified) : Program{"LayerNorm"},
-                                      axis_{axis},
-                                      epsilon_{epsilon},
-                                      stash_type_{stash_type},
                                       has_bias_{has_bias},
-                                      x_size_{x_size},
                                       is_fp16_{is_fp16},
                                       simplified_{simplified} {}
 
@@ -35,11 +27,7 @@ class LayerNormProgram final : public Program<LayerNormProgram> {
       {"epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
-  int64_t axis_;
-  float epsilon_;
-  int64_t stash_type_;
   bool has_bias_;
-  size_t x_size_;
   bool is_fp16_;
   bool simplified_;
 };

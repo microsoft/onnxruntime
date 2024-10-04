@@ -107,7 +107,7 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
                            scale_size, " and bias size of ", bias_size);
   }
 
-  LayerNormProgram program{axis_, epsilon_, stash_type_, bias != nullptr, data_size, is_fp16, simplified};
+  LayerNormProgram program{bias != nullptr, is_fp16, simplified};
 
   program
       .CacheHint(simplified)
