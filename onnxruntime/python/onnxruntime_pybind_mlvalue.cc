@@ -87,15 +87,15 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 

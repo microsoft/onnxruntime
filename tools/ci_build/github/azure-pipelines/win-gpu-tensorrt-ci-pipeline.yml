@@ -39,9 +39,9 @@ parameters:
 variables:
   - name: win_trt_folder
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8
+      value: TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: TensorRT-10.3.0.26.Windows10.x86_64.cuda-12.5
+      value: TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6
 
 jobs:
 - job: 'build'

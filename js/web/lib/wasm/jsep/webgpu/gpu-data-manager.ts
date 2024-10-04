@@ -52,12 +52,12 @@ export interface GpuDataManager {
    * GPU data manager only manages a mapping between the buffer and the GPU data ID. It will not manage the lifecycle of
    * the external buffer.
    */
-  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previousBuffer?: GPUBuffer): number;
+  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previous?: [GpuDataId, GPUBuffer]): number;
 
   /**
    * unregister an external buffer for IO Binding.
    */
-  unregisterExternalBuffer(buffer: GPUBuffer): void;
+  unregisterExternalBuffer(id: GpuDataId): void;
 
   /**
    * destroy all gpu buffers.
@@ -196,9 +196,6 @@ class GpuDataManagerImpl implements GpuDataManager {
   // The reusable uniform buffers
   private freeUniformBuffers: Map<number, GPUBuffer[]>;
 
-  // The external buffers registered users for IO Binding.
-  private externalBuffers: Map<GPUBuffer, GpuDataId>;
-
   // The pendingBuffers for capture graph.
   // a SessionID -> GPUBuffer[] mapping.
   private capturedPendingBuffers: Map<number, GPUBuffer[]>;
@@ -209,7 +206,6 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.freeUniformBuffers = new Map();
     this.buffersForUploadingPending = [];
     this.buffersPending = [];
-    this.externalBuffers = new Map();
     this.capturedPendingBuffers = new Map();
 
     for (const [key] of bucketFreelist) {
@@ -284,14 +280,11 @@ class GpuDataManagerImpl implements GpuDataManager {
     );
   }
 
-  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previousBuffer?: GPUBuffer): number {
+  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previous?: [GpuDataId, GPUBuffer]): number {
     let id: number | undefined;
-    if (previousBuffer) {
-      id = this.externalBuffers.get(previousBuffer);
-      if (id === undefined) {
-        throw new Error('previous buffer is not registered');
-      }
-      if (buffer === previousBuffer) {
+    if (previous) {
+      id = previous[0];
+      if (buffer === previous[1]) {
         LOG_DEBUG(
           'verbose',
           () =>
@@ -304,13 +297,11 @@ class GpuDataManagerImpl implements GpuDataManager {
         throw new Error(`Registering a different external buffer under graph capture mode is not supported yet.
              Please use the previous external buffer!`);
       }
-      this.externalBuffers.delete(previousBuffer);
     } else {
       id = createNewGpuDataId();
     }
 
     this.storageCache.set(id, { gpuData: { id, type: GpuDataType.default, buffer }, originalSize });
-    this.externalBuffers.set(buffer, id);
     LOG_DEBUG(
       'verbose',
       () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${id}, registered.`,
@@ -318,11 +309,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     return id;
   }
 
-  unregisterExternalBuffer(buffer: GPUBuffer): void {
-    const id = this.externalBuffers.get(buffer);
+  unregisterExternalBuffer(id: GpuDataId): void {
     if (id !== undefined) {
       this.storageCache.delete(id);
-      this.externalBuffers.delete(buffer);
       LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.unregisterExternalBuffer() => id=${id}`);
     }
   }

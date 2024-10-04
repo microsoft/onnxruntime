@@ -21,7 +21,38 @@ endif()
 FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
 onnxruntime_fetchcontent_makeavailable(psimd)
 set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
+
+block(PROPAGATE fp16_PATCH_COMMAND)
+  # only apply fp16 patch for Apple x86_64 targets
+
+  if(APPLE)
+    if(NOT "${CMAKE_OSX_ARCHITECTURES}" STREQUAL "")
+      if ("x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+        set(fp16_PATCH_REQUIRED 1)
+      endif()
+    else()
+      # CMAKE_OSX_ARCHITECTURES unspecified, check host
+      if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+        set(fp16_PATCH_REQUIRED 1)
+      endif()
+    endif()
+  endif()
+
+  if(fp16_PATCH_REQUIRED)
+    message(STATUS "Applying fp16 patch.")
+    set(fp16_PATCH_FILE ${PROJECT_SOURCE_DIR}/patches/fp16/remove_math_h_dependency_from_fp16_h.patch)
+    set(fp16_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${fp16_PATCH_FILE})
+  else()
+    set(fp16_PATCH_COMMAND "")
+  endif()
+endblock()
+
+FetchContent_Declare(
+    fp16
+    URL ${DEP_URL_fp16}
+    URL_HASH SHA1=${DEP_SHA1_fp16}
+    PATCH_COMMAND ${fp16_PATCH_COMMAND}
+    )
 onnxruntime_fetchcontent_makeavailable(fp16)
 
 # pthreadpool depends on fxdiv
@@ -80,6 +111,9 @@ MESSAGE(STATUS "Building for ORT_TARGET_PROCESSOR: ${ORT_TARGET_PROCESSOR}")
 # KleidiAI is only used in Arm64 platform and not supported by MSVC, the details can be seen in
 # https://github.com/google/XNNPACK/blob/3b3f7b8a6668f6ab3b6ce33b9f1d1fce971549d1/CMakeLists.txt#L206C82-L206C117
 if(ORT_TARGET_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+  # kleidiAI use CMAKE_SYSTEM_PROCESSOR to determine whether includes aarch64/arm64 ukernels
+  # https://gitlab.arm.com/kleidi/kleidiai/-/blob/main/CMakeLists.txt#L134
+  set(CMAKE_SYSTEM_PROCESSOR arm64)
   FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
   onnxruntime_fetchcontent_makeavailable(kleidiai)
   set(KLEIDIAI_SOURCE_DIR ${kleidiai_SOURCE_DIR})

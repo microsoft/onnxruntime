@@ -20,6 +20,7 @@ import {
   calculateTensorSizeInBytes,
   dataLocationStringToEnum,
   isGpuBufferSupportedType,
+  isMLTensorSupportedType,
   logLevelStringToEnum,
   tensorDataTypeEnumToString,
   tensorDataTypeStringToEnum,
@@ -162,7 +163,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
 /**
  * valid data locations for input/output tensors.
  */
-type SupportedTensorDataLocationForInputOutput = 'cpu' | 'cpu-pinned' | 'gpu-buffer';
+type SupportedTensorDataLocationForInputOutput = 'cpu' | 'cpu-pinned' | 'gpu-buffer' | 'ml-tensor';
 
 type IOBindingState = {
   /**
@@ -173,7 +174,7 @@ type IOBindingState = {
   /**
    * the preferred location for each output tensor.
    *
-   * value is one of 'cpu', 'cpu-pinned', 'gpu-buffer'.
+   * value is one of 'cpu', 'cpu-pinned', 'gpu-buffer', 'ml-tensor'.
    */
   readonly outputPreferredLocations: readonly SupportedTensorDataLocationForInputOutput[];
 
@@ -287,6 +288,7 @@ export const createSession = async (
     for (const provider of options?.executionProviders ?? []) {
       const providerName = typeof provider === 'string' ? provider : provider.name;
       if (providerName === 'webnn') {
+        wasm.shouldTransferToMLTensor = false;
         if (wasm.currentContext) {
           throw new Error('WebNN execution provider is already set.');
         }
@@ -318,7 +320,9 @@ export const createSession = async (
 
     // clear current MLContext after session creation
     if (wasm.currentContext) {
+      wasm.jsepRegisterMLContext!(sessionHandle, wasm.currentContext);
       wasm.currentContext = undefined;
+      wasm.shouldTransferToMLTensor = true;
     }
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
@@ -354,7 +358,7 @@ export const createSession = async (
           typeof options?.preferredOutputLocation === 'string'
             ? options.preferredOutputLocation
             : (options?.preferredOutputLocation?.[nameString] ?? 'cpu');
-        if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer') {
+        if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer' && location !== 'ml-tensor') {
           throw new Error(`Not supported preferred output location: ${location}.`);
         }
         if (enableGraphCapture && location !== 'gpu-buffer') {
@@ -366,9 +370,9 @@ export const createSession = async (
       }
     }
 
-    // use IO binding only when at least one output is preffered to be on GPU.
+    // use IO binding only when at least one output is preferred to be on GPU.
     let bindingState: IOBindingState | null = null;
-    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some((l) => l === 'gpu-buffer')) {
+    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some((l) => l === 'gpu-buffer' || l === 'ml-tensor')) {
       ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
       if (ioBindingHandle === 0) {
         checkLastError("Can't create IO binding.");
@@ -459,7 +463,7 @@ export const prepareInputOutputTensor = (
   let rawData: number;
   let dataByteLength: number;
 
-  if (dataType === 'string' && location === 'gpu-buffer') {
+  if (dataType === 'string' && (location === 'gpu-buffer' || location === 'ml-tensor')) {
     throw new Error('String tensor is not supported on GPU.');
   }
 
@@ -478,6 +482,15 @@ export const prepareInputOutputTensor = (
       throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
     }
     rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
+  } else if (location === 'ml-tensor') {
+    const mlTensor = tensor[2].mlTensor as MLTensor;
+    dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
+
+    const registerMLTensor = wasm.jsepRegisterMLTensor;
+    if (!registerMLTensor) {
+      throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
+    }
+    rawData = registerMLTensor(mlTensor, tensorDataTypeStringToEnum(dataType), dims);
   } else {
     const data = tensor[2];
 
@@ -563,6 +576,9 @@ export const run = async (
   const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
 
   try {
+    // WebNN backend needs the active session to check MLTensors with the current context.
+    wasm.jsepOnRunStart?.(sessionHandle);
+
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
 
     // create input tensors
@@ -654,7 +670,6 @@ export const run = async (
       ]);
     }
 
-    wasm.jsepOnRunStart?.(sessionHandle);
     let errorCode: number;
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
       errorCode = await wasm._OrtRunWithBinding(
@@ -726,7 +741,7 @@ export const run = async (
         const preferredLocation = ioBindingState?.outputPreferredLocations[outputIndices[i]];
 
         if (type === 'string') {
-          if (preferredLocation === 'gpu-buffer') {
+          if (preferredLocation === 'gpu-buffer' || preferredLocation === 'ml-tensor') {
             throw new Error('String tensor is not supported on GPU.');
           }
           const stringData: string[] = [];
@@ -765,6 +780,37 @@ export const run = async (
                 },
               },
               'gpu-buffer',
+            ]);
+          } else if (preferredLocation === 'ml-tensor' && size > 0) {
+            const ensureTensor = wasm.jsepEnsureTensor;
+            if (!ensureTensor) {
+              throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
+            }
+            const tensorSize = calculateTensorSizeInBytes(dataType, size);
+            if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
+              throw new Error(`Unsupported data type: ${type}`);
+            }
+
+            // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
+            // ensureTensor to get/create the MLTensor. In which case, we don't need to copy the data if a new tensor
+            // has been created.
+            const mlTensor = await ensureTensor(dataOffset, dataType, dims, false);
+
+            // do not release the tensor right now. it will be released when user calls tensor.dispose().
+            keepOutputTensor = true;
+
+            output.push([
+              type,
+              dims,
+              {
+                mlTensor,
+                download: wasm.jsepCreateMLTensorDownloader!(dataOffset, type),
+                dispose: () => {
+                  wasm.jsepReleaseTensorId!(dataOffset);
+                  wasm._OrtReleaseTensor(tensor);
+                },
+              },
+              'ml-tensor',
             ]);
           } else {
             const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);

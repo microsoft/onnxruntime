@@ -22,7 +22,11 @@ class SAM2ImageEncoder(nn.Module):
         self.image_encoder = sam_model.image_encoder
         self.no_mem_embed = sam_model.no_mem_embed
 
-    def forward(self, image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        image: torch.Tensor,
+        enable_nvtx_profile: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Encodes images into features.
 
@@ -31,13 +35,27 @@ class SAM2ImageEncoder(nn.Module):
 
         Args:
             image (torch.Tensor): images of shape [B, 3, H, W], B is batch size, H and W are height and width.
+            enable_nvtx_profile (bool): enable NVTX profiling.
 
         Returns:
             image_features_0: image features of shape [B, 32, H/4, W/4] - high resolution features of level 0
             image_features_1: image features of shape [B, 64, H/8, W/8] - high resolution features of level 1
             image_embeddings: image features of shape [B, 256, H/16, W/16] - 16 is the backbone_stride
         """
+        nvtx_helper = None
+        if enable_nvtx_profile:
+            from nvtx_helper import NvtxHelper
+
+            nvtx_helper = NvtxHelper(["image_encoder", "post_process"])
+
+        if nvtx_helper is not None:
+            nvtx_helper.start_profile("image_encoder")
+
         backbone_out = self.image_encoder(image)
+
+        if nvtx_helper is not None:
+            nvtx_helper.stop_profile("image_encoder")
+            nvtx_helper.start_profile("post_process")
 
         # precompute projected level 0 and level 1 features in SAM decoder
         # to avoid running it again on every SAM click
@@ -59,6 +77,10 @@ class SAM2ImageEncoder(nn.Module):
             feat.permute(1, 2, 0).reshape(1, -1, *feat_size)
             for feat, feat_size in zip(vision_feats[::-1], feat_sizes[::-1])
         ][::-1]
+
+        if nvtx_helper is not None:
+            nvtx_helper.stop_profile("post_process")
+            nvtx_helper.print_latency()
 
         return feats[0], feats[1], feats[2]
 
