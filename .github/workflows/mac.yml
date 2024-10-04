@@ -137,7 +137,7 @@ jobs:
         export PATH="$FLATC_DIR:$PATH"
         flatc --version
         python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$(which flatc)"
-        python onnxruntime/lora/adapter_format/compile_schema.py --flatc "$FLATC_PATH"
+        python onnxruntime/lora/adapter_format/compile_schema.py --flatc "$(which flatc)"
 
     - name: "Detect protoc"
       id: protoc-detect
