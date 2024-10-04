@@ -143,7 +143,7 @@ class TestIOBinding(unittest.TestCase):
                             y = ortvalue.numpy()
                             assert_almost_equal(x, y)
 
-    def test_bind_input_onnx_types(self):
+    def test_bind_onnx_types_supported_by_numpy(self):
         opset = onnx_opset_version()
         devices = [
             (
@@ -210,11 +210,15 @@ class TestIOBinding(unittest.TestCase):
             ),
         ]
 
-        onnx_to_torch_type_map = {
-            TensorProto.BFLOAT16: torch.bfloat16,
-            TensorProto.FLOAT8E4M3FN: torch.float8_e4m3fn,
-            TensorProto.FLOAT8E5M2: torch.float8_e5m2,
-        }
+        onnx_to_torch_type_map = {TensorProto.BFLOAT16: torch.bfloat16}
+        # Float8 support requires torch >= 2.1.0
+        if hasattr(torch, "float8_e4m3fn") and hasattr(torch, "float8_e5m2"):
+            onnx_to_torch_type_map.update(
+                {
+                    TensorProto.FLOAT8E4M3FN: torch.float8_e4m3fn,
+                    TensorProto.FLOAT8E5M2: torch.float8_e5m2,
+                }
+            )
 
         for inner_device, provider in devices:
             for onnx_dtype in onnx_to_torch_type_map:
@@ -243,7 +247,7 @@ class TestIOBinding(unittest.TestCase):
                     bind.bind_input("X", x.device.type, 0, onnx_dtype, x.shape, x.data_ptr())
                     bind.bind_output("Y", y.device.type, 0, onnx_dtype, y.shape, y.data_ptr())
                     sess.run_with_iobinding(bind)
-                    if onnx_dtype in [TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2]:
+                    if onnx_dtype != TensorProto.BFLOAT16:
                         # torch has no cpu equal implementation of float8, so we compare them after casting to float.
                         self.assertTrue(torch.equal(x.to(torch.float), y.to(torch.float)))
                     else:
