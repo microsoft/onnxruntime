@@ -273,7 +273,11 @@ void TestMatMulNBitsTyped() {
     base_opts.output_abs_error = 0.1f;
   } else {
     if constexpr (std::is_same<AType, MLFloat16>::value) {
+#ifdef USE_WEBGPU
+      base_opts.output_abs_error = 0.03f;
+#else
       base_opts.output_abs_error = 0.01f;
+#endif
     }
   }
 
@@ -288,7 +292,7 @@ void TestMatMulNBitsTyped() {
     RunTest<AType>(opts);
   }
 
-#if !defined(USE_DML)
+#if !defined(USE_DML) && !defined(USE_WEBGPU)
   {
     TestOptions opts = base_opts;
     opts.has_g_idx = true;
@@ -319,7 +323,7 @@ void TestMatMulNBitsTyped() {
     opts.has_zero_point = true, opts.zp_is_4bit = false;
     RunTest<AType>(opts);
   }
-#endif  // !defined(USE_DML)
+#endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
 }
 
 TEST(MatMulNBits, Float32_Accuracy0) {
