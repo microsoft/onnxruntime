@@ -143,7 +143,7 @@ class TestIOBinding(unittest.TestCase):
                             y = ortvalue.numpy()
                             assert_almost_equal(x, y)
 
-    def test_bind_input_onnx_types(self):
+    def test_bind_onnx_types(self):
         opset = onnx_opset_version()
         devices = [
             (
@@ -206,12 +206,12 @@ class TestIOBinding(unittest.TestCase):
                     y = ortvalue.numpy()
                     assert_almost_equal(x, y)
 
-    # Test some onnx type that is not supported by numpy like bfloat16 etc.
-    def test_bind_input_onnx_types_not_supported_by_numpy(self):
+    # Test I/O binding with onnx type like bfloat16, which is not supported in numpy.
+    def test_bind_onnx_types_not_supported_by_numpy(self):
         try:
             import torch
         except ImportError:
-            self.skipTest("Skipping since torch is not imported.")
+            self.skipTest("Skipping since PyTorch is not installed.")
 
         opset = onnx_opset_version()
         devices = [

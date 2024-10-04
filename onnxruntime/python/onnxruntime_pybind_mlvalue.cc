@@ -467,13 +467,9 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   }
 }
 
-#define ONNX_TO_ORT_TYPE_MAP(x, y) {onnx::TensorProto_DataType::TensorProto_DataType_##x, DataTypeImpl::GetType<y>()}
-
 MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type) {
   return DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)->GetElementType();
 }
-
-#undef ONNX_TO_ORT_TYPE_MAP
 
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of
 // python array objects and use the underlying memory directly and
