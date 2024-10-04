@@ -15,10 +15,10 @@ stages:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
 
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     variables:
-      xcodeVersion: "14.2"
+      xcodeVersion: "14.3.1"
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
@@ -62,13 +62,11 @@ stages:
         architecture: "x64"
 
     - template: ../use-xcode-version.yml
-      parameters:
-        xcodeVersion: ${{ variables.xcodeVersion }}
 
     - template: ../install-appcenter.yml
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     # create and test mobile pods
@@ -104,8 +102,7 @@ stages:
         xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
         signingOption: 'manual'
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-        provisioningProfileName: 'temporary *'  # temporary name, change it back to the original below later
-        #provisioningProfileName: 'iOS Team Provisioning Profile'
+        provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
         args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
         workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
         useXcpretty: false  # xcpretty can hide useful error output so we will disable it

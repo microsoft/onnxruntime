@@ -226,7 +226,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -305,25 +305,6 @@ stages:
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_debug_node_input_output
-      RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
-      GenerateDocumentation: false
-      EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
-
-- stage: NeuralSpeed
-  dependsOn: [ ]
-  jobs:
-  - template: templates/jobs/win-ci-vs-2022-job.yml
-    parameters:
-      BuildConfig: 'RelWithDebInfo'
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      additionalBuildFlags: --cmake_extra_defines onnxruntime_USE_NEURAL_SPEED=ON
-      msbuildPlatform: x64
-      isX86: false
-      job_name_suffix: x64_neural_speed
       RunOnnxRuntimeTests: true
       isTraining: false
       ORT_EP_NAME: CPU
@@ -425,7 +406,7 @@ stages:
   - job: IosDynamicFramework
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     steps:
     - task: UsePythonVersion@0
@@ -435,11 +416,9 @@ stages:
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - script: |
@@ -463,7 +442,7 @@ stages:
   - job: IosMinimalTrainingBuild
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     steps:
     - task: UsePythonVersion@0
@@ -473,11 +452,9 @@ stages:
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - script: |

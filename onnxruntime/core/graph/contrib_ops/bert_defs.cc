@@ -1049,6 +1049,8 @@ Supports different number of heads for q and kv for CPU and CUDA.
 Only supports causal and local attention.
 Supports rotary position embedding for CPU and CUDA.
 Supports packed input for CPU and CUDA.
+Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1059,6 +1061,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("softcap",
+              "Softcap value for attention weights. Default value is 0.",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("local_window_size",
@@ -1106,12 +1112,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
-               // For prompt, the value is number of tokens (excluding padding) - 1.
-               "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
+               "1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).",
                "M")
         .Input(6,
                "total_sequence_length",
-               "Scalar tensor of total sequence length (past + new).",
+               "Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for "
+               "checking inputs and determining prompt vs token generation case.",
                "M")
         .Input(7,
                "cos_cache",

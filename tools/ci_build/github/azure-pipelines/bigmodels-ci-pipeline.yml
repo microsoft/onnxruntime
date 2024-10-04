@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -282,7 +283,7 @@ stages:
 - stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
-  condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+  condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'), eq(variables['UseA100'], '1'))
   jobs:
   - job: Llama2_7B_ONNX
     timeoutInMinutes: 120

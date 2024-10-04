@@ -13,7 +13,8 @@ namespace onnxruntime {
 namespace qnn {
 
 bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
-  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type and the source is QNN or QNNExecutionProvider.
+  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type
+  // and the source is QNN or QNNExecutionProvider.
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
       NodeAttrHelper node_helper(node);
@@ -44,10 +45,7 @@ bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGr
 }
 
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                          QnnBackendManager* qnn_backend_manager,
-                          const logging::Logger& logger,
-                          std::vector<int>& main_context_pos,
-                          std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
+                          std::vector<int>& main_context_pos) {
   for (size_t i = 0; i < fused_nodes_and_graphs.size(); ++i) {
     // Only EPContext nodes are filtered in
     // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
@@ -55,8 +53,6 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const auto& ep_context_node = graph_viewer.Nodes().begin();
     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
-    qnn_models.emplace(ep_context_node->Name(),
-                       std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager));
     NodeAttrHelper node_helper(*ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
@@ -91,7 +87,7 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
+                                QnnModelLookupTable& qnn_models) {
   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
   NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
@@ -155,16 +151,16 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
-                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                               QnnModelLookupTable& qnn_models,
                                const logging::Logger& logger) {
-  for (const auto& ep_context_node : graph_viewer.Nodes()) {
-    Status status = GetEpContextFromMainNode(ep_context_node, ctx_onnx_model_path, qnn_backend_manager, qnn_models);
+  ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
+  Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager,
+                                           qnn_models);
 
-    // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
-    if (!status.IsOK()) {
-      LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
-    }
+  // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
   }
 
   return Status::OK();
@@ -197,7 +193,7 @@ Status CreateEPContextNodes(Model* model,
                             uint64_t buffer_size,
                             const std::string& sdk_build_version,
                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                            const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
+                            const QnnModelLookupTable& qnn_models,
                             const onnxruntime::PathString& context_cache_path,
                             bool qnn_context_embed_mode,
                             const logging::Logger& logger) {

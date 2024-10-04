@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -30,7 +31,7 @@ pr:
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: 'macOS-13'
   variables:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
@@ -38,8 +39,7 @@ jobs:
   timeoutInMinutes: 150
   steps:
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
+
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -52,7 +52,7 @@ jobs:
               python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
                 --skip_submodule_sync \
                 --build_dir $(Build.BinariesDirectory)/iOS \
-                --build_shared \
+                --build_shared_lib \
                 --use_coreml \
                 --use_xnnpack \
                 --ios \

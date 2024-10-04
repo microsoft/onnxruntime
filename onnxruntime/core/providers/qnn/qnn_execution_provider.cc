@@ -36,7 +36,7 @@ constexpr const char* QNN = "QNN";
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {
-  OrtMutex mutex;
+  static OrtMutex mutex;
   std::lock_guard<OrtMutex> guard(mutex);
   if (!s_run_on_unload_) {
     s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
@@ -206,6 +206,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     // User can set this context_node_name_prefix for each split pieces to avoid that happens.
     context_node_name_prefix_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
     LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
+
+    share_ep_contexts_ =
+        session_options->config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified option - share EP contexts across sessions: " << share_ep_contexts_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -385,6 +389,20 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
+  static const std::string QNN_HTP_WEIGHT_SHARING_ENABLED = "enable_htp_weight_sharing";
+  auto htp_weight_sharing_enabled_pos = provider_options_map.find(QNN_HTP_WEIGHT_SHARING_ENABLED);
+  if (htp_weight_sharing_enabled_pos != provider_options_map.end()) {
+    if ("1" == htp_weight_sharing_enabled_pos->second) {
+      enable_htp_weight_sharing_ = true;
+    } else if ("0" == htp_weight_sharing_enabled_pos->second) {
+      enable_htp_weight_sharing_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing_
+                            << " only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
@@ -394,7 +412,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       std::move(qnn_saver_path),
       device_id_,
       htp_arch,
-      soc_model);
+      soc_model,
+      enable_htp_weight_sharing_);
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
@@ -514,6 +533,49 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
   return supported_nodes;
 }
 
+static bool EpSharedContextsHasAllGraphs(const onnxruntime::GraphViewer& graph_viewer,
+                                         const logging::Logger& logger) {
+  for (const auto& node : graph_viewer.Nodes()) {
+    NodeAttrHelper node_helper(node);
+    std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+    std::transform(cache_source.begin(),
+                   cache_source.end(),
+                   cache_source.begin(),
+                   [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+
+    if (qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+      const std::string& graph_name = node.Name();
+      bool has_shared_qnn_model = SharedContext::GetInstance().HasQnnModel(graph_name);
+      if (!has_shared_qnn_model) {
+        LOGS(logger, VERBOSE) << "Graph: " << graph_name << " from EpContext node not found from shared EP contexts.";
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                         const logging::Logger& logger) {
+  for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+    const auto& ep_context_node = graph_viewer.Nodes().begin();
+    NodeAttrHelper node_helper(*ep_context_node);
+    std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+    const std::string& graph_name = ep_context_node->Name();
+    bool has_shared_qnn_model = SharedContext::GetInstance().HasQnnModel(graph_name);
+    if (!has_shared_qnn_model) {
+      LOGS(logger, VERBOSE) << "Graph: " << graph_name << " from EpContext node not found from shared EP contexts.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // For model with EPContext, filter in EPContext nodes only, and make sure each partition only has one single EPContext node
 static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
                               const size_t num_nodes_in_graph,
@@ -576,6 +638,23 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto& logger = *GetLogger();
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
+  const auto gen_metadef_name = [&]() {
+    uint64_t model_hash;
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+    return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
+  };
+
+  // share ep contexts is enabled
+  // check the ep_shared_contexts to see if it contains all the graphs in the context model
+  // directly use the resource from ep_shared_contexts if it has all the graphs needed by the current session
+  // no need to setup QNN backend
+  if (is_qnn_ctx_model && share_ep_contexts_ && SharedContext::GetInstance().HasSharedQnnModels()) {
+    if (EpSharedContextsHasAllGraphs(graph_viewer, logger)) {
+      PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, logger);
+      return result;
+    }
+  }
+
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model);
@@ -594,12 +673,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
     return result;
   }
-
-  const auto gen_metadef_name = [&]() {
-    uint64_t model_hash;
-    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-    return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
-  };
 
   // For model with EPContext, make sure each partition only has one single EPContext node
   if (is_qnn_ctx_model) {
@@ -712,10 +785,10 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
     ORT_UNUSED_PARAMETER(state);
   };
 
-  compute_info.compute_func = [](FunctionState state, const OrtApi*, OrtKernelContext* context) {
+  compute_info.compute_func = [&logger](FunctionState state, const OrtApi*, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
     qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-    Status result = model->ExecuteGraph(ctx);
+    Status result = model->ExecuteGraph(ctx, logger);
     return result;
   };
 
@@ -766,16 +839,15 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                               qnn_backend_manager_.get());
+    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(qnn_backend_manager_.get());
 
     qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t> graph_configs_builder(QNN_GRAPH_CONFIG_INIT,
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_builder.GetQnnConfigs()));
-    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
-    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, logger, graph_configs_builder.GetQnnConfigs()));
+    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
+    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
     qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
@@ -806,13 +878,32 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                 "Please remove the EP context model manually if you want to re-generate it.");
 
   if (is_qnn_ctx_model) {
+    // Get QnnModel from EP shared contexts
+    if (share_ep_contexts_ && SharedContext::GetInstance().HasSharedQnnModels()) {
+      if (EpSharedContextsHasAllGraphs(fused_nodes_and_graphs, logger)) {
+        for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+          const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+          const auto& ep_context_node = graph_viewer.Nodes().begin();
+          const Node& fused_node = fused_node_and_graph.fused_node;
+          const std::string& graph_meta_id = fused_node.Name();
+          std::string key = ep_context_node->Name();
+          auto qnn_model_shared = SharedContext::GetInstance().GetSharedQnnModel(key);
+          ORT_RETURN_IF(nullptr == qnn_model_shared, "Graph: " + key + " not found from shared EP contexts.");
+          ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
+          ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput(logger));
+          qnn_models_.emplace(graph_meta_id, std::move(qnn_model_shared));
+          ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+        }
+        return Status::OK();
+      }
+    }
+
     // Table<EPContext node name, QnnModel>, the node name is the graph_meta_id (old) created from user model which used to generate the EP context model
     // for this session (created from an EP context model), the graph_meta_id is new
-    std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models;
+    qnn::QnnModelLookupTable qnn_models;
 
     std::vector<int> main_context_pos_list;
-    ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, qnn_backend_manager_.get(),
-                                                logger, main_context_pos_list, qnn_models));
+    ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, main_context_pos_list));
 
     for (auto main_context_pos : main_context_pos_list) {
       const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
@@ -832,14 +923,26 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       std::string key = ep_context_node->Name();
       ORT_RETURN_IF(qnn_models.find(key) == qnn_models.end(), key + " key name not exist in table qnn_models.");
       auto qnn_model = std::move(qnn_models[key]);
-      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
-      ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
+      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
+      ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
       // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
       // the name here must be same with context->node_name in compute_info
       qnn_models_.emplace(graph_meta_id, std::move(qnn_model));
+      qnn_models.erase(key);
 
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+    }
+
+    if (share_ep_contexts_ && qnn_models.size() > 0) {
+      std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models;
+      for (auto& [key, value] : qnn_models) {
+        shared_qnn_models.push_back(std::move(qnn_models[key]));
+      }
+      std::string duplicate_graph_names;
+      bool has_duplicate_graph = SharedContext::GetInstance().SetSharedQnnModel(std::move(shared_qnn_models),
+                                                                                duplicate_graph_names);
+      ORT_RETURN_IF(has_duplicate_graph, "Duplicate graph names detect across sessions: " + duplicate_graph_names);
     }
 
     return Status::OK();

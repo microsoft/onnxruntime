@@ -20,7 +20,3 @@ declare module 'onnxruntime-web/webgl' {
 declare module 'onnxruntime-web/webgpu' {
   export * from 'onnxruntime-web';
 }
-
-declare module 'onnxruntime-web/training' {
-  export * from 'onnxruntime-web';
-}

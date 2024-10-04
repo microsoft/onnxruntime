@@ -571,6 +571,13 @@ class Node {
             gsl::span<NodeArg* const> output_args,
             const NodeAttributes* attributes,
             std::string_view domain);
+  void Init(std::string_view name,
+            std::string_view op_type,
+            std::string_view description,
+            gsl::span<NodeArg* const> input_args,
+            gsl::span<NodeArg* const> output_args,
+            NodeAttributes&& attributes,
+            std::string_view domain);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -952,6 +959,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain);
 
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                const std::string& domain = kOnnxDomain);
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
