@@ -68,7 +68,7 @@
   ],
   "overrides": [
       { "name": "flatbuffers", "version": "23.5.26" }
-  ]
+  ],
   "features": {
     "tests": {
       "description": "Build ONNXRuntime unit tests",
