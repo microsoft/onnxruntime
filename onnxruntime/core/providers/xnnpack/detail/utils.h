@@ -77,7 +77,7 @@ struct XnnpackOperatorDeleter {
 
 bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
-bool IsComputeTypeSupported(uint8_t op_compute_type);
+bool IsComputeTypeSupported(int32_t op_compute_type);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
