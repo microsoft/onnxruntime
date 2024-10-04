@@ -695,11 +695,17 @@ def write_calibration_table(calibration_cache, dir="."):
         file.write(json_data)  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
+    zero = np.array(0)
     builder = flatbuffers.Builder(1024)
     key_value_list = []
     for key in sorted(calibration_cache.keys()):
         values = calibration_cache[key]
-        value = str(values.to_dict())  # str(max(abs(values[0]), abs(values[1])))
+        d_values = values.to_dict()
+        floats = [
+            float(d_values.get("highest", zero).item()),
+            float(d_values.get("lowest", zero).item()),
+        ]
+        value = key + " " + str(max(floats))
 
         flat_key = builder.CreateString(key)
         flat_value = builder.CreateString(value)
@@ -736,17 +742,16 @@ def write_calibration_table(calibration_cache, dir="."):
             logging.info(key_value.Value())
 
     # write plain text
-    zero = np.array(0)
     with open(os.path.join(dir, "calibration.cache"), "w") as file:
         for key in sorted(calibration_cache.keys()):
-            value = calibration_cache[key]
-            d_values = value.to_dict()
+            values = calibration_cache[key]
+            d_values = values.to_dict()
             floats = [
                 float(d_values.get("highest", zero).item()),
                 float(d_values.get("lowest", zero).item()),
             ]
-            s = key + " " + str(max(floats))
-            file.write(s)
+            value = key + " " + str(max(floats))
+            file.write(value)
             file.write("\n")
 
 
