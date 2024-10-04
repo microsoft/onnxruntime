@@ -6,8 +6,8 @@
 #include <limits>
 #include <memory>
 #include <unordered_map>
-#include <vector>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "core/framework/node_unit.h"
@@ -77,7 +77,9 @@ struct XnnpackOperatorDeleter {
 
 bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
-bool IsComputeTypeSupported(int32_t tp);
+using COMPUTE_TYPE_SETS = std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>;
+bool IsComputeTypeSupported(int32_t compute_type,
+                          std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set = std::nullopt);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
