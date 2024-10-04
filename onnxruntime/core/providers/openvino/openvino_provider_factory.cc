@@ -199,6 +199,26 @@ struct OpenVINO_Provider : Provider {
 
     if (provider_options_map.find("load_config") != provider_options_map.end()) {
       load_config = provider_options_map.at("load_config");
+
+      // Enforce that the input path is absolute, reject if not
+      if (!std::filesystem::path(load_config).is_absolute()) {
+        throw std::invalid_argument("The config file path must be an absolute path: " + load_config);
+      }
+
+      auto resolve_path = [&](const std::string& path) -> std::string {
+        std::filesystem::path fs_path = path;
+        // Canonicalize the path to resolve symbolic links and remove '..' or '.'
+        try {
+          fs_path = std::filesystem::canonical(fs_path);
+        } catch (const std::filesystem::filesystem_error& e) {
+          throw std::runtime_error("Error resolving config file path: " + std::string(e.what()));
+        }
+        return fs_path.string();
+      };
+
+      // Expand and resolve the filename to its canonical form
+      std::string resolved_filename = resolve_path(load_config);
+      load_config = resolved_filename;
     }
 
     if (provider_options_map.find("context") != provider_options_map.end()) {
