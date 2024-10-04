@@ -136,7 +136,15 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<Visible>false</Visible>
 		</None>
-	</ItemGroup>
+    <None Include="$(OnnxRuntimeRoot)\..\onnxruntime\test\testdata\lora\two_params_lora_model.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeRoot)\..\onnxruntime\test\testdata\lora\two_params_lora_model.onnx_adapter">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
 
 	<ItemGroup Condition="'$(IsAndroidBuild)' == 'true'">
 		<!-- local build -->
