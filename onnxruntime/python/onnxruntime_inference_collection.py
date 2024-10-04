@@ -602,7 +602,7 @@ class IOBinding:
         :param name: input name
         :param device_type: e.g. cpu, cuda, cann
         :param device_id: device id, e.g. 0
-        :param element_type: input element type, which can be either numpy type or onnx type.
+        :param element_type: input element type. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16)
         :param shape: input shape
         :param buffer_ptr: memory pointer to input data
         """
@@ -641,7 +641,7 @@ class IOBinding:
         :param name: output name
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
-        :param element_type: output element type
+        :param element_type: output element type. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16)
         :param shape: output shape
         :param buffer_ptr: memory pointer to output data
         """
@@ -777,7 +777,7 @@ class OrtValue:
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
 
         :param shape: List of integers indicating the shape of the OrtValue
-        :param element_type: The data type of the elements. It can be either numpy type or onnx element type.
+        :param element_type: The data type of the elements. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16).
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
