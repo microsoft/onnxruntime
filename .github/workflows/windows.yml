@@ -88,6 +88,9 @@ jobs:
 
       - name: "Run build.py(x64-windows)"
         run: |
+          set SystemDrive=%SYSTEMDRIVE%
+          set SystemRoot=%SYSTEMROOT%
+          set windir=%WINDIR%
           python tools\ci_build\build.py --build_dir "cmake_build/x64-windows" --skip_submodule_sync --skip_tests --compile_no_warning_as_error --parallel --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" --use_vcpkg --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-windows" --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         shell: cmd
 
