@@ -56,7 +56,6 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
-          doNotUpdateVcpkg: true
           runVcpkgInstall: true
           vcpkgJsonGlob: "cmake/vcpkg.json"
           vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
