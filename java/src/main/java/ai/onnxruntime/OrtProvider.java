@@ -43,6 +43,8 @@ public enum OrtProvider {
   AZURE("AzureExecutionProvider"),
   /** The QNN execution provider. */
   QNN("QNNExecutionProvider");
+  /** The WebGPU execution provider */
+  WEBGPU("WebGpuExecutionProvider");
 
   private static final Map<String, OrtProvider> valueMap = new HashMap<>(values().length);
 

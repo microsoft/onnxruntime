@@ -576,10 +576,11 @@ if (onnxruntime_USE_MIMALLOC)
   onnxruntime_fetchcontent_makeavailable(mimalloc)
 endif()
 
-#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
-# dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
-# pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date ${ONNXRUNTIME_CLOG_TARGET_NAME})
+set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
+                                   onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
+                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
+                                   ${ONNXRUNTIME_CLOG_TARGET_NAME})
+
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
@@ -634,24 +635,75 @@ if (onnxruntime_USE_COREML)
   FetchContent_Populate(coremltools)
 endif()
 
-message(STATUS "Finished fetching external dependencies")
+if (onnxruntime_USE_WEBGPU)
+  FetchContent_Declare(
+    dawn
+    URL ${DEP_URL_dawn}
+    URL_HASH SHA1=${DEP_SHA1_dawn}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+  )
 
-set(onnxruntime_LINK_DIRS )
+  # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
+  set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
+  set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+  set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
+  set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
 
+  # disable things we don't use
+  set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
+  set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
+  set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
+  set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
+  set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
+  set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
+  set(DAWN_USE_X11 OFF CACHE BOOL "" FORCE)
+
+  set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(TINT_BUILD_CMD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
+  set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
+  set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
+  set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
+  set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
+
+  # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
+  endif()
+
+  if (WIN32)
+    # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
+    set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
+    set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
+
+    # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
+    set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+  endif()
+
+  onnxruntime_fetchcontent_makeavailable(dawn)
+
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native dawn::dawn_proc)
+endif()
+
+set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
-      find_package(CUDAToolkit REQUIRED)
+  find_package(CUDAToolkit REQUIRED)
 
-      if(onnxruntime_CUDNN_HOME)
-        file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-        set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
-      endif()
-      include(cuDNN)
+  if(onnxruntime_CUDNN_HOME)
+    file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+    set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
+  endif()
+
+  include(cuDNN)
 endif()
 
 if(onnxruntime_USE_SNPE)
-    include(external/find_snpe.cmake)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
+  include(external/find_snpe.cmake)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 
-FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
-FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
+FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)
+FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR} ORT_SOURCE_DIR)
+
+message(STATUS "Finished fetching external dependencies")
