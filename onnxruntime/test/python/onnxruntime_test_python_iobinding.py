@@ -143,7 +143,7 @@ class TestIOBinding(unittest.TestCase):
                             y = ortvalue.numpy()
                             assert_almost_equal(x, y)
 
-    def test_bind_onnx_types(self):
+    def test_bind_input_onnx_types(self):
         opset = onnx_opset_version()
         devices = [
             (
@@ -185,28 +185,17 @@ class TestIOBinding(unittest.TestCase):
                         opset_imports=[helper.make_operatorsetid("", opset)],
                     )
 
+                    ort_value_x = C_OrtValue.ortvalue_from_numpy(x, inner_device)
+                    ort_value_y = onnxrt.OrtValue.ortvalue_from_shape_and_type(x.shape, onnx_dtype)
+
                     sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
-
                     bind = SessionIOBinding(sess._sess)
-                    ort_value = C_OrtValue.ortvalue_from_numpy(x, inner_device)
-                    bind.bind_ortvalue_input("X", ort_value)
-                    bind.bind_output("Y", inner_device)
+                    bind.bind_input("X", inner_device, onnx_dtype, x.shape, ort_value_x.data_ptr())
+                    bind.bind_output("Y", inner_device, onnx_dtype, x.shape, ort_value_y.data_ptr())
                     sess._sess.run_with_iobinding(bind, None)
-                    ortvaluevector = bind.get_outputs()
-                    self.assertIsInstance(ortvaluevector, OrtValueVector)
-                    ortvalue = bind.get_outputs()[0]
-                    y = ortvalue.numpy()
-                    assert_almost_equal(x, y)
+                    assert_almost_equal(x, ort_value_y.numpy())
 
-                    bind = SessionIOBinding(sess._sess)
-                    bind.bind_input("X", inner_device, onnx_dtype, x.shape, ort_value.data_ptr())
-                    bind.bind_output("Y", inner_device)
-                    sess._sess.run_with_iobinding(bind, None)
-                    ortvalue = bind.get_outputs()[0]
-                    y = ortvalue.numpy()
-                    assert_almost_equal(x, y)
-
-    # Test I/O binding with onnx type like bfloat16, which is not supported in numpy.
+    # Test I/O binding with onnx types like bfloat16 and float8, which are not supported in numpy.
     def test_bind_onnx_types_not_supported_by_numpy(self):
         try:
             import torch
@@ -231,10 +220,6 @@ class TestIOBinding(unittest.TestCase):
             for onnx_dtype in onnx_to_torch_type_map:
                 with self.subTest(onnx_dtype=onnx_dtype, inner_device=str(inner_device)):
 
-                    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
-                    x = torch.arange(8).to(torch_dtype)
-                    y = torch.empty(8, dtype=torch_dtype)
-
                     # Create onnx graph with dynamic axes
                     X = helper.make_tensor_value_info("X", onnx_dtype, [None])  # noqa: N806
                     Y = helper.make_tensor_value_info("Y", onnx_dtype, [None])  # noqa: N806
@@ -250,33 +235,17 @@ class TestIOBinding(unittest.TestCase):
 
                     sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
 
+                    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+                    x = torch.arange(8).to(torch_dtype)
+                    y = torch.empty(8, dtype=torch_dtype)
+
                     bind = sess.io_binding()
                     bind.bind_input("X", x.device.type, 0, onnx_dtype, x.shape, x.data_ptr())
                     bind.bind_output("Y", y.device.type, 0, onnx_dtype, y.shape, y.data_ptr())
                     sess.run_with_iobinding(bind)
-                    if onnx_dtype in [TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2]:
-                        self.assertTrue(torch.allclose(x.to(torch.float), y.to(torch.float)))
-                    else:
-                        self.assertTrue(torch.equal(x, y))
-
-                    # Create ortvalue with onnx type
-                    x = torch.arange(16).to(torch_dtype)
-                    y = torch.empty(16, dtype=torch_dtype)
-                    temp = onnxrt.OrtValue.ortvalue_from_shape_and_type(x.shape, onnx_dtype, x.device.type)
-
-                    bind = sess.io_binding()
-                    bind.bind_input("X", x.device.type, 0, onnx_dtype, x.shape, x.data_ptr())
-                    bind.bind_ortvalue_output("Y", temp)
-                    sess.run_with_iobinding(bind)
-
-                    bind = sess.io_binding()
-                    bind.bind_ortvalue_input("X", temp)
-                    bind.bind_output("Y", y.device.type, 0, onnx_dtype, y.shape, y.data_ptr())
-                    sess.run_with_iobinding(bind)
-
                     if onnx_dtype in [TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2]:
                         # torch has no cpu equal implementation of float8, so we compare them after casting to float.
-                        self.assertTrue(torch.allclose(x.to(torch.float), y.to(torch.float)))
+                        self.assertTrue(torch.equal(x.to(torch.float), y.to(torch.float)))
                     else:
                         self.assertTrue(torch.equal(x, y))
 
