@@ -562,6 +562,7 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
 
         // MlasSQNBitGemmDispatchNeon has a dependency on dot product instructions
+        // TODO(fajin): always install for ARM64
         this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     }
 

@@ -41,21 +41,24 @@ typedef enum {
 
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
+ *
+ * @tparam  T   data type of input A
  */
+template <typename T>
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
-    const float* A = nullptr;                       ///< address of A (float32 matrix)
-    size_t lda = 0;                                 ///< leading dimension of A
-    const void* QuantBDataWorkspace;                ///< address of quantized B (quantized n-bit int values)
-    const std::byte* PackedQuantBData = nullptr;    /// address of packed quantized B data
-    const float* QuantBScale = nullptr;             ///< address of scale values of quantized B, one per block
-    const void* QuantBZeroPoint = nullptr;          ///< optional address of zero point values of quantized B, one per block
-    const float* QuantBBlkSum = nullptr;            ///< optional address of scale * zp, one per block
-    const float* Bias = nullptr;                    ///< optional address of Bias, vector size N
-    float* C = nullptr;                             ///< address of result matrix
-    size_t ldc = 0;                                 ///< leading dimension of C
+    const T* A = nullptr;                         // address of A (float32/16 matrix)
+    size_t lda = 0;                               // leading dimension of A
+    const void* QuantBDataWorkspace;              // address of quantized B (quantized n-bit int values)
+    const std::byte* PackedQuantBData = nullptr;  // address of packed quantized B data
+    const T* QuantBScale = nullptr;               // address of scale values of quantized B, one per block
+    const void* QuantBZeroPoint = nullptr;        // optional address of zero point values of quantized B, one per block
+    const T* QuantBBlkSum = nullptr;              // optional address of scale * zp, one per block
+    const T* Bias = nullptr;                      // optional address of Bias, vector size N
+    T* C = nullptr;                               // address of result matrix
+    size_t ldc = 0;                               // leading dimension of C
 
     ///< optional post processing to apply to result matrix
-    MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
+    MLAS_GEMM_POSTPROCESSOR<T>* PostProcessor = nullptr;
 };
 
 /**
@@ -72,6 +75,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  *        Call MlasSQNBitGemmBatchWorkspaceSize() with the same parameters to determine whether `Workspace` should
  *          point to an intermediate workspace buffer.
  *
+ * @tparam          T               data type of input A
  * @param[in]       M               row size of matrix A and C
  * @param[in]       N               column size of matrix B and C
  * @param[in]       K               column size of matrix A and row size of matrix B
@@ -85,6 +89,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
                                     buffer with at least that many bytes. Otherwise, it may be nullptr.
  * @param[in]       ThreadPool      optional thread pool to use
  */
+template <typename T>
 void MLASCALL
 MlasSQNBitGemmBatch(
     size_t M,
@@ -94,7 +99,7 @@ MlasSQNBitGemmBatch(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<T>* DataParams,
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );
@@ -102,10 +107,12 @@ MlasSQNBitGemmBatch(
 /**
  * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
  *
+ * @tparam      T               data type of input A
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
+template<typename T>
 bool MLASCALL
 MlasIsSQNBitGemmAvailable(
     size_t BlkBitWidth,
