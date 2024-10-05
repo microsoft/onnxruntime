@@ -492,8 +492,8 @@ const createAttentionProbsProgramInfo = (
   ${shaderHelper.mainStart([TILE_SIZE, TILE_SIZE, 1])}
     // x holds the N and y holds the M
     let headIdx = workgroup_id.z;
-    let kvHeadIdx = headIdx / uniforms.n_reps;
-    let batchIdx = workgroup_id.z / uniforms.num_heads;
+    let kvHeadIdx = u32(headIdx / uniforms.n_reps);
+    let batchIdx = u32(workgroup_id.z / uniforms.num_heads);
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
     let sequence_length = uniforms.M;
@@ -677,8 +677,8 @@ const createVxAttentionScoreProgramInfo = (
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, ...outputVars)}
   ${shaderHelper.mainStart([TILE_SIZE, TILE_SIZE, 1])}
    let headIdx = workgroup_id.z;
-   let kvHeadIdx = headIdx / uniforms.n_reps;
-   let batchIdx = workgroup_id.z / uniforms.num_heads;
+   let kvHeadIdx = u32(headIdx / uniforms.n_reps);
+   let batchIdx = u32(workgroup_id.z / uniforms.num_heads);
    let m = global_id.y;
    let n = global_id.x;
    let sequence_length = uniforms.M;
