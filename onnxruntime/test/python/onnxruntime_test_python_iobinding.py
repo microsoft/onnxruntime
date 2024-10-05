@@ -7,9 +7,9 @@ import unittest
 import numpy as np
 from helper import get_name
 from numpy.testing import assert_almost_equal
-from onnx import helper
+from onnx import TensorProto, helper
 from onnx.defs import onnx_opset_version
-from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
+from onnx.mapping import TENSOR_TYPE_MAP
 
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
@@ -104,7 +104,7 @@ class TestIOBinding(unittest.TestCase):
                     ]:
                         with self.subTest(dtype=dtype, inner_device=str(inner_device)):
                             x = np.arange(8).reshape((-1, 2)).astype(dtype)
-                            proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
+                            proto_dtype = helper.np_dtype_to_tensor_dtype(x.dtype)
 
                             X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])  # noqa: N806
                             Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])  # noqa: N806
@@ -142,6 +142,116 @@ class TestIOBinding(unittest.TestCase):
                             ortvalue = bind.get_outputs()[0]
                             y = ortvalue.numpy()
                             assert_almost_equal(x, y)
+
+    def test_bind_onnx_types_supported_by_numpy(self):
+        opset = onnx_opset_version()
+        devices = [
+            (
+                C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0),
+                ["CPUExecutionProvider"],
+            ),
+        ]
+
+        for inner_device, provider in devices:
+            for onnx_dtype in [
+                TensorProto.FLOAT,
+                TensorProto.UINT8,
+                TensorProto.INT8,
+                TensorProto.UINT16,
+                TensorProto.INT16,
+                TensorProto.INT32,
+                TensorProto.INT64,
+                TensorProto.BOOL,
+                TensorProto.FLOAT16,
+                TensorProto.DOUBLE,
+                TensorProto.UINT32,
+                TensorProto.UINT64,
+            ]:
+                with self.subTest(onnx_dtype=onnx_dtype, inner_device=str(inner_device)):
+                    assert onnx_dtype in TENSOR_TYPE_MAP
+                    np_dtype = TENSOR_TYPE_MAP[onnx_dtype].np_dtype
+                    x = np.arange(8).reshape((-1, 2)).astype(np_dtype)
+
+                    # create onnx graph
+                    X = helper.make_tensor_value_info("X", onnx_dtype, [None, x.shape[1]])  # noqa: N806
+                    Y = helper.make_tensor_value_info("Y", onnx_dtype, [None, x.shape[1]])  # noqa: N806
+                    node_add = helper.make_node("Identity", ["X"], ["Y"])
+                    graph_def = helper.make_graph([node_add], "lr", [X], [Y], [])
+                    model_def = helper.make_model(
+                        graph_def,
+                        producer_name="dummy",
+                        ir_version=7,
+                        producer_version="0",
+                        opset_imports=[helper.make_operatorsetid("", opset)],
+                    )
+
+                    ort_value_x = C_OrtValue.ortvalue_from_numpy(x, inner_device)
+                    ort_value_y = onnxrt.OrtValue.ortvalue_from_shape_and_type(x.shape, onnx_dtype)
+
+                    sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
+                    bind = SessionIOBinding(sess._sess)
+                    bind.bind_input("X", inner_device, onnx_dtype, x.shape, ort_value_x.data_ptr())
+                    bind.bind_output("Y", inner_device, onnx_dtype, x.shape, ort_value_y.data_ptr())
+                    sess._sess.run_with_iobinding(bind, None)
+                    assert_almost_equal(x, ort_value_y.numpy())
+
+    # Test I/O binding with onnx types like bfloat16 and float8, which are not supported in numpy.
+    def test_bind_onnx_types_not_supported_by_numpy(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("Skipping since PyTorch is not installed.")
+
+        opset = onnx_opset_version()
+        devices = [
+            (
+                C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0),
+                ["CPUExecutionProvider"],
+            ),
+        ]
+
+        onnx_to_torch_type_map = {TensorProto.BFLOAT16: torch.bfloat16}
+        # Float8 support requires torch >= 2.1.0
+        if hasattr(torch, "float8_e4m3fn") and hasattr(torch, "float8_e5m2"):
+            onnx_to_torch_type_map.update(
+                {
+                    TensorProto.FLOAT8E4M3FN: torch.float8_e4m3fn,
+                    TensorProto.FLOAT8E5M2: torch.float8_e5m2,
+                }
+            )
+
+        for inner_device, provider in devices:
+            for onnx_dtype in onnx_to_torch_type_map:
+                with self.subTest(onnx_dtype=onnx_dtype, inner_device=str(inner_device)):
+
+                    # Create onnx graph with dynamic axes
+                    X = helper.make_tensor_value_info("X", onnx_dtype, [None])  # noqa: N806
+                    Y = helper.make_tensor_value_info("Y", onnx_dtype, [None])  # noqa: N806
+                    node_add = helper.make_node("Identity", ["X"], ["Y"])
+                    graph_def = helper.make_graph([node_add], "lr", [X], [Y], [])
+                    model_def = helper.make_model(
+                        graph_def,
+                        producer_name="dummy",
+                        ir_version=10,
+                        producer_version="0",
+                        opset_imports=[helper.make_operatorsetid("", opset)],
+                    )
+
+                    sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
+
+                    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+                    x = torch.arange(8).to(torch_dtype)
+                    y = torch.empty(8, dtype=torch_dtype)
+
+                    bind = sess.io_binding()
+                    bind.bind_input("X", x.device.type, 0, onnx_dtype, x.shape, x.data_ptr())
+                    bind.bind_output("Y", y.device.type, 0, onnx_dtype, y.shape, y.data_ptr())
+                    sess.run_with_iobinding(bind)
+                    if onnx_dtype != TensorProto.BFLOAT16:
+                        # torch has no cpu equal implementation of float8, so we compare them after casting to float.
+                        self.assertTrue(torch.equal(x.to(torch.float), y.to(torch.float)))
+                    else:
+                        self.assertTrue(torch.equal(x, y))
 
     def test_bind_input_only(self):
         for device, execution_provider, _ in test_params:
