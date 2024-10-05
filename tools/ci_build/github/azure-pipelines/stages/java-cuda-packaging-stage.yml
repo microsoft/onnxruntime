@@ -58,6 +58,10 @@ stages:
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
+    - template: ../templates/jar-maven-signing-win.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
     - task: CopyFiles@2
       displayName: 'Copy Java Files to Artifact Staging Directory'
       inputs:
