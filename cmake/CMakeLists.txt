@@ -489,6 +489,22 @@ if (onnxruntime_BUILD_CSHARP)
   endif()
 endif()
 
+if (onnxruntime_BUILD_OBJC)
+  check_language(OBJC)
+  if(CMAKE_OBJC_COMPILER)
+      enable_language(OBJC)
+  else()
+      message(FATAL_ERROR "Objective-C is not supported.")
+  endif()
+
+  check_language(OBJCXX)
+  if(CMAKE_OBJCXX_COMPILER)
+      enable_language(OBJCXX)
+  else()
+      message(FATAL_ERROR "Objective-C++ is not supported.")
+  endif()
+endif()
+
 if (NOT WIN32)
   #TODO: On Linux we may try https://github.com/microsoft/TraceLogging.git
   if (onnxruntime_ENABLE_INSTRUMENT)
