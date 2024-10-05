@@ -31,8 +31,9 @@ class ConstPointerContainer {
     ConstIterator(const ConstIterator& other) = default;
     ConstIterator& operator=(const ConstIterator& other) = default;
 
-    bool operator==(const ConstIterator& other) const noexcept { return current_ == other.current_; }
-    bool operator!=(const ConstIterator& other) const noexcept { return current_ != other.current_; }
+    bool operator==(const ConstIterator& rhs) const noexcept { return current_ == rhs.current_; }
+    bool operator!=(const ConstIterator& rhs) const noexcept { return current_ != rhs.current_; }
+    size_t operator-(const ConstIterator& rhs) const noexcept { return current_ - rhs.current_; }
 
     ConstIterator& operator++() {
       ++current_;

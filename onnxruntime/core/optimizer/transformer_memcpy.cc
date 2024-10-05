@@ -15,33 +15,40 @@ namespace onnxruntime {
 class TransformerMemcpyImpl {
  public:
   TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider)
-      : graph_(graph), provider_(provider) {}
+      : graph_(graph), provider_(provider) {
+  }
 
-  bool ModifyGraph(const KernelRegistryManager& schema_registries, const logging::Logger& logger, int& copy_node_counter);
+  bool ModifyGraph(const KernelRegistryManager& schema_registries, const logging::Logger& logger,
+                   int& copy_node_counter);
 
  private:
-  void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed);
-  void BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries);
-  void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input, const logging::Logger& logger);
-  bool ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed);
+  void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
+                   InitializedTensorSet& initializers_consumed);
+  void BuildDefsMapping(const NodeArg* arg, const KernelRegistryManager& kernel_registries);
+  void AddCopyNode(const NodeArg* arg, bool is_input, const logging::Logger& logger);
+  bool ProcessInitializers(const KernelRegistryManager& kernel_registries,
+                           const InitializedTensorSet& initializers_consumed);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
 
   // use value-based compare to make sure transformer output order is consistent
   struct NodeArgCompare {
-    bool operator()(const onnxruntime::NodeArg* lhs, const onnxruntime::NodeArg* rhs) const {
+    bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
       return lhs->Name() < rhs->Name();
     }
   };
 
-  std::set<onnxruntime::Node*, NodeCompare> provider_nodes_;
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_input_defs_;  // all input defs of non-provider nodes
-  std::set<onnxruntime::NodeArg*, NodeArgCompare> non_provider_output_defs_;       // all output defs of non-provider nodes
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_input_defs_;      // all input defs of provider nodes that should be in provider allocator
-  std::set<onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;           // all output defs of provider nodes that should be in provider allocator
-  std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_input_nodes_;
-  std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_output_nodes_;
+  std::set<const NodeArg*, NodeArgCompare> cpu_input_defs_;  // input defs that are consumed on CPU
+  std::set<const NodeArg*, NodeArgCompare> cpu_output_defs_;
+  std::set<const NodeArg*, NodeArgCompare> gpu_input_defs_;  // input defs that are consumed on GPU
+  std::set<const NodeArg*, NodeArgCompare> gpu_output_defs_;
+  std::set<const Node*, NodeCompare> gpu_nodes_;  // GPU based nodes
+
+  // Map of NodeArg to node that requires the value to be on GPU to consume as input
+  std::map<const NodeArg*, std::set<Node*, NodeCompare>> gpu_input_nodes_;
+  // Map of NodeArg to node that produces the value on GPU
+  std::map<const NodeArg*, std::set<Node*, NodeCompare>> gpu_output_nodes_;
 
   onnxruntime::Graph& graph_;
   std::string provider_;
@@ -60,21 +67,46 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   return initializer;
 }
 
+struct GpuEPs {
+  bool nvidia{false};
+  bool amd{false};
+  bool webgpu{false};
+};
+
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
+  // sanity check that we don't have unrelated GPU EPs, as the logic does not handle this scenario.
+  // CUDA/TensorRT vs ROCm/MIGraphX vs WebGPU are not cross compatible.
+  // To support this we'd need to be able to insert copy nodes between incompatible GPU devices.
+  // As there's no known scenario where we would mix these GPUs the complexity of that is not currently justified.
+  GpuEPs eps;
+  bool incompatible_gpu_eps = false;
+  for (auto& provider : provider_types_) {
+    if (provider == kCudaExecutionProvider || provider == kTensorrtExecutionProvider) {
+      eps.nvidia = true;
+      incompatible_gpu_eps |= eps.amd || eps.webgpu;
+    } else if (provider == kRocmExecutionProvider || provider == kMIGraphXExecutionProvider) {
+      eps.amd = true;
+      incompatible_gpu_eps |= eps.nvidia || eps.webgpu;
+    } /*else if (provider == kWebGpuExecutionProvider) {
+      eps.webgpu = true;
+      incompatible_gpu_eps |= eps.nvidia || eps.amd;
+    }*/
+  }
+
+  ORT_ENFORCE(!incompatible_gpu_eps, "Mixing CUDA/TensorRT, ROCm/MIGraphX, and WebGPU is not supported.");
+
   for (auto& provider : provider_types_) {
     if (!utils::ProviderIsCpuBased(provider)) {
       TransformerMemcpyImpl copy_impl(graph, provider);
 
       int copy_node_counter = 0;
       auto current_modified = copy_impl.ModifyGraph(registry_manager_, logger, copy_node_counter);
-      if (copy_node_counter > 0 && provider == kCudaExecutionProvider) {
-        LOGS(logger, WARNING) << copy_node_counter << " Memcpy nodes are added to the graph " << graph.Name()
-                              << " for " << provider
-                              << ". It might have negative impact on performance (including unable to run CUDA graph). "
-                              << "Set session_options.log_severity_level=1 to see the detail logs before this message.";
+      if (copy_node_counter > 0) {
+        LOGS(logger, WARNING) << copy_node_counter << " Memcpy nodes were added to the graph " << graph.Name()
+                              << " for " << provider;
       }
 
       modified = modified || current_modified;
@@ -99,27 +131,24 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
 /*
 
-Overview: The transformer transforms the input graph as follows:
+Overview: Transform the input graph as follows:
 
-(1) For every initializer W that is referenced by both provider and non-provider nodes,
-we create a duplicate initializer W2 and change all provider nodes to reference this
-duplicate copy.
+(1) For every initializer W that is referenced by both GPU and CPU nodes, we create a duplicate initializer W2
+and change all GPU nodes to consume this copy.
 
-(2) For every ml-value X that is computed by a provider node and referenced by a
-non-provider node, we introduce a new ml-value X2. We replace all references to X
-in provider nodes by X2, and introduce a copy from X2 to X. (All graph outputs
-are considered as non-provider references here.)
+(2) For every value X that is computed by a GPU node and referenced by a CPU node, we introduce a new value
+X2. We replace all references to X in GPU nodes by X2, and introduce a copy from X2 to X. (All graph outputs are
+considered to be CPU based.)
 
-(3 For every ml-value X that is computed by a non-provider node and referenced by
-a provider node, we introduce a new ml-value X2. We replace all references to X in
-provider nodes by X2, and introduce a copy from X to X2. (All graph inputs are
-considered to be non-provider here.)
+(3 For every value X that is computed by a CPU node and referenced by a GPU node, we introduce a new value X2.
+We replace all references to X in GPU nodes by X2, and introduce a copy from X to X2. (All graph inputs are considered
+to be CPU based.)
 
-Note that every ml-value is computed at a unique point (either provider or non-provider),
-but it may be referenced and used at multiple points (by both provider and non-provider).
+Note that every value is computed at a unique point (either GPU or CPU), but it may be referenced and used at multiple
+points by both GPU and CPU.
 
-This transformer does not currently optimize copies between, e.g., two different GPU devices, etc.
-
+It does not support multiple incompatible GPU devices (e.g. CUDA/TensorRT vs ROCm/MIGraphX vs WebGPU) being enabled.
+It does not handle/optimize copies between two different compatible GPU devices (e.g. 2 different nVidia GPUs).
 */
 
 bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_registries,
@@ -127,73 +156,72 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
                                         int& copy_node_counter) {
   bool modified = false;
   InitializedTensorSet initializers_consumed;
+
   // find defs that require copy
   for (auto& node : graph_.Nodes()) {
     // as we process the defs, collect all the initializers consumed at the current graph level
     ProcessDefs(node, kernel_registries, initializers_consumed);
   }
 
-  // for initializers shared by different providers, create dups
-  if (ProcessInitializers(kernel_registries, initializers_consumed))
+  // for initializers consumed on CPU and GPU, duplicate so there's a 1:1 relationship between initializer and device
+  if (ProcessInitializers(kernel_registries, initializers_consumed)) {
     modified = true;
+  }
 
-  for (auto arg : graph_.GetInputs())
+  for (auto arg : graph_.GetInputs()) {
     BuildDefsMapping(arg, kernel_registries);
+  }
 
-  for (auto arg : non_provider_input_defs_)
+  for (auto arg : cpu_input_defs_) {
     BuildDefsMapping(arg, kernel_registries);
+  }
 
-  for (auto arg : non_provider_output_defs_)
+  for (auto arg : cpu_output_defs_) {
     BuildDefsMapping(arg, kernel_registries);
+  }
 
-  for (auto arg : graph_.GetInputs())
-    // For inputs we need to create a copy node only when the input is connected to both provider
-    // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
-    if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
-      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true, logger);
-      copy_node_counter++;
-      modified = true;
-    }
-
-  for (auto arg : non_provider_output_defs_)
-    if (provider_input_defs_.count(arg)) {
+  for (const auto* arg : graph_.GetInputs())
+    // For inputs we need to create a copy node only when the input is connected to both GPU and CPU nodes.
+    // Otherwise utils::CopyInputsAcrossDevices() will do the job.
+    if (gpu_input_defs_.count(arg) && cpu_input_defs_.count(arg)) {
       AddCopyNode(arg, true, logger);
-      copy_node_counter++;
+      ++copy_node_counter;
       modified = true;
     }
 
-  for (auto arg : provider_output_defs_)
-    if (non_provider_input_defs_.count(arg)) {
+  for (auto arg : cpu_output_defs_) {
+    if (gpu_input_defs_.count(arg)) {
+      AddCopyNode(arg, true, logger);
+      ++copy_node_counter;
+      modified = true;
+    }
+  }
+
+  for (auto arg : gpu_output_defs_) {
+    if (cpu_input_defs_.count(arg)) {
       AddCopyNode(arg, false, logger);
-      copy_node_counter++;
+      ++copy_node_counter;
       modified = true;
     }
+  }
 
-  // Process implicit inputs in subgraphs that is explicitly consumed
-  // on both provider and non-provider nodes. This is mimicking
-  // logic for explicit graph inputs.
+  // Process implicit inputs in subgraphs that are explicitly consumed on both GPU and CPU nodes.
+  // This is replicating the copy logic for explicit graph inputs that is implemented in SessionState finalization.
   if (graph_.IsSubgraph()) {
     for (auto arg : graph_.ParentNode()->ImplicitInputDefs()) {
-      // Looking into `provider_input_defs_` and `non_provider_input_defs_`
-      // using NodeArg pointers from the outer scope is okay because the
-      // comparator is only name based (and doesn't compare raw pointers)
-      if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
-        // There should be at-least one explicit consumer of the NodeArg
-        // in both the provider node list and the non-provider node list.
-        // If there are no explicit consumers in both lists, we don't want
-        // to get into the business of adding copy nodes at this
-        // level.
-        // If there are explicit consumers in only one list (either provider
-        // or non-provider node consumers), there isn't any point in adding
-        // copy nodes in that case either as subgraph copy logic will take
-        // it to the required device (i.e.) we don't need to care about it here.
+      if (gpu_input_defs_.count(arg) && cpu_input_defs_.count(arg)) {
+        // There is an explicit consumer of the NodeArg on GPU and CPU nodes in the current graph.
+        //
+        // Implicit consumers (node in current graph has a nested subgraph with consumer node) will be handled by the
+        // copy to device that happens during subgraph execution.
 
-        // Be sure to use the NodeArg* relevant to the current graph level
-        // (the name will be the same as the parent node's implicit input)
-        const auto* node_arg_in_current_graph_level = *provider_input_defs_.find(arg);
+        // Looking into `gpu_input_defs_` using a NodeArg pointer from the outer scope is okay
+        // because the `find` uses NodeArgCompare which only matches on name, and the name will match the implicit
+        // input from the parent node.
+        const auto* node_arg_in_current_graph_level = *gpu_input_defs_.find(arg);
 
-        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true, logger);
-        copy_node_counter++;
+        AddCopyNode(node_arg_in_current_graph_level, true, logger);
+        ++copy_node_counter;
         modified = true;
       }
     }
@@ -204,32 +232,33 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
 
 void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
                                         InitializedTensorSet& initializers_consumed) {
-  auto node_provider_type = node.GetExecutionProviderType();
-  if ((node_provider_type == provider_) ||
-      (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
-      (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
-    provider_nodes_.insert(&node);
-    // note KernelCreateInfo might be nullptr for custom kernel
+  const auto& node_provider_type = node.GetExecutionProviderType();
+  const bool is_cpu_node = utils::ProviderIsCpuBased(node_provider_type);
+
+  if (is_cpu_node == false) {
+    gpu_nodes_.insert(&node);
+
+    // KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
     ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(node, &kci));
 
     bool is_implicit_input = false;
     auto process_inputs =
-        [this, &node, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
-          // check if this NodeArg is an initializer defined in current outer graph level
+        [this, &node, &kci, &initializers_consumed, &is_implicit_input](const NodeArg& arg, size_t index) {
+          // check if this NodeArg is an initializer
           const auto* initializer_tensor_proto = GetInitializer(graph_, arg.Name(), true);
           if (initializer_tensor_proto != nullptr) {
             initializers_consumed[arg.Name()] = initializer_tensor_proto;
           }
 
-          // implicit inputs have no location info in the kernel def, so do nothing to them here, leaving the control
-          // flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
+          // implicit inputs are consumed in subgraphs and have no location info in the kernel def.
+          // The subgraph execution logic will do the necessary copy if the input is required on a different device.
           // PlannerImpl::ComputeUseCounts has matching logic so the allocation plan does the same thing
           if (!is_implicit_input) {
             if (utils::IsInputOnCpu(node, kci, index)) {
-              non_provider_input_defs_.insert(&arg);
+              cpu_input_defs_.insert(&arg);
             } else {
-              provider_input_defs_.insert(&arg);
+              gpu_input_defs_.insert(&arg);
             }
           }
 
@@ -250,77 +279,87 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
         continue;
 
       if (utils::IsOutputOnCpu(node, kci, i))
-        non_provider_output_defs_.insert(arg);
+        cpu_output_defs_.insert(arg);
       else
-        provider_output_defs_.insert(arg);
+        gpu_output_defs_.insert(arg);
     }
-  } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider &&
-             node_provider_type != kRocmExecutionProvider && node_provider_type != kMIGraphXExecutionProvider) {
-    // TODO: copy between devices? i.e. multiple GPUs
-    if (node_provider_type != onnxruntime::kCpuExecutionProvider &&
-        node_provider_type != onnxruntime::kVitisAIExecutionProvider &&
-        !node_provider_type.empty()) {
-      ORT_THROW("Execution type '", node_provider_type, "' doesn't support memcpy ");
-    }
-
+  } else {
     for (const auto* arg : node.InputDefs()) {
       if (arg->Exists())
-        non_provider_input_defs_.insert(arg);
+        cpu_input_defs_.insert(arg);
     }
 
-    // Never add an implicit def to provider_input_defs_ or non_provider_input_defs_.
-    // This is because we don't want to add copy nodes on account of implicit
-    // inputs to nodes.
-    // We will rely on utils::CopyInputsAcrossDevices() to do the job.
+    // Never add an implicit def to gpu_input_defs_ or cpu_input_defs_.
+    // This is because we don't want to add copy nodes on account of implicit inputs to nodes.
+    // We will rely on utils::CopyInputsAcrossDevices() to do the job during subgraph execution setup.
+    //
     // for (const auto* arg : node.ImplicitInputDefs()) {
     //  if (arg->Exists())
-    //    non_provider_input_defs_.insert(arg);
+    //    cpu_input_defs_.insert(arg);
     //}
 
     for (auto* arg : node.MutableOutputDefs()) {
       if (arg->Exists())
-        non_provider_output_defs_.insert(arg);
+        cpu_output_defs_.insert(arg);
     }
   }
 }
 
-// for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
-void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries) {
-  for (auto& it : graph_.Nodes()) {
-    if (it.OpType() == "MemcpyFromHost" || it.OpType() == "MemcpyToHost") continue;
-    auto input_it =
-        std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
-    auto output_it =
-        std::find(it.MutableOutputDefs().begin(), it.MutableOutputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
-    int arg_input_index =
-        input_it != it.MutableInputDefs().end() ? static_cast<int>(input_it - it.MutableInputDefs().begin()) : -1;
-    int arg_output_index =
-        output_it != it.MutableOutputDefs().end() ? static_cast<int>(output_it - it.MutableOutputDefs().begin()) : -1;
-    if (arg_input_index == -1 && arg_output_index == -1)
+// collect the input/output NodeArg's that are GPU based
+void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelRegistryManager& kernel_registries) {
+  for (auto& cur_node : graph_.Nodes()) {
+    if (cur_node.OpType() == "MemcpyFromHost" || cur_node.OpType() == "MemcpyToHost") {
       continue;
-    auto node_provider_type = it.GetExecutionProviderType();
-    if ((node_provider_type == provider_) ||
-        (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
-        (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
-      const KernelCreateInfo* kci = nullptr;
-      ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, &kci));
-      if (arg_input_index != -1) {
-        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
+    }
+
+    auto node_provider_type = cur_node.GetExecutionProviderType();
+    if (!utils::ProviderIsCpuBased(node_provider_type)) {
+      auto input_it = std::find(cur_node.InputDefs().begin(), cur_node.InputDefs().end(), arg);
+      auto output_it = std::find(cur_node.OutputDefs().begin(), cur_node.OutputDefs().end(), arg);
+
+      int arg_input_index = input_it != cur_node.InputDefs().end()
+                                ? static_cast<int>(input_it - cur_node.InputDefs().begin())
+                                : -1;
+      int arg_output_index = output_it != cur_node.OutputDefs().end()
+                                 ? static_cast<int>(output_it - cur_node.OutputDefs().begin())
+                                 : -1;
+
+      if (arg_input_index == -1 && arg_output_index == -1) {
+        continue;
       }
+
+      const KernelCreateInfo* kci = nullptr;
+      ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(cur_node, &kci));
+
+      // GPU based nodes can potentially consume/produce CPU based values. check the kernel definition before adding.
+      // If no KernelCreateInfo is availabe assume all inputs/outputs are on GPU.
+      if (arg_input_index != -1) {
+        if (!kci || !utils::IsInputOnCpu(cur_node, kci, arg_input_index)) {
+          gpu_input_nodes_[arg].insert(&cur_node);
+        }
+      }
+
       if (arg_output_index != -1) {
-        if (!kci || !utils::IsOutputOnCpu(it, kci, arg_output_index)) provider_output_nodes_[arg].insert(&it);
+        if (!kci || !utils::IsOutputOnCpu(cur_node, kci, arg_output_index)) {
+          gpu_output_nodes_[arg].insert(&cur_node);
+        }
       }
     }
   }
 }
 
-void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input, const logging::Logger& logger) {
+void TransformerMemcpyImpl::AddCopyNode(const NodeArg* arg, bool is_input, const logging::Logger& logger) {
+  // we need to convert `arg` to a non-const NodeArg* as the AddNode needs that for shape inferencing to work.
+  // we _could_ do that by finding the graph input or producer node or consumer node and using the mutable graph_
+  // member to access that. the code complexity is not worth it so we use const_cast to be pragmatic.
+  NodeArg* mutable_arg = const_cast<NodeArg*>(arg);
+
   // create unique name for new def
   std::string new_def_name = graph_.GenerateNodeArgName(arg->Name() + "_" + provider_);
 
-  auto* new_arg = &graph_.GetOrCreateNodeArg(new_def_name, arg->TypeAsProto());
-  auto* src_arg = is_input ? arg : new_arg;
-  auto* dst_arg = is_input ? new_arg : arg;
+  NodeArg* new_arg = &graph_.GetOrCreateNodeArg(new_def_name, arg->TypeAsProto());
+  NodeArg* src_arg = is_input ? mutable_arg : new_arg;
+  NodeArg* dst_arg = is_input ? new_arg : mutable_arg;
 
   // create unique name for copy node
   std::string new_node_name = graph_.GenerateNodeName("Memcpy");
@@ -329,89 +368,97 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
   LOGS(logger, INFO) << "Add " << op_name << (is_input ? " after " : " before ") << arg->Name()
                      << " for " << provider_;
 
-  auto& new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory",
-                                  std::vector<onnxruntime::NodeArg*>{src_arg},
-                                  std::vector<onnxruntime::NodeArg*>{dst_arg});
+  auto& new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory", {src_arg}, {dst_arg});
+
   new_node.SetExecutionProviderType(provider_);
-  std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
-  auto it = provider_input_nodes_.find(arg);
-  if (it != provider_input_nodes_.end()) {
+  std::map<const NodeArg*, NodeArg*> map = {{arg, new_arg}};
+
+  auto it = gpu_input_nodes_.find(arg);
+  if (it != gpu_input_nodes_.end()) {
     for (auto* node : it->second)
       node->ReplaceDefs(map);
   }
-  it = provider_output_nodes_.find(arg);
-  if (it != provider_output_nodes_.end()) {
+
+  it = gpu_output_nodes_.find(arg);
+  if (it != gpu_output_nodes_.end()) {
     for (auto* node : it->second)
       node->ReplaceDefs(map);
   }
 }
 
 template <typename NodeArgSetType>
-static const onnxruntime::NodeArg* FindNodeArg(const NodeArgSetType& def_set, const std::string& name) {
+static const NodeArg* FindNodeArg(const NodeArgSetType& def_set, const std::string& name) {
   NodeArg def(name, nullptr);
   auto it = def_set.find(&def);  // this works since we use name to compare NodeArg
-  if (it != def_set.end())
-    return *it;
-  return nullptr;
+
+  return it != def_set.end() ? *it : nullptr;
 }
 
 // We duplicate any initializer that is used by both provider nodes and non-provider nodes
 // to ensure that provider nodes and non-provider nodes don't share initializers, as they
 // need to stay in different memory locations.
-bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed) {
-  std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
+bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& kernel_registries,
+                                                const InitializedTensorSet& initializers_consumed) {
+  std::map<const NodeArg*, NodeArg*> replacements;
   for (const auto& pair : initializers_consumed) {
     const auto& name = pair.first;
-    const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
-    const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
-    if (provider_def != nullptr && non_provider_def != nullptr) {
-      std::string new_def_name = graph_.GenerateNodeArgName(name);
-      auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
+    const NodeArg* gpu_def = FindNodeArg(gpu_input_defs_, name);
+    const NodeArg* cpu_def = FindNodeArg(cpu_input_defs_, name);
 
-      // We make a copy of the initializer that is to be consumed by the provider Node so that
-      // session state initializer can copy it over to the provider device during its operation
-      // TODO: The copy being made is possibly redundant if this occurs in a subgraph
-      // When multiple subgraphs consume the same initializer as an implicit input,
-      // multiple copies of the initializer will be made into the provider device
-      // This should not directly affect runtime performance as the copies occur during initialization
-      // but overuse of the provider device's memory is definitely inefficient
-      // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
+    // value is consumed on GPU and CPU and needs to be duplicated
+    if (gpu_def != nullptr && cpu_def != nullptr) {
+      std::string new_def_name = graph_.GenerateNodeArgName(name);
+      auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, gpu_def->TypeAsProto());
+
+      // We make a copy of the initializer that is to be consumed by the GPU-based Node so that SessionState
+      // finalization can copy it to the GPU.
+      // TODO: The copy being made is possibly redundant if this occurs in a subgraph.
+      // When multiple subgraphs consume the same initializer as an implicit input, multiple copies of the initializer
+      // will be made to the GPU. This should not directly affect runtime performance as the copies occur during
+      // initialization but overuse of the GPU memory is definitely inefficient.
+      // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing
+      // the initializer
       const TensorProto* tensor_proto = pair.second;
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
       graph_.AddInitializedTensor(new_tensor_proto);
 
-      replacements.insert(std::make_pair(provider_def, &new_def));
+      replacements.insert(std::make_pair(gpu_def, &new_def));
     }
   }
 
-  for (auto p_node : provider_nodes_) {
+  for (auto p_node : gpu_nodes_) {
     // make a copy of replacement map as the node may exclude mapping for InputDefs with MemTypeOnCpuExplicitly
     auto dup_replacements = replacements;
 
     const KernelCreateInfo* kci = nullptr;
     auto status = kernel_registries.SearchKernelRegistry(*p_node, &kci);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    if (kci == nullptr) continue;
-    if (kci->kernel_def == nullptr) continue;
-    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
-        p_node->InputDefs(),
-        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-          if (utils::IsInputOnCpu(*p_node, kci, index)) dup_replacements.erase(&arg);
-          return Status::OK();
-        }));
+
+    if (kci == nullptr || kci->kernel_def == nullptr) {
+      continue;
+    }
+
+    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(p_node->InputDefs(),
+                                              [kci, &p_node, &dup_replacements](const NodeArg& arg, size_t index) {
+                                                if (utils::IsInputOnCpu(*p_node, kci, index)) {
+                                                  dup_replacements.erase(&arg);
+                                                }
+
+                                                return Status::OK();
+                                              }));
 
     // normally initializers are only inputs, but things may change with ops like assign
-    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
-        p_node->OutputDefs(),
-        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-          if (utils::IsOutputOnCpu(*p_node, kci, index)) {
-            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
-          }
-          return Status::OK();
-        }));
+    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(p_node->OutputDefs(),
+                                              [kci, &p_node, &dup_replacements](const NodeArg& arg, size_t index) {
+                                                if (utils::IsOutputOnCpu(*p_node, kci, index)) {
+                                                  ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
+                                                }
+                                                return Status::OK();
+                                              }));
 
-    p_node->ReplaceDefs(dup_replacements);
+    // convert const Node* to non-const via GetNode call and do the replacement
+    graph_.GetNode(p_node->Index())->ReplaceDefs(dup_replacements);
   }
 
   // This denotes a modification to the graph
