@@ -22,6 +22,52 @@ namespace python {
 namespace py = pybind11;
 
 namespace {
+
+void ThrowDeviceError(const char* message, const OrtDevice& device) {
+  std::ostringstream ostr;
+  ostr << message
+       << " DeviceType=" << device.device_id
+       << " DeviceId=" << device.device_id
+       << " MemoryType=" << static_cast<int>(device.memory_type)
+       << " DeviceTypeName=";
+
+  if (device.device_type == OrtDevice::CPU) {
+    ostr << "cpu";
+  } else if (device.device_type == OrtDevice::GPU) {
+#if defined(USE_DML)
+    ostr << "dml";
+#else
+    ostr << "cuda"; // for CUDA or ROCM ep.
+#endif
+  } else if (device.device_type == OrtDevice::FPGA) {
+    ostr << "fpga";
+  } else if (device.device_type == OrtDevice::NPU) {
+#ifdef USE_CANN
+    ostr << "cann";
+#else
+    ostr << "npu";
+#endif
+  } else {
+    ostr << "unknown";
+  }
+
+  ostr << " MemoryTypeName=";
+
+  if (device.memory_type == OrtDevice::DEFAULT) {
+    ostr << "default";
+  } else if (device.memory_type == OrtDevice::CUDA_PINNED) {
+    ostr << "cuda_pinned";
+  } else if (device.memory_type == OrtDevice::HIP_PINNED) {
+    ostr << "hip_pinned";
+  } else if (device.memory_type == OrtDevice::CANN_PINNED) {
+    ostr << "cann_pinned";
+  } else {
+    ostr << "unknown";
+  }
+
+  throw std::runtime_error(ostr.str());
+}
+
 std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& shape,
                                                    MLDataType element_type,
                                                    const OrtDevice& device) {
@@ -31,24 +77,26 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
   } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
 #ifdef USE_CUDA
     if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-      throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+      ThrowDeviceError("The provided CUDA device id doesn't match any available GPUs on the machine.", device);
     }
     allocator = GetCudaAllocator(device.Id());
 #else
-    throw std::runtime_error(
+    ThrowDeviceError(
         "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-        "Please use the CUDA package of OnnxRuntime to use this feature.");
+        "Please use the CUDA package of OnnxRuntime to use this feature.",
+        device);
 #endif
   } else if (strcmp(GetDeviceName(device), DML) == 0) {
 #if USE_DML
     allocator = GetDmlAllocator(device.Id());
 #else
-    throw std::runtime_error(
+    ThrowDeviceError(
         "Can't allocate memory on the DirectML device using this package of OnnxRuntime. "
-        "Please use the DirectML package of OnnxRuntime to use this feature.");
+        "Please use the DirectML package of OnnxRuntime to use this feature.",
+        device);
 #endif
   } else {
-    throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+    ThrowDeviceError("Unsupported device: Cannot place the OrtValue on this device", device);
   }
 
   auto ml_value = std::make_unique<OrtValue>();
@@ -76,11 +124,10 @@ void addOrtValueMethods(pybind11::module& m) {
 
           CreateGenericMLValue(nullptr, GetAllocator(), "", array_on_cpu, ml_value.get(), true);
         } else if (device.Type() == OrtDevice::GPU) {
-      // The tensor's memory is allocated on CUDA
-
+          // The tensor's memory is allocated on CUDA
 #ifdef USE_CUDA
           if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            ThrowDeviceError("The provided CUDA device id doesn't match any available GPUs on the machine.", device);
           }
 
           // InputDeflist is null because OrtValue creation is not tied to a specific model
@@ -89,7 +136,7 @@ void addOrtValueMethods(pybind11::module& m) {
           CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
 #elif USE_ROCM
       if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-        throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+        ThrowDeviceError("The provided device id doesn't match any available GPUs on the machine.", device);
       }
 
       // InputDeflist is null because OrtValue creation is not tied to a specific model
@@ -103,25 +150,27 @@ void addOrtValueMethods(pybind11::module& m) {
       CreateGenericMLValue(
         nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+      ThrowDeviceError(
+        "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+        "Please use the CUDA package of OnnxRuntime to use this feature.",
+        device);
 #endif
         } else if (device.Type() == OrtDevice::NPU) {
 #ifdef USE_CANN
           if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available NPUs on the machine.");
+            ThrowDeviceError("The provided NPU device id doesn't match any available NPUs on the machine.", device);
           }
 
           CreateGenericMLValue(nullptr, GetCannAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
                                true, false, CpuToCannMemCpy);
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
-          "Please use the CANN package of OnnxRuntime to use this feature.");
+      ThrowDeviceError(
+          "Can't allocate memory on the NPU device using this package of OnnxRuntime. "
+          "Please use the CANN package of OnnxRuntime to use this feature.",
+          device);
 #endif
         } else {
-          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+          ThrowDeviceError("Unsupported device: Cannot place the OrtValue on this device.", device);
         }
 
         return ml_value;
@@ -146,7 +195,7 @@ void addOrtValueMethods(pybind11::module& m) {
         } else if (device.Type() == OrtDevice::GPU) {
 #ifdef USE_CUDA
           if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            ThrowDeviceError("The provided CUDA device id doesn't match any available GPUs on the machine.", device);
           }
 
           onnxruntime::python::CopyDataToTensor(
@@ -156,7 +205,7 @@ void addOrtValueMethods(pybind11::module& m) {
               CpuToCudaMemCpy);
 #elif USE_ROCM
           if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            ThrowDeviceError("The provided device id doesn't match any available GPUs on the machine.", device);
           }
 
           onnxruntime::python::CopyDataToTensor(
@@ -171,11 +220,10 @@ void addOrtValueMethods(pybind11::module& m) {
             *(ml_value->GetMutable<Tensor>()),
             CpuToDmlMemCpy);
 #else
-        throw std::runtime_error(
-            "Unsupported GPU device: Cannot find the supported GPU device.");
+        ThrowDeviceError("Unsupported GPU device: Cannot find the supported GPU device.", device);
 #endif
         } else {
-          throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
+          ThrowDeviceError("Unsupported device: Cannot update the OrtValue on this device.", device);
         }
       })
       // Create an ortvalue value on top of the numpy array, but interpret the data
