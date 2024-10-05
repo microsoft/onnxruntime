@@ -21,6 +21,17 @@ class TransformerMemcpyImpl {
   bool ModifyGraph(const KernelRegistryManager& schema_registries, const logging::Logger& logger,
                    int& copy_node_counter);
 
+  // use value-based compare to make sure transformer output order is consistent
+  struct NodeArgCompareName {
+    bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
+      return lhs->Name() < rhs->Name();
+    }
+  };
+
+  using NodeArgSet = std::set<const NodeArg*, NodeArgCompareName>;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
+
  private:
   void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
                    InitializedTensorSet& initializers_consumed);
@@ -29,20 +40,10 @@ class TransformerMemcpyImpl {
   bool ProcessInitializers(const KernelRegistryManager& kernel_registries,
                            const InitializedTensorSet& initializers_consumed);
 
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
-
-  // use value-based compare to make sure transformer output order is consistent
-  struct NodeArgCompare {
-    bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
-      return lhs->Name() < rhs->Name();
-    }
-  };
-
-  std::set<const NodeArg*, NodeArgCompare> cpu_input_defs_;  // input defs that are consumed on CPU
-  std::set<const NodeArg*, NodeArgCompare> cpu_output_defs_;
-  std::set<const NodeArg*, NodeArgCompare> gpu_input_defs_;  // input defs that are consumed on GPU
-  std::set<const NodeArg*, NodeArgCompare> gpu_output_defs_;
+  std::set<const NodeArg*, NodeArgCompareName> cpu_input_defs_;  // input defs that are consumed on CPU
+  std::set<const NodeArg*, NodeArgCompareName> cpu_output_defs_;
+  std::set<const NodeArg*, NodeArgCompareName> gpu_input_defs_;  // input defs that are consumed on GPU
+  std::set<const NodeArg*, NodeArgCompareName> gpu_output_defs_;
   std::set<const Node*, NodeCompare> gpu_nodes_;  // GPU based nodes
 
   // Map of NodeArg to node that requires the value to be on GPU to consume as input
@@ -216,7 +217,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
         // copy to device that happens during subgraph execution.
 
         // Looking into `gpu_input_defs_` using a NodeArg pointer from the outer scope is okay
-        // because the `find` uses NodeArgCompare which only matches on name, and the name will match the implicit
+        // because the `find` uses NodeArgCompareName which only matches on name, and the name will match the implicit
         // input from the parent node.
         const auto* node_arg_in_current_graph_level = *gpu_input_defs_.find(arg);
 
@@ -317,12 +318,12 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
       auto input_it = std::find(cur_node.InputDefs().begin(), cur_node.InputDefs().end(), arg);
       auto output_it = std::find(cur_node.OutputDefs().begin(), cur_node.OutputDefs().end(), arg);
 
-      int arg_input_index = input_it != cur_node.InputDefs().end()
-                                ? static_cast<int>(input_it - cur_node.InputDefs().begin())
-                                : -1;
-      int arg_output_index = output_it != cur_node.OutputDefs().end()
-                                 ? static_cast<int>(output_it - cur_node.OutputDefs().begin())
-                                 : -1;
+      size_t arg_input_index = input_it != cur_node.InputDefs().end()
+                                   ? input_it - cur_node.InputDefs().begin()
+                                   : -1;
+      size_t arg_output_index = output_it != cur_node.OutputDefs().end()
+                                    ? output_it - cur_node.OutputDefs().begin()
+                                    : -1;
 
       if (arg_input_index == -1 && arg_output_index == -1) {
         continue;
@@ -350,8 +351,8 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
 
 void TransformerMemcpyImpl::AddCopyNode(const NodeArg* arg, bool is_input, const logging::Logger& logger) {
   // we need to convert `arg` to a non-const NodeArg* as the AddNode needs that for shape inferencing to work.
-  // we _could_ do that by finding the graph input or producer node or consumer node and using the mutable graph_
-  // member to access that. the code complexity is not worth it so we use const_cast to be pragmatic.
+  // we _could_ do that by finding the graph input or producer node or consumer node using the mutable graph_
+  // member. the code complexity is not worth it so we use const_cast to be pragmatic.
   NodeArg* mutable_arg = const_cast<NodeArg*>(arg);
 
   // create unique name for new def
@@ -386,8 +387,7 @@ void TransformerMemcpyImpl::AddCopyNode(const NodeArg* arg, bool is_input, const
   }
 }
 
-template <typename NodeArgSetType>
-static const NodeArg* FindNodeArg(const NodeArgSetType& def_set, const std::string& name) {
+static const NodeArg* FindNodeArg(const TransformerMemcpyImpl::NodeArgSet& def_set, const std::string& name) {
   NodeArg def(name, nullptr);
   auto it = def_set.find(&def);  // this works since we use name to compare NodeArg
 
