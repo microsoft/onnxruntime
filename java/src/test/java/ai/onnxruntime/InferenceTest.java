@@ -772,7 +772,7 @@ public class InferenceTest {
           assertArrayEquals(expectedOutput, resultArray, 1e-2f);
         } else if (provider == OrtProvider.CUDA || provider == OrtProvider.TENSOR_RT) {
           // CUDA gives slightly different answers on a H100 with CUDA 12.2
-          // Need larger tolerance since TRT 10.4 
+          // Need larger tolerance since TRT 10.4
           assertArrayEquals(expectedOutput, resultArray, 1e-3f);
         } else {
           assertArrayEquals(expectedOutput, resultArray, 1e-5f);
