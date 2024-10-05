@@ -61,8 +61,12 @@ SQ4BitGemmPackQuantBData(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    constexpr size_t BlkBitWidth = 4;
+    if (ComputeType == CompFp16) {
+        // TODO(fajin): call another function for fp16
+        return;
+    }
 
+    constexpr size_t BlkBitWidth = 4;
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
@@ -176,6 +180,7 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 //
 
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
+    // TODO(fajin): ISA version contidional branch 1> i8mm, 2> dotprod, 3> fp16
     MLAS_SQNBIT_GEMM_DISPATCH d;
 
     d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;

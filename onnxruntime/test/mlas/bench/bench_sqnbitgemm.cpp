@@ -76,7 +76,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                                  tp.get());
   }
 
-  MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
+  MLAS_SQNBIT_GEMM_DATA_PARAMS<float> params{};
   params.A = A.data();
   params.lda = K;
   if (PackedQuantBData != nullptr)
