@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/mlas/inc/mlas.h"
-#include "core/providers/xnnpack/xnnpack_init.h"
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM) || defined(XNNPACK_FP16_SUPPORTED)
 
