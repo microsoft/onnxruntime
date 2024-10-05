@@ -80,10 +80,6 @@ struct DefaultTolerance<MLFloat16> {
     if (provider_type == kDmlExecutionProvider) {
       return 0.005f;
     }
-    if (provider_type == kXnnpackExecutionProvider) {
-      // To allow tests like ConvTranspose_2D_Bias_1 to pass
-      return 0.05f;
-    }
     return absolute;
   }
 };
