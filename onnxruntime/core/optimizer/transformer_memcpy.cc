@@ -322,7 +322,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
       continue;
     }
 
-    auto node_provider_type = cur_node.GetExecutionProviderType();
+    const auto& node_provider_type = cur_node.GetExecutionProviderType();
     // TODO: This runs post-partitioning so a better fix is to ensure all nodes are assigned earlier.
     if (ProviderIsGpuBased(node_provider_type)) {
       auto input_it = std::find(cur_node.InputDefs().begin(), cur_node.InputDefs().end(), arg);
