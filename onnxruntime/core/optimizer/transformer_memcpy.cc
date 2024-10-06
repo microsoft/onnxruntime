@@ -9,7 +9,7 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
-
+namespace {
 // implements MemCpy node insertion in graph transform
 // note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTransformer
 class TransformerMemcpyImpl {
@@ -58,7 +58,7 @@ class TransformerMemcpyImpl {
 /** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer.
 @param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
 */
-static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
+const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
   const onnx::TensorProto* initializer = nullptr;
   if (graph.GetInitializedTensor(name, initializer)) {
     return initializer;
@@ -67,6 +67,12 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   }
   return initializer;
 }
+
+bool ProviderIsGpuBased(const std::string& provider) {
+  return !provider.empty() && !utils::ProviderIsCpuBased(provider);
+}
+
+}  // namespace
 
 struct GpuEPs {
   bool nvidia{false};
@@ -100,7 +106,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   ORT_ENFORCE(!incompatible_gpu_eps, "Mixing CUDA/TensorRT, ROCm/MIGraphX, and WebGPU is not supported.");
 
   for (auto& provider : provider_types_) {
-    if (!utils::ProviderIsCpuBased(provider)) {
+    if (!ProviderIsGpuBased(provider)) {
       TransformerMemcpyImpl copy_impl(graph, provider);
 
       int copy_node_counter = 0;
@@ -234,9 +240,12 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
 void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
                                         InitializedTensorSet& initializers_consumed) {
   const auto& node_provider_type = node.GetExecutionProviderType();
-  const bool is_cpu_node = utils::ProviderIsCpuBased(node_provider_type);
+  if (node_provider_type.empty()) {
+    // ignore unassigned nodes
+    return;
+  }
 
-  if (is_cpu_node == false) {
+  if (ProviderIsGpuBased(node_provider_type)) {
     gpu_nodes_.insert(&node);
 
     // KernelCreateInfo might be nullptr for custom kernel
@@ -314,7 +323,8 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
     }
 
     auto node_provider_type = cur_node.GetExecutionProviderType();
-    if (!utils::ProviderIsCpuBased(node_provider_type)) {
+    // TODO: This runs post-partitioning so a better fix is to ensure all nodes are assigned earlier.
+    if (ProviderIsGpuBased(node_provider_type)) {
       auto input_it = std::find(cur_node.InputDefs().begin(), cur_node.InputDefs().end(), arg);
       auto output_it = std::find(cur_node.OutputDefs().begin(), cur_node.OutputDefs().end(), arg);
 
