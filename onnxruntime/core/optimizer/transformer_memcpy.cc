@@ -68,7 +68,8 @@ const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& n
   return initializer;
 }
 
-bool ProviderIsGpuBased(const std::string& provider) {
+bool NodeAssignedToGpuEP(const Node& node) {
+  const auto& provider = node.GetExecutionProviderType();
   return !provider.empty() && !utils::ProviderIsCpuBased(provider);
 }
 
@@ -106,7 +107,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   ORT_ENFORCE(!incompatible_gpu_eps, "Mixing CUDA/TensorRT, ROCm/MIGraphX, and WebGPU is not supported.");
 
   for (auto& provider : provider_types_) {
-    if (ProviderIsGpuBased(provider)) {
+    if (utils::ProviderIsCpuBased(provider) == false) {
       TransformerMemcpyImpl copy_impl(graph, provider);
 
       int copy_node_counter = 0;
@@ -239,13 +240,13 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
 
 void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
                                         InitializedTensorSet& initializers_consumed) {
-  const auto& node_provider_type = node.GetExecutionProviderType();
-  if (node_provider_type.empty()) {
-    // ignore unassigned nodes
+  if (node.GetExecutionProviderType().empty()) {
+    // ignore unassigned nodes. the model can't be executed but we check for unassigned nodes later on during
+    // session state finalization to ensure nodes added in L2 and L3 optimization are assigned to an EP.
     return;
   }
 
-  if (ProviderIsGpuBased(node_provider_type)) {
+  if (NodeAssignedToGpuEP(node)) {
     gpu_nodes_.insert(&node);
 
     // KernelCreateInfo might be nullptr for custom kernel
@@ -322,9 +323,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
       continue;
     }
 
-    const auto& node_provider_type = cur_node.GetExecutionProviderType();
-    // TODO: This runs post-partitioning so a better fix is to ensure all nodes are assigned earlier.
-    if (ProviderIsGpuBased(node_provider_type)) {
+    if (NodeAssignedToGpuEP(cur_node)) {
       auto input_it = std::find(cur_node.InputDefs().begin(), cur_node.InputDefs().end(), arg);
       auto output_it = std::find(cur_node.OutputDefs().begin(), cur_node.OutputDefs().end(), arg);
 
