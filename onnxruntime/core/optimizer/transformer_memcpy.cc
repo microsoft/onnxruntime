@@ -72,13 +72,13 @@ bool ProviderIsGpuBased(const std::string& provider) {
   return !provider.empty() && !utils::ProviderIsCpuBased(provider);
 }
 
-}  // namespace
-
-struct GpuEPs {
+struct EnabledGpuEPs {
   bool nvidia{false};
   bool amd{false};
   bool webgpu{false};
 };
+
+}  // namespace
 
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
@@ -88,7 +88,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   // CUDA/TensorRT vs ROCm/MIGraphX vs WebGPU are not cross compatible.
   // To support this we'd need to be able to insert copy nodes between incompatible GPU devices.
   // As there's no known scenario where we would mix these GPUs the complexity of that is not currently justified.
-  GpuEPs eps;
+  EnabledGpuEPs eps;
   bool incompatible_gpu_eps = false;
   for (auto& provider : provider_types_) {
     if (provider == kCudaExecutionProvider || provider == kTensorrtExecutionProvider) {
@@ -328,14 +328,17 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
       auto input_it = std::find(cur_node.InputDefs().begin(), cur_node.InputDefs().end(), arg);
       auto output_it = std::find(cur_node.OutputDefs().begin(), cur_node.OutputDefs().end(), arg);
 
-      size_t arg_input_index = input_it != cur_node.InputDefs().end()
-                                   ? input_it - cur_node.InputDefs().begin()
-                                   : -1;
-      size_t arg_output_index = output_it != cur_node.OutputDefs().end()
-                                    ? output_it - cur_node.OutputDefs().begin()
-                                    : -1;
+      std::optional<size_t> arg_input_index, arg_output_index;
 
-      if (arg_input_index == -1 && arg_output_index == -1) {
+      if (input_it != cur_node.InputDefs().end()) {
+        arg_input_index = input_it - cur_node.InputDefs().begin();
+      }
+
+      if (output_it != cur_node.OutputDefs().end()) {
+        arg_output_index = output_it - cur_node.OutputDefs().begin();
+      }
+
+      if (!arg_input_index && !arg_output_index) {
         continue;
       }
 
@@ -344,14 +347,14 @@ void TransformerMemcpyImpl::BuildDefsMapping(const NodeArg* arg, const KernelReg
 
       // GPU based nodes can potentially consume/produce CPU based values. check the kernel definition before adding.
       // If no KernelCreateInfo is availabe assume all inputs/outputs are on GPU.
-      if (arg_input_index != -1) {
-        if (!kci || !utils::IsInputOnCpu(cur_node, kci, arg_input_index)) {
+      if (arg_input_index) {
+        if (!kci || !utils::IsInputOnCpu(cur_node, kci, *arg_input_index)) {
           gpu_input_nodes_[arg].insert(&cur_node);
         }
       }
 
-      if (arg_output_index != -1) {
-        if (!kci || !utils::IsOutputOnCpu(cur_node, kci, arg_output_index)) {
+      if (arg_output_index) {
+        if (!kci || !utils::IsOutputOnCpu(cur_node, kci, *arg_output_index)) {
           gpu_output_nodes_[arg].insert(&cur_node);
         }
       }
