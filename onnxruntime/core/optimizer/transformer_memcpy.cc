@@ -106,7 +106,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   ORT_ENFORCE(!incompatible_gpu_eps, "Mixing CUDA/TensorRT, ROCm/MIGraphX, and WebGPU is not supported.");
 
   for (auto& provider : provider_types_) {
-    if (!ProviderIsGpuBased(provider)) {
+    if (ProviderIsGpuBased(provider)) {
       TransformerMemcpyImpl copy_impl(graph, provider);
 
       int copy_node_counter = 0;
