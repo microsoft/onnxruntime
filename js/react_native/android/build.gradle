@@ -229,6 +229,9 @@ dependencies {
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+  version = rootProject.file('../../../VERSION_NUMBER').text.trim()
+  implementation ("com.microsoft.onnxruntime:onnxruntime-android:" + version + "@aar")
+
 
   // By default it will just include onnxruntime full aar package
   if (ortExtensionsEnabled) {
