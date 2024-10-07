@@ -559,7 +559,7 @@ const createAttentionProbsProgramInfo = (
       workgroupBarrier();
     }
 
-    if (local_id.y < sequence_length && local_id.x < total_sequence_length) {
+    if (n + local_id.y < sequence_length && local_id.x + m < total_sequence_length) {
       let headOffset = headIdx * sequence_length * total_sequence_length;
       let outputIdx = headOffset + (n + local_id.y) * sequence_length + local_id.x + m;
       var sum: f32 = ${(() => {
