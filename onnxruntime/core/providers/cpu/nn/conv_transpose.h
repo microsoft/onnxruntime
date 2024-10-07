@@ -36,6 +36,10 @@ class ConvTranspose : public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
+  Tensor* GetPrePackTensors(int /*input_index*/) override;
+
+  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+
   Status Compute(OpKernelContext* context) const override;
 
  protected:
@@ -47,6 +51,10 @@ class ConvTranspose : public OpKernel {
   // for pre-packing usage
   TensorShape filter_shape_;
   BufferUniquePtr transposed_filter_;
+  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
+  // prepacked tensor read from onnx data file
+  IAllocatorUniquePtr<void> packed_buffer_;
+  Tensor* packed_tensor_;
 };
 
 }  // namespace onnxruntime

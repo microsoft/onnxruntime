@@ -411,7 +411,6 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
       auto kernel = GetMutableKernel(node.Index());
       auto kernel_name = kernel->Info().node().Name();
       int input_idx = 0;
-      bool is_kernel_prepacked = false;
       for (auto& input_def : node.InputDefs()) {
         if (input_def->Exists()) {
           const std::string& input_name = input_def->Name();
@@ -423,7 +422,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
             if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
               std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-              if (constant_initialized_tensors.count(ort_value_idx) && !is_kernel_prepacked) {
+              if (constant_initialized_tensors.count(ort_value_idx)) {
                 bool is_packed = false;
                 const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
 
@@ -434,11 +433,6 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                 // apply pre-packed tensor to kernel so kernel can use it directly
                 if (pre_packed_initializers_name_count_map.count(input_name)) {
                   is_packed = true;
-
-                  // kernel like Matmul_nbits will call prepack multiple times with input_B and possibly scales/zero_points.
-                  // If prepacked weights already read from ONNX data file (this happens we ORT reads data file with prepacked
-                  // weights serialized), only need to set prepacked weights once to kernel.
-                  is_kernel_prepacked = true;
                   ORT_THROW_IF_ERROR(kernel->SetPrePackTensors(input_idx, &const_initialized_tensor));
                 }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
@@ -511,7 +505,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // if intended to save prepacked initializers, get prepacked tensors from kernel and save in hashmap,
                   // will save to data file later
                   if (save_prepacked_constant_initializers) {
-                    Tensor* tensor = kernel->GetPrePackTensors();
+                    Tensor* tensor = kernel->GetPrePackTensors(input_idx);
 
                     if (tensor != nullptr) {
                       // save prepacked initializers per initializer and kernel since one initializer could
@@ -543,7 +537,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // multiple times and use different initializers to store prepacked weights, this piece of logic
                   // might introduce bug and need a per kernel strategy to update prepacked weights.
                   if (save_prepacked_constant_initializers && pre_packed_kernel_input_map.count(kernel_name)) {
-                    Tensor* tensor = kernel->GetPrePackTensors();
+                    Tensor* tensor = kernel->GetPrePackTensors(input_idx);
 
                     if (tensor != nullptr) {
                       auto existing_input_name = pre_packed_kernel_input_map[kernel_name];

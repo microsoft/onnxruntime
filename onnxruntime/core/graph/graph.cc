@@ -2804,6 +2804,13 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     // match the formal parameter definition (i-th argument).
     for (int j = 0; j < arg_count; ++j, ++k) {
       const auto* input_def = node.GetDefinitions().input_defs[k];
+      // if this is prepacked node shape inference, one or more inputs will be resized due to prepack
+      // and causing shape inference to fail, use the original output shape and exit
+      // the shape of output node is always been infered since shape infer will be done when optimize original model
+      if (input_def->Name().find(':') != std::string::npos) {
+        return Status::OK();
+      }
+
       if (!input_def->Exists())
         continue;
 

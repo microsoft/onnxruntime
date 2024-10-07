@@ -258,7 +258,7 @@ Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, Allocat
 
 template <>
 Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
-                            AllocatorPtr alloc, bool /*save_prepacked_initializers*/, /*out*/ bool& is_packed,
+                            AllocatorPtr alloc, bool save_prepacked_initializers, /*out*/ bool& is_packed,
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
@@ -270,6 +270,12 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
+
+    if (is_packed && save_prepacked_initializers) {
+      void* original_packed_buffer = share_prepacked_weights ? prepacked_weights->buffers_[0].get() : packed_b_.get();
+      packed_tensor_ = utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_b_size, b_shape_, 1,
+                                                                  original_packed_buffer, packed_buffer_);
     }
   }
   return Status::OK();
@@ -293,6 +299,37 @@ Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
+  return Status::OK();
+}
+
+template <typename T>
+Tensor* Gemm<T>::GetPrePackTensors(int /*input_index*/) {
+  return nullptr;
+}
+
+template <>
+Tensor* Gemm<float>::GetPrePackTensors(int /*input_index*/) {
+  return packed_tensor_;
+}
+
+template <typename T>
+Status Gemm<T>::SetPrePackTensors(int input_idx, const Tensor* /*pre_packed_tensor*/) {
+  if (input_idx == 1) {
+    packed_tensor_ = nullptr;
+    packed_b_ = nullptr;
+  }
+
+  return Status::OK();
+}
+
+template <>
+Status Gemm<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  if (input_idx == 1) {
+    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
+    size_t packed_b_size_;
+    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
+  }
+
   return Status::OK();
 }
 

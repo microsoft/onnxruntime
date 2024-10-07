@@ -29,7 +29,7 @@ class Gemm : protected GemmBase, public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors() override;
+  Tensor* GetPrePackTensors(int /*input_index*/) override;
 
   Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
@@ -45,6 +45,9 @@ class Gemm : protected GemmBase, public OpKernel {
  protected:
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
+  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
+  // prepacked tensor read from onnx data file
+  IAllocatorUniquePtr<void> packed_buffer_;
   Tensor* packed_tensor_;
 
   // For fused gemm + activation

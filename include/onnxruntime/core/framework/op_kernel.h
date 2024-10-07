@@ -136,11 +136,12 @@ class OpKernel {
   // ONNX data file with mmap and no need to do prepacking on fly to save a lot of heap memory.
   // For example, matmul_nbits kernel can use below function to get prepacked weights as tensor.
   // template <typename T1>
-  // Tensor* MatMulNBits<T1>::GetPrePackTensors() {
+  // Tensor* MatMulNBits<T1>::GetPrePackTensors(int /*input_index*/) {
   //   return packed_tensor_;
   // }
   // Please refer to matmul_nbits kernel for a complete example
-  virtual Tensor* GetPrePackTensors() {
+  // @param input_idx : The input index of the tensor in this kernel.
+  virtual Tensor* GetPrePackTensors(int /*input_index*/) {
     return nullptr;
   }
 

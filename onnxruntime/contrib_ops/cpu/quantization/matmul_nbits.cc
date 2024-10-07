@@ -132,7 +132,7 @@ class MatMulNBits final : public OpKernel {
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors() override;
+  Tensor* GetPrePackTensors(int /*input_index*/) override;
 
   Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
 
@@ -375,7 +375,7 @@ return Status::OK();
 }
 
 template <typename T1>
-Tensor* MatMulNBits<T1>::GetPrePackTensors() {
+Tensor* MatMulNBits<T1>::GetPrePackTensors(int /*input_index*/) {
   return packed_tensor_;
 }
 

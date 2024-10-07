@@ -503,106 +503,120 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 // disable this test for training, other device and eps
 #if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN)
 TEST(InferenceSessionTests, TestPrepackSerialization) {
-  SessionOptions so;
-  std::string model_name = "model_with_matmul_nbits";
-
-  const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
-  const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
-
-  so.session_logid = "InferenceSessionTests.TestPrepackSerialization";
-  so.enable_cpu_mem_arena = false;
-  so.graph_optimization_level = TransformerLevel::Default;
-  so.optimized_model_filepath = optimized_model;
-  std::string external_initializer_file_name = model_name + "_opt.onnx.data";
-
-  // enable serialize prepack initializer to data file
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers,
-                                                    "1"));
-  // always save external initializer to data file for test
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes,
-                                                    "0"));
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName,
-                                                    external_initializer_file_name.c_str()));
-
-  // optimize model with serialize prepack constant initializers
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_TRUE(session_object.Load(test_model).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-
-  // Verify prepack initializers are serialized into optimized model and data file
-  // load optimized model and check initializer are prepacked
   auto logger = DefaultLoggingManager().CreateLogger("TestPrepackSerialization");
-  std::shared_ptr<Model> model;
-  auto load_status = Model::Load(ToWideString(optimized_model), model, nullptr, *logger);
-  ASSERT_EQ(Status::OK(), load_status);
-  Graph& graph = model->MainGraph();
+  //{"model_with_matmul_nbits", "model_with_gemm", "model_with_matmul", "model_with_conv_transpose", 
+  // "model_with_deep_cpu_lstm", "model_with_attention", "model_with_quant_attention",
+  // "model_with_dynamic_quan_lstm", "model_with_matmul_integer", "model_with_fp16_conv",
+  // "model_with_deep_cpu_gru", "model_with_qlinearconv"}
+  for (std::string model_name : {"model_with_quant_linearconv"}) {
+    SessionOptions so;
+    const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
+    const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
 
-  bool found_prepack_initializer = false;
-  for (const auto& item : graph.GetAllInitializedTensors()) {
-    if (item.first.find(':') != std::string::npos) {
-      found_prepack_initializer = true;
+    so.session_logid = "InferenceSessionTests.TestPrepackSerialization";
+    so.enable_cpu_mem_arena = false;
+    so.graph_optimization_level = TransformerLevel::Default;
+    so.optimized_model_filepath = optimized_model;
+    std::string external_initializer_file_name = model_name + "_opt.onnx.data";
+
+    // enable serialize prepack initializer to data file
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers,
+                                                      "1"));
+    // always save external initializer to data file for test
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes,
+                                                      "0"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName,
+                                                      external_initializer_file_name.c_str()));
+
+    // optimize model with serialize prepack constant initializers
+    InferenceSessionWrapper session_object{so, GetEnvironment()};
+    ASSERT_TRUE(session_object.Load(test_model).IsOK());
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+
+    // Verify prepack initializers are serialized into optimized model and data file
+    // load optimized model and check initializer are prepacked
+    std::shared_ptr<Model> model;
+    auto load_status = Model::Load(ToWideString(optimized_model), model, nullptr, *logger);
+    ASSERT_EQ(Status::OK(), load_status);
+    Graph& graph = model->MainGraph();
+
+    bool found_prepack_initializer = false;
+    for (const auto& item : graph.GetAllInitializedTensors()) {
+      if (item.first.find(':') != std::string::npos) {
+        found_prepack_initializer = true;
+      }
     }
-  }
-  ASSERT_TRUE(found_prepack_initializer);
+    ASSERT_TRUE(found_prepack_initializer);
 
-  // Do inference with original model and optimized model and check output is identical
-  // set inputs and session options
-  Ort::SessionOptions session_options;
-  const char* input_names[] = {"A"};
-  const char* const output_names[] = {"Y"};
-  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  TensorShape input_shape = {1, 1};
-  std::vector<float> matrix_A(input_shape.Size(), 2.8f);
-  auto matrix_A_tensor = Ort::Value::CreateTensor<float>(
-      info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
-  std::vector<Ort::Value> ort_inputs;
-  ort_inputs.push_back(std::move(matrix_A_tensor));
+    // Do inference with original model and optimized model and check output is identical
+    // set inputs and session options
+    Ort::SessionOptions session_options;
+    const char* input_names[] = {"A"};
+    const char* const output_names[] = {"Y"};
+    Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  // run inference with original model
-  // Convert std::string to std::wstring
+    std::vector<Ort::Value> ort_inputs;
+    TensorShape input_shape = utils::GetTensorShapeFromTensorShapeProto(*graph.GetInputs()[0]->Shape());
+
+    // generate input for model, for quant node use int8, others float
+    if (model_name.find("quant") != std::string::npos) {
+      std::vector<uint8_t> matrix_A(input_shape.Size(), 9);
+      auto matrix_A_tensor = Ort::Value::CreateTensor<uint8_t>(
+          info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
+      ort_inputs.push_back(std::move(matrix_A_tensor));
+    } else {
+      std::vector<float> matrix_A(input_shape.Size(), 4.7f);
+      auto matrix_A_tensor = Ort::Value::CreateTensor<float>(
+          info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
+      ort_inputs.push_back(std::move(matrix_A_tensor));
+    }
+
+    // run inference with original model
+    // Convert std::string to std::wstring
 #if defined(_WIN32) || defined(_WIN64)
-  std::wstring test_model_wide = ToWideString(test_model);
-  Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
+    std::wstring test_model_wide = ToWideString(test_model);
+    Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
 #else
-  Ort::Session session(*ort_env, test_model.c_str(), session_options);
+    Ort::Session session(*ort_env, test_model.c_str(), session_options);
 #endif
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                   output_names, 1);
 
-  // run inference with optimized model which load serialized prepack initializer
+    // run inference with optimized model which load serialized prepack initializer
 #if defined(_WIN32) || defined(_WIN64)
-  std::wstring optimized_model_wide = ToWideString(optimized_model);
-  Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
+    std::wstring optimized_model_wide = ToWideString(optimized_model);
+    Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
 #else
-  Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
+    Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
 #endif
-  auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                         output_names, 1);
+    auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                           output_names, 1);
 
-  // check output of original model and optimized model are equal
-  ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
+    // check output of original model and optimized model are equal
+    ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
 
-  for (size_t i = 0; i < ort_outputs.size(); ++i) {
-    const auto& sequences = ort_outputs[i];
-    ASSERT_TRUE(sequences.IsTensor());
+    for (size_t i = 0; i < ort_outputs.size(); ++i) {
+      const auto& sequences = ort_outputs[i];
+      ASSERT_TRUE(sequences.IsTensor());
 
-    const auto& sequences_opt = ort_outputs_opt[i];
-    ASSERT_TRUE(sequences_opt.IsTensor());
+      const auto& sequences_opt = ort_outputs_opt[i];
+      ASSERT_TRUE(sequences_opt.IsTensor());
 
-    auto result_ts = sequences.GetTensorTypeAndShapeInfo();
-    auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
+      auto result_ts = sequences.GetTensorTypeAndShapeInfo();
+      auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
 
-    ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
+      ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
 
-    ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
+      ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
 
-    const auto* result_vals = sequences.GetTensorData<float>();
-    auto result_span = gsl::make_span(result_vals, ort_outputs.size());
+      const auto* result_vals = sequences.GetTensorData<float>();
+      auto result_span = gsl::make_span(result_vals, ort_outputs.size());
 
-    const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
-    auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
+      const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
+      auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
 
-    ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
+      ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
+    }
   }
 }
 #endif
