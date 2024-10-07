@@ -54,6 +54,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
 
     is_packed = true;
+
     // we can create the kernel now
     ORT_RETURN_IF_ERROR(CreateKernel());
   }
