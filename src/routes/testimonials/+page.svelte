@@ -130,7 +130,7 @@
 		{
 			title: 'Goodnotes',
 			quote:
-			'We use ONNX Runtime to easily deploy thousands of open-source state-of-the-art models in the Hugging Face model hub and accelerate private models for customers of the Accelerated Inference API on CPU and GPU.',
+			"Thanks to ONNX Runtime Web, Goodnotes has seamlessly implemented Scribble to Erase. The first Goodnotes AI feature for Android, Windows, and Web	, delivering lightning-fast performance and an incredibly smooth user experience. It's a game-changer!",
 			author: 'Pedro Gómez, Senior Software Engineer, Goodnotes',
 			imgsrc: goodnotesLogo,
 			imgalt: 'Goodnotes logo'
