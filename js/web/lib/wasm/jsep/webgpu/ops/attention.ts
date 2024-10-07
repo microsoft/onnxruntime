@@ -482,7 +482,7 @@ const createAttentionProbsProgramInfo = (
       { name: 'K', type: 'u32' },
       { name: 'N', type: 'u32' },
       { name: 'num_heads', type: 'u32' },
-      { name: 'head_size', type: 'u32'},
+      { name: 'head_size', type: 'u32' },
       { name: 'alpha', type: 'f32' as UniformDataElementType },
       { name: 'past_sequence_length', type: 'u32' },
       { name: 'kv_sequence_length', type: 'u32' },
@@ -519,22 +519,22 @@ const createAttentionProbsProgramInfo = (
     ${presentKey ? 'let presentKeyOffset = kvHeadIdx * present_sequence_length * uniforms.K;' : ''}
     var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (local_id.y < sequence_length && w + local_id.x < uniforms.K) {
+      if (global_id.y < sequence_length && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
       }
-      if (local_id.y < total_sequence_length && w + local_id.x < uniforms.K) {
+      if (n + local_id.y < total_sequence_length && w + local_id.x < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
       ${(() => {
         if (feedPastKey && presentKey) {
           return `
-              if (local_id.y < past_sequence_length) {
+              if (n + local_id.y < past_sequence_length) {
                 tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
-              } else if (local_id.y - past_sequence_length < kv_sequence_length) {
+              } else if (n + local_id.y - past_sequence_length < kv_sequence_length) {
                 tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
               }`;
         } else {
-          return `if (local_id.y < kv_sequence_length) {
-                    tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+          return `if (n + local_id.y < kv_sequence_length) {
+                    tileK[idx] = key[kOffset + local_id.y * uniforms.K + w + local_id.x];
                   }`;
         }
       })()}
@@ -551,17 +551,15 @@ const createAttentionProbsProgramInfo = (
       workgroupBarrier();
 
       for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
-        if (local_id.y < sequence_length && local_id.x < total_sequence_length) {
           value += ${f32Type}(tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k]);
-        }
       }
 
       workgroupBarrier();
     }
 
-    if (n + local_id.y < sequence_length && local_id.x + m < total_sequence_length) {
+    if (global_id.y < sequence_length && global_id.x < total_sequence_length) {
       let headOffset = headIdx * sequence_length * total_sequence_length;
-      let outputIdx = headOffset + (n + local_id.y) * sequence_length + local_id.x + m;
+      let outputIdx = headOffset + global_id.y * sequence_length + global_id.x;
       var sum: f32 = ${(() => {
         switch (components) {
           case 1:
@@ -695,7 +693,7 @@ const createVxAttentionScoreProgramInfo = (
    let n = global_id.x;
    var sequence_length = uniforms.M;
    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
-   let offsetA = headIdx * (sequence_length * total_sequence_length) + m * total_sequence_length;
+   let offsetA = headIdx * sequence_length * total_sequence_length + m * total_sequence_length;
    ${(() => {
      if (feedPastValue && presentValue) {
        return `
@@ -711,10 +709,10 @@ const createVxAttentionScoreProgramInfo = (
     ${presentValue ? 'let presentValueOffset = kvHeadIdx * uniforms.N * present_sequence_length + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < total_sequence_length; w += TILE_SIZE) {
-      if (local_id.y < sequence_length && w + local_id.x < total_sequence_length) {
+      if (m < sequence_length && w + local_id.x < total_sequence_length) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
       }
-      if (local_id.x < uniforms.N && w + local_id.y < total_sequence_length) {
+      if (n < uniforms.N && w + local_id.y < total_sequence_length) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
         ${(() => {
           if (feedPastValue && presentValue) {
