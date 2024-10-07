@@ -1378,11 +1378,15 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& inf
   std::vector<ThresholdType> leaf_weights, nodes_hitrates, membership_values, nodes_splits;
   std::vector<uint8_t> nodes_modes;
 
+#if !defined(ORT_MINIMAL_BUILD)
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "leaf_weights", leaf_weights));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "membership_values", membership_values));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates", nodes_hitrates));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_modes", nodes_modes));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_splits", nodes_splits));
+#else
+  ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.")
+#endif
 
   return Init(
       80,
