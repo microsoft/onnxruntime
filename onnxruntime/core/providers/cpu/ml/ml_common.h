@@ -27,7 +27,19 @@ enum NODE_MODE : uint8_t {
   BRANCH_GTE = 6,
   BRANCH_GT = 8,
   BRANCH_EQ = 10,
-  BRANCH_NEQ = 12
+  BRANCH_NEQ = 12,
+  BRANCH_MEMBER = 14,
+};
+
+enum class NODE_MODE_V5 : uint8_t {
+  BRANCH_LEQ = 0,
+  BRANCH_LT = 1,
+  BRANCH_GTE = 2,
+  BRANCH_GT = 3,
+  BRANCH_EQ = 4,
+  BRANCH_NEQ = 5,
+  BRANCH_MEMBER = 6,
+  LEAF = 7
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
@@ -49,15 +61,18 @@ static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_EQ") {
     return NODE_MODE::BRANCH_EQ;
   }
+  if (input == "BRANCH_MEMBER") {
+    return NODE_MODE::BRANCH_MEMBER;
+  }
   return NODE_MODE::BRANCH_NEQ;
 }
 
-enum class POST_EVAL_TRANSFORM {
-  NONE,
-  LOGISTIC,
-  SOFTMAX,
-  SOFTMAX_ZERO,
-  PROBIT
+enum class POST_EVAL_TRANSFORM : int64_t {
+  NONE = 0,
+  LOGISTIC = 1,
+  SOFTMAX = 2,
+  SOFTMAX_ZERO = 3,
+  PROBIT = 4
 };
 
 static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
@@ -76,11 +91,11 @@ static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   return POST_EVAL_TRANSFORM::PROBIT;
 }
 
-enum class AGGREGATE_FUNCTION {
-  AVERAGE,
-  SUM,
-  MIN,
-  MAX
+enum class AGGREGATE_FUNCTION : int64_t {
+  AVERAGE = 0,
+  SUM = 1,
+  MIN = 2,
+  MAX = 3
 };
 
 static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input) {
