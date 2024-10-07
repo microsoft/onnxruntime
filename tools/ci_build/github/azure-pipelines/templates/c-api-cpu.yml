@@ -280,7 +280,6 @@ stages:
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Full
-  - Android_Java_API_AAR_Packaging_QNN
   - iOS_Full_xcframework
   condition: succeeded()
   jobs:
@@ -359,14 +358,6 @@ stages:
       parameters:
         StepName: 'Download Android-full-aar Pipeline Artifact'
         ArtifactName: 'onnxruntime-android-full-aar'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Android-QNN-aar Pipeline Artifact'
-        ArtifactName: 'onnxruntime-android-qnn-aar'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}

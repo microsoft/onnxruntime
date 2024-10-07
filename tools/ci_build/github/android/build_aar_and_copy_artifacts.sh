@@ -12,22 +12,31 @@ ls /build
 ls /build/deps
 # build the AAR package, using the build settings under /home/onnxruntimedev/.build_settings/
 # if there is also include_ops_and_types.config exists in the same folder, use it to build with included ops/types
-if [ -f "/home/onnxruntimedev/.build_settings/include_ops_and_types.config" ]; then
-    python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
-        --build_dir /build \
-        --config $BUILD_CONFIG \
-        --android_sdk_path /android_home \
-        --android_ndk_path /ndk_home \
-        --include_ops_by_config /home/onnxruntimedev/.build_settings/include_ops_and_types.config \
-        /home/onnxruntimedev/.build_settings/build_settings.json
-else
-    python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
-        --build_dir /build \
-        --config $BUILD_CONFIG \
-        --android_sdk_path /android_home \
-        --android_ndk_path /ndk_home \
-        /home/onnxruntimedev/.build_settings/build_settings.json
+
+BUILD_SCRIPT="/onnxruntime_src/tools/ci_build/github/android/build_aar_package.py"
+BUILD_SETTINGS="/home/onnxruntimedev/.build_settings/build_settings.json"
+INCLUDE_OPS_CONFIG="/home/onnxruntimedev/.build_settings/include_ops_and_types.config"
+
+ANDROID_SDK_HOME="/android_home"
+ANDROID_NDK_HOME="/ndk_home"
+QNN_HOME="/qnn_home"
+
+
+# Base command for building the AAR package
+COMMAND="python3 $BUILD_SCRIPT --build_dir /build --config $BUILD_CONFIG --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS"
+
+# Check if the include ops config file exists and modify command if it does
+if [ -f "$INCLUDE_OPS_CONFIG" ]; then
+    COMMAND+=" --include_ops_by_config $INCLUDE_OPS_CONFIG"
 fi
+
+# Check if /qnn_home exists and add it to the command if it does
+if [ -d "$QNN_HOME" ]; then
+    COMMAND+=" --qnn_path $QNN_HOME"
+fi
+
+# Execute the build command
+eval $COMMAND
 
 # Copy the built artifacts to give folder for publishing
 BASE_PATH=/build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}

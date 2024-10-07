@@ -8,8 +8,7 @@ def publishDir = System.properties['publishDir']
 def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
-boolean addQnnDependency = (System.properties['addQnnDependency'] ?: "0") == "1"
-// Expected format for qnnVersion: major.minor (e.g., 2.26)
+// Expected format for qnnVersion: major.minor.patch (e.g., 2.26.0)
 // For non qnn builds, qnnVersion will be null
 def qnnVersion = System.properties['qnnVersion']
 
@@ -30,7 +29,8 @@ project.version = rootProject.file('../VERSION_NUMBER').text.trim()
 project.group = "com.microsoft.onnxruntime"
 
 def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
-def mavenArtifactId = tmpArtifactId + '-android' + (addQnnDependency ? '-qnn' : '')
+def mavenArtifactId = tmpArtifactId + '-android' + (qnnVersion != null ? '-qnn' : '')
+
 //should the mavenArtifactId be read from the packageName variable as
 //that's how it's used in the build_aar_copy_artifacts.sh while copying the artifacts
 
@@ -148,8 +148,8 @@ publishing {
 			artifact sourcesJar
 
 			pom {
-				name = addQnnDependency ? 'onnx-runtime-qnn-test' : (enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime')
-				description = addQnnDependency ? QNNDescription : (enableTrainingApis ? trainingDescription : defaultDescription)
+				name = qnnVersion != null ? 'onnxruntime-qnn' : (enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime')
+				description = qnnVersion != null ? QNNDescription : (enableTrainingApis ? trainingDescription : defaultDescription)
 
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
@@ -175,17 +175,14 @@ publishing {
                     }
                 }
 
-            if (addQnnDependency) {
-				println "Modifying the POM XML to include QNN dependency"
-				qnnVersion = "$qnnVersion.*"
-				withXml {
-
+            	if (qnnVersion != null) {
+					println "Modifying the POM XML to include QNN dependency"
+					withXml {
 						def dependencynode = asNode().appendNode('dependencies').appendNode('dependency')
 						dependencynode.appendNode('groupId', 'com.qualcomm.qti')
 						dependencynode.appendNode('artifactId', 'qnn-runtime')
 						dependencynode.appendNode('version', qnnVersion)
-						dependencynode.appendNode('scope', 'runtime')
-						}
+					}
 				}
 			}
 		}

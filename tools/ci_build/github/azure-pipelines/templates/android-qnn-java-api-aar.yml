@@ -95,7 +95,6 @@ jobs:
           --volume $(QnnSDKRootDir):/qnn_home \
           --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
-          -e QNN_HOME=/qnn_home \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e BUILD_CONFIG=${{parameters.buildConfig}} \

@@ -9,7 +9,6 @@ import pathlib
 import shutil
 import subprocess
 import sys
-import yaml
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
@@ -96,27 +95,27 @@ def _build_aar(args):
     base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
     header_files_path = ""
 
+    if qnn_android_build:
+        qnn_home = args.qnn_path
+        sdk_file = os.path.join(qnn_home, "sdk.yaml")
+
+        with open(sdk_file) as f:
+            for line in f:
+                if line.strip().startswith("version:"):
+                    # yaml file has simple key: value format with version as key
+                    qnn_sdk_version = line.split(":", 1)[1].strip()
+                    break
+
+        # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any
+        # yaml file typically has version like 2.26.0
+        qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
+        base_build_command += ["--qnn_home=" + qnn_home]
+
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
         abi_build_dir = os.path.join(intermediates_dir, abi)
         abi_build_command = [*base_build_command, "--android_abi=" + abi, "--build_dir=" + abi_build_dir]
 
-        if qnn_android_build:
-            qnn_home = os.getenv("QNN_HOME")
-            sdk_file = os.path.join(qnn_home, "sdk.yaml")
-            try:
-                with open(sdk_file) as f:
-                    version_data = yaml.safe_load(f)
-                    # get qnn sdk version from sdk.yaml file
-                    qnn_sdk_version = version_data.get("version")
-            except FileNotFoundError:
-                raise FileNotFoundError(f"QNN SDK file {sdk_file} not found")
-            except KeyError:
-                raise KeyError(f"'version' key not found in the YAML file at: {sdk_file}")
-
-            # only use major.minor version for qnn sdk version and truncate the patch/build_id info if any
-            qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:2])
-            abi_build_command += ["--qnn_home=" + qnn_home]
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
 
@@ -174,7 +173,6 @@ def _build_aar(args):
             if "--enable_training_apis" in build_settings["build_params"]
             else "-DENABLE_TRAINING_APIS=0"
         ),
-        ("-DaddQnnDependency=1" if qnn_android_build else "-DaddQnnDependency=0"),
     ]
 
     # Add qnn specific parameters
@@ -204,6 +202,8 @@ def parse_args():
     parser.add_argument(
         "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""), help="Path to the Android NDK"
     )
+
+    parser.add_argument("--qnn_path", type=str, default=os.environ.get("QNN_HOME", ""), help="Path to the QNN SDK")
 
     parser.add_argument(
         "--build_dir",

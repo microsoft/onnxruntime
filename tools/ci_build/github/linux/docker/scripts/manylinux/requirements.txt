@@ -10,4 +10,3 @@ sympy==1.12
 flatbuffers
 neural-compressor>=2.2.1
 triton
-pyyaml
