@@ -32,7 +32,7 @@ constexpr size_t A = 0,
                  bias = 5;
 };
 
-// T: A data type
+// T: A data type.
 template <typename T>
 MLAS_SQNBIT_GEMM_COMPUTE_TYPE
 GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
@@ -46,7 +46,7 @@ GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
   int64_t effective_accuracy_level = accuracy_level;
   for (; effective_accuracy_level > CompMostAccurate; --effective_accuracy_level) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(effective_accuracy_level);
-    if (MlasIsSQNBitGemmAvailable(nbits, block_size, compute_type)) {
+    if (MlasIsSQNBitGemmAvailable<T>(nbits, block_size, compute_type)) {
       break;
     }
   }
@@ -60,7 +60,7 @@ template <>
 MLAS_SQNBIT_GEMM_COMPUTE_TYPE
 GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
   if (accuracy_level_attr == static_cast<int64_t>(CompInt8) &&
-      MlasIsSQNBitGemmAvailable(nbits, block_size, CompInt8)) {
+      MlasIsSQNBitGemmAvailable<MLFloat16>(nbits, block_size, CompInt8)) {
     return CompInt8;
   }
   // Fallback to fp16. If fp16 optimized path is not available, it will further fall back to fp32.
@@ -217,7 +217,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     return Status::OK();
   }
 
-  if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+  if (!MlasIsSQNBitGemmAvailable<MLFloat16>(nbits_, block_size_, compute_type_)) {
     return Status::OK();
   }
   if (input_idx == InputIndex::B) {
@@ -348,7 +348,7 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
     data[i].C = y_data + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
-  MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
+  MlasSQNBitGemmBatch<float>(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                       thread_pool);
   return Status::OK();
 }
@@ -426,7 +426,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].C = c_v.data() + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
-  MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
+  MlasSQNBitGemmBatch<MLFloat16>(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                       thread_pool);
   MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
   return Status::OK();
@@ -504,7 +504,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].C = c_v.data() + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
-  MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
+  MlasSQNBitGemmBatch<float>(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                       thread_pool);
   MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
   return Status::OK();

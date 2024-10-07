@@ -75,7 +75,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  *        Call MlasSQNBitGemmBatchWorkspaceSize() with the same parameters to determine whether `Workspace` should
  *          point to an intermediate workspace buffer.
  *
- * @tparam          T               data type of input A
+ * @tparam          T               data type of input A in data params
  * @param[in]       M               row size of matrix A and C
  * @param[in]       N               column size of matrix B and C
  * @param[in]       K               column size of matrix A and row size of matrix B

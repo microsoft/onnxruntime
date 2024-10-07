@@ -15,12 +15,12 @@ Abstract:
     as well as some SQNBitGemm-related query functions.
 --*/
 
-#include "sqnbitgemm.h"
-#include "sqnbitgemm_q8_block.h"
-
 #include <cassert>
 #include <functional>
 #include <unordered_map>
+
+#include "sqnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 namespace
 {
@@ -53,10 +53,10 @@ GetSQNBitGemmVariant(
         if (ComputeType == CompFp32 ||
             ComputeType == CompUndef) {  // treat CompUndef (undefined) as CompFp32
             return SQNBitGemmVariant_BitWidth4_CompFp32;
-        } else if (ComputeType == CompInt8) {
-            return SQNBitGemmVariant_BitWidth4_CompInt8;
         } else if (ComputeType == CompFp16) {
             return SQNBitGemmVariant_BitWidth4_CompFp16;
+        } else if (ComputeType == CompInt8) {
+            return SQNBitGemmVariant_BitWidth4_CompInt8;
         }
     }
 
@@ -85,9 +85,6 @@ MlasIsSQNBitGemmAvailable(
             return Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&
                    Dispatch->Q4BitBlkDequantBForSgemm_CompFp32 != nullptr;
         }
-        case SQNBitGemmVariant_BitWidth4_CompFp16: {
-            return false; // TODO(fajin)
-        }
         case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
               (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
@@ -98,7 +95,6 @@ MlasIsSQNBitGemmAvailable(
         }
     }
 }
-
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 template<>
@@ -116,12 +112,13 @@ MlasIsSQNBitGemmAvailable<MLAS_FP16>(
 
     const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
 
-    // TODO(fajin)
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp16:
-            return false;
+            return Dispatch->SQ4BitGemmKernel_CompFp16 != nullptr &&
+                   Dispatch->Q4BitBlkDequantBForSgemm_CompFp16 != nullptr;
         case SQNBitGemmVariant_BitWidth4_CompInt8:
-            return (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr);
+            return Dispatch->SQ4BitGemmKernel_Fp16_CompInt8 != nullptr &&
+                   Dispatch->QuantizeARow_Fp16_CompInt8 != nullptr;
         default:
             return false;
     }
@@ -452,6 +449,32 @@ SQ4BitGemm_CompFp32(
     }
 }
 
+void SQ4BitGemm_CompFp16(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+) {
+}
+
+template <typename T>
+void SQ4BitGemm_CompInt8(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<T>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+) {
+}
+
+template <>
 void SQ4BitGemm_CompInt8(
     const size_t BlkLen,
     const size_t K,
@@ -580,8 +603,39 @@ void SQ4BitGemm_CompInt8(
     }
 }
 
+template <>
+void SQ4BitGemm_CompInt8(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+) {
+
+}
+
+template <typename T>
 void
 InitializeWorkspace_CompInt8(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkLen,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<T>* DataParams,
+    void* Workspace,
+    size_t PerGemmWorkspaceStride,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+}
+
+template <>
+void
+InitializeWorkspace_CompInt8<float>(
     size_t M,
     size_t N,
     size_t K,
@@ -636,6 +690,22 @@ InitializeWorkspace_CompInt8(
     }
 }
 
+template <>
+void
+InitializeWorkspace_CompInt8<MLAS_FP16>(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkLen,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* DataParams,
+    void* Workspace,
+    size_t PerGemmWorkspaceStride,
+    MLAS_THREADPOOL* ThreadPool
+) {
+
+}
+
 template <typename T>
 using InitializeWorkspaceFn = std::function<void(
     size_t M,
@@ -647,36 +717,15 @@ using InitializeWorkspaceFn = std::function<void(
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool
-)>*;
+)>;
 
 template <typename T>
 InitializeWorkspaceFn<T>
 GetInitializeWorkspace(SQNBitGemmVariant variant)
 {
-    return nullptr;
-}
-
-template <>
-InitializeWorkspaceFn<float>
-GetInitializeWorkspace(SQNBitGemmVariant variant)
-{
     switch (variant) {
         case SQNBitGemmVariant_BitWidth4_CompInt8:
-            return InitializeWorkspace_CompInt8;
-        case SQNBitGemmVariant_BitWidth4_CompFp16:
-            return nullptr;
-        default:
-            return nullptr;
-    }
-}
-
-template <>
-InitializeWorkspaceFn<MLAS_FP16>
-GetInitializeWorkspace(SQNBitGemmVariant variant)
-{
-    switch (variant) {
-        case SQNBitGemmVariant_BitWidth4_CompInt8:
-            return nullptr;
+            return InitializeWorkspace_CompInt8<T>;
         default:
             return nullptr;
     }
@@ -692,7 +741,7 @@ using SQNBitGemmFn = std::function<void(
     const size_t RangeCountM,
     const size_t RangeStartN,
     const size_t RangeCountN
-)>*;
+)>;
 
 template <typename T>
 SQNBitGemmFn<T>
@@ -708,10 +757,8 @@ GetSQNBitGemm(SQNBitGemmVariant variant)
     switch (variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp32:
             return SQ4BitGemm_CompFp32;
-        case SQNBitGemmVariant_BitWidth4_CompFp16:
-            return nullptr;
         case SQNBitGemmVariant_BitWidth4_CompInt8:
-            return SQ4BitGemm_CompInt8;
+            return SQ4BitGemm_CompInt8<float>;
         default:
             return nullptr;
     }
@@ -723,9 +770,9 @@ GetSQNBitGemm(SQNBitGemmVariant variant)
 {
     switch (variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp16:
-            return nullptr;
+            return SQ4BitGemm_CompFp16;
         case SQNBitGemmVariant_BitWidth4_CompInt8:
-            return SQ4BitGemm_CompInt8;
+            return SQ4BitGemm_CompInt8<MLAS_FP16>;
         default:
             return nullptr;
     }
