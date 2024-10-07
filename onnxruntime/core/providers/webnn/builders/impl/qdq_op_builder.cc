@@ -66,7 +66,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
   }
 
-  if (1 == scale_shape.size() && 1 < input_shape.size()) {
+  if (scale_shape.size() == 1 && input_shape.size() > 1) {
     // Insert ones before and after the axis dimension for broadcasting of 1D scale tensor.
     std::vector<int32_t> target_shape{static_cast<int>(input_shape[axis])};
     target_shape.insert(target_shape.begin(), axis, 1);
