@@ -100,14 +100,24 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnx
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 10, Gemm);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Gemm);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 7, 8, Gemm);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 9, 10, Gemm);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Gemm);
+CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 8, MatMul);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 12, MatMul);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 1, 8, MatMul);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 9, 12, MatMul);
+CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 10, Softmax);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Softmax);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 1, 10, Softmax);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Softmax);
+CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
 
 // Internal domain
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax);
@@ -176,6 +186,19 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED_TYPED(10, 10, MLFloat16, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 11, MLFloat16, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_TYPED(12, MLFloat16, MaxPool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(7, 8, MLFloat16, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(9, 10, MLFloat16, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 12, MLFloat16, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_TYPED(13, MLFloat16, Gemm, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 8, MLFloat16, MatMul, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(9, 12, MLFloat16, MatMul, kOnnxDomain),
+      KERNEL_CREATE_INFO_TYPED(13, MLFloat16, MatMul, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 10, MLFloat16, Softmax, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 12, MLFloat16, Softmax, kOnnxDomain),
+      KERNEL_CREATE_INFO_TYPED(13, MLFloat16, Softmax, kOnnxDomain),
 #endif
   };
 
