@@ -50,6 +50,14 @@ namespace Microsoft.ML.OnnxRuntime
         public SessionOptions()
             : base(IntPtr.Zero, true)
         {
+            // Ensure we have an OrtEnv instance so the default logger is available.
+            // Calls via NativeMethods made prior to InferenceSession creation require the default logger for error
+            // output. 
+            // e.g. MakeSessionOptionWithCudaProvider calls AppendExecutionProvider_CUDA which calls 
+            //      NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA
+            var ortEnv = OrtEnv.Instance();
+
+            // create the SessionOptions instance
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
             // Instantiate the OrtEnv singleton if not already done.
             OrtEnv.Instance();
