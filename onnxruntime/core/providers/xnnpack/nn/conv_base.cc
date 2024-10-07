@@ -85,8 +85,8 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
     const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
     // 65504 is the max value of float16
     // https://en.wikipedia.org/wiki/Half-precision_floating-point_format
-    const float output_min = -65504.0;
-    const float output_max = 65504.0;
+    const auto output_min = clip_min_max ? onnxruntime::math::floatToHalf(clip_min_max->first) : -65504.0;
+    const auto output_max = clip_min_max ? onnxruntime::math::floatToHalf(clip_min_max->second) : 65504.0;
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f16
                                     : xnn_create_convolution2d_nhwc_f16;
     status = create_func(
