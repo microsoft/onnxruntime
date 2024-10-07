@@ -26,6 +26,8 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.cpu()
     elif device_type == "dml":
         return C.OrtDevice.dml()
+    elif device_type == "webgpu":
+        return C.OrtDevice.webgpu()
     elif device_type == "ort":
         return C.get_ort_device(device_index).device_type()
     else:
