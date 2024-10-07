@@ -40,6 +40,7 @@ enum class NODE_MODE_V5 : uint8_t {
   BRANCH_NEQ = 5,
   BRANCH_MEMBER = 6,
   LEAF = 7
+  BRANCH_MEMBER = 14
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
