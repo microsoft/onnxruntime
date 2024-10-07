@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"

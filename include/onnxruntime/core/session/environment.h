@@ -10,6 +10,7 @@
 #include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {

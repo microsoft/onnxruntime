@@ -13,6 +13,7 @@
 namespace onnxruntime {
 class Environment;
 }
+struct OrtExecutionProviderFactory;
 
 struct OrtEnv {
  public:

@@ -8,16 +8,14 @@ namespace onnxruntime {
 
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  int maxNodeIndex = 0;
-  api->OrtGraph_MaxNodeIndex(graph_viewer, &maxNodeIndex);
+  const OrtGraphApi* graph_api = api->GetGraphApi(ORT_API_VERSION);
+  int maxNodeIndex = graph_api->OrtGraph_MaxNodeIndex(graph_viewer);
   for (int i = 0; i < maxNodeIndex; ++i) {
-    const OrtNode* node = nullptr;
-    api->OrtGraph_GetOrtNode(graph_viewer, i, &node);
+    const OrtNode* node = graph_api->OrtGraph_GetOrtNode(graph_viewer, i);
     if (node == nullptr) {
       continue;
     }
-    const char* opType = nullptr;
-    api->OrtNode_GetOpType(node, &opType);
+    const char* opType = graph_api->OrtNode_GetOpType(node);
     if (strcmp(opType, EPCONTEXT_OP.c_str()) == 0) {
       return true;
     }
@@ -118,13 +116,12 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
   if (!ValidateEPCtxNode(graph_viewer)) {
     return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "It's not a valid EP Context node");
   }
-  const OrtNode* node = nullptr;
-  api_->OrtGraph_GetOrtNode(graph_viewer, 0, &node);
+  const OrtNode* node = graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0);
 
-  const int64_t embed_mode = api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str());
+  const int64_t embed_mode = graph_api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str());
   if (embed_mode) {
     // Get engine from byte stream.
-    const std::string& context_binary(api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str()));
+    const std::string& context_binary(graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str()));
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
                                                                                                 static_cast<size_t>(context_binary.length())));
 //    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Read engine as binary data from \"ep_cache_context\" attribute of ep context node and deserialized it";
@@ -133,7 +130,7 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
     }
   } else {
     // Get engine from cache file.
-    std::string cache_path(api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str()));
+    std::string cache_path(graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str()));
 
     // For security purpose, in the case of running context model, TRT EP won't allow
     // engine cache path to be the relative path like "../file_path" or the absolute path.
@@ -185,7 +182,7 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
 //    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
 
     if (weight_stripped_engine_refit_) {
-      const std::string onnx_model_filename(api_->OrtNode_GetAttributeStr(node, ONNX_MODEL_FILENAME.c_str()));
+      const std::string onnx_model_filename(graph_api_->OrtNode_GetAttributeStr(node, ONNX_MODEL_FILENAME.c_str()));
       std::string weight_stripped_engine_cache = engine_cache_path.string();
       auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
                                                            onnx_model_folder_path_,
@@ -203,18 +200,15 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
 }
 
 bool TensorRTCacheModelHandler::ValidateEPCtxNode(const OrtGraphViewer* graph_viewer) {
-  assert(api_->OrtGraph_NumberOfNodes(graph_viewer) == 1);
-  const OrtNode* node = nullptr;
-  api_->OrtGraph_GetOrtNode(graph_viewer, 0, &node);
-  const char* opType = nullptr;
-  api_->OrtNode_GetOpType(node, &opType);
+  assert(graph_api_->OrtGraph_NumberOfNodes(graph_viewer) == 1);
+  const OrtNode* node = graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0);
+  const char* opType = graph_api_->OrtNode_GetOpType(node);
   assert(strcmp(opType, EPCONTEXT_OP.c_str()) == 0);
 
-  size_t key_count = 0;
-  api_->OrtNode_GetAttributeKeyCount(node, COMPUTE_CAPABILITY.c_str(), &key_count);
+  size_t key_count = graph_api_->OrtNode_GetAttributeKeyCount(node, COMPUTE_CAPABILITY.c_str());
   // Show the warning if compute capability is not matched
   if (key_count > 0) {
-    const char* model_compute_capability = api_->OrtNode_GetAttributeStr(node, COMPUTE_CAPABILITY.c_str());
+    const char* model_compute_capability = graph_api_->OrtNode_GetAttributeStr(node, COMPUTE_CAPABILITY.c_str());
     // Verify if engine was compiled with ampere+ hardware compatibility enabled
     if (strcmp(model_compute_capability, "80+") == 0) {
 //      if (std::stoi(compute_capability_) < 80) {
@@ -228,12 +222,12 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const OrtGraphViewer* graph_vi
   }
 
   // "embed_mode" attr and "ep_cache_context" attr should be present
-  api_->OrtNode_GetAttributeKeyCount(node, EMBED_MODE.c_str(), &key_count);
+  key_count = graph_api_->OrtNode_GetAttributeKeyCount(node, EMBED_MODE.c_str());
   assert(key_count > 0);
-  api_->OrtNode_GetAttributeKeyCount(node, EP_CACHE_CONTEXT.c_str(), &key_count);
+  key_count = graph_api_->OrtNode_GetAttributeKeyCount(node, EP_CACHE_CONTEXT.c_str());
   assert(key_count > 0);
 
-  const int64_t embed_mode = api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str());
+  const int64_t embed_mode = graph_api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str());
   if (embed_mode == 1) {
     // engine binary data
 //    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;

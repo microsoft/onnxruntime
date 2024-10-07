@@ -241,6 +241,7 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
     bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
     static const OrtApi* api_;
+    static const OrtGraphApi* graph_api_;
     std::unordered_map<std::string, std::string> trt_node_name_with_precision_;
     std::unordered_map<std::string, std::unordered_map<std::string, float>> dynamic_range_map_;
     std::unordered_map<std::string, std::string> cache_suffix_;

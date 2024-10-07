@@ -1,5 +1,5 @@
 #pragma once
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 #include "core/framework/provider_options.h"
 #include <string>
 

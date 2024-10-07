@@ -6,7 +6,7 @@
 #include <string>
 #include <filesystem>
 #include <memory>
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 #include "nv_includes.h"
 
 namespace onnxruntime {
@@ -46,6 +46,7 @@ class TensorRTCacheModelHandler {
         onnx_model_folder_path_(onnx_model_folder_path),
         detailed_build_log_(detailed_build_log) {
             api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+            graph_api_ = api_->GetGraphApi(ORT_API_VERSION);
   }
   bool ValidateEPCtxNode(const OrtGraphViewer* graph_viewer);
 
@@ -60,5 +61,6 @@ class TensorRTCacheModelHandler {
   std::string onnx_model_folder_path_;
   bool detailed_build_log_;
   const OrtApi* api_;
+  const OrtGraphApi* graph_api_;
 };  // TRTCacheModelHandler
 }

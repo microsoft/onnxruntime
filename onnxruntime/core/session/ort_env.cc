@@ -13,6 +13,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/platform/logging/make_platform_default_log_sink.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;

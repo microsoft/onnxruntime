@@ -8,15 +8,13 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
     type = ep_type;
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+        const OrtGraphApi* ort_graph_api = api->GetGraphApi(ORT_API_VERSION);
         std::vector<OrtIndexedSubGraph*> cache;
-        size_t nodes_count = 0;
         const size_t* nodes_index = nullptr;
-        api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 0, &nodes_count, &nodes_index);
+        size_t nodes_count = ort_graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 0, &nodes_index);
         for (size_t i = 0; i < nodes_count; i++) {
-            const OrtNode* node = nullptr;
-            api->OrtGraph_GetOrtNode(graph, nodes_index[i], &node);
-            const char* node_op_type;
-            api->OrtNode_GetOpType(node, &node_op_type);
+            const OrtNode* node = ort_graph_api->OrtGraph_GetOrtNode(graph, nodes_index[i]);
+            const char* node_op_type = ort_graph_api->OrtNode_GetOpType(node);
             if (!strcmp(node_op_type, "Relu")) {
                 OrtIndexedSubGraph* subgraph = new OrtIndexedSubGraph();
                 subgraph->node_index_len = 1;
@@ -26,20 +24,17 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
                 subgraph->meta_def = new OrtMetaDef();
                 subgraph->meta_def->name = "Relu_subgraph";
                 subgraph->meta_def->input_len = 0;
-                api->OrtNode_GetInputSize(node, &(subgraph->meta_def->input_len));
+                subgraph->meta_def->input_len = ort_graph_api->OrtNode_GetInputSize(node);
                 subgraph->meta_def->inputs = new char* [subgraph->meta_def->input_len];
                 for (size_t j = 0; j < subgraph->meta_def->input_len; j++) {
-                    const char* input_j = nullptr;
-                    api->OrtNode_GetIthInputName(node, j, &input_j);
+                    const char* input_j = ort_graph_api->OrtNode_GetIthInputName(node, j);
                     subgraph->meta_def->inputs[j] = const_cast<char*>(input_j);
                 }
 
-                subgraph->meta_def->output_len = 0;
-                api->OrtNode_GetOutputSize(node, &(subgraph->meta_def->output_len));
+                subgraph->meta_def->output_len = ort_graph_api->OrtNode_GetOutputSize(node);
                 subgraph->meta_def->outputs = new char* [subgraph->meta_def->output_len];
                 for (size_t j = 0; j < subgraph->meta_def->output_len; j++) {
-                    const char* output_j = nullptr;
-                    api->OrtNode_GetIthOutputName(node, j, &output_j);
+                    const char* output_j = ort_graph_api->OrtNode_GetIthOutputName(node, j);
                     subgraph->meta_def->outputs[j] = const_cast<char*>(output_j);
                 }
 
