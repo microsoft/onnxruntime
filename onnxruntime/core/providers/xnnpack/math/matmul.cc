@@ -3,6 +3,7 @@
 
 #include "matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 // Todo -
 // 1. Integrate activation layers - Cliping & Relu
@@ -157,5 +158,18 @@ ONNX_OPERATOR_KERNEL_EX(MatMul, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         MatMul);
 
+#ifdef XNNPACK_FP16_SUPPORTED
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(MatMul, kOnnxDomain, 1, 8, MLFloat16, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                  MatMul);
+
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(MatMul, kOnnxDomain, 9, 12, MLFloat16, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                  MatMul);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(MatMul, kOnnxDomain, 13, MLFloat16, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                        MatMul);
+#endif
 }  // namespace xnnpack
 }  // namespace onnxruntime
