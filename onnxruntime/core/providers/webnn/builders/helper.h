@@ -37,12 +37,28 @@ WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
 
 inline std::vector<int64_t> convertAxesFromNCHWtoNHWC(const std::vector<int64_t>& axes) {
-  std::map<int64_t, int64_t> nchw_to_nhwc = {{0, 0}, {1, 3}, {2, 1}, {3, 2}};
+  constexpr std::array<int64_t, 4> nchw_to_nhwc = {0, 3, 1, 2};
   std::vector<int64_t> new_axes;
+  new_axes.reserve(axes.size());
   for (int64_t axis : axes) {
-    new_axes.push_back(nchw_to_nhwc[axis]);
+    if (axis >= nchw_to_nhwc.size()) {
+      ORT_THROW("Invalid axis value: ", axis);
+    }
+    new_axes.push_back(nchw_to_nhwc[static_cast<size_t>(axis)]);
   }
   return new_axes;
+}
+
+inline std::vector<int64_t> HandleNegativeAxes(const std::vector<int64_t>& axes, size_t input_size) {
+  std::vector<int64_t> new_axes(axes.size());
+  for (size_t i = 0; i < axes.size(); ++i) {
+    new_axes[i] = HandleNegativeAxis(axes[i], input_size);
+  }
+  return new_axes;
+}
+
+inline std::vector<int64_t> GetResolvedAxes(const NodeAttrHelper& helper, size_t input_size) {
+  return HandleNegativeAxes(helper.Get("axes", std::vector<int64_t>{}), input_size);
 }
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
@@ -153,14 +169,15 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   return true;
 }
 
-inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::string name) {
+inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::string& name) {
   if (name.empty() || !Contains(initializers, name)) {
     return true;
   }
 
   const auto& tensor = *initializers.at(name);
   const auto dims = tensor.dims();
-  return dims.empty() || (dims.size() == 1 && dims[0] == 0);
+  // An empty tensor contains a 0 in the dimensions list.
+  return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);

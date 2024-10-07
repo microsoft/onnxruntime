@@ -48,13 +48,13 @@ bool GetResizeScalesAndAxes(const InitializedTensorSet& initializers,
 
   const bool has_axes = !axes.empty();
   const auto& scales_tensor = *initializers.at(input_defs[2]->Name());
-
-  // Number of elements of 'scales' tensor.
-  const auto num_of_scales = scales_tensor.dims()[0];
   if (scales_tensor.dims_size() != 1) {
     LOGS(logger, ERROR) << "'scales' should be a 1D tensor.";
     return false;
   }
+
+  // Number of elements of 'scales' tensor.
+  const auto num_of_scales = scales_tensor.dims()[0];
 
   if (has_axes && num_of_scales != 2) {
     LOGS(logger, ERROR) << "When 'axes' is provided, 'scales' should have 2 elements.";
@@ -88,7 +88,7 @@ bool GetResizeScalesAndAxes(const InitializedTensorSet& initializers,
     const float scale_w = is_nhwc ? onnx_scales[2] : onnx_scales[3];
     if (scale_n != 1.0f || scale_c != 1.0f) {
       LOGS(logger, VERBOSE) << "Scales of N/C channel should be 1"
-                            << "Resize of N/C channels are not supported"
+                            << "Scales of N/C channels are not supported"
                             << ", scale_n, " << scale_n << ", scale_c, " << scale_c;
       return false;
     }
@@ -108,7 +108,7 @@ bool GetResizeScalesAndAxes(const InitializedTensorSet& initializers,
 bool GetResizeSizesAndAxes(const InitializedTensorSet& initializers,
                            const Node& node, std::vector<int64_t>& sizes,
                            std::vector<int64_t>& axes, const bool is_nhwc,
-                           const std::vector<int64_t> input_shape,
+                           const gsl::span<int64_t>& input_shape,
                            const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 4)
@@ -116,13 +116,13 @@ bool GetResizeSizesAndAxes(const InitializedTensorSet& initializers,
 
   const bool has_axes = !axes.empty();
   const auto& sizes_tensor = *initializers.at(input_defs[3]->Name());
-  // Number of elements of sizes tensor.
-  const auto num_of_sizes = sizes_tensor.dims()[0];
   if (sizes_tensor.dims_size() != 1) {
     LOGS(logger, ERROR) << "'sizes' should be a 1D tensor.";
     return false;
   }
 
+  // Number of elements of sizes tensor.
+  const auto num_of_sizes = sizes_tensor.dims()[0];
   if (has_axes && num_of_sizes != 2) {
     LOGS(logger, ERROR) << "When 'axes' is provided, 'sizes' should have 2 elements.";
     return false;
@@ -172,19 +172,6 @@ bool GetResizeSizesAndAxes(const InitializedTensorSet& initializers,
   return true;
 }
 
-std::vector<int64_t> GetAxes(const NodeAttrHelper& helper, size_t input_size) {
-  std::vector<int64_t> axes = helper.Get("axes", std::vector<int64_t>{});
-  if (!axes.empty()) {
-    for (auto& value : axes) {
-      if (value < 0) {
-        value = HandleNegativeAxis(value, input_size);
-      }
-    }
-  }
-
-  return axes;
-}
-
 // Add operator related.
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -225,7 +212,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<float> scales;
   std::vector<int64_t> sizes;
   std::vector<uint32_t> webnn_sizes;
-  std::vector<int64_t> axes = GetAxes(helper, 4);  // We alreday checked input shape is 4d in IsOpSupportedImpl.
+  std::vector<int64_t> axes = GetResolvedAxes(helper, 4);  // We already checked input shape is 4D in IsOpSupportedImpl.
   std::string sizes_name = GetTensorName(input_defs, 3);
   const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
 
@@ -283,10 +270,11 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     // coordinate_transformation_mode
     // Spec issue for supporting more coordinate transformation modes:
     // https://github.com/webmachinelearning/webnn/issues/270
-    const std::string coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
-    if (coord_trans_mode != "half_pixel") {
-      LOGS(logger, VERBOSE) << "Resize does not support coordinate_transformation_mode: " << coord_trans_mode;
-      // return false;
+    const std::string coordinate_transformation_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
+    if (coordinate_transformation_mode != "half_pixel") {
+      LOGS(logger, VERBOSE) << "Resize does not support coordinate_transformation_mode: "
+                            << coordinate_transformation_mode;
+      return false;
     }
 
     // exclude_outside
@@ -331,7 +319,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
 
     // 'axes' is from opset 18 on and allows 'scales' or 'sizes' to have entries for the subset of 'axes'.
     // We fill with default values if necessary so that the processing is consistent across all supported opsets.
-    std::vector<int64_t> axes = GetAxes(helper, input_size);
+    std::vector<int64_t> axes = GetResolvedAxes(helper, input_size);
     if (!axes.empty()) {  // We have 'axes' attribute.
       if (axes.size() != 2 || axes[0] >= input_size || axes[1] >= input_size) {
         LOGS(logger, VERBOSE) << "Resize: invalid axes attribute";
