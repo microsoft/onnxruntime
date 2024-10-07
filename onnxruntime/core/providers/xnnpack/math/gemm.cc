@@ -140,18 +140,21 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
-  status = xnn_create_fully_connected_nc_f32(
-      trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
-      trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
-      trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
-      trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
-      B_->Data<float>(),                                           // const float* kernel,
-      bias_Data,                                                   // const float* bias,
-      output_min, output_max,
-      flags,
-      GetCodeCache(), GetWeightsCache(),
-      &p);
 
+  const auto element_type = tensor.GetElementType();
+  if (element_type == OpComputeType::op_compute_type_fp32) {
+    status = xnn_create_fully_connected_nc_f32(
+        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
+        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
+        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
+        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
+        B_->Data<float>(),                                           // const float* kernel,
+        bias_Data,                                                   // const float* bias,
+        output_min, output_max,
+        flags,
+        GetCodeCache(), GetWeightsCache(),
+        &p);
+  }
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
   }
