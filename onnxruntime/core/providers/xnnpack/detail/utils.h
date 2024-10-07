@@ -79,7 +79,7 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
 using COMPUTE_TYPE_SETS = std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>;
 bool IsComputeTypeSupported(int32_t compute_type,
-                          std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set = std::nullopt);
+                            std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set = std::nullopt);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 

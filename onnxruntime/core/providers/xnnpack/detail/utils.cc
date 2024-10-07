@@ -115,12 +115,11 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad) {
 }
 
 bool IsComputeTypeSupported(int32_t compute_type,
-                std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set) {
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> default_supported_types {
-                                                                      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                                      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT8
-                                                                      };
+                            std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set) {
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> default_supported_types{
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+      ONNX_NAMESPACE::TensorProto_DataType_INT8};
   auto supported_types = compute_type_set == std::nullopt ? default_supported_types : compute_type_set->get();
 #ifdef XNNPACK_FP16_SUPPORTED
   supported_types.insert(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);

@@ -256,8 +256,8 @@ TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
   if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
     TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W), GetTypedArray<TypeParam>(B)},
                         {X_shape, W_shape, B_shape}, GetTypedArray<TypeParam>(expected_vals), Y_shape,
-                        OpTester::ExpectResult::kExpectSuccess, "", // defalut value
-                        {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider}, //default value
+                        OpTester::ExpectResult::kExpectSuccess, "",                                       // defalut value
+                        {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider},  // default value
                         0.5, 0.5);
   } else {
     TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W), GetTypedArray<TypeParam>(B)},

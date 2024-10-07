@@ -25,7 +25,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
                                    conv_type_ == OpComputeType::op_compute_type_fp16);
   if ((conv_type_is_float && input_idx == 1) ||
-      (!conv_type_is_float && input_idx == 3)) {// InputTensors::IN_W
+      (!conv_type_is_float && input_idx == 3)) {  // InputTensors::IN_W
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
