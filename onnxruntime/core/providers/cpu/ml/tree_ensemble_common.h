@@ -1147,11 +1147,11 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
     target_class_treeids_old.push_back(curr_treeid);
     target_class_weights_as_tensor_old.push_back(leaf_weights[curr_id]);
 
-    // the below are irrelevant for a `LEAF`
-    nodes_featureids_old.push_back(-1);
-    nodes_truenodeids_old.push_back(-1);
-    nodes_falsenodeids_old.push_back(-1);
-    nodes_values_as_tensor_old.push_back(-1);
+    // the below values are irrelevant for a `LEAF` but should be positive
+    nodes_featureids_old.push_back(0);
+    nodes_truenodeids_old.push_back(0);
+    nodes_falsenodeids_old.push_back(0);
+    nodes_values_as_tensor_old.push_back(0);
     if (!nodes_hitrates.empty()) {
       nodes_hitrates_as_tensor_old.push_back(0);
     }
