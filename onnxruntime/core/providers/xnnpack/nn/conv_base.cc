@@ -81,6 +81,28 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         foutput_min, foutput_max, flags,
         code_cache, weights_cache,
         &p);
+  } else if (conv_type == OpComputeType::op_compute_type_fp16) {
+    const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
+    // 65504 is the max value of float16
+    // https://en.wikipedia.org/wiki/Half-precision_floating-point_format
+    const float output_min = -65504.0;
+    const float output_max = 65504.0;
+    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f16
+                                    : xnn_create_convolution2d_nhwc_f16;
+    status = create_func(
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
+        kernel_height, kernel_width,
+        subsampling_height, subsampling_width,
+        dilation_height, dilation_width,
+        group_count,
+        group_input_channels,
+        group_output_channels,
+        C, M,                              // input channel stride, output channel stride
+        Weight.Data<MLFloat16>(), B_data,  // kernel, bias
+        output_min, output_max,
+        flags,
+        code_cache, weights_cache,
+        &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
     const int8_t output_zero_point = quant_param[2].second;
@@ -150,26 +172,6 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[1].second, quant_param[1].first[0],
         Weight.Data<uint8_t>(), B_data,
         quant_param[2].second, quant_param[2].first[0],
-        output_min, output_max,
-        flags,
-        code_cache, weights_cache,
-        &p);
-  } else if (conv_type == OpComputeType::op_compute_type_fp16) {
-    const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
-    const float output_min = -65504.0;
-    const float output_max = 65504.0;
-    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f16
-                                    : xnn_create_convolution2d_nhwc_f16;
-    status = create_func(
-        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
-        kernel_height, kernel_width,
-        subsampling_height, subsampling_width,
-        dilation_height, dilation_width,
-        group_count,
-        group_input_channels,
-        group_output_channels,
-        C, M,                              // input channel stride, output channel stride
-        Weight.Data<MLFloat16>(), B_data,  // kernel, bias
         output_min, output_max,
         flags,
         code_cache, weights_cache,
