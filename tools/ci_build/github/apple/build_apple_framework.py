@@ -57,7 +57,6 @@ def _build_for_apple_sysroot(
             "--apple_sysroot=" + apple_sysroot,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
-            "--cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF"
         ]
 
         # the actual build process for current arch
