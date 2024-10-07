@@ -12,6 +12,7 @@
 
 namespace onnxruntime {
 namespace ml {
+namespace detail {
 
 template <typename T>
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<T>& data) {
@@ -37,6 +38,7 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
   return Status::OK();
 }
 
+}  // namespace detail
 }  // namespace ml
 }  // namespace onnxruntime
 
