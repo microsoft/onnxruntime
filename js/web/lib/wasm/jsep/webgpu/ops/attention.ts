@@ -513,10 +513,10 @@ const createAttentionProbsProgramInfo = (
     let pastKeyOffset = past_sequence_length * uniforms.K * kvHeadIdx;`;
       } else {
         return `
-    let kOffset = kv_sequence_length * uniforms.K * kvHeadIdx + n * uniforms.K;`;
+    let kOffset = total_sequence_length * uniforms.K * kvHeadIdx + n * uniforms.K;`;
       }
     })()}
-    ${presentKey ? 'let presentKeyOffset = kvHeadIdx * present_sequence_length * uniforms.K;' : ''}
+    ${presentKey ? 'let presentKeyOffset = kvHeadIdx * total_sequence_length * uniforms.K;' : ''}
     var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < sequence_length && w + local_id.x < uniforms.K) {
@@ -530,18 +530,18 @@ const createAttentionProbsProgramInfo = (
               if (n + local_id.y < past_sequence_length) {
                 tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
               } else if (n + local_id.y - past_sequence_length < kv_sequence_length) {
-                tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
+                tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K/ uniforms.n_reps  + w + local_id.x];
               }`;
         } else {
-          return `if (n + local_id.y < kv_sequence_length) {
-                    tileK[idx] = key[kOffset + local_id.y * uniforms.K + w + local_id.x];
+          return `if (local_id.y < kv_sequence_length) {
+                    tileK[idx] = key[kOffset + local_id.y * uniforms.K / uniforms.n_reps + w + local_id.x];
                   }`;
         }
       })()}
       ${
         presentKey
           ? `
-          let present_key_idx = presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x;
+          let present_key_idx = presentKeyOffset + (n + local_id.y) * uniforms.K/ uniforms.n_reps  + w + local_id.x;
           if (present_key_idx < present_kv_size) {
               present_key[present_key_idx] = tileK[idx];
           }`
@@ -559,7 +559,7 @@ const createAttentionProbsProgramInfo = (
 
     if (global_id.y < sequence_length && global_id.x < total_sequence_length) {
       let headOffset = headIdx * sequence_length * total_sequence_length;
-      let outputIdx = headOffset + global_id.y * sequence_length + global_id.x;
+      let outputIdx = headOffset + global_id.y * total_sequence_length + global_id.x;
       var sum: f32 = ${(() => {
         switch (components) {
           case 1:
@@ -698,15 +698,15 @@ const createVxAttentionScoreProgramInfo = (
      if (feedPastValue && presentValue) {
        return `
     let pastValueOffset = kvHeadIdx * uniforms.N * past_sequence_length + n;
-    let vOffset = kvHeadIdx * uniforms.N * uniforms.kv_sequence_length + n;
+    let vOffset = kvHeadIdx * uniforms.N * kv_sequence_length + n;
       `;
      } else {
        return `
-   let vOffset = kvHeadIdx * uniforms.N * uniforms.kv_sequence_length + n;
+   let vOffset = kvHeadIdx * uniforms.N * total_sequence_length + n;
             `;
      }
    })()}
-    ${presentValue ? 'let presentValueOffset = kvHeadIdx * uniforms.N * present_sequence_length + n;' : ''}
+    ${presentValue ? 'let presentValueOffset = kvHeadIdx * uniforms.N * total_sequence_length + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < total_sequence_length; w += TILE_SIZE) {
       if (m < sequence_length && w + local_id.x < total_sequence_length) {
@@ -725,9 +725,7 @@ const createVxAttentionScoreProgramInfo = (
       `;
           } else {
             return `
-            if (w + local_id.y < uniforms.kv_sequence_length) {
               tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N];
-            }
         `;
           }
         })()}
@@ -748,9 +746,10 @@ const createVxAttentionScoreProgramInfo = (
    }
 
    // we need to transpose output from BNSH_v to BSND_v
-   if (local_id.y < sequence_length && local_id.x < uniforms.N) {
+   let currentBatchHeadNumber = headIdx % uniforms.num_heads;
+   if (m < sequence_length && n < uniforms.N) {
      let outputIdx = batchIdx * sequence_length * uniforms.v_hidden_size + m * uniforms.v_hidden_size
-       + headIdx * uniforms.N + n;
+       + currentBatchHeadNumber * uniforms.N + n;
      output[outputIdx] = value;
    }
   }`;
