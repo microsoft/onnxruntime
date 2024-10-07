@@ -106,7 +106,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue RotaryQ;
   OrtValue RotaryK;
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
-  T* k_rotary = K.GetMutable<Tensor>()->MutableData<T>();
+  T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
