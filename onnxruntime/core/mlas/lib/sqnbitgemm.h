@@ -22,6 +22,8 @@ Abstract:
 
 #pragma once
 
+#include <functional>
+
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
@@ -204,8 +206,9 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      *        B is a quantized 4-bit integer matrix that is block quantized and column major.
      *        This is equivalent to dequantizing B and then running MlasSgemmCopyPackB.
      *
+     * @tparam      T                   type of input A
      * @param       BlkLen              Number of values in a block.
-     * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
+     * @param[out]  FpData              Supplies the output buffer for the dequantized B data in type T.
      *                                  It should have enough space for
      *                                      (CountN + 16 - 1) / 16 * 16 * (CountK + BlkLen - 1) / BlkLen * BlkLen
      *                                  elements. Only the first (CountN + 16 - 1) / 16 * 16 * CountK elements are
@@ -217,18 +220,20 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       CountK              Number of rows of B.
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
      */
-    typedef void(Q4BitBlkDequantBForSgemm_CompFp32_Fn)(
+    template<typename T>
+    using Q4BitBlkDequantBForSgemm_Fn = std::function<void(
         size_t BlkLen,
-        float* FpData,
+        T* FpData,
         const std::byte* QuantBData,
-        const float* QuantBScale,
+        const T* QuantBScale,
         const std::byte* QuantBZeroPoint,
         size_t CountN,
         size_t CountK,
         size_t BlockStrideQuantB
-    );
+    )>;
 
-    Q4BitBlkDequantBForSgemm_CompFp32_Fn* Q4BitBlkDequantBForSgemm_CompFp32 = nullptr;
+    Q4BitBlkDequantBForSgemm_Fn<float> Q4BitBlkDequantBForSgemm_CompFp32;
+    Q4BitBlkDequantBForSgemm_Fn<MLAS_FP16> Q4BitBlkDequantBForSgemm_CompFp16;
 
     //
     // CompInt8 kernel function prototypes.
@@ -277,6 +282,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
      *
+     * @tparam      T                   type of input A
      * @param       BlkLen              Number of values in a block.
      * @param       QuantA              Supplies the quantized A matrix.
                                         Binary data containing block quantized int8 data and scale values.
@@ -293,22 +299,24 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      *
      * @return                          The number of rows of A and C that were processed, at most CountM.
      */
-    typedef size_t(SQ4BitGemmKernel_CompInt8_Fn)(
+    template <typename T>
+    using SQ4BitGemmKernel_CompInt8_Fn = std::function<size_t(
         size_t BlkLen,
         const std::byte* QuantA,
         const std::byte* QuantBData,
-        const float* QuantBScale,
+        const T* QuantBScale,
         const std::byte* QuantBZeroPoint,
-        float* C,
+        T* C,
         size_t CountM,
         size_t CountN,
         size_t CountK,
         size_t BlockCountK,
         size_t ldc,
-        const float* Bias
-    );
+        const T* Bias
+    )>;
 
-    SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
+    SQ4BitGemmKernel_CompInt8_Fn<float> SQ4BitGemmKernel_CompInt8;
+    SQ4BitGemmKernel_CompInt8_Fn<MLAS_FP16> SQ4BitGemmKernel_Fp16_CompInt8;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
@@ -319,14 +327,16 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param[out]  QuantA  Supplies the output quantized A matrix.
      *                      Binary data containing block quantized int8 data and scale values.
      */
-    typedef void(QuantizeARow_CompInt8_Fn)(
+    template <typename T>
+    using QuantizeARow_CompInt8_Fn = std::function<void(
         size_t BlkLen,
-        const float* A,
+        const T* A,
         size_t CountK,
         std::byte* QuantA
-    );
+    )>;
 
-    QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
+    QuantizeARow_CompInt8_Fn<float> QuantizeARow_CompInt8;
+    QuantizeARow_CompInt8_Fn<MLAS_FP16> QuantizeARow_Fp16_CompInt8;
 
     typedef void(QuantizeARowComputeBlkSum_CompInt8_Fn)(
         size_t BlkLen,
@@ -337,4 +347,42 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
     );
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
+
+    /**
+     * @brief Multiply fp16 matrix A with quantized 4-bit integer matrix B.
+     *        B is block quantized and B is column major.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param       A                   Supplies the A matrix.
+     * @param       QuantBData          Supplies the quantized B matrix block data.
+     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param[out]  C                   Supplies the output C matrix.
+     * @param       CountM              Number of rows of A and C to process, an upper bound.
+     * @param       CountN              Number of columns of B and C to process.
+     * @param       CountK              Number of columns of A and rows of B.
+     * @param       BlockCountK         Number of blocks in one row of A and one column of B.
+     * @param       lda                 Number of elements between adjacent rows of A.
+     * @param       ldc                 Number of elements between adjacent rows of C.
+     * @param       Bias                Bias vector of length N.
+     *
+     * @return                          The number of rows of A and C that were processed, at most CountM.
+     */
+    using SQ4BitGemmKernel_CompFp16_Fn = std::function<size_t(
+        const MLAS_FP16* A,
+        const std::byte* QuantBData,
+        const MLAS_FP16* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        const MLAS_FP16* Bias,
+        MLAS_FP16* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t BlkLen,
+        size_t BlockCountK,
+        size_t lda,
+        size_t ldc
+    )>;
+
+    SQ4BitGemmKernel_CompFp16_Fn SQ4BitGemmKernel_CompFp16;
 };

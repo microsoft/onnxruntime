@@ -180,7 +180,6 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 //
 
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
-    // TODO(fajin): ISA version contidional branch 1> i8mm, 2> dotprod, 3> fp16
     MLAS_SQNBIT_GEMM_DISPATCH d;
 
     d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;
@@ -192,8 +191,19 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp32;
 
-    d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+        d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
+    }
     d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    d.Q4BitBlkDequantBForSgemm_CompFp16 = nullptr;
+    d.SQ4BitGemmKernel_CompFp16 = nullptr;
+
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+        d.SQ4BitGemmKernel_Fp16_CompInt8 = nullptr;
+    }
+    d.QuantizeARow_Fp16_CompInt8 = nullptr;
+#endif
     return d;
 }();
