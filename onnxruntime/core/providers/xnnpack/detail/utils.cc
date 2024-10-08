@@ -114,18 +114,8 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad) {
          auto_pad == AutoPadType::SAME_UPPER;
 }
 
-bool IsComputeTypeSupported(int32_t compute_type,
-                            std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set) {
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> default_supported_types{
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-      ONNX_NAMESPACE::TensorProto_DataType_INT8};
-  auto supported_types = compute_type_set == std::nullopt ? default_supported_types : compute_type_set->get();
-#ifdef XNNPACK_FP16_SUPPORTED
-  supported_types.insert(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-#endif
-  ONNX_NAMESPACE::TensorProto_DataType tp = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(compute_type);
-  return std::find(supported_types.begin(), supported_types.end(), tp) != supported_types.end();
+bool IsComputeTypeSupported(int32_t compute_type, ComputeTypeSet compute_type_set) {
+  return std::find(compute_type_set.begin(), compute_type_set.end(), compute_type) != compute_type_set.end();
 }
 
 typedef std::string ONNXOpType;

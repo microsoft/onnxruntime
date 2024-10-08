@@ -14,6 +14,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/providers/common.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 #include "xnnpack.h"
 
@@ -77,9 +78,20 @@ struct XnnpackOperatorDeleter {
 
 bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
-using COMPUTE_TYPE_SETS = std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>;
-bool IsComputeTypeSupported(int32_t compute_type,
-                            std::optional<std::reference_wrapper<COMPUTE_TYPE_SETS>> compute_type_set = std::nullopt);
+using ComputeTypeSet = std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>;
+#ifdef XNNPACK_FP16_SUPPORTED
+  bool IsComputeTypeSupported(int32_t compute_type, 
+                              ComputeTypeSet compute_type_set = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_INT8
+                                                                });
+#else
+  bool IsComputeTypeSupported(int32_t compute_type, 
+                              ComputeTypeSet compute_type_set = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_INT8});
+#endif
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
