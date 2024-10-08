@@ -156,7 +156,7 @@ def _build_aar(args):
             if "--enable_training_apis" in build_settings["build_params"]
             else "-DENABLE_TRAINING_APIS=0"
         ),
-        "-DreleaseVersionSuffix=" + os.getenv("ReleaseVersionSuffix", "rc1"),
+        "-DreleaseVersionSuffix=" + os.getenv("ReleaseVersionSuffix", ""),
     ]
 
     # clean, build, and publish to a local directory

@@ -48,11 +48,6 @@ parameters:
   type: string
   default: '0'
 
-- name: ReleaseVersionSuffix
-  displayName: Release Version Suffix
-  type: string
-  default: ''
-
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -68,6 +63,8 @@ stages:
 
 - stage: Android_Java_API_AAR_Packaging_Full
   dependsOn: []
+  variables:
+    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
   - template: android-java-api-aar.yml
     parameters:
@@ -77,7 +74,7 @@ stages:
       job_name_suffix: 'Full'
       publish_executables: '1'
       enable_code_sign: ${{ parameters.DoEsrp }}
-      ReleaseVersionSuffix: ${{ parameters.ReleaseVersionSuffix }}
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
   - template: android-java-api-aar-test.yml
     parameters:
