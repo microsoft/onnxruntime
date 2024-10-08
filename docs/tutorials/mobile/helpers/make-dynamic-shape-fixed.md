@@ -10,9 +10,11 @@ nav_order: 2
 # Making dynamic input shapes fixed
 {: .no_toc }
 
-If a model can potentially be used with NNAPI or CoreML as reported by the [model usability checker](./model-usability-checker.md), it may require the input shapes to be made 'fixed'. This is because NNAPI and CoreML do not support dynamic input shapes. 
+If a model can potentially be used with NNAPI or CoreML as reported by the [model usability checker](./model-usability-checker.md), it may benefit from making the input shapes 'fixed'.
+This is because NNAPI does not support dynamic input shapes and CoreML may have better performance with fixed input shapes.
 
-For example, often models have a dynamic batch size so that training is more efficient. In mobile scenarios the batch generally has a size of 1. Making the batch size dimension 'fixed' by setting it to 1 may allow NNAPI and CoreML to run of the model.
+For example, often models have a dynamic batch size so that training is more efficient. In mobile scenarios the batch generally has a size of 1.
+Making the batch size dimension 'fixed' by setting it to 1 may allow NNAPI to run the model.
 
 The helper can be used to update specific dimensions, or the entire input shape.
 
@@ -83,4 +85,3 @@ python -m onnxruntime.tools.make_dynamic_shape_fixed --input_name x --input_shap
 After replacement you should see that the shape for 'x' is now 'fixed' with a value of [1, 3, 960, 960]
 
 ![Updated model with dynamic input shape now having fixed values](../../../../images/model-with-dynamic-inputs-fixed.png)
-
