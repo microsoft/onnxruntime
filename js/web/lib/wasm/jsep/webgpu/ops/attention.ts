@@ -517,13 +517,13 @@ const createAttentionProbsProgramInfo = (
       ${(() => {
         if (feedPastKey && presentKey) {
           return `
-              if (n + local_id.y < past_sequence_length) {
+              if (n + local_id.y < uniforms.past_sequence_length * uniforms.n_reps) {
                 tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K / uniforms.n_reps + w + local_id.x];
-              } else if (n + local_id.y - past_sequence_length < kv_sequence_length) {
-                tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K / uniforms.n_reps + w + local_id.x];
+              } else if (n + local_id.y - uniforms.past_sequence_length < kv_sequence_length * uniforms.n_reps) {
+                tileK[idx] = key[kOffset + (n + local_id.y - uniforms.past_sequence_length) * uniforms.K / uniforms.n_reps + w + local_id.x];
               }`;
         } else {
-          return `if (n + local_id.y < kv_sequence_length) {
+          return `if (n + local_id.y < kv_sequence_length * uniforms.n_reps) {
                     tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K / uniforms.n_reps + w + local_id.x];
                   }`;
         }
@@ -701,15 +701,17 @@ const createVxAttentionScoreProgramInfo = (
         ${(() => {
           if (feedPastValue && presentValue) {
             return `
-        if (w + local_id.y < past_sequence_length) {
+        if (w + local_id.y < uniforms.past_sequence_length * uniforms.n_reps) {
           tileV[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N / uniforms.n_reps];
-        } else if (w + local_id.y - past_sequence_length < kv_sequence_length) {
-          tileV[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N / uniforms.n_reps];
+        } else if (w + local_id.y - uniforms.past_sequence_length < kv_sequence_length * uniforms.n_reps) {
+          tileV[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N / uniforms.n_reps];
         }
       `;
           } else {
             return `
-              tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N / uniforms.n_reps];
+              if (w + local_id.y < kv_sequence_length * uniforms.n_reps) {
+                tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N / uniforms.n_reps];
+              }
         `;
           }
         })()}
@@ -733,7 +735,10 @@ const createVxAttentionScoreProgramInfo = (
 
   return {
     name: 'AttentionScore',
-    shaderCache: { hint: `${pastValue !== undefined};${outputCount};${presentValue !== undefined};${outputCount}`, inputDependencies },
+    shaderCache: {
+      hint: `${pastValue !== undefined};${outputCount};${presentValue !== undefined};${outputCount}`,
+      inputDependencies,
+    },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
     getShaderSource,
   };
