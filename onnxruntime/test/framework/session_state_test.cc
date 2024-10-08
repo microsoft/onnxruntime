@@ -400,7 +400,7 @@ class PrePackingTestOpKernel : public OpKernel {
     std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
     TensorShape shape = {2};
     std::unique_ptr<Tensor> tp(new Tensor(DataTypeImpl::GetType<float>(), shape, alloc));
-    return std::move(tp);
+    return tp;
   }
 
   int prepack_calls_count = 0;

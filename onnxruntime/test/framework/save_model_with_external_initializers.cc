@@ -149,8 +149,8 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffsetAndSa
   // prepack both initializers for test purpose
   std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
   auto& pre_packed_initializers_name_map_ref = pre_packed_initializers_name_map;
-  pre_packed_initializers_name_map_ref["MatMul.Weight"]["MatMul_0"] = std::move(std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), shape, alloc));
-  pre_packed_initializers_name_map_ref["scales"]["MatMul_0"] = std::move(std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), shape, alloc));
+  pre_packed_initializers_name_map_ref["MatMul.Weight"]["MatMul_0"] = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), shape, alloc);
+  pre_packed_initializers_name_map_ref["scales"]["MatMul_0"] = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), shape, alloc);
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/prepack/model_with_matmul_nbits.onnx"), ORT_TSTR("model_with_matmul_nbits.onnx.data"), ORT_TSTR("testdata/prepack/model_with_matmul_nbits_opt.onnx"), ORT_TSTR("model_with_matmul_nbits_opt.onnx.data"), 0, align_info, pre_packed_initializers_name_map_ref, true));
 }
 
