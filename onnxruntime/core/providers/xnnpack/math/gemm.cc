@@ -38,7 +38,8 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
     const auto* A_type = A_arg->TypeAsProto();
 
     if (A_type == nullptr ||
-        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        (A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
       break;
     }
 
@@ -68,7 +69,8 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
       break;
     }
 
-    if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
+    if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() &&
+        C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
       break;
     }
 
@@ -88,6 +90,18 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
   const auto& input_defs = node.InputDefs();
   const auto* shapeA = input_defs[0]->Shape();
   const auto* shapeB = input_defs[1]->Shape();
+
+  const NodeArg& X = *input_defs[0];
+  auto input_dtype = X.TypeAsProto()->tensor_type().elem_type();
+  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    conv_type_ = OpComputeType::op_compute_type_fp32;
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    conv_type_ = OpComputeType::op_compute_type_fp16;
+  } else {
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
+    ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", stype);
+  }
+
   const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
 
   C_matrix_exists_ = C_arg && C_arg->Exists();
@@ -129,9 +143,6 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   // flags - 1 - for no transpose - 0 for transpose
   uint32_t flags = trans_B_ == CblasTrans ? 0 : XNN_FLAG_TRANSPOSE_WEIGHTS;
 
-  float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-  float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
-
   const float* bias_Data = nullptr;
 
   if (C_matrix_exists_) {
@@ -143,6 +154,8 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   const auto element_type = tensor.GetElementType();
   if (element_type == OpComputeType::op_compute_type_fp32) {
+    float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
+    float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
     status = xnn_create_fully_connected_nc_f32(
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
@@ -154,9 +167,25 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         flags,
         GetCodeCache(), GetWeightsCache(),
         &p);
+  } else if( element_type == OpComputeType::op_compute_type_fp16) {
+    throw std::invalid_argument("gemm fp16");
+    float output_min = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->first) : -65504.0f;
+    float output_max = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->second) : 65504.0f;
+    status = xnn_create_fully_connected_nc_f16(
+        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
+        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
+        trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
+        trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
+        B_->Data<MLFloat16>(),                                           // const float* kernel,
+        bias_Data,                                                   // const float* bias,
+        output_min, output_max,
+        flags,
+        GetCodeCache(), GetWeightsCache(),
+        &p);
   }
+
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32/f16 returned ", status);
   }
   op0_.reset(p);
 
@@ -173,10 +202,14 @@ Status Gemm::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  xnn_status status = xnn_reshape_fully_connected_nc_f32(op0_.get(),
-                                                         // Number of rows to multiply
-                                                         trans_A_ == CblasNoTrans ? M_ : K_,
-                                                         threadpool);
+  auto reshape_func = xnn_reshape_fully_connected_nc_f32;
+  if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_func = xnn_reshape_fully_connected_nc_f16;
+  }
+  xnn_status status = reshape_func(op0_.get(),
+                                  // Number of rows to multiply
+                                  trans_A_ == CblasNoTrans ? M_ : K_,
+                                  threadpool);
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_f32 returned ", status);
