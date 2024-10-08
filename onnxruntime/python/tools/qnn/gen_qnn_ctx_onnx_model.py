@@ -163,6 +163,7 @@ def generate_wrapper_onnx_file(
     disable_embed_mode,
     qnn_ctx_file,
     quantized_IO,
+    qnn_sdk_version="unknown",
 ):
     graph_nodes = []
     ini_list = []
@@ -207,6 +208,7 @@ def generate_wrapper_onnx_file(
         outputs=qnn_output_tensor_dic.keys(),
         ep_cache_context=ep_cache_context_content,
         embed_mode=ctx_embed_mode,
+        ep_sdk_version=qnn_sdk_version,
         source="Qnn",
         domain="com.microsoft",
     )
@@ -355,6 +357,7 @@ def main():
                     args.disable_embed_mode,
                     args.qnn_bin,
                     args.quantized_IO,
+                    qnn_version,
                 )
         else:
             print("json file unrecoginized.")
