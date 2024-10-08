@@ -843,12 +843,11 @@ void CheckAndAdjustInputSpansForLora(const OrtRunOptions& run_options,
 
 }  // namespace
 
-ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _In_ OrtSession* sess, _In_ const char** keys,
-                  _In_ const char** values, _In_ size_t kv_len) {
+ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                    _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  // TODO: is this what we're supposed to do with strings?
   auto keys_span = gsl::make_span(keys, kv_len);
   auto values_span = gsl::make_span(values, kv_len);
 

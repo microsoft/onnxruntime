@@ -4738,8 +4738,8 @@ struct OrtApi {
    * @TODO: update version number
    * @TODO: should it be SetExecutionProvider... instead of SetEp...?
    */
-  ORT_API2_STATUS(SetEpDynamicOptions, _In_ OrtSession* sess, _In_ const char** keys, _In_ const char** values,
-                  _In_ size_t kv_len);
+  ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                  _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 };
 
 /*

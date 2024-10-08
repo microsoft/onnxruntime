@@ -531,6 +531,6 @@ ORT_API_STATUS_IMPL(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t n
 ORT_API(void, ReleaseLoraAdapter, _Frees_ptr_opt_ OrtLoraAdapter*);
 ORT_API_STATUS_IMPL(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
 
-ORT_API_STATUS_IMPL(SetEpDynamicOptions, _In_ OrtSession* sess, _In_ const char** keys, _In_ const char** values,
-                  _In_ size_t kv_len);
+ORT_API_STATUS_IMPL(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                    _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 }  // namespace OrtApis
