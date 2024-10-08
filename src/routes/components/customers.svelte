@@ -14,27 +14,30 @@
 	import cephableLogo from '../../images/logos/cephable-logo.png';
 	import clearbladeLogo from '../../images/logos/clearblade-logo.png';
 	import deezerLogo from '../../images/logos/deezer-logo.png';
+	import goodnotesLogo from '../../images/logos/goodnotes-logo.png';
+	import huggingfaceLogo from '../../images/logos/huggingface-logo.png';
 	import hypefactorsLogo from '../../images/logos/hypefactors-logo.png';
 	import infarmLogo from '../../images/logos/infarm-logo.png';
 	import intelLogo from '../../images/logos/intel-logo.png';
 	import intelligenzaEticaLogo from '../../images/logos/intelligenza-etica-logo.png';
-	import navitaireAmadeusLogo from '../../images/logos/navitaire-amadeus-logo.png';
-	import PeakSpeedLogo from '../../images/logos/PeakSpeed_logo.png';
+	import navitaireLogo from '../../images/logos/navitaire-amadeus-logo.png';
+	import nvidiaLogo from '../../images/logos/nvidia.png';
+	import opennlpLogo from '../../images/logos/opennlp-logo.png';
+	import oracleLogo from '../../images/logos/oracle-logo.png';
+	import peakspeedLogo from '../../images/logos/PeakSpeed_logo.png';
 	import piecesLogo from '../../images/logos/pieces-logo.png';
+	import ptwLogo from '../../images/logos/ptw-logo.png';
 	import redisLogo from '../../images/logos/redis-logo.png';
-	import RockchipLogo from '../../images/logos/Rockchip-logo.png';
+	import rockchipLogo from '../../images/logos/Rockchip-logo.png';
 	import samtecLogo from '../../images/logos/samtec-logo.png';
 	import sasLogo from '../../images/logos/sas-logo.png';
 	import teradataLogo from '../../images/logos/teradata-logo.png';
 	import topazlabsLogo from '../../images/logos/topazlabs-logo.png';
-	import ueLogo from '../../images/logos/ue-logo.png';
+	import unrealengineLogo from '../../images/logos/ue-logo.png';
 	import usdaLogo from '../../images/logos/usda-logo.png';
 	import vespaLogo from '../../images/logos/vespa-logo.png';
 	import writerLogo from '../../images/logos/writer-logo.png';
 	import xilinxLogo from '../../images/logos/xilinx-logo.png';
-	import huggingfaceLogo from '../../images/logos/huggingface-logo.png';
-	import nvidiaLogo from '../../images/logos/nvidia.png';
-	import oracleLogo from '../../images/logos/oracle-logo.png';
 
 	const testimonials = [
 		{
@@ -93,6 +96,11 @@
 			alt: 'Deezer'
 		},
 		{
+			href: './testimonials#Goodnotes',
+			src: goodnotesLogo,
+			alt: 'GoodNotes'
+		},
+		{
 			href: './testimonials#Hugging%20Face',
 			src: huggingfaceLogo,
 			alt: 'Hugging Face'
@@ -119,7 +127,7 @@
 		},
 		{
 			href: './testimonials#Navitaire',
-			src: navitaireAmadeusLogo,
+			src: navitaireLogo,
 			alt: 'Navitaire'
 		},
 		{
@@ -128,13 +136,18 @@
 			alt: 'NVIDIA'
 		},
 		{
+			href: './testimonials#Apache%20OpenNLP',
+			src: opennlpLogo,
+			alt: 'Apache OpenNLP'
+		},
+		{
 			href: './testimonials#Oracle',
 			src: oracleLogo,
 			alt: 'Oracle'
 		},
 		{
 			href: './testimonials#Peakspeed',
-			src: PeakSpeedLogo,
+			src: peakspeedLogo,
 			alt: 'Peakspeed'
 		},
 		{
@@ -143,13 +156,18 @@
 			alt: 'Pieces'
 		},
 		{
+			href: './testimonials#PTW%20Dosimetry',
+			src: ptwLogo,
+			alt: 'PTW Dosimetry'
+		},
+		{
 			href: './testimonials#Redis',
 			src: redisLogo,
 			alt: 'Redis'
 		},
 		{
 			href: './testimonials#Rockchip',
-			src: RockchipLogo,
+			src: rockchipLogo,
 			alt: 'Rockchip'
 		},
 		{
@@ -174,7 +192,7 @@
 		},
 		{
 			href: './testimonials#Unreal%20Engine',
-			src: ueLogo,
+			src: unrealengineLogo,
 			alt: 'Unreal Engine'
 		},
 		{
