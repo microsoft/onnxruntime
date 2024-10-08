@@ -266,9 +266,198 @@ export const createMatMulNBitsProgramInfo = (
   };
 };
 
+// TODO: support zeroPoints as input
+// Currently, only support blockSize = 32.
+export const createMatMulNBitsBlockSize32ProgramInfo = (
+  inputs: readonly TensorView[],
+  attributes: MatMulNBitsAttributes,
+): ProgramInfo => {
+  const inputShape = inputs[0].dims;
+  const aRank = inputShape.length;
+  const dimAOuter = inputShape[aRank - 2];
+  const dimInner = attributes.k;
+  const dimBOuter = attributes.n;
+  const batchDims = inputShape.slice(0, aRank - 2);
+  const batchSize = ShapeUtil.size(batchDims);
+  const blobSize = inputs[1].dims[2];
+  const blobSizeInWords = blobSize / 4;
+  const dataType = inputs[0].dataType;
+  const aComponents = getMaxComponents(attributes.k);
+  const bComponents = getMaxComponents(blobSizeInWords);
+ // const components = getMaxComponents(dimBOuter);
+  const components = 1;
+  const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
+
+  const workgroupSize = 64;
+  const outputNumber = 8;
+  const tileSize = (workgroupSize / outputNumber) * bComponents * 8; // each uint32 has 8 data.
+  const aLengthPerTile = tileSize / aComponents;
+  const blocksPerTile = tileSize / attributes.blockSize; // This requires tileSize must be larger than or equal to blockSize.
+
+  const programUniforms: ProgramUniform[] = [];
+  const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
+  const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
+  bShape.splice(-1, 1, blobSizeInWords / bComponents);
+  programUniforms.push(...createTensorShapeVariables(inputShapeTemp));
+  programUniforms.push(...createTensorShapeVariables(bShape));
+  programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+  const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
+  programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
+
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const inputRank = inputShapeTemp.length;
+    const a = inputVariable('a', inputs[0].dataType, inputRank, aComponents);
+    const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
+    const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
+    const inputVariables = [a, b, scales];
+    const outputRank = outputShapeTemp.length;
+    const output = outputVariable('output', inputs[0].dataType, outputRank, components);
+    const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+    const readA = (() => {
+      switch (aComponents) {
+        case 1:
+          return `
+          let a_data0 = vec4<${dataType}>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]);
+          let a_data1 = vec4<${dataType}>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]);`;
+        case 2:
+          return `
+          let a_data0 = vec4<${dataType}>(sub_a[word_offset], sub_a[word_offset + 1]);
+          let a_data1 = vec4<${dataType}>(sub_a[word_offset + 2], sub_a[word_offset + 3]);`;
+        case 4:
+          return `
+          let a_data0 = sub_a[word_offset];
+          let a_data1 = sub_a[word_offset + 1];`;
+        default:
+          throw new Error(`${aComponents}-component is not supported.`);
+      }
+    });
+
+    const processOneWord = (): string => {
+      let calcStr = readA();
+      for (let c = 0; c < components; c++) {
+        calcStr += `
+            b_value = ${bComponents === 1 ? `b${c}_data` : `b${c}_data[i]`};
+            b_value_lower = unpack4xU8(b_value & b_mask);
+            b_value_upper = unpack4xU8((b_value >> 4) & b_mask);
+            b_quantized_values = mat2x4<${dataType}>(${Array.from(
+              { length: 4 },
+              (_, i) => `${dataType}(b_value_lower[${i}]), ${dataType}(b_value_upper[${i}])`,
+            ).join(', ')});
+            b_dequantized_values = ${(() => {
+              return `(b_quantized_values - mat2x4<${dataType}>(${Array(8).fill('zero_point').join(',')})) * scale${c};`;
+            })()};
+            inter_results[local_id.y][local_id.x] += ${Array.from(
+              { length: 2 },
+              (_, i) =>
+                `${
+                  `dot(a_data${i}, b_dequantized_values[${i}])`
+                }`,
+            ).join(' + ')};
+          `;
+      }
+      return calcStr;
+    };
+
+    const prepareScaleAndBData = (): string => {
+      let calcStr = `var col_index = col * ${components};`;
+      for (let c = 0; c < components; c++) {
+        calcStr += `
+            let scale${c} = ${scales.getByOffset(`b_row * n_blocks_per_col + block`)};
+            let b${c}_data = sub_b[local_id.y][local_id.x];
+            col_index += 1;`;
+      }
+      calcStr += `
+            var b_value: u32;
+            let b_mask: u32 = 0x0F0F0F0Fu;
+            var b_value_lower: vec4<u32>;
+            var b_value_upper: vec4<u32>;
+            var b_quantized_values:mat2x4<${dataType}>;
+            var b_dequantized_values: mat2x4<${dataType}>;`;
+      return calcStr;
+    };
+    return `
+        var<workgroup> sub_a: array<${a.type.value}, ${aLengthPerTile}>;
+        var<workgroup> sub_b: array<array<${b.type.value}, 8>, 8>;
+        var<workgroup> inter_results: array<array<${output.type.value}, 8>, 8>;
+        ${shaderHelper.declareVariables(...inputVariables, output)}
+        ${shaderHelper.mainStart([8, 8, 1])}
+          let col = workgroup_id.x * ${outputNumber} + local_id.x;
+          let row = workgroup_id.y;
+          let batch = workgroup_id.z;
+          let n_blocks_per_col = uniforms.b_shape[1];
+          let num_tiles =  (n_blocks_per_col - 1) / ${blocksPerTile} + 1;
+          let blob_size_in_words = uniforms.b_shape[2];
+          // The default zero point is 8 for unsigned 4-bit quantization.
+          let zero_point = ${dataType}(${8.0});
+
+          // Loop over shared dimension.
+          for (var tile: u32 = 0; tile < num_tiles; tile += 1) {
+            let a_col_start = tile * ${aLengthPerTile};
+            // load one tile A data into shared memory.
+            for (var a_offset = local_idx; a_offset < ${aLengthPerTile}; a_offset += ${workgroupSize})
+            {
+              let a_col = a_col_start + a_offset;
+              if (a_col < uniforms.a_shape[2])
+              {
+                sub_a[a_offset] = ${a.getByIndices(`${a.type.indices}(batch, row, a_col)`)};
+              } else {
+                sub_a[a_offset] = ${a.type.value}(0);
+              }
+            }
+            // load one tile B data into shared memory.
+            let b_row = workgroup_id.x * ${outputNumber} + local_id.y;
+            let block = tile * ${blocksPerTile} + local_id.x;
+            if (b_row < uniforms.b_shape[0] && block < uniforms.b_shape[1]) {
+              sub_b[local_id.y][local_id.x] = ${b.getByIndices(`${b.type.indices}(b_row, block, 0)`)};
+            } else {
+              sub_b[local_id.y][local_id.x] = ${b.type.value}(0);
+            }
+            workgroupBarrier();
+
+            // each thread process one block
+            var word_offset = local_id.x * ${attributes.blockSize / aComponents};
+            ${prepareScaleAndBData()}
+            for (var i: u32 = 0; i < ${bComponents}; i++) {
+              ${processOneWord()}
+              word_offset += ${8 / aComponents};
+            }
+            workgroupBarrier();
+          }
+
+          if (local_id.x < ${outputNumber}) {
+            var output_value: ${output.type.value} = ${output.type.value}(0);
+            for (var b: u32 = 0u; b < 8u; b++) {
+              output_value += inter_results[local_id.x][b];
+            }
+            if (col < uniforms.output_shape[2])
+            {
+              ${output.setByIndices(`${output.type.indices}(batch, row, col)`, 'output_value')}
+            }
+          }
+        }`;
+  };
+  return {
+    name: 'BlockwiseMatMulNBits32',
+    shaderCache: {
+      hint: `${attributes.blockSize};${attributes.bits};${aComponents};${bComponents};${components}`,
+      inputDependencies: Array(inputs.length).fill('rank'),
+    },
+    getRunData: () => ({
+      outputs: [{ dims: outputShape, dataType }],
+      dispatchGroup: { x: Math.ceil(dimBOuter / components / outputNumber), y: dimAOuter, z: batchSize },
+      programUniforms,
+    }),
+    getShaderSource,
+  };
+};
+
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  context.compute(createMatMulNBitsProgramInfo(context.inputs, attributes));
+  if(context.inputs.length < 4 && attributes.blockSize == 32 && context.adapterInfo.isVendor("intel")) {
+    context.compute(createMatMulNBitsBlockSize32ProgramInfo(context.inputs, attributes));
+  } else {
+    context.compute(createMatMulNBitsProgramInfo(context.inputs, attributes));
+  }
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
