@@ -709,6 +709,8 @@ struct ProviderHostImpl : ProviderHost {
   // OrtRunOptions (wrapped)
   const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
+  // OrtSessionOptions (wrapped)
+  const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
@@ -2836,9 +2838,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
   // EP context related session config options.
-  provider_options["ep_context_enable"] = options->value.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
-  provider_options["ep_context_embed_mode"] = options->value.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
-  provider_options["ep_context_file_path"] = options->value.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  provider_options["session_options"] = std::to_string((uintptr_t)(void*)options);
 
   auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
   if (!factory) {

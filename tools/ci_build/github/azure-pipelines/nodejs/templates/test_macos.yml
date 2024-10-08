@@ -11,7 +11,7 @@ stages:
       clean: all
     timeoutInMinutes:  120
     pool:
-      vmImage: 'macOS-latest'
+      vmImage: 'macOS-13'
 
     variables:
     - name: OnnxRuntimeBuildDirectory

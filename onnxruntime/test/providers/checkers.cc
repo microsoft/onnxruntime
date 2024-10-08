@@ -385,6 +385,8 @@ void InternalNumericalCheck(const Tensor& expected,
       EXPECT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
     } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
       EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
+    } else if (std::isinf(cur_actual[i])) {  // Handle cur_actual is inf but cur_expected is FLT_MAX case
+      EXPECT_TRUE(cur_expected[i] == FLT_MAX) << "Expected infinity. i:" << i;
     } else {
       T tolerance = get_tolerance<T>(tolerance_params, cur_expected[i]);
       EXPECT_NEAR(cur_expected[i], cur_actual[i], tolerance) << "i:" << i;
