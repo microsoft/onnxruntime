@@ -1151,9 +1151,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (it != provider_options_map.end()) {
       info = it->second;
     }
-    info["ep_context_enable"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
-    info["ep_context_embed_mode"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
-    info["ep_context_file_path"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    info["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
     return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
@@ -1689,6 +1687,13 @@ Serialized model format will default to ONNX unless:
 
 )pbdoc")
       .def_property(
+          "enable_cpu_mem_arena",
+          [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
+          [](PySessionOptions* options, bool enable_cpu_mem_arena) -> void {
+            options->value.enable_cpu_mem_arena = enable_cpu_mem_arena;
+          },
+          R"pbdoc(Enable memory arena on CPU. Default is true.)pbdoc")
+      .def_property(
           "enable_mem_pattern",
           [](const PySessionOptions* options) -> bool { return options->value.enable_mem_pattern; },
           [](PySessionOptions* options, bool enable_mem_pattern) -> void {
@@ -2221,7 +2226,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
+
         Status status;
+
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_iobinding has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         if (!run_options)
