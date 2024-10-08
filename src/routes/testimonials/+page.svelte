@@ -130,7 +130,7 @@
 		{
 			title: 'Goodnotes',
 			quote:
-			"Thanks to ONNX Runtime Web, Goodnotes has seamlessly implemented Scribble to Erase. The first Goodnotes AI feature for Android, Windows, and Web	, delivering lightning-fast performance and an incredibly smooth user experience. It's a game-changer!",
+			"Thanks to ONNX Runtime Web, Goodnotes has seamlessly implemented Scribble to Erase. The first Goodnotes AI feature for Android, Windows, and Web, delivering lightning-fast performance and an incredibly smooth user experience. It's a game-changer!",
 			author: 'Pedro Gómez, Senior Software Engineer, Goodnotes',
 			imgsrc: goodnotesLogo,
 			imgalt: 'Goodnotes logo'
