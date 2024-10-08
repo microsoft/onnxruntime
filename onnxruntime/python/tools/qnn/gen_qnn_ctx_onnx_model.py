@@ -339,7 +339,6 @@ def main():
         elif "info" in qnn_json_obj and "graphs" in qnn_json_obj["info"]:
             print("This json file is extracted from QNN context binary file")
             qnn_version = qnn_json_obj["info"]["buildId"]
-            i = 1
             for qnn_graph in qnn_json_obj["info"]["graphs"]:
                 qnn_input_tensor_dic = {}
                 qnn_output_tensor_dic = {}
