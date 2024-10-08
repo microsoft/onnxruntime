@@ -98,7 +98,7 @@ def _build_aar(args):
     if qnn_android_build:
         qnn_home = args.qnn_path
         sdk_file = os.path.join(qnn_home, "sdk.yaml")
-
+        qnn_sdk_version = None
         with open(sdk_file) as f:
             for line in f:
                 if line.strip().startswith("version:"):
@@ -106,10 +106,14 @@ def _build_aar(args):
                     qnn_sdk_version = line.split(":", 1)[1].strip()
                     break
 
+        # Note: The QNN package version does not follow Semantic Versioning (SemVer) format.
         # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any
         # yaml file typically has version like 2.26.0
-        qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
-        base_build_command += ["--qnn_home=" + qnn_home]
+        if qnn_sdk_version:
+            qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
+            base_build_command += ["--qnn_home=" + qnn_home]
+        else:
+            print("QNN SDK version not found in sdk.yaml file.")
 
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
