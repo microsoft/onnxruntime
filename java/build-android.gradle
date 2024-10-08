@@ -9,6 +9,7 @@ def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 // Expected format for qnnVersion: major.minor.patch (e.g., 2.26.0)
+// QNN package version does not follow Semantic Versioning (SemVer) format.
 // For non qnn builds, qnnVersion will be null
 def qnnVersion = System.properties['qnnVersion']
 

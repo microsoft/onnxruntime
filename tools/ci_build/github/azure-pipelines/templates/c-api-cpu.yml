@@ -80,7 +80,7 @@ stages:
 - stage: Android_Java_API_AAR_Packaging_QNN
   dependsOn: []
   jobs:
-  - template: aandroid-java-api-aar.yml
+  - template: android-java-api-aar.yml
     parameters:
       buildConfig: 'Release'
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
