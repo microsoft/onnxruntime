@@ -62,9 +62,29 @@ Q8BlkSize(size_t BlkLen)
     return BlkSize;
 }
 
+template<typename T>
+MLAS_FORCEINLINE
+constexpr size_t
+Q8BlkSize_T(size_t BlkLen)
+{
+    const size_t BlkSize = sizeof(T) + BlkLen * sizeof(int8_t);
+    // Currently, the strictest alignment requirement of a block is for a float.
+    // Ensure contiguous blocks are suitably aligned.
+    assert(BlkSize % alignof(T) == 0);
+    return BlkSize;
+}
+
 MLAS_FORCEINLINE
 constexpr size_t
 Q8BlkAlignment()
 {
     return alignof(float);
+}
+
+template<typename T>
+MLAS_FORCEINLINE
+constexpr size_t
+Q8BlkAlignment_T()
+{
+    return alignof(T);
 }

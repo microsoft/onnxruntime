@@ -17,6 +17,7 @@ Abstract:
 
 #include <cassert>
 #include <functional>
+#include <stdexcept>
 #include <unordered_map>
 
 #include "sqnbitgemm.h"
@@ -128,8 +129,20 @@ MlasIsSQNBitGemmAvailable<MLAS_FP16>(
 namespace
 {
 
+template <typename T>
 size_t
 SQNBitGemmPerGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+template<>
+size_t
+SQNBitGemmPerGemmWorkspaceSize<float>(
     size_t M,
     size_t N,
     size_t K,
@@ -150,8 +163,40 @@ SQNBitGemmPerGemmWorkspaceSize(
     return 0;
 }
 
+template <>
+size_t
+SQNBitGemmPerGemmWorkspaceSize<MLAS_FP16>(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 0;
+    }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceSize_Fp16 != nullptr) {
+        return Dispatch->SQ4BitGemmPerGemmWorkspaceSize_Fp16(M, N, K, BlkLen, ComputeType);
+    }
+
+    return 0;
+}
+
+template<typename T>
 size_t
 SQNBitGemmPerGemmWorkspaceAlignment(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+template<>
+size_t
+SQNBitGemmPerGemmWorkspaceAlignment<float>(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
@@ -169,6 +214,27 @@ SQNBitGemmPerGemmWorkspaceAlignment(
     return 1;
 }
 
+template<>
+size_t
+SQNBitGemmPerGemmWorkspaceAlignment<MLAS_FP16>(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 1;
+    }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 != nullptr) {
+        return Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment_Fp16(BlkLen, ComputeType);
+    }
+
+    return 1;
+}
+
+template<typename T>
 size_t
 SQNBitGemmPerGemmWorkspaceStride(
     size_t M,
@@ -179,13 +245,14 @@ SQNBitGemmPerGemmWorkspaceStride(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Size = SQNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
-    const auto Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
+    const auto Size = SQNBitGemmPerGemmWorkspaceSize<T>(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Alignment = SQNBitGemmPerGemmWorkspaceAlignment<T>(BlkBitWidth, BlkLen, ComputeType);
     return MlasDivRoundup(Size, Alignment) * Alignment;
 }
 
 }  // namespace
 
+template<typename T>
 size_t MLASCALL
 MlasSQNBitGemmBatchWorkspaceSize(
     size_t M,
@@ -197,12 +264,12 @@ MlasSQNBitGemmBatchWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride<T>(M, N, K, BlkBitWidth, BlkLen, ComputeType);
     if (PerGemmWorkspaceStride == 0) {
         return 0;
     }
 
-    const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
+    const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment<T>(BlkBitWidth, BlkLen, ComputeType);
 
     const size_t WorkspaceSize = BatchN * PerGemmWorkspaceStride;
 
@@ -256,6 +323,42 @@ MlasSQNBitGemmPackQuantBData(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSumWorkspace,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return;
+    }
+
+    if (BlkBitWidth == 4) {
+        if (Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
+            // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
+            // assert(QuantBScale == nullptr);
+            // assert(QuantBZeroPoint == nullptr);
+            Dispatch->SQ4BitGemmPackQuantBData(
+                N,
+                K,
+                BlkLen,
+                ComputeType,
+                static_cast<const std::byte*>(QuantBData),
+                static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
+                ThreadPool
+            );
+            return;
+        }
+    }
+}
+
+void MLASCALL
+MlasSQNBitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const void* QuantBData,
+    void* PackedQuantBDataAndOrBlkSumWorkspace,
     const void* QuantBScale,
     bool has_zp_input,
     const void* QuantBZeroPoint,
@@ -284,9 +387,9 @@ MlasSQNBitGemmPackQuantBData(
                 ThreadPool
             );
         } else if (Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
-          // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
-            //assert(QuantBScale == nullptr);
-            //assert(QuantBZeroPoint == nullptr);
+            // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
+            // assert(QuantBScale == nullptr);
+            // assert(QuantBZeroPoint == nullptr);
             Dispatch->SQ4BitGemmPackQuantBData(
                 N,
                 K,
@@ -449,7 +552,8 @@ SQ4BitGemm_CompFp32(
     }
 }
 
-void SQ4BitGemm_CompFp16(
+void
+SQ4BitGemm_CompFp16(
     const size_t BlkLen,
     const size_t K,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* const DataParams,
@@ -458,7 +562,9 @@ void SQ4BitGemm_CompFp16(
     const size_t RangeCountM,
     const size_t RangeStartN,
     const size_t RangeCountN
-) {
+)
+{
+    // TODO(fajin): loop L1 cache blocks -> loop micro-kernel
 }
 
 template <typename T>
@@ -471,8 +577,7 @@ void SQ4BitGemm_CompInt8(
     const size_t RangeCountM,
     const size_t RangeStartN,
     const size_t RangeCountN
-) {
-}
+);
 
 template <>
 void SQ4BitGemm_CompInt8(
@@ -614,7 +719,63 @@ void SQ4BitGemm_CompInt8(
     const size_t RangeStartN,
     const size_t RangeCountN
 ) {
+    constexpr size_t BlkBitWidth = 4;
 
+    const size_t k_blks = MlasDivRoundup(K, BlkLen);
+
+    const size_t lda = k_blks * Q8BlkSize_T<MLAS_FP16>(BlkLen);
+    const size_t ldc = DataParams->ldc;
+    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+
+    const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace) + RangeStartM * lda;
+
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
+    const MLAS_FP16* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
+    const std::byte* QuantBZeroPoint =
+        (DataParams->QuantBZeroPoint == nullptr)
+            ? nullptr
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+
+    MLAS_FP16* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+    const MLAS_FP16* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
+
+    // TODO(fajin): loop L1 cache -> loop micro-kernel
+    size_t CountN;
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+        CountN = std::min(RangeCountN - n, size_t{128});
+
+        const std::byte* a_row = QuantA;
+        const std::byte* b_col = QuantBData + n * ldb;
+        const float* b_col_scale = QuantBScale + n * k_blks;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        float* c_blk = C + n;
+        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+
+        if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_Fp16_CompInt8 != nullptr) {
+            size_t RowsRemaining = RangeCountM;
+            while (RowsRemaining > 0) {
+                const auto RowsHandled = GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_Fp16_CompInt8(
+                    BlkLen,
+                    a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
+                );
+
+                if (DataParams->PostProcessor != nullptr) {
+                    DataParams->PostProcessor->Process(
+                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
+                        RowsHandled, CountN, ldc
+                    );
+                }
+
+                c_blk += RowsHandled * ldc;
+                a_row += RowsHandled * lda;
+
+                RowsRemaining -= RowsHandled;
+            }
+        }
+    }
 }
 
 template <typename T>
@@ -629,9 +790,7 @@ InitializeWorkspace_CompInt8(
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool
-)
-{
-}
+);
 
 template <>
 void
@@ -703,7 +862,23 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool
 ) {
+    MLAS_UNREFERENCED_PARAMETER(N);
+    const auto QuantizeARow = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_Fp16_CompInt8;
+    if (QuantizeARow) {
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        const size_t QuantAStride = BlockCountK * Q8BlkSize_T<MLAS_FP16>(BlkLen);
 
+        MlasTrySimpleParallel(ThreadPool, BatchN * M, [&](ptrdiff_t m_idx) {
+            size_t gemm_idx = m_idx / M;
+            size_t m = m_idx % M;
+            const auto& data = DataParams[gemm_idx];
+
+            const MLAS_FP16* ARowPtr = data.A + data.lda * m;
+            std::byte* QuantARowPtr =
+                static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride + m * QuantAStride;
+            QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+        });
+    }
 }
 
 template <typename T>
@@ -745,10 +920,7 @@ using SQNBitGemmFn = std::function<void(
 
 template <typename T>
 SQNBitGemmFn<T>
-GetSQNBitGemm(SQNBitGemmVariant variant)
-{
-    return nullptr;
-}
+GetSQNBitGemm(SQNBitGemmVariant variant);
 
 template <>
 SQNBitGemmFn<float>
@@ -801,14 +973,14 @@ MlasSQNBitGemmBatch(
     // Ensure `Workspace` has correct alignment.
     //
     if (Workspace != nullptr) {
-        const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
+        const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment<T>(BlkBitWidth, BlkLen, ComputeType);
         const uintptr_t WorkspaceAddress = reinterpret_cast<uintptr_t>(Workspace);
         Workspace = reinterpret_cast<void*>(
             (WorkspaceAddress + Alignment - 1) & (~(Alignment - 1))
         );
     }
 
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride<T>(M, N, K, BlkBitWidth, BlkLen, ComputeType);
 
     if (const auto InitializeWorkspaceOperation = GetInitializeWorkspace<T>(Variant);
         InitializeWorkspaceOperation != nullptr) {

@@ -64,6 +64,18 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlockCountK
 );
 
+// CompFp16 declarations
+
+void
+SQ4BitGemmPackQuantBData_CompFp16(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+);
+
 // CompInt8 declarations
 
 void

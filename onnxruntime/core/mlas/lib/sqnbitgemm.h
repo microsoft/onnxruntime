@@ -152,6 +152,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
+    SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize_Fp16 = nullptr;
 
     /**
      * @brief Gets the required byte alignment of the per-GEMM intermediate workspace.
@@ -165,6 +166,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
+    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 = nullptr;
 
     //
     // CompFp32 kernel function prototypes.
