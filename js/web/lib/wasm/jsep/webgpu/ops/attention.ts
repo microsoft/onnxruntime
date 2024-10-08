@@ -503,7 +503,7 @@ const createAttentionProbsProgramInfo = (
     let pastKeyOffset = past_sequence_length * uniforms.K * kvHeadIdx;`;
       } else {
         return `
-    let kOffset = uniforms.N * uniforms.K * kvHeadIdx + n * uniforms.K;`;
+    let kOffset = uniforms.N * uniforms.K * kvHeadIdx;`;
       }
     })()}
     ${presentKey ? 'let presentKeyOffset = kvHeadIdx * uniforms.N * uniforms.K;' : ''}
@@ -523,7 +523,7 @@ const createAttentionProbsProgramInfo = (
                 tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
               }`;
         } else {
-          return `if (local_id.y < kv_sequence_length) {
+          return `if (n + local_id.y < kv_sequence_length) {
                     tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
                   }`;
         }
