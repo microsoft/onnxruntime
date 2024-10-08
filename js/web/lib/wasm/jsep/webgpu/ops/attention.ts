@@ -496,16 +496,8 @@ const createAttentionProbsProgramInfo = (
     var sequence_length = uniforms.M;
     ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
     let qOffset = sequence_length * uniforms.K * headIdx + m * uniforms.K;
-    ${(() => {
-      if (feedPastKey && presentKey) {
-        return `
-    let kOffset = kv_sequence_length * uniforms.K * kvHeadIdx;
-    let pastKeyOffset = past_sequence_length * uniforms.K * kvHeadIdx;`;
-      } else {
-        return `
-    let kOffset = uniforms.N * uniforms.K * kvHeadIdx;`;
-      }
-    })()}
+    ${feedPastKey && presentKey ? 'let pastKeyOffset = kvHeadIdx* uniforms.past_sequence_length * uniforms.K;' : ''};
+    let kOffset = kvHeadIdx* kv_sequence_length * uniforms.K;
     ${presentKey ? 'let presentKeyOffset = kvHeadIdx * uniforms.N * uniforms.K;' : ''}
     var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
@@ -678,19 +670,9 @@ const createVxAttentionScoreProgramInfo = (
    var sequence_length = uniforms.M;
    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
    let offsetA = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
-   ${(() => {
-     if (feedPastValue && presentValue) {
-       return `
-    let pastValueOffset = (batchIdx * kv_num_heads + kvHeadIdx) * uniforms.N * past_sequence_length + n;
-    let vOffset = (batchIdx * kv_num_heads + kvHeadIdx) * uniforms.N * kv_sequence_length + n;
-      `;
-     } else {
-       return `
-   let vOffset = (batchIdx * kv_num_heads + kvHeadIdx) * uniforms.N * uniforms.K + n;
-            `;
-     }
-   })()}
-    ${presentValue ? 'let presentValueOffset = (batchIdx * kv_num_heads + kvHeadIdx) * uniforms.N * uniforms.K + n;' : ''}
+   ${feedPastValue && presentValue ? 'let pastValueOffset = kvHeadIdx* uniforms.N * uniforms.past_sequence_length + n;' : ''};
+   let vOffset = kvHeadIdx* uniforms.N * kv_sequence_length + n;
+   ${presentValue ? 'let presentValueOffset = kvHeadIdx* uniforms.N * uniforms.K + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (m < sequence_length && w + local_id.x < uniforms.K) {
