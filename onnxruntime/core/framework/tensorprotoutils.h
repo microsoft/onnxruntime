@@ -116,6 +116,17 @@ common::Status TensorProtoToTensor(const Env& env, const std::filesystem::path& 
                                    Tensor& tensor);
 
 /**
+ * @brief Deserialize an INT4/UINT4 TensorProto into a preallocated empty Tensor of int8_t/uint8_t elements.
+ * @param env           ORT environment
+ * @param model_path    model's path.
+ * @param tensor_proto  source TensorProto with 4-bit data.
+ * @param tensorp       destination empty tensor that will contained unpacked 8-bit data.
+ * @return
+ */
+common::Status TensorProtoInt4ToTensorInt8(const Env& env, const std::filesystem::path& model_path,
+                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                           Tensor& tensor);
+/**
  * @brief Creates a TensorProto from a Tensor.
  * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
  * @param[in] tensor_proto_name the name of the TensorProto.
