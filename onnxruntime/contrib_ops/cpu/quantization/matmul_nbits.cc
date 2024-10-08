@@ -102,14 +102,14 @@ class MatMulNBits final : public OpKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  void ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor);
+  void ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor, int input_idx);
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors() override;
+  std::unique_ptr<Tensor> GetPrePackTensors() override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensors(int input_idx, std::unique_ptr<Tensor>& pre_packed_tensor) override;
 
  private:
   const size_t K_;
@@ -126,7 +126,8 @@ class MatMulNBits final : public OpKernel {
   size_t packed_b_size_{0};
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
-  Tensor* packed_tensor_{nullptr};
+  std::unique_ptr<Tensor> packed_tensor_{nullptr};
+  MLDataType packed_tensor_data_type{};
 
   bool has_zp_input_{false};
 
@@ -155,21 +156,18 @@ class MatMulNBits final : public OpKernel {
     ORT_THROW("ComputeBPacked is not supported for T1 type.");
   }
 };
-  
+
 template <typename T1>
-void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor) {
-  if (packed_tensor_ == nullptr) {
-    std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / tensor.DataType()->Size()) + 1};
-    packed_tensor_ = new Tensor(tensor.DataType(),
-                                TensorShape(weights_dims),
-                                packed_b_.get(),
-                                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-  } else {
-    packed_tensor_ = new Tensor(packed_tensor_->DataType(),
-                                packed_tensor_->Shape(),
-                                packed_b_.get(),
-                                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor, int input_idx) {
+  if (input_idx == InputIndex::B) {
+    packed_tensor_data_type = tensor.DataType();
   }
+
+  std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / packed_tensor_data_type->Size()) + 1};
+  packed_tensor_ = std::make_unique<Tensor>(packed_tensor_data_type,
+                                            TensorShape(weights_dims),
+                                            packed_b_.get(),
+                                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 }
 
 template <typename T1>
@@ -211,7 +209,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 
   if (save_prepacked_initializers) {
-    ConvertPrepackWeightIntoTensor(tensor);
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
   }
 
   return Status::OK();
@@ -270,22 +268,21 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
   }
 
   if (save_prepacked_initializers) {
-    ConvertPrepackWeightIntoTensor(tensor);
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
   }
 
   return Status::OK();
 }
 
 template <typename T1>
-Tensor* MatMulNBits<T1>::GetPrePackTensors() {
-  return packed_tensor_;
+std::unique_ptr<Tensor> MatMulNBits<T1>::GetPrePackTensors() {
+  return std::move(packed_tensor_);
 }
 
 template <typename T1>
-Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, std::unique_ptr<Tensor>& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-    packed_b_ = BufferUniquePtr(packed_tensor_->MutableDataRaw());
+    packed_b_ = BufferUniquePtr(pre_packed_tensor->MutableDataRaw());
   }
 
   return Status::OK();

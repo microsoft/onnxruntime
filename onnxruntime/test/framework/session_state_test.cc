@@ -394,12 +394,13 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Tensor* GetPrePackTensors() override {
+  std::unique_ptr<Tensor> GetPrePackTensors() override {
     ++get_prepack_tensors_count;
 
     std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
     TensorShape shape = {2};
-    return new Tensor(DataTypeImpl::GetType<float>(), shape, alloc);
+    std::unique_ptr<Tensor> tp(new Tensor(DataTypeImpl::GetType<float>(), shape, alloc));
+    return std::move(tp);
   }
 
   int prepack_calls_count = 0;
@@ -610,7 +611,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
-  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager,
                                                       pre_packed_initializers_name_map));

@@ -400,7 +400,7 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                                        const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
                                                        bool save_prepacked_constant_initializers,
-                                                       std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                                       std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map,
                                                        std::unordered_map<std::string, size_t>& pre_packed_initializers_name_count_map) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
                                      save_prepacked_constant_initializers, &pre_packed_initializers_name_map,
@@ -439,7 +439,8 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // If prepacked weights already read from ONNX data file (this happens we ORT reads data file with prepacked
                   // weights serialized), only need to set prepacked weights once to kernel.
                   is_kernel_prepacked = true;
-                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensors(input_idx, &const_initialized_tensor));
+                  std::unique_ptr<Tensor> const_initialized_tensor_mutable(constant_initialized_tensors[ort_value_idx].GetMutable<Tensor>());
+                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensors(input_idx, const_initialized_tensor_mutable));
                 }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
                 else if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
@@ -511,16 +512,12 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // if intended to save prepacked initializers, get prepacked tensors from kernel and save in hashmap,
                   // will save to data file later
                   if (save_prepacked_constant_initializers) {
-                    Tensor* tensor = kernel->GetPrePackTensors();
+                    std::unique_ptr<Tensor> tensor = kernel->GetPrePackTensors();
 
                     if (tensor != nullptr) {
                       // save prepacked initializers per initializer and kernel since one initializer could
                       // be used by multiple kernels
-                      if (pre_packed_initializers_name_map.count(input_name) == 0) {
-                        pre_packed_initializers_name_map[input_name] = {{kernel_name, tensor}};
-                      } else {
-                        pre_packed_initializers_name_map[input_name][kernel_name] = tensor;
-                      }
+                      pre_packed_initializers_name_map[input_name][kernel_name] = std::move(tensor);
 
                       pre_packed_kernel_input_map[kernel_name] = input_name;
                     }
@@ -543,11 +540,11 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // multiple times and use different initializers to store prepacked weights, this piece of logic
                   // might introduce bug and need a per kernel strategy to update prepacked weights.
                   if (save_prepacked_constant_initializers && pre_packed_kernel_input_map.count(kernel_name)) {
-                    Tensor* tensor = kernel->GetPrePackTensors();
+                    std::unique_ptr<Tensor> tensor = kernel->GetPrePackTensors();
 
                     if (tensor != nullptr) {
                       auto existing_input_name = pre_packed_kernel_input_map[kernel_name];
-                      pre_packed_initializers_name_map[existing_input_name][kernel_name] = tensor;
+                      pre_packed_initializers_name_map[existing_input_name][kernel_name] = std::move(tensor);
                     }
                   }
                 }
@@ -1232,7 +1229,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
-                                          std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                          std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1380,7 +1377,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                              std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                              std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {

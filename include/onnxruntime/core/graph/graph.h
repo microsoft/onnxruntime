@@ -1192,13 +1192,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                                   size_t initializer_size_threshold,
                                                                   const OffsetAlignmentInfo& align_info,
                                                                   bool save_prepacked_constant_initializers,
-                                                                  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const;
+                                                                  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map) const;
 
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold) const {
     OffsetAlignmentInfo default_options;
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
     return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options,
                                                 false, pre_packed_initializers_name_map);
   }

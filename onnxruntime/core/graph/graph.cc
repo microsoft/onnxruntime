@@ -4150,7 +4150,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold,
                                                                        const OffsetAlignmentInfo& align_info,
                                                                        bool save_prepacked_constant_initializers,
-                                                                       std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const {
+                                                                       std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4178,11 +4178,10 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     // IT could potentially make the ONNX data file larger since we store multiple prepacked initializers into disk
     // but this could be rare case.
     if (save_prepacked_constant_initializers && pre_packed_initializers_name_map.count(initializer.name())) {
-      for (auto item : pre_packed_initializers_name_map[initializer.name()]) {
+      for (const auto& item : pre_packed_initializers_name_map[initializer.name()]) {
         auto kernel_name = item.first;
         std::string prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer.name(), kernel_name);
-        Tensor* pre_packed_tensor = item.second;
-        pre_packed_initializers.push_back(utils::TensorToTensorProto(*pre_packed_tensor, prepacked_initializer_name));
+        pre_packed_initializers.push_back(utils::TensorToTensorProto(*item.second, prepacked_initializer_name));
         use_pre_packed_initializer = true;
 
         for (auto& node : *result.mutable_node()) {

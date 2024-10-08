@@ -136,11 +136,11 @@ class OpKernel {
   // ONNX data file with mmap and no need to do prepacking on fly to save a lot of heap memory.
   // For example, matmul_nbits kernel can use below function to get prepacked weights as tensor.
   // template <typename T1>
-  // Tensor* MatMulNBits<T1>::GetPrePackTensors() {
-  //   return packed_tensor_;
+  // std::unique_ptr<Tensor> MatMulNBits<T1>::GetPrePackTensors() {
+  //   return std::move(packed_tensor_);
   // }
   // Please refer to matmul_nbits kernel for a complete example
-  virtual Tensor* GetPrePackTensors() {
+  virtual std::unique_ptr<Tensor> GetPrePackTensors() {
     return nullptr;
   }
 
@@ -149,15 +149,16 @@ class OpKernel {
   // ONNX data file with mmap and no need to do prepacking on fly to save a lot of heap memory.
   // For example, matmul_nbits kernel can use below function to set prepacked weights from tensor.
   // template <typename T1>
-  // Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  // Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, std::unique_ptr<Tensor>& pre_packed_tensor) {
   //   if (input_idx == 1) {
-  //     packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-  //     packed_b_ = BufferUniquePtr(packed_tensor_->MutableDataRaw());
+  //     packed_b_ = BufferUniquePtr(pre_packed_tensor->MutableDataRaw());
   //   }
+  //   return Status::OK();
+  //}
   // @param input_idx : The input index of the tensor in this kernel.
   // @param pre_packed_tensor: The prepacked tensor read from onnx data file and use the prepacked tensor
   // to restore prepacked weight buffer.
-  virtual Status SetPrePackTensors(int /*input_index*/, const Tensor* /*pre_packed_tensor*/) {
+  virtual Status SetPrePackTensors(int /*input_idx*/, std::unique_ptr<Tensor>& /*pre_packed_tensor*/) {
     return Status::OK();
   }
 
