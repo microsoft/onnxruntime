@@ -4,10 +4,9 @@
 #include "core/session/lora_adapters.h"
 #include "lora/adapter_format_utils.h"
 
-#include <unordered_map>
-
 #include "core/framework/data_transfer.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
@@ -17,11 +16,13 @@
 #endif
 
 #ifdef USE_DML
-#include "core/framework/execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
+
+#include <functional>
+#include <unordered_map>
 
 namespace onnxruntime {
 
@@ -57,54 +58,48 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
   InitializeParamsValues();
 }
 
-static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_info) {
+namespace {
+struct DataTransfer {
+  std::unique_ptr<IExecutionProvider> ep;
   std::unique_ptr<IDataTransfer> data_transfer;
-
-  if (strcmp(mem_info.name, onnxruntime::CPU) == 0) {
-    return data_transfer;
+  Status CopyTensor(const Tensor& src, Tensor& dst) const {
+    return data_transfer->CopyTensor(src, dst);
   }
+};
+}  // namespace
+
+static Status GetDataTransfer(const OrtMemoryInfo& mem_info, DataTransfer& dt) {
+  ORT_RETURN_IF(strcmp(mem_info.name, onnxruntime::CPU) == 0, "Expecting on device allocator for LoraAdapter");
 
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
 #ifdef USE_CUDA
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
     if (cuda_provider_info != nullptr) {
-      data_transfer = cuda_provider_info->CreateGPUDataTransfer();
+      dt.data_transfer = cuda_provider_info->CreateGPUDataTransfer();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA provider could not be loaded");
     }
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA provider is not enabled in this build");
 #endif
   } else if (strcmp(mem_info.name, onnxruntime::DML) == 0) {
 #ifdef USE_DML
     auto ep_factory = onnxruntime::DMLProviderFactoryCreator::Create(ConfigOptions{}, 0, false, false, false);
-    auto dml_ep = ep_factory->CreateProvider();
-    data_transfer = dml_ep->GetDataTransfer();
-
-    //constexpr uint32_t dml_api_version = 0;  // This is ignored
-    //const void* dml_api = nullptr;
-    //auto* ort_status = OrtApis::GetExecutionProviderApi("DML", dml_api_version, &dml_api);
-    //if (ort_status == nullptr) {
-    //  const auto* dml_provider_api = reinterpret_cast<const OrtDmlApi*>(dml_api);
-    //  OrtSessionOptions sess_options;
-    //  OrtDmlDeviceOptions dml_dev_options{OrtDmlPerformancePreference::Default, OrtDmlDeviceFilter::Gpu};
-    //  ort_status = dml_provider_api->SessionOptionsAppendExecutionProvider_DML2(&sess_options, &dml_dev_options);
-    //  if (ort_status) {
-    //    Ort::Status status(ort_status);
-    //    ORT_THROW(status.GetErrorMessage());
-    //  }
-    //  ORT_ENFORCE(sess_options.provider_factories.size() == 1, "Expecting a single factory");
-    //  auto dml_ep = sess_options.provider_factories[0]->CreateProvider();
-    //  data_transfer = dml_ep->GetDataTransfer();
-    //} else {
-    //  Ort::Status status(ort_status);
-    //  ORT_THROW(status.GetErrorMessage());
-    //}
+    dt.ep = ep_factory->CreateProvider();
+    dt.data_transfer = dt.ep->GetDataTransfer();
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DML provider is not enabled in this build");
 #endif
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported device allocator");
   }
 
-  return data_transfer;
+  return Status::OK();
 }
 
 static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
                                      const AllocatorPtr& device_allocator,
-                                     const IDataTransfer& data_transfer,
+                                     const DataTransfer& data_transfer,
                                      OrtValue& out) {
   OrtValue result;
   const auto& src = ort_value_mapped.Get<Tensor>();
@@ -120,12 +115,9 @@ void LoraAdapter::InitializeParamsValues() {
     ORT_THROW("Adapter is not loaded yet.");
   }
 
-  std::unique_ptr<IDataTransfer> data_transfer;
+  DataTransfer data_transfer;
   if (device_allocator_) {
-    data_transfer = GetDataTransfer(device_allocator_->Info());
-    if (data_transfer == nullptr) {
-      ORT_THROW("Data transfer is not available for the specified device allocator, it also must not be a CPU allocator");
-    }
+    ORT_THROW_IF_ERROR(GetDataTransfer(device_allocator_->Info(), data_transfer));
   }
 
   const auto* params = adapter_->parameters();
@@ -133,12 +125,12 @@ void LoraAdapter::InitializeParamsValues() {
   std::unordered_map<std::string, Param> params_values;
   params_values.reserve(params->size());
   // Re-work in two separate loops due to compiler issues
-  if (data_transfer) {
+  if (device_allocator_) {
     for (const auto* param : *params) {
       auto [name, ort_value] = adapters::utils::CreateOrtValueOverLoraParameter(*param);
       OrtValue ort_value_ondevice;
       ORT_THROW_IF_ERROR(CreateOrtValueOnDevice(ort_value, device_allocator_,
-                                                *data_transfer, ort_value_ondevice));
+                                                data_transfer, ort_value_ondevice));
       Param lora_param(std::move(ort_value), std::move(ort_value_ondevice));
       params_values.emplace(std::move(name), std::move(lora_param));
     }

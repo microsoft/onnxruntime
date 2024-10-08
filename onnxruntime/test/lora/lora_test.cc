@@ -252,7 +252,7 @@ TEST(LoraAdapterTest, VerifyDmlDeviceCopy) {
   for (; begin != end; ++begin) {
     const auto& [_, param] = *begin;
     const auto& tensor_device = param.GetDeviceOrMapped().Get<Tensor>();
-    ASSERT_EQ(0, strcmp(tensor_device.Location().name, onnxruntime::CUDA));
+    ASSERT_EQ(0, strcmp(tensor_device.Location().name, onnxruntime::DML));
 
     const auto& tensor_cpu = param.GetMapped().Get<Tensor>();
     ASSERT_EQ(tensor_cpu.Shape().Size(), tensor_device.Shape().Size());
