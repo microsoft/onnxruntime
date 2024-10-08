@@ -235,6 +235,9 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const seqLens = context.inputs.length > 4 ? context.inputs[5] : undefined;
   const totalSequenceLengthInput = context.inputs.length > 5 ? context.inputs[6] : undefined;
   const kvNumHeads = params.kvNumHeads ? params.kvNumHeads : params.numHeads;
+
+  // TODO Remove explicit split operation and use indexing in Attention implementation to avoid overhead.
+
   const splitAttributes: SplitAttributes = createAttributeWithCacheKey({
     axis: 2,
     numOutputs: 3,
