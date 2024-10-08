@@ -42,7 +42,7 @@ class Gemm : protected GemmBase, public XnnpackKernel {
   float alpha_;
   float beta_;
 
-  OpComputeType conv_type_ = OpComputeType::op_compute_type_invalid;
+  OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
 };
 
 }  // namespace xnnpack
