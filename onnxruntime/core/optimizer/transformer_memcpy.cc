@@ -297,7 +297,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
         (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
         (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
       const KernelCreateInfo* kci = nullptr;
-      ORT_THROW_IF_ERROR(kernel_registries.SearchKernelRegistry(it, &kci));
+      ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, &kci));
       if (arg_input_index != -1) {
         if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
