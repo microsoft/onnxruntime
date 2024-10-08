@@ -25,8 +25,8 @@ steps:
 
         echo "Generating GnuPG key files."
         echo "this is a testing jar file." >$jar_file_directory/testing.jar
-        > $private_key_file cat <<< $original_private_key
-        > $passphrase_file cat <<< $original_passphrase
+        echo "$original_private_key" > $private_key_file
+        echo ""$original_passphrase" > $passphrase_file
         echo "Generated GnuPG key files."
 
         echo "Importing GnuPG private key file."
