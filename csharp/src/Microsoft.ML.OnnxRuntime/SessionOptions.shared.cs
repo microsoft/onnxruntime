@@ -280,7 +280,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="dmlDevice">A IDMLDevice reference</param>
         /// <param name="commandQueue">A ID3D12CommandQueue reference</param>
-        public void AppendExecutionProvider_DML1(IntPtr dmlDevice, IntPtr commandQueue)
+        public void AppendExecutionProvider_DML1(object dmlDevice, object commandQueue)
         {
 #if __MOBILE__
             throw new NotSupportedException("The DML Execution Provider is not supported in this build");
