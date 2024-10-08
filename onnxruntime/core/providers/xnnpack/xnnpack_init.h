@@ -54,7 +54,6 @@ namespace xnnpack {
 
 #define XNNPACK_FP16_SUPPORTED
 
-
 std::pair<AllocatorPtr&, xnn_allocator*> GetStoredAllocator();
 
 }  // namespace xnnpack
