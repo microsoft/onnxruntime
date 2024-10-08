@@ -1,0 +1,29 @@
+diff --git a/include/fp16/fp16.h b/include/fp16/fp16.h
+index 2b61fff..1947805 100644
+--- a/include/fp16/fp16.h
++++ b/include/fp16/fp16.h
+@@ -4,10 +4,8 @@
+ 
+ #if defined(__cplusplus) && (__cplusplus >= 201103L)
+ 	#include <cstdint>
+-	#include <cmath>
+ #elif !defined(__OPENCL_VERSION__)
+ 	#include <stdint.h>
+-	#include <math.h>
+ #endif
+ 
+ #ifdef _MSC_VER
+@@ -228,9 +226,11 @@ static inline uint16_t fp16_ieee_from_fp32_value(float f) {
+ 	const float scale_to_inf = fp32_from_bits(UINT32_C(0x77800000));
+ 	const float scale_to_zero = fp32_from_bits(UINT32_C(0x08800000));
+ #endif
+-	float base = (fabsf(f) * scale_to_inf) * scale_to_zero;
+-
+ 	const uint32_t w = fp32_to_bits(f);
++	const float abs_f = fp32_from_bits(w & UINT32_C(0x7FFFFFFF));
++
++	float base = (abs_f * scale_to_inf) * scale_to_zero;
++
+ 	const uint32_t shl1_w = w + w;
+ 	const uint32_t sign = w & UINT32_C(0x80000000);
+ 	uint32_t bias = shl1_w & UINT32_C(0xFF000000);

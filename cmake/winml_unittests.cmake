@@ -166,7 +166,7 @@ function (get_winml_test_model_src
       "${winml_test_src_path}/model/*.cpp")
   set(${output_winml_test_model_src} ${winml_test_model_src} PARENT_SCOPE)
   set(${winml_test_model_libs} onnx_test_data_proto onnx_test_runner_common onnxruntime_common onnxruntime_mlas
-    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers PARENT_SCOPE)
+    onnxruntime_graph onnxruntime_test_utils onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers PARENT_SCOPE)
 endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS

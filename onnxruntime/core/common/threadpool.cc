@@ -389,13 +389,23 @@ ThreadPool::ThreadPool(Env* env,
       assert(thread_options_.affinities.size() >= size_t(threads_to_create));
     }
 
-    extended_eigen_threadpool_ =
-        std::make_unique<ThreadPoolTempl<Env> >(name,
-                                                threads_to_create,
-                                                low_latency_hint,
-                                                *env,
-                                                thread_options_);
-    underlying_threadpool_ = extended_eigen_threadpool_.get();
+    if (force_hybrid_) {
+      extended_eigen_hybrid_threadpool_ =
+          std::make_unique<ThreadPoolTempl<Env, true> >(name,
+                                                        threads_to_create,
+                                                        low_latency_hint,
+                                                        *env,
+                                                        thread_options_);
+      underlying_threadpool_ = extended_eigen_hybrid_threadpool_.get();
+    } else {
+      extended_eigen_normal_threadpool_ =
+          std::make_unique<ThreadPoolTempl<Env, false> >(name,
+                                                         threads_to_create,
+                                                         low_latency_hint,
+                                                         *env,
+                                                         thread_options_);
+      underlying_threadpool_ = extended_eigen_normal_threadpool_.get();
+    }
   }
 }
 
@@ -664,15 +674,17 @@ std::string ThreadPool::StopProfiling(concurrency::ThreadPool* tp) {
 }
 
 void ThreadPool::EnableSpinning() {
-  if (extended_eigen_threadpool_) {
-    extended_eigen_threadpool_->EnableSpinning();
-  }
+  if (extended_eigen_hybrid_threadpool_)
+    extended_eigen_hybrid_threadpool_->EnableSpinning();
+  else if (extended_eigen_normal_threadpool_)
+    extended_eigen_normal_threadpool_->EnableSpinning();
 }
 
 void ThreadPool::DisableSpinning() {
-  if (extended_eigen_threadpool_) {
-    extended_eigen_threadpool_->DisableSpinning();
-  }
+  if (extended_eigen_hybrid_threadpool_)
+    extended_eigen_hybrid_threadpool_->DisableSpinning();
+  else if (extended_eigen_normal_threadpool_)
+    extended_eigen_normal_threadpool_->DisableSpinning();
 }
 
 // Return the number of threads created by the pool.

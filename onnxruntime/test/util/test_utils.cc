@@ -59,6 +59,11 @@ void VerifyOutput(const std::string& output_name,
                   ::testing::Pointwise(::testing::FloatNear(fp32_abs_err), tensor.DataAsSpan<float>()));
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+      EXPECT_THAT(expected_tensor.DataAsSpan<MLFloat16>(),
+                  ::testing::Pointwise(::testing::FloatNear(fp32_abs_err), tensor.DataAsSpan<MLFloat16>()));
+      break;
+    }
     default:
       ORT_THROW("Unhandled data type. Please add 'case' statement for ", element_type);
   }

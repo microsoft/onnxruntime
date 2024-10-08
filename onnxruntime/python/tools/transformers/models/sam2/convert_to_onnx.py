@@ -125,7 +125,7 @@ def parse_arguments():
     return args
 
 
-def optimize_sam2_model(onnx_model_path, optimized_model_path, use_gpu: bool, float16: bool):
+def optimize_sam2_model(onnx_model_path, optimized_model_path, float16: bool, use_gpu: bool):
     print(f"Optimizing {onnx_model_path} to {optimized_model_path} with float16={float16} and use_gpu={use_gpu}...")
 
     # Import from source directory.
@@ -251,6 +251,7 @@ def main():
         print("demo output files for PyTorch:", torch_image_files)
 
         show_all_images(ort_image_files, torch_image_files, suffix)
+        print(f"Combined demo output: sam2_demo{suffix}.png")
 
 
 if __name__ == "__main__":

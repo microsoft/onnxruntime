@@ -73,7 +73,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
-      // we only support fp32 currently. when we add support for integers we need to check the type and use
+      // we support fp32/fp16 currently. when we add support for integers we need to check the type and use
       // "floor_div" or "real_div" accordingly
       coreml_op_type = "real_div";
     } else if (op_type == "Pow") {
@@ -138,9 +138,22 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
                                              const logging::Logger& logger) const {
   // Add/Sub/Mul/Div spec says inputs must be of the same type.
   // Pow spec says inputs can be different types.
-  // We only support float for all of these inputs.
-  if (!IsInputFloat(node, 0, input_params, logger) ||
-      ((node.OpType() == "Pow") && !IsInputFloat(node, 1, input_params, logger))) {
+  // We support float/float16 for all of these inputs.
+
+  if (node.OpType() == "Pow") {
+    const auto& input0 = *node.InputDefs()[0];
+    const auto& input1 = *node.InputDefs()[1];
+    int32_t input_type0 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    int32_t input_type1 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    if (!GetType(input0, input_type0, logger)) {
+      return false;
+    }
+    if (!GetType(input1, input_type1, logger) || input_type1 != input_type0) {
+      return false;
+    }
+  }
+
+  if (!IsInputDtypeSupport(node, 0, input_params, logger)) {
     return false;
   }
 

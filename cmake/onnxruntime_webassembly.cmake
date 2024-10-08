@@ -102,6 +102,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnx
       onnx_proto
       onnxruntime_common
+      onnxruntime_lora
       onnxruntime_flatbuffers
       onnxruntime_framework
       onnxruntime_graph
@@ -179,6 +180,7 @@ else()
     onnx
     onnx_proto
     onnxruntime_common
+    onnxruntime_lora
     onnxruntime_flatbuffers
     onnxruntime_framework
     onnxruntime_graph

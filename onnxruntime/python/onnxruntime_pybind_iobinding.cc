@@ -20,6 +20,39 @@ namespace python {
 
 namespace py = pybind11;
 
+namespace {
+void BindOutput(SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device,
+                MLDataType element_type, const std::vector<int64_t>& shape, int64_t data_ptr) {
+  ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+  InferenceSession* sess = io_binding->GetInferenceSession();
+  auto px = sess->GetModelOutputs();
+  if (!px.first.IsOK() || !px.second) {
+    throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+  }
+
+  // For now, limit binding support to only non-string Tensors
+  const auto& def_list = *px.second;
+  onnx::TypeProto type_proto;
+  if (!CheckIfTensor(def_list, name, type_proto)) {
+    throw std::runtime_error("Only binding Tensors is currently supported");
+  }
+
+  ORT_ENFORCE(utils::HasTensorType(type_proto) && utils::HasElemType(type_proto.tensor_type()));
+  if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
+    throw std::runtime_error("Only binding non-string Tensors is currently supported");
+  }
+
+  OrtValue ml_value;
+  OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
+
+  auto status = io_binding->Get()->BindOutput(name, ml_value);
+  if (!status.IsOK()) {
+    throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+  }
+}
+}  // namespace
+
 void addIoBindingMethods(pybind11::module& m) {
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
@@ -58,6 +91,18 @@ void addIoBindingMethods(pybind11::module& m) {
         }
       })
       // This binds input as a Tensor that wraps memory pointer along with the OrtMemoryInfo
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, int32_t element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        auto ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
+        OrtValue ml_value;
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
+
+        auto status = io_binding->Get()->BindInput(name, ml_value);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
+        }
+      })
+      // This binds input as a Tensor that wraps memory pointer along with the OrtMemoryInfo
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
@@ -90,28 +135,14 @@ void addIoBindingMethods(pybind11::module& m) {
           throw std::runtime_error("Error when synchronizing bound inputs: " + status.ErrorMessage());
         }
       })
+      // This binds output to a pre-allocated memory as a Tensor.
+      // The element type is onnx type , or key in onnx.mapping.TENSOR_TYPE_MAP (https://onnx.ai/onnx/api/mapping.html)
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, int32_t element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        MLDataType ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
+        BindOutput(io_binding, name, device, ml_type, shape, data_ptr);
+      })
       // This binds output to a pre-allocated memory as a Tensor
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
-        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
-
-        InferenceSession* sess = io_binding->GetInferenceSession();
-        auto px = sess->GetModelOutputs();
-        if (!px.first.IsOK() || !px.second) {
-          throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-        }
-
-        // For now, limit binding support to only non-string Tensors
-        const auto& def_list = *px.second;
-        onnx::TypeProto type_proto;
-        if (!CheckIfTensor(def_list, name, type_proto)) {
-          throw std::runtime_error("Only binding Tensors is currently supported");
-        }
-
-        ORT_ENFORCE(utils::HasTensorType(type_proto) && utils::HasElemType(type_proto.tensor_type()));
-        if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
-          throw std::runtime_error("Only binding non-string Tensors is currently supported");
-        }
-
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
@@ -119,15 +150,8 @@ void addIoBindingMethods(pybind11::module& m) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
         auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
-        OrtValue ml_value;
-        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
-
-        auto status = io_binding->Get()->BindOutput(name, ml_value);
-        if (!status.IsOK()) {
-          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
-        }
+        BindOutput(io_binding, name, device, ml_type, shape, data_ptr);
       })
       // This binds output to a device. Meaning that the output OrtValue must be allocated on a specific device.
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {

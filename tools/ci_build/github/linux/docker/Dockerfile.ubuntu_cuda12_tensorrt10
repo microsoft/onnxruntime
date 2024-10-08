@@ -31,7 +31,7 @@ RUN pip install --upgrade pip
 RUN pip install setuptools>=68.2.2 psutil
 
 # Install TensorRT
-RUN version="10.3.0.26-1+cuda12.5" &&\
+RUN version="10.4.0.26-1+cuda12.6" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     apt-get install -y \
@@ -61,7 +61,7 @@ RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ];
 RUN apt-get install -y valgrind
 
 # Build final image from base. Builds ORT.
-FROM base as final
+FROM base AS final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID

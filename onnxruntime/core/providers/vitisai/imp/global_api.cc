@@ -418,6 +418,15 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
     graph.SetInputs(inputs);
   };
+  the_global_api.session_option_configuration = [](
+                                                    void* mmap, void* session_options, void (*push)(void* mmap, const char* name, const char* value)) {
+    auto options = reinterpret_cast<OrtSessionOptions*>(session_options);
+    auto option_list = options->GetConfigOptions();
+    // option_list.GetConfigEntry
+    for (const auto& option : option_list) {
+      push(mmap, option.first.c_str(), option.second.c_str());
+    }
+  };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));

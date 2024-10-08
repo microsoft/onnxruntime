@@ -196,7 +196,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     If);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -207,7 +207,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     If);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -218,7 +218,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
     If);
 }
 

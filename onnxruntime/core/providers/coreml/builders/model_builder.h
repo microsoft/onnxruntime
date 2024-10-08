@@ -107,11 +107,12 @@ class ModelBuilder {
   std::string_view AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
                                std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     static_assert(std::is_same_v<T, float> ||
+                      std::is_same_v<T, MLFloat16> ||
                       std::is_same_v<T, int64_t> ||
                       std::is_same_v<T, std::string> ||
                       std::is_same_v<T, bool>,
                   // add specialization in AddConstantImpl for new types if needed
-                  "AddConstant currently supports float, int64_t, std::string and bool.");
+                  "AddConstant currently supports float, MLFloat16, int64_t, std::string and bool.");
     return AddConstantImpl(op_type, value_type, value, shape);
   }
 

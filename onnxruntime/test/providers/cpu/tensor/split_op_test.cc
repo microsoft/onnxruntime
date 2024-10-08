@@ -178,6 +178,17 @@ TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
 }
 
+template <typename T>
+std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    std::vector<T> inputs_fp16(inputs.size());
+    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
+    return inputs_fp16;
+  }
+}
+
 TEST(SplitOperatorTest, Axis0UnequalSplitString) {
   constexpr int64_t axis = 0;
   std::vector<ShapeAndStringData> outputs;
@@ -220,6 +231,26 @@ TEST(SplitOperatorTest, Axis1EqualSplitFloat) {
                       7.f, 8.f}});
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
+}
+
+TEST(SplitOperatorTest, Axis1EqualSplitFloat16) {
+  constexpr int64_t axis = 1;
+  std::vector<ShapeAndData<MLFloat16>> outputs;
+
+  // input shape and data
+  ShapeAndData<MLFloat16> input = {{2, 4},
+                                   GetTypedArray<MLFloat16>({1.f, 2.f, 3.f, 4.f,
+                                                             5.f, 6.f, 7.f, 8.f})};
+
+  outputs.push_back({{2, 2},
+                     GetTypedArray<MLFloat16>({1.f, 2.f,
+                                               5.f, 6.f})});
+
+  outputs.push_back({{2, 2},
+                     GetTypedArray<MLFloat16>({3.f, 4.f,
+                                               7.f, 8.f})});
+  RunTest<MLFloat16>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
+  RunTest<MLFloat16>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
 TEST(SplitOperatorTest, Axis1EqualSplitString) {

@@ -7,6 +7,13 @@
 namespace onnxruntime {
 namespace test {
 
+template <typename T>
+class ConcatOpTest : public ::testing::Test {
+};
+
+using ConcatOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(ConcatOpTest, ConcatOpTestTypes);
+
 // Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types or limits
 // in its parser: axis >=0 && axis < nbDims. Those Tests will fallback to other EPs
 
@@ -68,34 +75,45 @@ TEST(ConcatOpTest, Concat1D_2) {
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
 
-TEST(ConcatOpTest, Concat2D_1) {
+template <typename T>
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    std::vector<T> inputs_fp16(inputs.size());
+    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
+    return inputs_fp16;
+  }
+}
+
+TYPED_TEST(ConcatOpTest, Concat2D_1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
   std::vector<int64_t> dims{1, 4};
-  test.AddInput<float>("input1", dims, {11.0f, 12.0f, 13.0f, 14.0f});
-  test.AddInput<float>("input2", dims, {21.0f, 22.0f, 23.0f, 24.0f});
-  test.AddInput<float>("input3", dims, {31.0f, 32.0f, 33.0f, 34.0f});
-  test.AddOutput<float>("concat_result", {3, 4},
-                        {11.0f, 12.0f, 13.0f, 14.0f,
-                         21.0f, 22.0f, 23.0f, 24.0f,
-                         31.0f, 32.0f, 33.0f, 34.0f});
+  test.AddInput<TypeParam>("input1", dims, GetTypedArray<TypeParam>({11.0f, 12.0f, 13.0f, 14.0f}));
+  test.AddInput<TypeParam>("input2", dims, GetTypedArray<TypeParam>({21.0f, 22.0f, 23.0f, 24.0f}));
+  test.AddInput<TypeParam>("input3", dims, GetTypedArray<TypeParam>({31.0f, 32.0f, 33.0f, 34.0f}));
+  test.AddOutput<TypeParam>("concat_result", {3, 4},
+                            GetTypedArray<TypeParam>({11.0f, 12.0f, 13.0f, 14.0f,
+                                                      21.0f, 22.0f, 23.0f, 24.0f,
+                                                      31.0f, 32.0f, 33.0f, 34.0f}));
   test.Run();
 }
 
-TEST(ConcatOpTest, Concat2D_2) {
+TYPED_TEST(ConcatOpTest, Concat2D_2) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
   std::vector<int64_t> dims{4, 1};
-  test.AddInput<float>("input1", dims, {11.0f, 21.0f, 31.0f, 41.0f});
-  test.AddInput<float>("input2", {4, 2}, {12.0f, 13.0f, 22.0f, 23.0f, 32.0f, 33.0f, 42.0f, 43.0f});
-  test.AddInput<float>("input3", dims, {14.0f, 24.0f, 34.0f, 44.0f});
-  test.AddOutput<float>("concat_result", {4, 4},
-                        {11.0f, 12.0f, 13.0f, 14.0f,
-                         21.0f, 22.0f, 23.0f, 24.0f,
-                         31.0f, 32.0f, 33.0f, 34.0f,
-                         41.0f, 42.0f, 43.0f, 44.0f});
+  test.AddInput<TypeParam>("input1", dims, GetTypedArray<TypeParam>({11.0f, 21.0f, 31.0f, 41.0f}));
+  test.AddInput<TypeParam>("input2", {4, 2}, GetTypedArray<TypeParam>({12.0f, 13.0f, 22.0f, 23.0f, 32.0f, 33.0f, 42.0f, 43.0f}));
+  test.AddInput<TypeParam>("input3", dims, GetTypedArray<TypeParam>({14.0f, 24.0f, 34.0f, 44.0f}));
+  test.AddOutput<TypeParam>("concat_result", {4, 4},
+                            GetTypedArray<TypeParam>({11.0f, 12.0f, 13.0f, 14.0f,
+                                                      21.0f, 22.0f, 23.0f, 24.0f,
+                                                      31.0f, 32.0f, 33.0f, 34.0f,
+                                                      41.0f, 42.0f, 43.0f, 44.0f}));
   test.Run();
 }
 

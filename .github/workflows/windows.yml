@@ -56,7 +56,6 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
-          doNotUpdateVcpkg: true
           runVcpkgInstall: true
           vcpkgJsonGlob: "cmake/vcpkg.json"
           vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
@@ -73,6 +72,7 @@ jobs:
           flatc --version
           $FLATC_PATH = Join-Path "$FLATC_DIR" "flatc.exe"
           python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$FLATC_PATH"
+          python onnxruntime/lora/adapter_format/compile_schema.py --flatc "$FLATC_PATH"
         shell: pwsh
 
       - name: "Detect protoc"

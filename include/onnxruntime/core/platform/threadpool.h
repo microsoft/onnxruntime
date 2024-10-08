@@ -129,7 +129,7 @@ struct TensorOpCost {
 
 namespace concurrency {
 
-template <typename Environment>
+template <typename Environment, bool kIsHybrid>
 class ThreadPoolTempl;
 
 class ExtendedThreadPoolInterface;
@@ -424,7 +424,8 @@ class ThreadPool {
   ExtendedThreadPoolInterface* underlying_threadpool_ = nullptr;
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
-  std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
+  std::unique_ptr<ThreadPoolTempl<Env, true>> extended_eigen_hybrid_threadpool_;
+  std::unique_ptr<ThreadPoolTempl<Env, false>> extended_eigen_normal_threadpool_;
 
   // Force the thread pool to run in hybrid mode on a normal cpu.
   bool force_hybrid_ = false;

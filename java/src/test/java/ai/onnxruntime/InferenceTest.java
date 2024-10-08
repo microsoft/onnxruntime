@@ -55,7 +55,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.OS;
 
 /** Tests for the onnx-runtime Java interface. */
 public class InferenceTest {
@@ -66,7 +68,7 @@ public class InferenceTest {
   private static final Pattern inputPBPattern = Pattern.compile("input_*.pb");
   private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
-  private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+  private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
   public void environmentTest() {
@@ -711,6 +713,14 @@ public class InferenceTest {
 
   @Test
   @EnabledIfSystemProperty(named = "USE_DNNL", matches = "1")
+  // TODO see if this can be enabled on Windows.
+  // Error in CI build:
+  // ai.onnxruntime.OrtException: Error code - ORT_RUNTIME_EXCEPTION - message:
+  // D:\a\_work\1\s\onnxruntime\core\session\provider_bridge_ort.cc:1530
+  // onnxruntime::ProviderLibrary::Get [ONNXRuntimeError] : 1 : FAIL : LoadLibrary failed with error
+  // 126 "" when trying to load
+  // "C:\Users\cloudtest\AppData\Local\Temp\onnxruntime-java9085185608411256214\onnxruntime_providers_dnnl.dll"
+  @DisabledOnOs(value = OS.WINDOWS)
   public void testDNNL() throws OrtException {
     runProvider(OrtProvider.DNNL);
   }
@@ -731,6 +741,12 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
     runProvider(OrtProvider.DIRECT_ML);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
+  public void testQNN() throws OrtException {
+    runProvider(OrtProvider.QNN);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -754,8 +770,9 @@ public class InferenceTest {
         if (provider == OrtProvider.CORE_ML) {
           // CoreML gives slightly different answers on a 2020 13" M1 MBP
           assertArrayEquals(expectedOutput, resultArray, 1e-2f);
-        } else if (provider == OrtProvider.CUDA) {
+        } else if (provider == OrtProvider.CUDA || provider == OrtProvider.TENSOR_RT) {
           // CUDA gives slightly different answers on a H100 with CUDA 12.2
+          // Need larger tolerance since TRT 10.4
           assertArrayEquals(expectedOutput, resultArray, 1e-3f);
         } else {
           assertArrayEquals(expectedOutput, resultArray, 1e-5f);
@@ -1291,6 +1308,82 @@ public class InferenceTest {
         assertEquals(OrtException.OrtErrorCode.ORT_FAIL, e.getCode());
       }
       OnnxValue.close(container);
+    }
+  }
+
+  @Test
+  public void testRunWithLoraAdapter() throws IOException, OrtException {
+    Path modelPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx");
+    Path adapterPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx_adapter");
+
+    long[] inputShape = new long[] {4, 4};
+    float[] inputData = new float[16];
+    Arrays.fill(inputData, 1.f);
+    FloatBuffer buf =
+        ByteBuffer.allocateDirect(Float.BYTES * 16).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    buf.put(inputData);
+    buf.rewind();
+
+    float[][] expectedOutput =
+        new float[][] {
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f}
+        };
+
+    float[][] expectedLoRAOutput =
+        new float[][] {
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f}
+        };
+
+    try (OrtSession session = env.createSession(modelPath.toString());
+        OnnxTensor tensor = OnnxTensor.createTensor(env, buf, inputShape)) {
+
+      Map<String, OnnxTensor> inputs = Collections.singletonMap("input_x", tensor);
+
+      // Without LoRA
+      try (OrtSession.Result result = session.run(inputs)) {
+        float[][] resultArr = (float[][]) result.get(0).getValue();
+        Assertions.assertArrayEquals(expectedOutput, resultArr);
+      }
+
+      // With LoRA from path
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(adapterPath.toString());
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
+      }
+
+      // With LoRA from array
+      byte[] loraArray = Files.readAllBytes(adapterPath);
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(loraArray);
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
+      }
+
+      // With LoRA from buffer
+      ByteBuffer loraBuf = ByteBuffer.allocateDirect(loraArray.length);
+      loraBuf.put(loraArray);
+      loraBuf.rewind();
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(loraBuf);
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
+      }
     }
   }
 
@@ -2031,6 +2124,14 @@ public class InferenceTest {
         case XNNPACK:
           options.addXnnpack(Collections.emptyMap());
           break;
+        case QNN:
+          {
+            String backendPath = OS.WINDOWS.isCurrentOs() ? "/QnnCpu.dll" : "/libQnnCpu.so";
+            options.addQnn(
+                Collections.singletonMap(
+                    "backend_path", TestHelpers.getResourcePath(backendPath).toString()));
+            break;
+          }
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:

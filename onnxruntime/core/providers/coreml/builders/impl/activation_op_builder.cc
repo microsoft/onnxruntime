@@ -104,7 +104,13 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     if (add_alpha) {
       NodeAttrHelper helper(node);
       const auto alpha = helper.Get("alpha", 0.01f);
-      AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+
+      auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+      } else {
+        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+      }
     }
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);

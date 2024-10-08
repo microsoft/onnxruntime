@@ -12,6 +12,19 @@
 namespace onnxruntime {
 namespace webnn {
 
+WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type) {
+  if (device_type == "gpu") {
+    return WebnnDeviceType::GPU;
+  }
+  if (device_type == "cpu") {
+    return WebnnDeviceType::CPU;
+  }
+  if (device_type == "npu") {
+    return WebnnDeviceType::NPU;
+  }
+  ORT_THROW("Unknown WebNN deviceType.");
+}
+
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer) {
   InitializedTensorSet all_initializers;
   if (graph_viewer.IsSubgraph()) {
@@ -241,6 +254,11 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
     default:
       return false;
   }
+}
+
+bool IsMLTensorSupported() {
+  static bool is_supported = !emscripten::val::global("MLTensor").isUndefined();
+  return is_supported;
 }
 
 }  // namespace webnn

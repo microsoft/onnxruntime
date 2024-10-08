@@ -121,6 +121,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Not", op_registrations);
   }
 
+  {  // LSTM
+    CreateLstmOpBuilder("LSTM", op_registrations);
+  }
+
   {  // Max/Min
     CreateMaxMinOpBuilder("Max", op_registrations);
     CreateMaxMinOpBuilder("Min", op_registrations);
@@ -185,6 +189,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Squeeze/Unsqueeze
     CreateSqueezeUnsqueezeOpBuilder("Squeeze", op_registrations);
     CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
+  }
+
+  {  // Tile
+    CreateTileOpBuilder("Tile", op_registrations);
   }
 
   {  // Transpose

@@ -32,6 +32,8 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
+#include "core/session/lora_adapters.h"
+
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
@@ -52,10 +54,6 @@
 // GCC 4.x.
 // (This static var is referenced in GetCudaToHostMemCpyFunction())
 const OrtDevice::DeviceType OrtDevice::GPU;
-
-namespace onnxruntime {
-
-}  // namespace onnxruntime
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267 4996 4503)
@@ -165,6 +163,24 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
     // 2) create, manipulate, and destroy python objects
     py::gil_scoped_acquire acquire;
     invoke_callback();
+  }
+}
+
+void AppendLoraParametersAsInputs(const RunOptions& run_options,
+                                  size_t total_entries,
+                                  NameMLValMap& feeds) {
+  for (const auto* adapter : run_options.active_adapters) {
+    total_entries += adapter->GetParamNum();
+  }
+  feeds.reserve(total_entries + feeds.size());
+
+  // Append necessary inputs for active adapters
+  for (const auto* adapter : run_options.active_adapters) {
+    auto [begin, end] = adapter->GetParamIterators();
+    for (; begin != end; ++begin) {
+      const auto& [name, param] = *begin;
+      feeds.insert(std::make_pair(name, param.GetMapped()));
+    }
   }
 }
 
@@ -1135,9 +1151,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (it != provider_options_map.end()) {
       info = it->second;
     }
-    info["ep_context_enable"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
-    info["ep_context_embed_mode"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
-    info["ep_context_file_path"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    info["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
     return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
@@ -1673,6 +1687,13 @@ Serialized model format will default to ONNX unless:
 
 )pbdoc")
       .def_property(
+          "enable_cpu_mem_arena",
+          [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
+          [](PySessionOptions* options, bool enable_cpu_mem_arena) -> void {
+            options->value.enable_cpu_mem_arena = enable_cpu_mem_arena;
+          },
+          R"pbdoc(Enable memory arena on CPU. Default is true.)pbdoc")
+      .def_property(
           "enable_mem_pattern",
           [](const PySessionOptions* options) -> bool { return options->value.enable_mem_pattern; },
           [](PySessionOptions* options, bool enable_mem_pattern) -> void {
@@ -1901,7 +1922,12 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 
             return value;
           },
-          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc");
+          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc")
+      .def(
+          "add_active_adapter", [](RunOptions* options, lora::LoraAdapter* adapter) {
+            options->active_adapters.push_back(adapter);
+          },
+          R"pbdoc(Adds specified adapter as an active adapter)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -2022,7 +2048,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               const std::map<std::string, const py::object>& pyfeeds, RunOptions* run_options = nullptr)
                -> py::list {
              NameMLValMap feeds;
-             feeds.reserve(pyfeeds.size());
+             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+               AppendLoraParametersAsInputs(*run_options, pyfeeds.size(), feeds);
+             } else {
+               feeds.reserve(pyfeeds.size());
+             }
+
              for (const auto& feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
@@ -2036,7 +2067,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  }
                  CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
                  ThrowIfPyErrOccured();
-                 feeds.insert(std::make_pair(feed.first, ml_value));
+                 feeds.insert(std::make_pair(feed.first, std::move(ml_value)));
                }
              }
 
@@ -2079,6 +2110,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               PyCallback callback, py::object user_data = {},
               RunOptions* run_options = nullptr)
                -> void {
+             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+               LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+                   << "run_async has active adapters specified, but won't have an effect";
+             }
+
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
              async_resource->callback = callback;
              async_resource->user_data = user_data;
@@ -2124,7 +2160,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       /// a Tensor, SparseTensor or a TensorSequence.
       .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
         NameMLValMap ort_feeds;
-        ort_feeds.reserve(feeds.size());
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          AppendLoraParametersAsInputs(*run_options, feeds.size(), ort_feeds);
+        } else {
+          ort_feeds.reserve(feeds.size());
+        }
+
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks
         for (const auto& item : feeds) {
@@ -2147,6 +2188,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return fetches;
       })
       .def("run_with_ortvaluevector", [](PyInferenceSession* sess, RunOptions run_options, const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds, const std::vector<std::string>& fetch_names, std::vector<OrtValue>& fetches, const std::vector<OrtDevice>& fetch_devices) -> void {
+        if (!run_options.active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_ortvaluevector has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
@@ -2180,7 +2226,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
+
         Status status;
+
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_iobinding has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         if (!run_options)
@@ -2261,6 +2314,7 @@ bool CreateInferencePybindStateModule(py::module& m) {
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
+  addAdapterFormatMethods(m);
 
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {

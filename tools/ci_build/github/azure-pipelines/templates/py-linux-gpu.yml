@@ -22,10 +22,10 @@ parameters:
 
 - name: trt_version
   type: string
-  default: '10.3.0.26-1.cuda11.8'
+  default: '10.4.0.26-1.cuda11.8'
   values:
-    - 10.3.0.26-1.cuda11.8
-    - 10.3.0.26-1.cuda12.5
+    - 10.4.0.26-1.cuda11.8
+    - 10.4.0.26-1.cuda12.6
 - name: cuda_version
   type: string
   default: '11.8'

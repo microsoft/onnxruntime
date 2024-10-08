@@ -2960,7 +2960,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
   Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-    - [CeilDiv((N * n_blocks_per_col + 1) *bits, 8)]
+    - [N * CeilDiv(n_blocks_per_col * bits, 8)]
     If zero_points has same type as A, it's not packed and has the same shape as Scales.
 
 #### Version

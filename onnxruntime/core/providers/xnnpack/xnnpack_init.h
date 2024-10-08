@@ -46,6 +46,18 @@ namespace xnnpack {
 #define XNN_ALLOCATION_ALIGNMENT 16
 #endif
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#define XNN_ARCH_ARM64 1
+#else
+#define XNN_ARCH_ARM64 0
+#endif
+
+// fp16 support can vary on a kernel by kernel basis. Keep it simple and limit to arm64 for now.
+// e.g. XNNPACK maxpool has x64 and arm64 fp16 kernels.
+#if XNN_ARCH_ARM64
+#define XNNPACK_FP16_SUPPORTED
+#endif
+
 std::pair<AllocatorPtr&, xnn_allocator*> GetStoredAllocator();
 
 }  // namespace xnnpack

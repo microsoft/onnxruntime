@@ -9,6 +9,13 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+template <typename T>
+class PoolTest : public ::testing::Test {
+};
+
+using PoolTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(PoolTest, PoolTestTypes);
+
 // Disable TensorRT on some of the tests because "pads" attribute is not supported
 
 TEST(PoolTest, MaxPool) {
@@ -63,13 +70,15 @@ TEST(PoolTest, MaxPool) {
 
 // Only CUDA kernel has float 16 support
 // Disable for now, still investigating the issue with cudnn lib
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(PoolTest, MaxPool_F16) {
+#if defined(USE_CUDA)
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
     return;
   }
+#endif
   OpTester test("MaxPool");
 
   test.AddAttribute("auto_pad", "");
@@ -672,7 +681,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
-TEST(PoolTest, GlobalMaxPool) {
+TYPED_TEST(PoolTest, GlobalMaxPool) {
   OpTester test("GlobalMaxPool");
 
   std::vector<float> x_vals = {0.19151945412158966, 0.6221087574958801, 0.43772774934768677,
@@ -743,12 +752,23 @@ TEST(PoolTest, GlobalMaxPool) {
   std::vector<int64_t> expected_dims = {1, 3, 1, 1};
   std::vector<float> expected_vals = {0.9920814633369446, 0.9820047616958618, 0.9946538209915161};
 
-  test.AddInput<float>("X", x_dims, x_vals);
-  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("X", x_dims, x_vals);
+    test.AddOutput<float>("Y", expected_dims, expected_vals);
+  } else {
+    std::vector<TypeParam> x_vals_fp16(x_vals.size());
+    std::vector<TypeParam> expected_vals_fp16(expected_vals.size());
+
+    ConvertFloatToMLFloat16(x_vals.data(), x_vals_fp16.data(), x_vals.size());
+    ConvertFloatToMLFloat16(expected_vals.data(), expected_vals_fp16.data(), expected_vals.size());
+    test.AddInput<TypeParam>("X", x_dims, x_vals_fp16);
+    test.AddOutput<TypeParam>("Y", expected_dims, expected_vals_fp16);
+  }
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
-TEST(PoolTest, GlobalMaxPool3D) {
+TYPED_TEST(PoolTest, GlobalMaxPool3D) {
   OpTester test("GlobalMaxPool");
 
   std::vector<float> x_vals = {0.19151945412158966, 0.6221087574958801, 0.43772774934768677,
@@ -819,8 +839,19 @@ TEST(PoolTest, GlobalMaxPool3D) {
   std::vector<int64_t> expected_dims = {1, 3, 1, 1, 1};
   std::vector<float> expected_vals = {0.9920814633369446, 0.9820047616958618, 0.9946538209915161};
 
-  test.AddInput<float>("X", x_dims, x_vals);
-  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("X", x_dims, x_vals);
+    test.AddOutput<float>("Y", expected_dims, expected_vals);
+  } else {
+    std::vector<TypeParam> x_vals_fp16(x_vals.size());
+    std::vector<TypeParam> expected_vals_fp16(expected_vals.size());
+
+    ConvertFloatToMLFloat16(x_vals.data(), x_vals_fp16.data(), x_vals.size());
+    ConvertFloatToMLFloat16(expected_vals.data(), expected_vals_fp16.data(), expected_vals.size());
+    test.AddInput<TypeParam>("X", x_dims, x_vals_fp16);
+    test.AddOutput<TypeParam>("Y", expected_dims, expected_vals_fp16);
+  }
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

@@ -671,21 +671,41 @@ def write_calibration_table(calibration_cache, dir="."):
     import json
 
     import flatbuffers
+    import numpy as np
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
     logging.info(f"calibration cache: {calibration_cache}")
 
+    class MyEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, (TensorData, TensorsData)):
+                return obj.to_dict()
+            if isinstance(obj, np.ndarray):
+                return {"data": obj.tolist(), "dtype": str(obj.dtype), "CLS": "numpy.array"}
+            if isinstance(obj, CalibrationMethod):
+                return {"CLS": obj.__class__.__name__, "value": str(obj)}
+            return json.JSONEncoder.default(self, obj)
+
+    json_data = json.dumps(calibration_cache, cls=MyEncoder)
+
     with open(os.path.join(dir, "calibration.json"), "w") as file:
-        file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
+        file.write(json_data)  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
+    zero = np.array(0)
     builder = flatbuffers.Builder(1024)
     key_value_list = []
     for key in sorted(calibration_cache.keys()):
         values = calibration_cache[key]
-        value = str(max(abs(values[0]), abs(values[1])))
+        d_values = values.to_dict()
+        floats = [
+            float(d_values.get("highest", zero).item()),
+            float(d_values.get("lowest", zero).item()),
+        ]
+        value = str(max(floats))
 
         flat_key = builder.CreateString(key)
         flat_value = builder.CreateString(value)
@@ -724,9 +744,14 @@ def write_calibration_table(calibration_cache, dir="."):
     # write plain text
     with open(os.path.join(dir, "calibration.cache"), "w") as file:
         for key in sorted(calibration_cache.keys()):
-            value = calibration_cache[key]
-            s = key + " " + str(max(abs(value[0]), abs(value[1])))
-            file.write(s)
+            values = calibration_cache[key]
+            d_values = values.to_dict()
+            floats = [
+                float(d_values.get("highest", zero).item()),
+                float(d_values.get("lowest", zero).item()),
+            ]
+            value = key + " " + str(max(floats))
+            file.write(value)
             file.write("\n")
 
 

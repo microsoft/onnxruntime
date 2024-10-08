@@ -20,7 +20,7 @@ Abstract:
 #include <thread>
 #include <mutex>
 
-#if defined(MLAS_TARGET_POWER) 
+#if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
 #include <sys/auxv.h>
 #elif defined(_AIX)
@@ -574,6 +574,11 @@ Return Value:
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
     }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
+    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
 #endif
 
 #endif // MLAS_TARGET_ARM64

@@ -23,6 +23,10 @@ parameters:
   displayName: 'Stage that the initial stage of react-native-ci depends on'
   type: string
   default: ''
+  
+- name: enable_code_sign
+  displayName: Use GPG to sign the jars
+  type: boolean
 
 stages:
 - stage: Build_Packages
@@ -36,6 +40,7 @@ stages:
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'For_React_Native'
+      enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
 

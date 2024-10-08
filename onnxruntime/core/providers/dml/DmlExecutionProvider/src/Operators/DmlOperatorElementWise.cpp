@@ -451,8 +451,19 @@ public:
         // logic for some corner test case
         // Same applies to min and max value.
         opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
-        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
-        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
+
+        if (opDesc.MinMaxDataType == DML_TENSOR_DATA_TYPE_FLOAT16 || opDesc.MinMaxDataType == DML_TENSOR_DATA_TYPE_FLOAT32 || opDesc.MinMaxDataType == DML_TENSOR_DATA_TYPE_FLOAT64)
+        {
+            CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
+            CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
+        }
+        else
+        {
+            // It's not safe to use DBL_MAX for non-float datatypes because not all integer can be represented in the range.
+            // For example, static_cast<int64_t>(static_cast<double>(INT64_MAX)) will yield a negative number.
+            CastToClampedScalarUnion<int64_t>(opDesc.MinMaxDataType, -INT64_MAX, /*out*/&opDesc.Min);
+            CastToClampedScalarUnion<uint64_t>(opDesc.MinMaxDataType, UINT64_MAX, /*out*/&opDesc.Max);
+        }
 
         if (kernelInfo.IsInputValid(1))
         {

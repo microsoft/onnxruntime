@@ -8,6 +8,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/float16.h"
+#include "core/framework/float8.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -753,6 +754,59 @@ TEST_F(DataTypeTest, BFloat16NormalSubnormal) {
   const float float_from_largest_subnormal = (float)largest_subnormal;
   EXPECT_FALSE(std::isnormal(float_from_largest_subnormal));
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+TEST_F(DataTypeTest, Float8TestNAN) {
+  const auto fp8_e4m3fn_nan = std::numeric_limits<onnxruntime::Float8E4M3FN>::quiet_NaN();
+  EXPECT_TRUE(fp8_e4m3fn_nan.IsNaN());
+  EXPECT_TRUE(std::isnan(fp8_e4m3fn_nan.ToFloat()));
+
+  const auto fp8_e5m2_nan = std::numeric_limits<onnxruntime::Float8E5M2>::quiet_NaN();
+  EXPECT_TRUE(fp8_e5m2_nan.IsNaN());
+  EXPECT_TRUE(std::isnan(fp8_e5m2_nan.ToFloat()));
+
+  const auto fp8_e4m3fnuz_nan = std::numeric_limits<onnxruntime::Float8E4M3FNUZ>::quiet_NaN();
+  EXPECT_TRUE(fp8_e4m3fnuz_nan.IsNaN());
+  EXPECT_TRUE(std::isnan(fp8_e4m3fnuz_nan.ToFloat()));
+
+  const auto fp8_e5m2fnuz_nan = std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::quiet_NaN();
+  EXPECT_TRUE(fp8_e5m2fnuz_nan.IsNaN());
+  EXPECT_TRUE(std::isnan(fp8_e5m2fnuz_nan.ToFloat()));
+}
+
+TEST_F(DataTypeTest, Float8TestInf) {
+  const auto fp8_e5m2_inf = std::numeric_limits<onnxruntime::Float8E5M2>::infinity();
+  EXPECT_TRUE(fp8_e5m2_inf.IsInfinity());
+  EXPECT_TRUE(std::isinf(fp8_e5m2_inf.ToFloat()));
+
+  EXPECT_FALSE(std::numeric_limits<onnxruntime::Float8E4M3FN>::has_infinity);
+  EXPECT_FALSE(std::numeric_limits<onnxruntime::Float8E4M3FNUZ>::has_infinity);
+  EXPECT_FALSE(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::has_infinity);
+}
+
+TEST_F(DataTypeTest, Float8TestLimits) {
+  constexpr float abs_tolerance = 1e-6f;
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FN>::min().ToFloat(), 0.015625f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FN>::max().ToFloat(), 448.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FN>::lowest().ToFloat(), -448.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FN>::denorm_min().ToFloat(), 0.001953125f, abs_tolerance);
+
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2>::min().ToFloat(), 0.00006103515f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2>::max().ToFloat(), 57344.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2>::lowest().ToFloat(), -57344.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2>::denorm_min().ToFloat(), 0.00001525878f, abs_tolerance);
+
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FNUZ>::min().ToFloat(), 0.0078125f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FNUZ>::max().ToFloat(), 240.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FNUZ>::lowest().ToFloat(), -240.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E4M3FNUZ>::denorm_min().ToFloat(), 0.0009765625f, abs_tolerance);
+
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::min().ToFloat(), 0.00003051757f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::max().ToFloat(), 57344.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::lowest().ToFloat(), -57344.0f, abs_tolerance);
+  EXPECT_NEAR(std::numeric_limits<onnxruntime::Float8E5M2FNUZ>::denorm_min().ToFloat(), 0.00000762939f, abs_tolerance);
+}
+#endif
 
 TEST_F(DataTypeTest, DataUtilsTest) {
   using namespace ONNX_NAMESPACE::Utils;
