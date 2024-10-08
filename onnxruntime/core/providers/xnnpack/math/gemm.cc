@@ -142,17 +142,13 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   // flags - 1 - for no transpose - 0 for transpose
   uint32_t flags = trans_B_ == CblasTrans ? 0 : XNN_FLAG_TRANSPOSE_WEIGHTS;
 
-  const float* bias_Data = nullptr;
-
-  if (C_matrix_exists_) {
-    bias_Data = tensor.Data<float>();
-  }
-
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
-  throw std::invalid_argument("pre pack");
-  const auto element_type = tensor.GetElementType();
-  if (element_type == OpComputeType::op_compute_type_fp32) {
+  if (conv_type_ == OpComputeType::op_compute_type_fp32) {
+    const float* bias_Data = nullptr;
+    if (C_matrix_exists_) {
+      bias_Data = tensor.Data<float>();
+    }    
     float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
     float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
     status = xnn_create_fully_connected_nc_f32(
@@ -166,8 +162,11 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         flags,
         GetCodeCache(), GetWeightsCache(),
         &p);
-  } else if( element_type == OpComputeType::op_compute_type_fp16) {
-    throw std::invalid_argument("gemm fp16");
+  } else if( conv_type_ == OpComputeType::op_compute_type_fp16) {
+    const MLFloat16* bias_Data = nullptr;
+    if (C_matrix_exists_) {
+      bias_Data = tensor.Data<MLFloat16>();
+    }      
     float output_min = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->first) : -65504.0f;
     float output_max = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->second) : 65504.0f;
     status = xnn_create_fully_connected_nc_f16(
@@ -182,7 +181,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         GetCodeCache(), GetWeightsCache(),
         &p);
   } else {
-      throw std::invalid_argument("Gemm 2");
+      ORT_THROW("unsupported compute type in Gemm::PrePack function, we have FLOAT|FLOAT16, but got ", conv_type_);
   }
 
   if (status != xnn_status_success) {
@@ -202,7 +201,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
   if (M_ == 0 || N_ == 0) {
     return Status::OK();
   }
-  throw std::invalid_argument("Gemm Compute");
+
   auto reshape_func = xnn_reshape_fully_connected_nc_f32;
   if (conv_type_ == OpComputeType::op_compute_type_fp16) {
     reshape_func = xnn_reshape_fully_connected_nc_f16;
