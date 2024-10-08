@@ -2477,8 +2477,8 @@ struct ThreadPoolSpinningSwitch {
 
 // TODO: are we going to do all the ttracing and logging and telemetry for this?
 // TODO: is this the right type? How do we convert to string?
-Status InferenceSession::SetEpDynamicOptions(gsl::span<const char*> keys,
-                                             gsl::span<const char*> values) {
+Status InferenceSession::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                             gsl::span<const char* const> values) {
   Status retval = Status::OK();
 
   ORT_TRY {
@@ -2494,7 +2494,6 @@ Status InferenceSession::SetEpDynamicOptions(gsl::span<const char*> keys,
       ORT_CHECK_AND_SET_RETVAL(status);
     }
   }
-
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
