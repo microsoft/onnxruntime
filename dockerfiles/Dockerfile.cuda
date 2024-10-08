@@ -16,7 +16,7 @@ MAINTAINER Changming Sun "chasun@microsoft.com"
 # Add source code to /code
 ADD . /code
 
-ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+ENV PATH=/usr/local/cuda/bin:${PATH}
 
 # Install required packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -66,7 +66,7 @@ COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
 # CUDNN will be installed by nvidia-cudnn-cu12 python package later.
 # Its location is in the site-packages directory, which can be retrieved like the following:
 #   python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
-ENV LD_LIBRARY_PATH="/ort/env/lib/python3.12/site-packages/nvidia/cudnn/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+ENV LD_LIBRARY_PATH="/ort/env/lib/python3.12/site-packages/nvidia/cudnn/lib:/usr/local/cuda/lib64"
 
 # Install runtime dependencies, and run a simple test to verify the installation.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -85,4 +85,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure the virtual environment is always activated when running commands in the container.
-RUN echo "source /ort/env/bin/activate" >> ~/.bashrc
+RUN echo ". /ort/env/bin/activate" >> ~/.bashrc
