@@ -25,7 +25,12 @@ def is_quantized_data_type(qnn_data_type, is_converter_json):
         # QNN_DATATYPE_UFIXED_POINT_8 QNN_DATATYPE_UFIXED_POINT_16 QNN_DATATYPE_FIXED_POINT_8 QNN_DATATYPE_FIXED_POINT_16
         return qnn_data_type == 0x0408 or qnn_data_type == 0x0416 or qnn_data_type == 0x0308 or qnn_data_type == 0x0316
     else:
-        return qnn_data_type == "QNN_DATATYPE_UFIXED_POINT_8" or qnn_data_type == "QNN_DATATYPE_UFIXED_POINT_16" or qnn_data_type == "QNN_DATATYPE_FIXED_POINT_8" or qnn_data_type == "QNN_DATATYPE_FIXED_POINT_16"
+        return (
+            qnn_data_type == "QNN_DATATYPE_UFIXED_POINT_8"
+            or qnn_data_type == "QNN_DATATYPE_UFIXED_POINT_16"
+            or qnn_data_type == "QNN_DATATYPE_FIXED_POINT_8"
+            or qnn_data_type == "QNN_DATATYPE_FIXED_POINT_16"
+        )
 
 
 def qnn_data_type_to_onnx_data_type(qnn_data_type, is_converter_json):
@@ -65,7 +70,7 @@ def qnn_data_type_to_onnx_data_type(qnn_data_type, is_converter_json):
             return TensorProto.BOOL
         else:
             return TensorProto.UNDEFINED
-    else:    
+    else:
         # QNN_DATATYPE_UFIXED_POINT_8 QNN_DATATYPE_UINT_8
         if qnn_data_type == "QNN_DATATYPE_UFIXED_POINT_8" or qnn_data_type == "QNN_DATATYPE_UINT_8":
             return TensorProto.UINT8
@@ -102,21 +107,22 @@ def qnn_data_type_to_onnx_data_type(qnn_data_type, is_converter_json):
         else:
             return TensorProto.UNDEFINED
 
+
 def parse_qnn_converter_json_file(qnn_convert_json, qnn_input_tensor_dic, qnn_output_tensor_dic):
     is_qnn_converter_json = True
     for qnn_tensor_name, qnn_tensor_attribute in qnn_convert_json["graph"]["tensors"].items():
         # type:0 - QNN input tensor, type:1 - QNN output tensor
         assert (
-            "type" in qnn_tensor_attribute
-            and "data_type" in qnn_tensor_attribute
-            and "dims" in qnn_tensor_attribute
+            "type" in qnn_tensor_attribute and "data_type" in qnn_tensor_attribute and "dims" in qnn_tensor_attribute
         ), "QNN converted json file not valid. Can't find some keys from tensors"
 
         # Get all graph inputs
         if qnn_tensor_attribute["type"] == 0:
             qnn_tensor = QnnTensorStruct()
             qnn_tensor.name = qnn_tensor_name
-            qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json)
+            qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(
+                qnn_tensor_attribute["data_type"], is_qnn_converter_json
+            )
             qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json)
             qnn_tensor.dim = qnn_tensor_attribute["dims"]
             if (
@@ -131,7 +137,9 @@ def parse_qnn_converter_json_file(qnn_convert_json, qnn_input_tensor_dic, qnn_ou
         if qnn_tensor_attribute["type"] == 1:
             qnn_tensor = QnnTensorStruct()
             qnn_tensor.name = qnn_tensor_name
-            qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json)
+            qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(
+                qnn_tensor_attribute["data_type"], is_qnn_converter_json
+            )
             qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"], is_qnn_converter_json)
             qnn_tensor.dim = qnn_tensor_attribute["dims"]
             if (
@@ -146,7 +154,16 @@ def parse_qnn_converter_json_file(qnn_convert_json, qnn_input_tensor_dic, qnn_ou
         len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1
     ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
 
-def generate_wrapper_onnx_file(grap_name, model_file_name, qnn_input_tensor_dic, qnn_output_tensor_dic, disable_embed_mode, qnn_ctx_file, quantized_IO):
+
+def generate_wrapper_onnx_file(
+    grap_name,
+    model_file_name,
+    qnn_input_tensor_dic,
+    qnn_output_tensor_dic,
+    disable_embed_mode,
+    qnn_ctx_file,
+    quantized_IO,
+):
     graph_nodes = []
     ini_list = []
     value_infos = []
@@ -229,10 +246,11 @@ def generate_wrapper_onnx_file(grap_name, model_file_name, qnn_input_tensor_dic,
 
     onnx.save(model_def, model_file_name)
 
+
 # parse Qnn graph from the json file that extracted from context binary file
 def parse_qnn_graph(qnn_graph, qnn_input_tensor_dic, qnn_output_tensor_dic):
     is_qnn_converter_json = False
-    graph_name = qnn_graph["info"]["graphName"]    
+    graph_name = qnn_graph["info"]["graphName"]
     raw_inputs = qnn_graph["info"]["graphInputs"]
     raw_outputs = qnn_graph["info"]["graphOutputs"]
 
@@ -269,8 +287,9 @@ def parse_qnn_graph(qnn_graph, qnn_input_tensor_dic, qnn_output_tensor_dic):
     assert (
         len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1
     ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
-    
+
     return graph_name
+
 
 # Onnxruntime QNN EP can support context binary file generated by QNN tool chain. However QNN generated context binary file
 # uses channel last data layout and 8 bits or 16 bits for input and output.
@@ -305,22 +324,38 @@ def main():
             qnn_input_tensor_dic = {}
             qnn_output_tensor_dic = {}
             parse_qnn_converter_json_file(qnn_json_obj, qnn_input_tensor_dic, qnn_output_tensor_dic)
-            
-            generate_wrapper_onnx_file("QnnContext", args.qnn_json.replace(".json", "_qnn_ctx.onnx"), qnn_input_tensor_dic, qnn_output_tensor_dic, args.disable_embed_mode, args.qnn_bin, args.quantized_IO)
+
+            generate_wrapper_onnx_file(
+                "QnnContext",
+                args.qnn_json.replace(".json", "_qnn_ctx.onnx"),
+                qnn_input_tensor_dic,
+                qnn_output_tensor_dic,
+                args.disable_embed_mode,
+                args.qnn_bin,
+                args.quantized_IO,
+            )
         elif "info" in qnn_json_obj and "graphs" in qnn_json_obj["info"]:
             print("This json file is extracted from QNN context binary file")
             qnn_version = qnn_json_obj["info"]["buildId"]
             i = 1
-            for qnn_graph in qnn_json_obj["info"]["graphs"]:            
+            for qnn_graph in qnn_json_obj["info"]["graphs"]:
                 qnn_input_tensor_dic = {}
                 qnn_output_tensor_dic = {}
                 graph_name = parse_qnn_graph(qnn_graph, qnn_input_tensor_dic, qnn_output_tensor_dic)
-                
+
                 ctx_file_name = graph_name + "_qnn_ctx.onnx"
                 if not args.quantized_IO:
                     ctx_file_name = ctx_file_name.replace(".onnx", "_fp32_io.onnx")
 
-                generate_wrapper_onnx_file(graph_name, ctx_file_name, qnn_input_tensor_dic, qnn_output_tensor_dic, args.disable_embed_mode, args.qnn_bin, args.quantized_IO)
+                generate_wrapper_onnx_file(
+                    graph_name,
+                    ctx_file_name,
+                    qnn_input_tensor_dic,
+                    qnn_output_tensor_dic,
+                    args.disable_embed_mode,
+                    args.qnn_bin,
+                    args.quantized_IO,
+                )
         else:
             print("json file unrecoginized.")
 
