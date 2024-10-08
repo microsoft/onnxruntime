@@ -77,7 +77,6 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
     supported = true;
 
   } while (false);
-
   return supported;
 }
 
@@ -101,7 +100,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
     ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", stype);
   }
-
+  
   const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
 
   C_matrix_exists_ = C_arg && C_arg->Exists();
@@ -151,7 +150,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
-
+  throw std::invalid_argument("pre pack");
   const auto element_type = tensor.GetElementType();
   if (element_type == OpComputeType::op_compute_type_fp32) {
     float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
@@ -182,6 +181,8 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         flags,
         GetCodeCache(), GetWeightsCache(),
         &p);
+  } else {
+      throw std::invalid_argument("Gemm 2");
   }
 
   if (status != xnn_status_success) {
@@ -201,7 +202,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
   if (M_ == 0 || N_ == 0) {
     return Status::OK();
   }
-
+  throw std::invalid_argument("Gemm Compute");
   auto reshape_func = xnn_reshape_fully_connected_nc_f32;
   if (conv_type_ == OpComputeType::op_compute_type_fp16) {
     reshape_func = xnn_reshape_fully_connected_nc_f16;
@@ -212,13 +213,20 @@ Status Gemm::Compute(OpKernelContext* context) const {
                                   threadpool);
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_xx returned ", status);
   }
 
-  status = xnn_setup_fully_connected_nc_f32(op0_.get(), A->Data<float>(), Y->MutableData<float>());
+  status = xnn_status_invalid_state;
+  if (conv_type_ == op_compute_type_fp32) {
+    status = xnn_setup_fully_connected_nc_f32(op0_.get(), A->Data<float>(), Y->MutableData<float>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_fully_connected_nc_f16(op0_.get(), A->Data<MLFloat16>(), Y->MutableData<MLFloat16>());
+  } else {
+    ORT_THROW("unsupported compute type ", conv_type_, " in Gemm Compute");
+  }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_xx returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);
