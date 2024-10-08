@@ -104,7 +104,7 @@ def AddInputEdges(builder, inputEdges):
 def NodeEdgeStartInputEdgesVector(builder, numElems):
     return builder.StartVector(12, numElems, 4)
 
-def StartInputEdgesVector(builder, numElems: int) -> int:
+def StartInputEdgesVector(builder, numElems):
     return NodeEdgeStartInputEdgesVector(builder, numElems)
 
 def NodeEdgeAddOutputEdges(builder, outputEdges):
@@ -116,7 +116,7 @@ def AddOutputEdges(builder, outputEdges):
 def NodeEdgeStartOutputEdgesVector(builder, numElems):
     return builder.StartVector(12, numElems, 4)
 
-def StartOutputEdgesVector(builder, numElems: int) -> int:
+def StartOutputEdgesVector(builder, numElems):
     return NodeEdgeStartOutputEdgesVector(builder, numElems)
 
 def NodeEdgeEnd(builder):

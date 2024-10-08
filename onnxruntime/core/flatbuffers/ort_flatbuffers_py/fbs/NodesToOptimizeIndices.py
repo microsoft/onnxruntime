@@ -114,7 +114,7 @@ def AddNodeIndices(builder, nodeIndices):
 def NodesToOptimizeIndicesStartNodeIndicesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartNodeIndicesVector(builder, numElems: int) -> int:
+def StartNodeIndicesVector(builder, numElems):
     return NodesToOptimizeIndicesStartNodeIndicesVector(builder, numElems)
 
 def NodesToOptimizeIndicesAddNumInputs(builder, numInputs):

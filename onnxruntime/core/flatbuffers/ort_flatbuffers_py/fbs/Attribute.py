@@ -279,7 +279,7 @@ def AddFloats(builder, floats):
 def AttributeStartFloatsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartFloatsVector(builder, numElems: int) -> int:
+def StartFloatsVector(builder, numElems):
     return AttributeStartFloatsVector(builder, numElems)
 
 def AttributeAddInts(builder, ints):
@@ -291,7 +291,7 @@ def AddInts(builder, ints):
 def AttributeStartIntsVector(builder, numElems):
     return builder.StartVector(8, numElems, 8)
 
-def StartIntsVector(builder, numElems: int) -> int:
+def StartIntsVector(builder, numElems):
     return AttributeStartIntsVector(builder, numElems)
 
 def AttributeAddStrings(builder, strings):
@@ -303,7 +303,7 @@ def AddStrings(builder, strings):
 def AttributeStartStringsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartStringsVector(builder, numElems: int) -> int:
+def StartStringsVector(builder, numElems):
     return AttributeStartStringsVector(builder, numElems)
 
 def AttributeAddTensors(builder, tensors):
@@ -315,7 +315,7 @@ def AddTensors(builder, tensors):
 def AttributeStartTensorsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartTensorsVector(builder, numElems: int) -> int:
+def StartTensorsVector(builder, numElems):
     return AttributeStartTensorsVector(builder, numElems)
 
 def AttributeAddGraphs(builder, graphs):
@@ -327,7 +327,7 @@ def AddGraphs(builder, graphs):
 def AttributeStartGraphsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartGraphsVector(builder, numElems: int) -> int:
+def StartGraphsVector(builder, numElems):
     return AttributeStartGraphsVector(builder, numElems)
 
 def AttributeEnd(builder):

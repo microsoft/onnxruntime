@@ -109,7 +109,7 @@ def AddOptimizerGroups(builder, optimizerGroups):
 def CheckpointStartOptimizerGroupsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartOptimizerGroupsVector(builder, numElems: int) -> int:
+def StartOptimizerGroupsVector(builder, numElems):
     return CheckpointStartOptimizerGroupsVector(builder, numElems)
 
 def CheckpointAddPropertyBag(builder, propertyBag):

@@ -159,7 +159,7 @@ def AddOpsetImport(builder, opsetImport):
 def ModelStartOpsetImportVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartOpsetImportVector(builder, numElems: int) -> int:
+def StartOpsetImportVector(builder, numElems):
     return ModelStartOpsetImportVector(builder, numElems)
 
 def ModelAddProducerName(builder, producerName):
@@ -213,7 +213,7 @@ def AddMetadataProps(builder, metadataProps):
 def ModelStartMetadataPropsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartMetadataPropsVector(builder, numElems: int) -> int:
+def StartMetadataPropsVector(builder, numElems):
     return ModelStartMetadataPropsVector(builder, numElems)
 
 def ModelEnd(builder):

@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f46495ea96f68fc3f6c394f099b2992743f6ff7f",
+          "commitHash": "4447c7562e3bc702ade25105912dce503f0c4010",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -86,7 +86,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
+          "commitHash": "595bf0007ab1929570c7671f091313c8fc20644e",
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "flatbuffers"

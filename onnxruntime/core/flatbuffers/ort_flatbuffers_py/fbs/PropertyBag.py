@@ -118,7 +118,7 @@ def AddInts(builder, ints):
 def PropertyBagStartIntsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartIntsVector(builder, numElems: int) -> int:
+def StartIntsVector(builder, numElems):
     return PropertyBagStartIntsVector(builder, numElems)
 
 def PropertyBagAddFloats(builder, floats):
@@ -130,7 +130,7 @@ def AddFloats(builder, floats):
 def PropertyBagStartFloatsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartFloatsVector(builder, numElems: int) -> int:
+def StartFloatsVector(builder, numElems):
     return PropertyBagStartFloatsVector(builder, numElems)
 
 def PropertyBagAddStrings(builder, strings):
@@ -142,7 +142,7 @@ def AddStrings(builder, strings):
 def PropertyBagStartStringsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartStringsVector(builder, numElems: int) -> int:
+def StartStringsVector(builder, numElems):
     return PropertyBagStartStringsVector(builder, numElems)
 
 def PropertyBagEnd(builder):

@@ -68,7 +68,7 @@ def AddDim(builder, dim):
 def ShapeStartDimVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartDimVector(builder, numElems: int) -> int:
+def StartDimVector(builder, numElems):
     return ShapeStartDimVector(builder, numElems)
 
 def ShapeEnd(builder):

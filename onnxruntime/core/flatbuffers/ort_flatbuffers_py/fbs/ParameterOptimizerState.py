@@ -81,7 +81,7 @@ def AddMomentums(builder, momentums):
 def ParameterOptimizerStateStartMomentumsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartMomentumsVector(builder, numElems: int) -> int:
+def StartMomentumsVector(builder, numElems):
     return ParameterOptimizerStateStartMomentumsVector(builder, numElems)
 
 def ParameterOptimizerStateEnd(builder):

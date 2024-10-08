@@ -104,7 +104,7 @@ def AddDims(builder, dims):
 def SparseTensorStartDimsVector(builder, numElems):
     return builder.StartVector(8, numElems, 8)
 
-def StartDimsVector(builder, numElems: int) -> int:
+def StartDimsVector(builder, numElems):
     return SparseTensorStartDimsVector(builder, numElems)
 
 def SparseTensorEnd(builder):

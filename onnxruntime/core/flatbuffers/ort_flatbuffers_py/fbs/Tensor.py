@@ -157,7 +157,7 @@ def AddDims(builder, dims):
 def TensorStartDimsVector(builder, numElems):
     return builder.StartVector(8, numElems, 8)
 
-def StartDimsVector(builder, numElems: int) -> int:
+def StartDimsVector(builder, numElems):
     return TensorStartDimsVector(builder, numElems)
 
 def TensorAddDataType(builder, dataType):
@@ -175,7 +175,7 @@ def AddRawData(builder, rawData):
 def TensorStartRawDataVector(builder, numElems):
     return builder.StartVector(1, numElems, 1)
 
-def StartRawDataVector(builder, numElems: int) -> int:
+def StartRawDataVector(builder, numElems):
     return TensorStartRawDataVector(builder, numElems)
 
 def TensorAddStringData(builder, stringData):
@@ -187,7 +187,7 @@ def AddStringData(builder, stringData):
 def TensorStartStringDataVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartStringDataVector(builder, numElems: int) -> int:
+def StartStringDataVector(builder, numElems):
     return TensorStartStringDataVector(builder, numElems)
 
 def TensorAddExternalDataOffset(builder, externalDataOffset):

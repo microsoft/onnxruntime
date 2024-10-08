@@ -69,7 +69,7 @@ def AddRecords(builder, records):
 def RuntimeOptimizationsStartRecordsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartRecordsVector(builder, numElems: int) -> int:
+def StartRecordsVector(builder, numElems):
     return RuntimeOptimizationsStartRecordsVector(builder, numElems)
 
 def RuntimeOptimizationsEnd(builder):

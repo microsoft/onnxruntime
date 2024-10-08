@@ -81,7 +81,7 @@ def AddArgs(builder, args):
 def KernelTypeStrArgsEntryStartArgsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartArgsVector(builder, numElems: int) -> int:
+def StartArgsVector(builder, numElems):
     return KernelTypeStrArgsEntryStartArgsVector(builder, numElems)
 
 def KernelTypeStrArgsEntryEnd(builder):

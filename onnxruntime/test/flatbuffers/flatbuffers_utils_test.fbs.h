@@ -4,18 +4,16 @@
 #ifndef FLATBUFFERS_GENERATED_FLATBUFFERSUTILSTEST_ONNXRUNTIME_FBS_TEST_H_
 #define FLATBUFFERS_GENERATED_FLATBUFFERSUTILSTEST_ONNXRUNTIME_FBS_TEST_H_
 
-// manual edit to use wrapper in core/common
-#include "core/common/flatbuffers.h"
+#include "flatbuffers/flatbuffers.h"
 
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
-static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
-              FLATBUFFERS_VERSION_MINOR == 5 &&
-              FLATBUFFERS_VERSION_REVISION == 26,
-             "Non-compatible flatbuffers version included");
+static_assert(FLATBUFFERS_VERSION_MAJOR == 24 &&
+                  FLATBUFFERS_VERSION_MINOR == 3 &&
+                  FLATBUFFERS_VERSION_REVISION == 25,
+              "Non-compatible flatbuffers version included");
 
-// manual edit to set include path for this
-#include "core/flatbuffers/schema/ort.fbs.h"
+#include "ort.fbs.h"
 
 namespace onnxruntime {
 namespace fbs {

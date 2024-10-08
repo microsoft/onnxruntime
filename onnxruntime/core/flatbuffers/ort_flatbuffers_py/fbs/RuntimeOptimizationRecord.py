@@ -95,7 +95,7 @@ def AddProducedOpIds(builder, producedOpIds):
 def RuntimeOptimizationRecordStartProducedOpIdsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartProducedOpIdsVector(builder, numElems: int) -> int:
+def StartProducedOpIdsVector(builder, numElems):
     return RuntimeOptimizationRecordStartProducedOpIdsVector(builder, numElems)
 
 def RuntimeOptimizationRecordEnd(builder):

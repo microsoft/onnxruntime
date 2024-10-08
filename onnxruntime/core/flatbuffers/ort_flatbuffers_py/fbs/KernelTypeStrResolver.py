@@ -68,7 +68,7 @@ def AddOpKernelTypeStrArgs(builder, opKernelTypeStrArgs):
 def KernelTypeStrResolverStartOpKernelTypeStrArgsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartOpKernelTypeStrArgsVector(builder, numElems: int) -> int:
+def StartOpKernelTypeStrArgsVector(builder, numElems):
     return KernelTypeStrResolverStartOpKernelTypeStrArgsVector(builder, numElems)
 
 def KernelTypeStrResolverEnd(builder):

@@ -98,7 +98,7 @@ def AddNodeIndices(builder, nodeIndices):
 def DeprecatedKernelCreateInfosStartNodeIndicesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartNodeIndicesVector(builder, numElems: int) -> int:
+def StartNodeIndicesVector(builder, numElems):
     return DeprecatedKernelCreateInfosStartNodeIndicesVector(builder, numElems)
 
 def DeprecatedKernelCreateInfosAddKernelDefHashes(builder, kernelDefHashes):
@@ -110,7 +110,7 @@ def AddKernelDefHashes(builder, kernelDefHashes):
 def DeprecatedKernelCreateInfosStartKernelDefHashesVector(builder, numElems):
     return builder.StartVector(8, numElems, 8)
 
-def StartKernelDefHashesVector(builder, numElems: int) -> int:
+def StartKernelDefHashesVector(builder, numElems):
     return DeprecatedKernelCreateInfosStartKernelDefHashesVector(builder, numElems)
 
 def DeprecatedKernelCreateInfosEnd(builder):

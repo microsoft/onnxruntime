@@ -81,7 +81,7 @@ def AddRuntimeOptimizationRecords(builder, runtimeOptimizationRecords):
 def RuntimeOptimizationRecordContainerEntryStartRuntimeOptimizationRecordsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartRuntimeOptimizationRecordsVector(builder, numElems: int) -> int:
+def StartRuntimeOptimizationRecordsVector(builder, numElems):
     return RuntimeOptimizationRecordContainerEntryStartRuntimeOptimizationRecordsVector(builder, numElems)
 
 def RuntimeOptimizationRecordContainerEntryEnd(builder):

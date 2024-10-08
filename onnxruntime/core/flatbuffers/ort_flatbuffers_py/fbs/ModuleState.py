@@ -107,7 +107,7 @@ def AddRequiresGradParams(builder, requiresGradParams):
 def ModuleStateStartRequiresGradParamsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartRequiresGradParamsVector(builder, numElems: int) -> int:
+def StartRequiresGradParamsVector(builder, numElems):
     return ModuleStateStartRequiresGradParamsVector(builder, numElems)
 
 def ModuleStateAddFrozenParams(builder, frozenParams):
@@ -119,7 +119,7 @@ def AddFrozenParams(builder, frozenParams):
 def ModuleStateStartFrozenParamsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartFrozenParamsVector(builder, numElems: int) -> int:
+def StartFrozenParamsVector(builder, numElems):
     return ModuleStateStartFrozenParamsVector(builder, numElems)
 
 def ModuleStateAddIsNominalState(builder, isNominalState):

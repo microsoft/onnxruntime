@@ -259,7 +259,7 @@ def AddInputs(builder, inputs):
 def NodeStartInputsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartInputsVector(builder, numElems: int) -> int:
+def StartInputsVector(builder, numElems):
     return NodeStartInputsVector(builder, numElems)
 
 def NodeAddOutputs(builder, outputs):
@@ -271,7 +271,7 @@ def AddOutputs(builder, outputs):
 def NodeStartOutputsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartOutputsVector(builder, numElems: int) -> int:
+def StartOutputsVector(builder, numElems):
     return NodeStartOutputsVector(builder, numElems)
 
 def NodeAddAttributes(builder, attributes):
@@ -283,7 +283,7 @@ def AddAttributes(builder, attributes):
 def NodeStartAttributesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartAttributesVector(builder, numElems: int) -> int:
+def StartAttributesVector(builder, numElems):
     return NodeStartAttributesVector(builder, numElems)
 
 def NodeAddInputArgCounts(builder, inputArgCounts):
@@ -295,7 +295,7 @@ def AddInputArgCounts(builder, inputArgCounts):
 def NodeStartInputArgCountsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartInputArgCountsVector(builder, numElems: int) -> int:
+def StartInputArgCountsVector(builder, numElems):
     return NodeStartInputArgCountsVector(builder, numElems)
 
 def NodeAddImplicitInputs(builder, implicitInputs):
@@ -307,7 +307,7 @@ def AddImplicitInputs(builder, implicitInputs):
 def NodeStartImplicitInputsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartImplicitInputsVector(builder, numElems: int) -> int:
+def StartImplicitInputsVector(builder, numElems):
     return NodeStartImplicitInputsVector(builder, numElems)
 
 def NodeEnd(builder):

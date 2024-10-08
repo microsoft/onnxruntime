@@ -86,7 +86,7 @@ def AddSubGraphSessionStates(builder, subGraphSessionStates):
 def DeprecatedSessionStateStartSubGraphSessionStatesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartSubGraphSessionStatesVector(builder, numElems: int) -> int:
+def StartSubGraphSessionStatesVector(builder, numElems):
     return DeprecatedSessionStateStartSubGraphSessionStatesVector(builder, numElems)
 
 def DeprecatedSessionStateEnd(builder):

@@ -226,7 +226,7 @@ def AddInitializers(builder, initializers):
 def GraphStartInitializersVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartInitializersVector(builder, numElems: int) -> int:
+def StartInitializersVector(builder, numElems):
     return GraphStartInitializersVector(builder, numElems)
 
 def GraphAddNodeArgs(builder, nodeArgs):
@@ -238,7 +238,7 @@ def AddNodeArgs(builder, nodeArgs):
 def GraphStartNodeArgsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartNodeArgsVector(builder, numElems: int) -> int:
+def StartNodeArgsVector(builder, numElems):
     return GraphStartNodeArgsVector(builder, numElems)
 
 def GraphAddNodes(builder, nodes):
@@ -250,7 +250,7 @@ def AddNodes(builder, nodes):
 def GraphStartNodesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartNodesVector(builder, numElems: int) -> int:
+def StartNodesVector(builder, numElems):
     return GraphStartNodesVector(builder, numElems)
 
 def GraphAddMaxNodeIndex(builder, maxNodeIndex):
@@ -268,7 +268,7 @@ def AddNodeEdges(builder, nodeEdges):
 def GraphStartNodeEdgesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartNodeEdgesVector(builder, numElems: int) -> int:
+def StartNodeEdgesVector(builder, numElems):
     return GraphStartNodeEdgesVector(builder, numElems)
 
 def GraphAddInputs(builder, inputs):
@@ -280,7 +280,7 @@ def AddInputs(builder, inputs):
 def GraphStartInputsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartInputsVector(builder, numElems: int) -> int:
+def StartInputsVector(builder, numElems):
     return GraphStartInputsVector(builder, numElems)
 
 def GraphAddOutputs(builder, outputs):
@@ -292,7 +292,7 @@ def AddOutputs(builder, outputs):
 def GraphStartOutputsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartOutputsVector(builder, numElems: int) -> int:
+def StartOutputsVector(builder, numElems):
     return GraphStartOutputsVector(builder, numElems)
 
 def GraphAddSparseInitializers(builder, sparseInitializers):
@@ -304,7 +304,7 @@ def AddSparseInitializers(builder, sparseInitializers):
 def GraphStartSparseInitializersVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartSparseInitializersVector(builder, numElems: int) -> int:
+def StartSparseInitializersVector(builder, numElems):
     return GraphStartSparseInitializersVector(builder, numElems)
 
 def GraphAddRuntimeOptimizations(builder, runtimeOptimizations):

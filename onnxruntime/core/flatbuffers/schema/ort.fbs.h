@@ -4,14 +4,14 @@
 #ifndef FLATBUFFERS_GENERATED_ORT_ONNXRUNTIME_FBS_H_
 #define FLATBUFFERS_GENERATED_ORT_ONNXRUNTIME_FBS_H_
 
-#include "core/common/flatbuffers.h"
+#include "flatbuffers/flatbuffers.h"
 
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
-static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
-              FLATBUFFERS_VERSION_MINOR == 5 &&
-              FLATBUFFERS_VERSION_REVISION == 26,
-             "Non-compatible flatbuffers version included");
+static_assert(FLATBUFFERS_VERSION_MAJOR == 24 &&
+                  FLATBUFFERS_VERSION_MINOR == 3 &&
+                  FLATBUFFERS_VERSION_REVISION == 25,
+              "Non-compatible flatbuffers version included");
 
 namespace onnxruntime {
 namespace fbs {
@@ -2001,6 +2001,12 @@ struct RuntimeOptimizationRecordContainerEntry FLATBUFFERS_FINAL_CLASS : private
   int KeyCompareWithValue(const char *_optimizer_name) const {
     return strcmp(optimizer_name()->c_str(), _optimizer_name);
   }
+  template <typename StringType>
+  int KeyCompareWithValue(const StringType& _optimizer_name) const {
+    if (optimizer_name()->c_str() < _optimizer_name) return -1;
+    if (_optimizer_name < optimizer_name()->c_str()) return 1;
+    return 0;
+  }
   const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::RuntimeOptimizationRecord>> *runtime_optimization_records() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::RuntimeOptimizationRecord>> *>(VT_RUNTIME_OPTIMIZATION_RECORDS);
   }
@@ -2600,6 +2606,12 @@ struct DeprecatedSubGraphSessionState FLATBUFFERS_FINAL_CLASS : private ::flatbu
   int KeyCompareWithValue(const char *_graph_id) const {
     return strcmp(graph_id()->c_str(), _graph_id);
   }
+  template <typename StringType>
+  int KeyCompareWithValue(const StringType& _graph_id) const {
+    if (graph_id()->c_str() < _graph_id) return -1;
+    if (_graph_id < graph_id()->c_str()) return 1;
+    return 0;
+  }
   const onnxruntime::fbs::DeprecatedSessionState *session_state() const {
     return GetPointer<const onnxruntime::fbs::DeprecatedSessionState *>(VT_SESSION_STATE);
   }
@@ -2788,6 +2800,12 @@ struct KernelTypeStrArgsEntry FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::T
   int KeyCompareWithValue(const char *_kernel_type_str) const {
     return strcmp(kernel_type_str()->c_str(), _kernel_type_str);
   }
+  template <typename StringType>
+  int KeyCompareWithValue(const StringType& _kernel_type_str) const {
+    if (kernel_type_str()->c_str() < _kernel_type_str) return -1;
+    if (_kernel_type_str < kernel_type_str()->c_str()) return 1;
+    return 0;
+  }
   const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::ArgTypeAndIndex>> *args() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::ArgTypeAndIndex>> *>(VT_ARGS);
   }
@@ -2860,6 +2878,12 @@ struct OpIdKernelTypeStrArgsEntry FLATBUFFERS_FINAL_CLASS : private ::flatbuffer
   }
   int KeyCompareWithValue(const char *_op_id) const {
     return strcmp(op_id()->c_str(), _op_id);
+  }
+  template <typename StringType>
+  int KeyCompareWithValue(const StringType& _op_id) const {
+    if (op_id()->c_str() < _op_id) return -1;
+    if (_op_id < op_id()->c_str()) return 1;
+    return 0;
   }
   const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::KernelTypeStrArgsEntry>> *kernel_type_str_args() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::KernelTypeStrArgsEntry>> *>(VT_KERNEL_TYPE_STR_ARGS);

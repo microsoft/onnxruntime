@@ -107,7 +107,7 @@ def AddOptimizerStates(builder, optimizerStates):
 def OptimizerGroupStartOptimizerStatesVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartOptimizerStatesVector(builder, numElems: int) -> int:
+def StartOptimizerStatesVector(builder, numElems):
     return OptimizerGroupStartOptimizerStatesVector(builder, numElems)
 
 def OptimizerGroupEnd(builder):
