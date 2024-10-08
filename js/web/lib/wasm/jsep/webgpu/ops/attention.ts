@@ -733,7 +733,7 @@ const createVxAttentionScoreProgramInfo = (
 
   return {
     name: 'AttentionScore',
-    shaderCache: { hint: `${pastValue !== undefined};${outputCount}`, inputDependencies },
+    shaderCache: { hint: `${pastValue !== undefined};${outputCount};${presentValue !== undefined};${outputCount}`, inputDependencies },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
     getShaderSource,
   };
