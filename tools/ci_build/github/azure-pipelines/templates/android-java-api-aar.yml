@@ -90,7 +90,7 @@ jobs:
           cp ${{parameters.includedOpsConfig}} $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
 
          # Mount qnn volume if building qnn android package
-        if [[ "${{ parameters.packageName }}" == "*qnn*" ]]; then
+        if [[ ${{ parameters.packageName }} == *qnn* ]]; then
           QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
         else
           QNN_VOLUME=""
