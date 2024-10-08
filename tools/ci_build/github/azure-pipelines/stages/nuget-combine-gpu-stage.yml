@@ -42,7 +42,7 @@ stages:
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
 
-- template: nuget-win-cuda-packaging-stage.yml
+- template: nuget-win-gpu-packaging-stage.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
@@ -51,7 +51,7 @@ stages:
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
 
-- template: nuget-cuda-packaging-stage.yml
+- template: nuget-gpu-packaging-stage.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
