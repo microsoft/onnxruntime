@@ -48,6 +48,11 @@ parameters:
   type: string
   default: '0'
 
+- name: ReleaseVersionSuffix
+  displayName: Release Version Suffix
+  type: string
+  default: ''
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -72,11 +77,13 @@ stages:
       job_name_suffix: 'Full'
       publish_executables: '1'
       enable_code_sign: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: ${{ parameters.ReleaseVersionSuffix }}
 
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: iOS_Full_xcframework
   dependsOn: []

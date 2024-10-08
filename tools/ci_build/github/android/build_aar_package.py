@@ -102,7 +102,7 @@ def _build_aar(args):
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
 
-        subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
+        # subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
 
         # create symbolic links for libonnxruntime.so and libonnxruntime4j_jni.so
         # to jnilibs/[abi] for later compiling the aar package
@@ -156,6 +156,7 @@ def _build_aar(args):
             if "--enable_training_apis" in build_settings["build_params"]
             else "-DENABLE_TRAINING_APIS=0"
         ),
+        "-DreleaseVersionSuffix=" + os.getenv("ReleaseVersionSuffix", "rc1"),
     ]
 
     # clean, build, and publish to a local directory
