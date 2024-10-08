@@ -111,7 +111,6 @@ stages:
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
-    ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - template: stages/java-cuda-packaging-stage.yml
   parameters:
