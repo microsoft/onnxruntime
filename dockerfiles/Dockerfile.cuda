@@ -33,20 +33,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a virtual environment and install dependencies
-RUN cd /code \
-    && python3 -m venv /code/env \
-    && /code/env/bin/pip install --upgrade psutil setuptools wheel packaging \
-    && /code/env/bin/pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt
-
 # Install CUDNN 9.4.0.58 for building ONNX Runtime with CUDA.
 RUN wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.4.0.58_cuda12-archive.tar.xz \
     && mkdir -p /code/build/cudnn \
     && tar -Jxvf cudnn-linux-x86_64-9.4.0.58_cuda12-archive.tar.xz -C /code/build/cudnn --strip=1
 
-# Build ONNX Runtime with CUDA
+# Create a virtual environment and install dependencies, then build ONNX Runtime with CUDA support.
 RUN cd /code \
-    && /code/env/bin/python /code/tools/ci_build/build.py --build_dir /code/build/Linux \
+    && python3 -m venv /code/env \
+    && . /code/env/bin/activate \
+    && pip install --upgrade psutil setuptools wheel packaging \
+    && pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt \
+    && python /code/tools/ci_build/build.py --build_dir /code/build/Linux \
     --allow_running_as_root --skip_submodule_sync \
     --use_cuda --cuda_home /usr/local/cuda \
     --cudnn_home /code/build/cudnn \
@@ -54,7 +52,7 @@ RUN cd /code \
     --config Release --build_wheel --update --build --parallel \
     --cmake_generator Ninja \
     --enable_cuda_nhwc_ops \
-    --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}" onnxruntime_BUILD_UNIT_TESTS=OFF
+    --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) "CMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}" onnxruntime_BUILD_UNIT_TESTS=OFF
 
 # Start second stage to copy the build artifacts
 FROM nvcr.io/nvidia/cuda:12.6.1-runtime-ubuntu24.04
@@ -64,8 +62,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 COPY --from=0 /code/build/Linux/Release/dist /ort
 COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
 
-# Install runtime dependencies
-# Note that here we demostrate that we can install CUDNN from nvidia-cudnn-cu12 python package for runtime.
+# Set LD_LIBRARY_PATH so that runtime can load CUDA and CUDNN DLLs.
+# CUDNN will be installed by nvidia-cudnn-cu12 python package later.
+# Its location is in the site-packages directory, which can be retrieved like the following:
+#   python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
+ENV LD_LIBRARY_PATH="/ort/env/lib/python3.12/site-packages/nvidia/cudnn/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+
+# Install runtime dependencies, and run a simple test to verify the installation.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \
     ca-certificates \
@@ -74,10 +77,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unattended-upgrades \
     && unattended-upgrade \
     && python3 -m venv /ort/env \
-    && /ort/env/bin/pip install /ort/*.whl \
-    && /ort/env/bin/pip install nvidia-cudnn-cu12==9.4.0.58 \
-    && export site_packages="$(/ort/env/bin/python -c "import sysconfig; print(sysconfig.get_path('purelib'))")" \
-    && export LD_LIBRARY_PATH="$site_packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH" \
-    && /ort/env/bin/python -c 'import onnxruntime; print(onnxruntime.get_available_providers())' \
+    && . /ort/env/bin/activate \
+    && pip install /ort/*.whl \
+    && pip install nvidia-cudnn-cu12==9.4.0.58 \
+    && python -c 'import onnxruntime; print(onnxruntime.get_available_providers())' \
     && rm -rf /ort/*.whl \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure the virtual environment is always activated when running commands in the container.
+RUN echo "source /ort/env/bin/activate" >> ~/.bashrc
