@@ -197,7 +197,7 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
   auto* Y = ctx->Output(0, X_shape);
-  throw std::invalid_argument("compute");
+
   // edge case. one or more dims with value of 0. nothing to do
   if (X_shape.Size() == 0) {
     return Status::OK();
