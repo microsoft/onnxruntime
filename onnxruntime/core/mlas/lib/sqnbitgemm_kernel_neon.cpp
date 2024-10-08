@@ -62,7 +62,7 @@ SQ4BitGemmPackQuantBData(
 )
 {
     if (ComputeType == CompFp16) {
-        // TODO(fajin): call another function for fp16
+        SQ4BitGemmPackQuantBData_CompFp16(N, K, BlkLen, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
         return;
     }
 
@@ -129,6 +129,7 @@ SQ4BitGemmPackQuantBData(
 // Workspace size calculation function implementation.
 //
 
+template<typename T>
 size_t
 SQ4BitGemmPerGemmWorkspaceSize(
     size_t M,
@@ -144,7 +145,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
         case CompInt8: {
             // workspace buffer is used for block quantization of A to int8
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize_T<T>(BlkLen);
             return PerGemmWorkspaceSize;
         }
         default: {
@@ -153,6 +154,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
     }
 }
 
+template <typename T>
 size_t
 SQ4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
@@ -163,7 +165,7 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 
     switch (ComputeType) {
         case CompInt8: {
-            return Q8BlkAlignment();
+            return Q8BlkAlignment_T<T>();
         }
         default: {
             return 1;
@@ -185,8 +187,8 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
 
-    d.SQ4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment;
+    d.SQ4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize<float>;
+    d.SQ4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<float>;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp32;
@@ -197,10 +199,18 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    d.SQ4BitGemmPerGemmWorkspaceSize_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize<MLAS_FP16>;
+    d.SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<MLAS_FP16>;
+
+    // TODO(fajin)
     d.Q4BitBlkDequantBForSgemm_CompFp16 = nullptr;
     d.SQ4BitGemmKernel_CompFp16 = nullptr;
 
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    // TODO(fajin)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+        d.SQ4BitGemmKernel_Fp16_CompInt8 = nullptr;
+    }
+    else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
         d.SQ4BitGemmKernel_Fp16_CompInt8 = nullptr;
     }
     d.QuantizeARow_Fp16_CompInt8 = nullptr;

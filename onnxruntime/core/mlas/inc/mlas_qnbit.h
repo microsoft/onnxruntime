@@ -132,6 +132,7 @@ MlasIsSQNBitGemmAvailable(
  * @param[in]   BlkLen          number of quantized values per block
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
+template<typename T>
 size_t MLASCALL
 MlasSQNBitGemmBatchWorkspaceSize(
     size_t M,
@@ -204,5 +205,17 @@ MlasSQNBitGemmPackQuantBData(
     const void* QuantBScale,
     bool has_zp_input,
     const void* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+void MLASCALL
+MlasSQNBitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const void* QuantBData,
+    void* PackedQuantBDataAndOrBlkSum,
     MLAS_THREADPOOL* ThreadPool
 );
