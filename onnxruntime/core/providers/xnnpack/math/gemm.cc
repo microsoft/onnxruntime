@@ -39,7 +39,7 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
 
     if (A_type == nullptr ||
         (A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+         A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
       break;
     }
 
@@ -69,8 +69,7 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
       break;
     }
 
-    if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() &&
-        C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
+    if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
       break;
     }
 
@@ -99,7 +98,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
     ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", stype);
   }
-  
+
   const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
 
   C_matrix_exists_ = C_arg && C_arg->Exists();
@@ -147,7 +146,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
     const float* bias_Data = nullptr;
     if (C_matrix_exists_) {
       bias_Data = tensor.Data<float>();
-    }    
+    }
     float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
     float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
     status = xnn_create_fully_connected_nc_f32(
@@ -161,11 +160,11 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         flags,
         GetCodeCache(), GetWeightsCache(),
         &p);
-  } else if( op_type_ == OpComputeType::op_compute_type_fp16) {
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     const MLFloat16* bias_Data = nullptr;
     if (C_matrix_exists_) {
       bias_Data = tensor.Data<MLFloat16>();
-    }      
+    }
     float output_min = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->first) : -65504.0f;
     float output_max = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->second) : 65504.0f;
     status = xnn_create_fully_connected_nc_f16(
@@ -173,14 +172,14 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
-        B_->Data<MLFloat16>(),                                           // const float* kernel,
+        B_->Data<MLFloat16>(),                                       // const float* kernel,
         bias_Data,                                                   // const float* bias,
         output_min, output_max,
         flags,
         GetCodeCache(), GetWeightsCache(),
         &p);
   } else {
-      ORT_THROW("unsupported compute type in Gemm::PrePack function, we have FLOAT|FLOAT16, but got ", op_type_);
+    ORT_THROW("unsupported compute type in Gemm::PrePack function, we have FLOAT|FLOAT16, but got ", op_type_);
   }
 
   if (status != xnn_status_success) {
@@ -206,9 +205,9 @@ Status Gemm::Compute(OpKernelContext* context) const {
     reshape_func = xnn_reshape_fully_connected_nc_f16;
   }
   xnn_status status = reshape_func(op0_.get(),
-                                  // Number of rows to multiply
-                                  trans_A_ == CblasNoTrans ? M_ : K_,
-                                  threadpool);
+                                   // Number of rows to multiply
+                                   trans_A_ == CblasNoTrans ? M_ : K_,
+                                   threadpool);
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_xx returned ", status);
@@ -253,20 +252,20 @@ ONNX_OPERATOR_KERNEL_EX(Gemm, kOnnxDomain, 13, kXnnpackExecutionProvider,
 
 #ifdef XNNPACK_FP16_SUPPORTED
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 7, 8, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  Gemm);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        Gemm);
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 9, 10, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  Gemm);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        Gemm);
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 11, 12, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  Gemm);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        Gemm);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 13, MLFloat16, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                        Gemm);
+                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                              Gemm);
 #endif
 
 }  // namespace xnnpack

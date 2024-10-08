@@ -197,7 +197,7 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
   auto* Y = ctx->Output(0, X_shape);
-
+  throw std::invalid_argument("compute");
   // edge case. one or more dims with value of 0. nothing to do
   if (X_shape.Size() == 0) {
     return Status::OK();
@@ -210,9 +210,9 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
 
   auto reshape_fn = xnn_reshape_softmax_nc_f32;
   if (op_type_ == OpComputeType::op_compute_type_fp16) {
-      reshape_fn = xnn_reshape_softmax_nc_f16;
+    reshape_fn = xnn_reshape_softmax_nc_f16;
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-      reshape_fn = xnn_reshape_softmax_nc_qu8;
+    reshape_fn = xnn_reshape_softmax_nc_qu8;
   }
 
   status = reshape_fn(op0_.get(), channel_dim_, channel_dim_, channel_dim_, N, threadpool);
@@ -224,9 +224,9 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
 
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_softmax_nc_qu8(op0_.get(), X->Data<uint8_t>(), Y->MutableData<uint8_t>());
-  } else if(op_type_ == op_compute_type_fp32) {
+  } else if (op_type_ == op_compute_type_fp32) {
     status = xnn_setup_softmax_nc_f32(op0_.get(), X->Data<float>(), Y->MutableData<float>());
-  } else if(op_type_ == op_compute_type_fp16) {
+  } else if (op_type_ == op_compute_type_fp16) {
     status = xnn_setup_softmax_nc_f16(op0_.get(), X->Data<MLFloat16>(), Y->MutableData<MLFloat16>());
   }
 
@@ -261,16 +261,16 @@ ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecu
 
 #ifdef XNNPACK_FP16_SUPPORTED
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Softmax, kOnnxDomain, 1, 10, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  Softmax);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        Softmax);
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Softmax, kOnnxDomain, 11, 12, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  Softmax);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        Softmax);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(Softmax, kOnnxDomain, 13, MLFloat16, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                        Softmax);
+                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                              Softmax);
 #endif
 
 }  // namespace xnnpack

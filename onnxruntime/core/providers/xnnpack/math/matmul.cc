@@ -103,46 +103,46 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     shape_broadcast.push_back(1);
   }
 
-  #ifdef XNN_CACHE_ENABLE
-    xnn_code_cache_t code_cache = GetCodeCache();
-    xnn_weights_cache_t weight_cache = GetWeightsCache();
-  #else
-    xnn_code_cache_t code_cache = nullptr;
-    xnn_weights_cache_t weight_cache = nullptr;
-  #endif
+#ifdef XNN_CACHE_ENABLE
+  xnn_code_cache_t code_cache = GetCodeCache();
+  xnn_weights_cache_t weight_cache = GetWeightsCache();
+#else
+  xnn_code_cache_t code_cache = nullptr;
+  xnn_weights_cache_t weight_cache = nullptr;
+#endif
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-      float output_min = -INFINITY;
-      float output_max = INFINITY;
-      status = xnn_create_fully_connected_nc_f32(
-          shape_broadcast[0],    // size_t input_channels,
-          shape_broadcast[1],    // size_t output_channels,
-          shape_broadcast[0],    // size_t input_stride,
-          shape_broadcast[1],    // size_t output_stride,
-          tensor.Data<float>(),  // const float* kernel,
-          nullptr,               // const float* bias,
-          output_min,
-          output_max,
-          flags,
-          code_cache,
-          weight_cache,
-          &p);
+    float output_min = -INFINITY;
+    float output_max = INFINITY;
+    status = xnn_create_fully_connected_nc_f32(
+        shape_broadcast[0],    // size_t input_channels,
+        shape_broadcast[1],    // size_t output_channels,
+        shape_broadcast[0],    // size_t input_stride,
+        shape_broadcast[1],    // size_t output_stride,
+        tensor.Data<float>(),  // const float* kernel,
+        nullptr,               // const float* bias,
+        output_min,
+        output_max,
+        flags,
+        code_cache,
+        weight_cache,
+        &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
-      float output_min = -65504.0f;
-      float output_max = 65504.0f;
-      status = xnn_create_fully_connected_nc_f16(
-          shape_broadcast[0],    // size_t input_channels,
-          shape_broadcast[1],    // size_t output_channels,
-          shape_broadcast[0],    // size_t input_stride,
-          shape_broadcast[1],    // size_t output_stride,
-          tensor.Data<MLFloat16>(),  // const MLFloat16* kernel,
-          nullptr,               // const MLFloat16* bias,
-          output_min,
-          output_max,
-          flags,
-          code_cache,
-          weight_cache,
-          &p);
+    float output_min = -65504.0f;
+    float output_max = 65504.0f;
+    status = xnn_create_fully_connected_nc_f16(
+        shape_broadcast[0],        // size_t input_channels,
+        shape_broadcast[1],        // size_t output_channels,
+        shape_broadcast[0],        // size_t input_stride,
+        shape_broadcast[1],        // size_t output_stride,
+        tensor.Data<MLFloat16>(),  // const MLFloat16* kernel,
+        nullptr,                   // const MLFloat16* bias,
+        output_min,
+        output_max,
+        flags,
+        code_cache,
+        weight_cache,
+        &p);
   }
 
   if (status != xnn_status_success) {
@@ -178,7 +178,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
   if (op_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_setup_fully_connected_nc_f16(op0_.get(), a->Data<MLFloat16>(), y_data);
-  }  
+  }
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_", op_type_str_, " returned ", status);
   }
@@ -204,16 +204,16 @@ ONNX_OPERATOR_KERNEL_EX(MatMul, kOnnxDomain, 13, kXnnpackExecutionProvider,
 
 #ifdef XNNPACK_FP16_SUPPORTED
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(MatMul, kOnnxDomain, 1, 8, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  MatMul);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        MatMul);
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(MatMul, kOnnxDomain, 9, 12, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                  MatMul);
+                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                                        MatMul);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(MatMul, kOnnxDomain, 13, MLFloat16, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                        MatMul);
+                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+                              MatMul);
 #endif
 }  // namespace xnnpack
 }  // namespace onnxruntime
