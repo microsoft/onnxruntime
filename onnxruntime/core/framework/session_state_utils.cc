@@ -48,14 +48,16 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
 }
 
 // deleter for external data tensors managed by an OrtValue; manages the release of
-// the tensor's data buffer (which points to the external data)
-// p_tensor itself is smart pointer, don't need this deleter to manage it
+// the tensor's data buffer (which points to the external data) and the tensor itself
 struct ExtDataValueDeleter {
   OrtCallback ext_delete_cb;
+  Tensor* p_tensor;
   void operator()(void*) noexcept {
     if (ext_delete_cb.f) {
       ext_delete_cb.f(ext_delete_cb.param);
     }
+
+    delete p_tensor;
   }
 };
 
@@ -141,7 +143,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor,
                                                      ext_data_deleter, pre_packed_initializers_name_count_map, buffered_tensor));
 
-      ExtDataValueDeleter deleter{ext_data_deleter};
+      ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
       MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
       ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
       return common::Status::OK();
