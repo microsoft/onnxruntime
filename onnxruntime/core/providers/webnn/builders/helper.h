@@ -31,6 +31,8 @@ enum class WebnnDeviceType {
   NPU,
 };
 
+WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
+
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
 
@@ -195,6 +197,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"LessOrEqual", "lesserOrEqual"},
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
+    {"LSTM", "lstm"},
     {"MatMul", "matmul"},
     {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
@@ -234,6 +237,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Sub", "sub"},
     {"Tan", "tan"},
     {"Tanh", "tanh"},
+    {"Tile", "tile"},
     {"Transpose", "transpose"},
     {"Trilu", "triangular"},
     {"Unsqueeze", "reshape"},
@@ -290,6 +294,8 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
                                     std::vector<int64_t>& output_shape);
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
+
+bool IsMLTensorSupported();
 
 }  // namespace webnn
 }  // namespace onnxruntime

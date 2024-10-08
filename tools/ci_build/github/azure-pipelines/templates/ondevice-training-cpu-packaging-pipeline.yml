@@ -100,6 +100,8 @@ stages:
       job_name_suffix: 'Training_Full'
       publish_executables: '1'
       packageName: onnxruntime-training-android
+      enable_code_sign: true
+
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-training-android-full-aar'

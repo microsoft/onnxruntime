@@ -2780,6 +2780,22 @@ TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_13) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceSum_missing_axes_input_noop_opset_13) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);  // missing axes input and noop. should be identity
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddOptionalInputEdge<int64_t>();  // missing optional axes input
+  test.AddOutput<float>("reduced", {1, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f});
+
+  // TODO: OpenVINO doesn't support "axes" input in opset 13
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceSum0DTensor) {
   OpTester test("ReduceSum");
   test.AddInput<float>("data", {}, {2});
@@ -3230,6 +3246,26 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: node1: at least 2 dimensions are required for input
 }
 
+TEST(ReductionOpTest, ArgMax_int64) {
+  OpTester test("ArgMax", 13);
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           1, 1,
+                           1, 1});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ArgMax_int32) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)1);
@@ -3493,6 +3529,63 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMin_uint8) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMin_int8) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                        {1, 2,
+                         3, 4,
+
+                         5, 6,
+                         7, 8,
+
+                         9, 10,
+                         11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMin_int64) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run();
 }
 
 TEST(ReductionOpTest, ArgMin_int32) {
@@ -5940,5 +6033,18 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare) {
 TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
+
+TEST(ReductionOpTest, MissingOptionalAxes) {
+  OpTester test("ReduceMax", 18);
+  test.AddInput<float>("data", {2, 2},
+                       {1.0f, 4.0f,
+                        3.0f, 2.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("reduced", {1, 1}, {4.0f});
+
+  // OpenVINO doesn't support "axes" input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

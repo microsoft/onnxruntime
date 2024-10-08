@@ -100,7 +100,11 @@ Status ModelBuilder::RegisterInitializers() {
                    [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
 
     emscripten::val desc = emscripten::val::object();
+    // TODO: @Honry, remove all MLOperandDescriptor.dimensions usage in the future.
+    // MLOperandDescriptor.dimensions is deprecated in WebNN API, we need to keep it
+    // in WebNN EP for a while to support older Chromium versions.
     desc.set("dimensions", emscripten::val::array(dims));
+    desc.set("shape", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
     if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
@@ -203,6 +207,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   emscripten::val desc = emscripten::val::object();
 
   desc.set("dimensions", emscripten::val::array(dims));
+  desc.set("shape", emscripten::val::array(dims));
 
   int32_t data_type;
   {  // type
@@ -303,6 +308,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   }
 
   desc.set("dimensions", emscripten::val::array(shape));
+  desc.set("shape", emscripten::val::array(shape));
   emscripten::val operand = emscripten::val::object();
   // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
   // buffers in JS side. Simply create a copy to fix it.
@@ -334,7 +340,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   }
   // Explicitly release the WebNN builder to free memory.
   wnn_builder_ = emscripten::val::undefined();
-  model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_));
+  model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_, IsMLTensorSupported()));
   model->SetInputs(std::move(input_names_));
   model->SetOutputs(std::move(output_names_));
   model->SetInputOutputInfo(std::move(input_output_info_));
@@ -361,6 +367,7 @@ const emscripten::val& ModelBuilder::GetZeroConstant(const int32_t& data_type) {
     emscripten::val desc = emscripten::val::object();
     emscripten::val dims = emscripten::val::array();
     desc.set("dimensions", dims);
+    desc.set("shape", dims);
     emscripten::val zero_buffer = emscripten::val::undefined();
     if (!SetWebnnDataType(desc, data_type)) {
       ORT_THROW("Unsupported data type: " + std::to_string(data_type));

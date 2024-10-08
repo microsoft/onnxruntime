@@ -24,8 +24,6 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-static const std::string MODEL_FOLDER = "testdata/transform/";
-
 TEST(OptimizerTest, Basic) {
   Model model("OptimizerBasic", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
