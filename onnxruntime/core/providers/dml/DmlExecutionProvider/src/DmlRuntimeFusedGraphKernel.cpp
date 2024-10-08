@@ -7,6 +7,7 @@
 #include "core/providers/dml/DmlExecutionProvider/src/DmlRuntimeFusedGraphKernel.h"
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionHelper.h"
 #include "core/providers/dml/DmlExecutionProvider/src/DmlReusedCommandListState.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -37,6 +38,8 @@ namespace Dml
           m_partitionNodePropsMap(std::move(partitionNodePropsMap)),
           m_ownedInitializers(std::move(ownedInitializers))
         {
+            m_qdqCleanupEnabled = kernelInfo.GetConfigOptions().GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+
             for (const auto& initializer : m_ownedInitializers)
             {
                 m_isInitializerTransferable[initializer.name()] = std::make_pair(&initializer, false);
@@ -222,7 +225,8 @@ namespace Dml
                     *m_indexedSubGraph,
                     providerImpl,
                     &serializedGraphInputIndexToSubgraphInputIndex,
-                    &serializedGraphLargeConstantNameToSubgraphInputIndex);
+                    &serializedGraphLargeConstantNameToSubgraphInputIndex,
+                    m_qdqCleanupEnabled);
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
@@ -336,6 +340,7 @@ namespace Dml
         mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;
         mutable std::vector<uint8_t> m_isInputsUploadedByDmlEP;
         mutable std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;
+        bool m_qdqCleanupEnabled = false;
     };
 
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(

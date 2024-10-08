@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "DmlOperator.h"
+#include "../DirectMLPreview.h"
 
 namespace Dml
 {
@@ -192,10 +193,22 @@ namespace Dml
                                   dmlIntermediateEdges);
 
             // compile the graph and create IDMLCompiledOperator
-            Microsoft::WRL::ComPtr<IDMLDevice1> dmlDevice1;
-            DMLX_THROW_IF_FAILED(m_dmlDevice->QueryInterface(IID_PPV_ARGS(&dmlDevice1)));
+            Microsoft::WRL::ComPtr<IDMLDevice2> dmlDevice2;
+            DMLX_THROW_IF_FAILED(m_dmlDevice->QueryInterface(IID_PPV_ARGS(&dmlDevice2)));
             DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
-            ORT_THROW_IF_FAILED(dmlDevice1->CompileGraph(&graphDesc, executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
+
+            std::vector<DML_GRAPH_OPTION> graphOptions;
+            if (kernelInfo.IsQDQCleanupEnabled())
+            {
+                graphOptions.push_back(DML_GRAPH_OPTION_ENABLE_QDQ_CLEANUP);
+            }
+
+            ORT_THROW_IF_FAILED(dmlDevice2->CompileGraph1(
+                &graphDesc,
+                executionFlags,
+                gsl::narrow_cast<uint32_t>(graphOptions.size()),
+                graphOptions.data(),
+                IID_PPV_ARGS(&m_compiledOperator)));
 
             // Static buffer (might truncate name) to avoid excessive dynamic allocation only for debugging purposes.
             wchar_t nodeName[512];

@@ -1815,6 +1815,8 @@ common::Status InferenceSession::Initialize() {
                        [](char ch) { return std::tolower(ch); });
         bool dml_graph_serialization_enabled = dml_graph_serialization_enabled_config_val == "true";
 
+        const bool enable_quant_qdq_cleanup = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+
         if (static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider)->IsGraphCaptureEnabled()) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlRuntimeGraphFusionTransformer = std::make_unique<Dml::DmlRuntimeGraphFusionTransformer>("DmlRuntimeGraphFusionTransformer",
                                                                                                                                                     dmlExecutionProvider);
@@ -1825,7 +1827,8 @@ common::Status InferenceSession::Initialize() {
         } else if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
                                                                                                                                       dmlExecutionProvider,
-                                                                                                                                      dml_graph_serialization_enabled);
+                                                                                                                                      dml_graph_serialization_enabled,
+                                                                                                                                      enable_quant_qdq_cleanup);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }

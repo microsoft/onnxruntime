@@ -33,11 +33,13 @@ namespace Dml
     DmlGraphFusionTransformer::DmlGraphFusionTransformer(
         const std::string& name,
         const onnxruntime::IExecutionProvider* provider,
-        const bool graphSerializationEnabled
+        const bool graphSerializationEnabled,
+        const bool qdqCleanupEnabled
     )
         :onnxruntime::GraphTransformer(name),
          m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl()),
-         graphSerializationEnabled(graphSerializationEnabled)
+         m_graphSerializationEnabled(graphSerializationEnabled),
+         m_qdqCleanupEnabled(qdqCleanupEnabled)
     {
     }
 
@@ -264,7 +266,8 @@ namespace Dml
                         indexedSubGraph,
                         m_providerImpl,
                         &serializedGraphInputIndexToSubgraphInputIndex,
-                        &serializedGraphLargeConstantNameToSubgraphInputIndex);
+                        &serializedGraphLargeConstantNameToSubgraphInputIndex,
+                        m_qdqCleanupEnabled);
 
                     if (!compiledPartition)
                     {
@@ -311,7 +314,8 @@ namespace Dml
                     std::move(compiledPartitionInfo->isInputsUploadedByDmlEP),
                     compiledPartitionInfo->graphDesc,
                     compiledPartitionInfo->compiledOperator,
-                    graphSerializationEnabled,
+                    m_graphSerializationEnabled,
+                    m_qdqCleanupEnabled,
                     &compiledPartitionInfo->serializedGraphInputIndexToSubgraphInputIndex,
                     &compiledPartitionInfo->serializedGraphLargeConstantNameToSubgraphInputIndex);
             }

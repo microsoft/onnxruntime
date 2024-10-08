@@ -655,6 +655,11 @@ public:
         return shapeDesc.GetSequenceInputTensorShape(inputIndex, sequenceIndex);
     }
 
+    bool IsQDQCleanupEnabled() const
+    {
+        return m_implPrivate->IsQDQCleanupEnabled();
+    }
+
  private:
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> m_impl;
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate> m_implPrivate;

@@ -380,6 +380,8 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         return m_winmlProvider.CopyTo(executionProvider);
     }
 
+    bool STDMETHODCALLTYPE IsQDQCleanupEnabled() const noexcept override { return m_qdqCleanupEnabled; };
+
 private:
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
@@ -394,6 +396,8 @@ private:
     // The execution object returned through the ABI, which may vary according to kernel
     // registration options.
     ComPtr<IUnknown> m_abiExecutionObject;
+
+    bool m_qdqCleanupEnabled = false;
 };
 
 // OpKernelInfo used for DML graph fusion.  This uses the ONNX graph structures instead of ORT OpKernelInfo.
@@ -431,6 +435,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     HRESULT STDMETHODCALLTYPE GetOutputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept override;
 
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override;
+    bool STDMETHODCALLTYPE IsQDQCleanupEnabled() const noexcept override { return false; };
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc

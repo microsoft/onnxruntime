@@ -12,6 +12,7 @@
 
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorPrivate.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace Microsoft::WRL;
 
@@ -564,7 +565,7 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     OpKernelInfoWrapper::OpKernelInfoWrapper(
-        const onnxruntime::OpKernelInfo* kerneInfo,
+        const onnxruntime::OpKernelInfo* kernelInfo,
         IUnknown* abiExecutionObject,
         const EdgeShapes* inputShapeOverrides,
         const EdgeShapes* inferredOutputShapes,
@@ -576,15 +577,17 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorTensorGetter& constantInputGetter,
         const onnxruntime::OpKernelContext* kernelContext
         )
-    :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, kernelContext),
+    :   OpNodeInfoWrapper(kernelInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, kernelContext),
         m_inferredOutputShapes(inferredOutputShapes),
         m_allowInputShapeQuery(allowInputShapeQuery),
         m_allowOutputShapeQuery(allowOutputShapeQuery),
         m_internalOperator(isInternalOperator),
-        m_impl(kerneInfo),
+        m_impl(kernelInfo),
         m_abiExecutionObject(abiExecutionObject)
     {
-        const void* executionHandle = kerneInfo->GetExecutionProvider()->GetExecutionHandle();
+        m_qdqCleanupEnabled = kernelInfo->GetConfigOptions().GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+
+        const void* executionHandle = kernelInfo->GetExecutionProvider()->GetExecutionHandle();
         if (executionHandle)
         {
             // We assume the execution object inherits IUnknown as its first base
@@ -1518,7 +1521,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
                 m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
             }
-            
+
             // There can be operators (or kernels) which don't require any input.
             assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
             m_graphNodeCreateInfo->inputEdges.insert(

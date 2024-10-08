@@ -2,6 +2,7 @@
 
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
+#include "DirectMLPreview.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -522,7 +523,8 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const ExecutionProviderImpl* providerImpl,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
-        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex,
+        bool qdqCleanupEnabled)
     {
         const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
         const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
@@ -566,13 +568,21 @@ namespace DmlGraphFusionHelper
         }
 
 
-        ComPtr<IDMLDevice1> device1;
-        ORT_THROW_IF_FAILED(device.As(&device1));
+        ComPtr<IDMLDevice2> device2;
+        ORT_THROW_IF_FAILED(device.As(&device2));
+
+        std::vector<DML_GRAPH_OPTION> graphOptions;
+        if (qdqCleanupEnabled)
+        {
+            graphOptions.push_back(DML_GRAPH_OPTION_ENABLE_QDQ_CLEANUP);
+        }
 
         ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator;
-        ORT_THROW_IF_FAILED(device1->CompileGraph(
+        ORT_THROW_IF_FAILED(device2->CompileGraph1(
             &dmlGraphDesc,
             executionFlags,
+            gsl::narrow_cast<uint32_t>(graphOptions.size()),
+            graphOptions.data(),
             IID_PPV_ARGS(&compiledExecutionPlanOperator)));
 
         // UINT32_MAX is currently the maximum number of bytes allowed by D3D12 for the offset of a view over a resource
@@ -595,6 +605,7 @@ namespace DmlGraphFusionHelper
         const GraphDescBuilder::GraphDesc& graphDesc,
         Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
         const bool graphSerializationEnabled,
+        const bool qdqCleanupEnabled,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
@@ -627,7 +638,8 @@ namespace DmlGraphFusionHelper
                           indexedSubGraph,
                           providerImpl,
                           serializedGraphInputIndexToSubgraphInputIndex,
-                          serializedGraphLargeConstantNameToSubgraphInputIndex);
+                          serializedGraphLargeConstantNameToSubgraphInputIndex,
+                          qdqCleanupEnabled);
         }
 
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);

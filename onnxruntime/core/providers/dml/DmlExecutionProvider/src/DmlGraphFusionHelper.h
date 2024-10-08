@@ -78,7 +78,8 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const ExecutionProviderImpl* providerImpl,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
-        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex);
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex,
+        bool qdqCleanupEnabled);
 
     void FusePartitionAndRegisterKernel(
         const uint32_t partitionIndex,
@@ -91,6 +92,7 @@ namespace DmlGraphFusionHelper
         const GraphDescBuilder::GraphDesc& graphDesc,
         Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
         const bool graphSerializationEnabled,
+        const bool qdqCleanupEnabled,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex = nullptr,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex = nullptr);
 

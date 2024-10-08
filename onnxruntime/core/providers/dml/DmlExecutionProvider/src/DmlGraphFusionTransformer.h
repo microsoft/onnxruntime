@@ -17,7 +17,8 @@ public:
     DmlGraphFusionTransformer(
         const std::string& name,
         const onnxruntime::IExecutionProvider* provider,
-        const bool graphSerializationEnabled
+        const bool graphSerializationEnabled,
+        const bool qdqCleanupEnabled
     );
 
 public:
@@ -39,6 +40,7 @@ private:
 
 private:
     const ExecutionProviderImpl* m_providerImpl = nullptr;
-    const bool graphSerializationEnabled = false;
+    const bool m_graphSerializationEnabled = false;
+    const bool m_qdqCleanupEnabled = false;
 };
 }

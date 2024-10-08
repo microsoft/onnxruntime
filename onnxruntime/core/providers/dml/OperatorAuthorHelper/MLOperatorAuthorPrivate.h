@@ -81,6 +81,8 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     STDMETHOD(SetDmlOperator)(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc
     ) const noexcept PURE;
+
+    STDMETHOD_(bool, IsQDQCleanupEnabled)() const noexcept PURE;
 };
 
 interface __declspec(uuid("1d2e1226-a918-4236-8775-175cf1f52c9a"))
