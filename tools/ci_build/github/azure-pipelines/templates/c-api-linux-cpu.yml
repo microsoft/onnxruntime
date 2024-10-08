@@ -45,6 +45,13 @@ jobs:
       clean: true
       submodules: none
     - template: set-version-number-variables-step.yml
+
+    - template: jar-maven-signing-linux-debug.yml
+
+    - script: |
+        exit 1
+      displayName: 'END RUNNING'
+
     - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
       - template: get-docker-image-steps.yml
         parameters:
