@@ -18,8 +18,7 @@ steps:
       workingDirectory: '$(Build.SourcesDirectory)'
       script: |
         #!/bin/bash
-
-        set -ex
+        set -e
 
         jar_file_directory='${{ parameters.JarFileDirectory }}'
         working_directory='$(Build.SourcesDirectory)'
