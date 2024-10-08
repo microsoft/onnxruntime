@@ -518,20 +518,20 @@ const createAttentionProbsProgramInfo = (
         if (feedPastKey && presentKey) {
           return `
               if (n + local_id.y < past_sequence_length) {
-                tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+                tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K / uniforms.n_reps + w + local_id.x];
               } else if (n + local_id.y - past_sequence_length < kv_sequence_length) {
-                tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
+                tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K / uniforms.n_reps + w + local_id.x];
               }`;
         } else {
           return `if (n + local_id.y < kv_sequence_length) {
-                    tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+                    tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K / uniforms.n_reps + w + local_id.x];
                   }`;
         }
       })()}
       ${
         presentKey
           ? `
-          let present_key_idx = presentKeyOffset + (n + local_id.y) * uniforms.K  + w + local_id.x;
+          let present_key_idx = presentKeyOffset + (n + local_id.y) * uniforms.K / uniforms.n_reps + w + local_id.x;
           present_key[present_key_idx] = tileK[idx];
           `
           : ''
@@ -702,18 +702,18 @@ const createVxAttentionScoreProgramInfo = (
           if (feedPastValue && presentValue) {
             return `
         if (w + local_id.y < past_sequence_length) {
-          tileV[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
+          tileV[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N / uniforms.n_reps];
         } else if (w + local_id.y - past_sequence_length < kv_sequence_length) {
-          tileV[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N];
+          tileV[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N / uniforms.n_reps];
         }
       `;
           } else {
             return `
-              tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N];
+              tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N / uniforms.n_reps];
         `;
           }
         })()}
-        ${presentValue ? 'present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];' : ''}
+        ${presentValue ? 'present_value[presentValueOffset + (w + local_id.y) * uniforms.N / uniforms.n_reps] = tileV[idx];' : ''}
       }
      workgroupBarrier();
      for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
