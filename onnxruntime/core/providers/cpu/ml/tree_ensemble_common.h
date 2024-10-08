@@ -1385,6 +1385,8 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& inf
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_modes", nodes_modes));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_splits", nodes_splits));
 #else
+  // GetVectorAttrsOrDefault is not part of the minimal build.
+  // As a result, TreeEnsemble v5 cannot be available in this build.
   ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.")
 #endif
 
