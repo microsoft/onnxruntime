@@ -191,6 +191,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
   }
 
+  {  // Tile
+    CreateTileOpBuilder("Tile", op_registrations);
+  }
+
   {  // Transpose
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }

@@ -4675,7 +4675,7 @@ struct OrtApi {
   /** \brief Create an OrtLoraAdapter
    *
    * The function attempts to locate file specified by adapter_file_path, read it and create an OrtLoraAdapter
-   * instance. The adapter_file_path should be a valid absolute path to a file that contains a valid Lora Adapter
+   * instance. The adapter_file_path should be a valid path to a file that contains a valid Lora Adapter
    * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *

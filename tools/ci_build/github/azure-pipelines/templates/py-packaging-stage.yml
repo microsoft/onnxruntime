@@ -84,14 +84,6 @@ stages:
       pool: 'onnxruntime-Win-CPU-2022'
       strategy:
         matrix:
-          Python38_x64:
-            PythonVersion: '3.8'
-            MsbuildPlatform: x64
-            buildArch: x64
-          Python39_x64:
-            PythonVersion: '3.9'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python310_x64:
             PythonVersion: '3.10'
             MsbuildPlatform: x64
@@ -107,14 +99,6 @@ stages:
           # Training build cannot support Win32 for now because one or more of its python
           # dependencies does not support Win32. So, don't build a training package for Win32
           ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
-            Python38_x86:
-              PythonVersion: '3.8'
-              MsbuildPlatform: Win32
-              buildArch: x86
-            Python39_x86:
-              PythonVersion: '3.9'
-              MsbuildPlatform: Win32
-              buildArch: x86
             Python310_x86:
               PythonVersion: '3.10'
               MsbuildPlatform: Win32
@@ -297,26 +281,6 @@ stages:
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.8'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.9'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.10'
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
@@ -341,26 +305,6 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.8'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.9'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -408,10 +352,6 @@ stages:
         MACOSX_DEPLOYMENT_TARGET: '13.3'
       strategy:
         matrix:
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
           Python311:
