@@ -60,7 +60,6 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
 
 namespace {
 struct DataTransfer {
-  std::unique_ptr<IExecutionProvider> ep;
   std::unique_ptr<IDataTransfer> data_transfer;
   Status CopyTensor(const Tensor& src, Tensor& dst) const {
     return data_transfer->CopyTensor(src, dst);
@@ -85,8 +84,8 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info, DataTransfer& dt) {
   } else if (strcmp(mem_info.name, onnxruntime::DML) == 0) {
 #ifdef USE_DML
     auto ep_factory = onnxruntime::DMLProviderFactoryCreator::Create(ConfigOptions{}, 0, false, false, false);
-    dt.ep = ep_factory->CreateProvider();
-    dt.data_transfer = dt.ep->GetDataTransfer();
+    auto ep = ep_factory->CreateProvider();
+    dt.data_transfer = ep->GetDataTransfer();
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DML provider is not enabled in this build");
 #endif

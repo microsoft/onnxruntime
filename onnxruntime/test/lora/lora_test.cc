@@ -221,7 +221,7 @@ TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
 
     Tensor copy(tensor_cpu.DataType(), tensor_cpu.Shape(), cpu_allocator);
     ASSERT_TRUE(cuda_transfer->CanCopy(tensor_device.Location().device,
-                                      copy.Location().device));
+                                       copy.Location().device));
     ASSERT_STATUS_OK(cuda_transfer->CopyTensor(tensor_device, copy));
 
     auto expected_span = tensor_cpu.DataAsSpan<float>();
