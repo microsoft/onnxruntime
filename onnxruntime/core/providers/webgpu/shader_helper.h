@@ -16,6 +16,7 @@
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_variable.h"
+#include "core/providers/webgpu/string_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -92,23 +93,14 @@ class ShaderHelper final {
   // Add an indices variable to the shader.
   const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform = true);
 
-  // Append additional implementation code to the shader.
-  //
-  // can be called multiple times.
-  template <typename... Strs>
-  inline ShaderHelper& AppendImplementation(Strs&&... impl) {
-    onnxruntime::detail::MakeStringImpl(additional_implementation_, std::forward<Strs>(impl)...);
-    return *this;
+  // Get the string stream for additional implementation code to the shader.
+  inline OStringStream& AdditionalImplementation() {
+    return additional_implementation_ss_;
   }
 
-  // Set the main function body of the shader.
-  //
-  // can be called only once.
-  template <typename... Strs>
-  inline void SetMainFunctionBody(const Strs&... body) {
-    ORT_ENFORCE(!body_set_, "Main function body is already set");
-    onnxruntime::detail::MakeStringImpl(body_, std::forward<onnxruntime::detail::if_char_array_make_ptr_t<Strs const&>>(body)...);
-    body_set_ = true;
+  // Get the string stream for the main function body of the shader.
+  inline OStringStream& MainFunctionBody() {
+    return body_ss_;
   }
 
   std::string GuardAgainstOutOfBoundsWorkgroupSizes(std::string_view size) const {
@@ -117,7 +109,7 @@ class ShaderHelper final {
 
  private:
   template <typename ConstantType>  // ConstantType is one of {ProgramConstant, ProgramOverridableConstantValue, ProgramOverridableConstantDefinition}
-  void WriteConstantValue(std::ostringstream& ss, const ConstantType& constant) const {
+  void WriteConstantValue(std::ostream& ss, const ConstantType& constant) const {
     switch (constant.type) {
       case ProgramConstantDataType::Float16:
         ss << constant.f16.ToFloat();
@@ -179,10 +171,10 @@ class ShaderHelper final {
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;
   std::vector<std::unique_ptr<ShaderIndicesHelper>> indices_vars_;
-  std::ostringstream additional_implementation_;
-  std::ostringstream body_;
-
-  bool body_set_ = false;
+  std::string additional_implementation_;
+  OStringStream additional_implementation_ss_;
+  std::string body_;
+  OStringStream body_ss_;
 };
 
 }  // namespace webgpu

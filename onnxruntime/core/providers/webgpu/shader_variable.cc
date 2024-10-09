@@ -8,7 +8,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/webgpu/shader_variable.h"
 
-#include "core/providers/webgpu/shader_macros.h"
+#include "core/providers/webgpu/string_macros.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -103,7 +103,7 @@ ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariabl
   ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
 }
 
-void ShaderIndicesHelper::Impl(std::ostringstream& ss) const {
+void ShaderIndicesHelper::Impl(std::ostream& ss) const {
   // Start generating code
 
   const std::string shape = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
@@ -111,18 +111,18 @@ void ShaderIndicesHelper::Impl(std::ostringstream& ss) const {
 
   // Types
   if (usage_ & ShaderUsage::UseValueTypeAlias) {
-    SS("alias ", value_type_alias_, " = ", VALUE_TYPE[static_cast<int>(type_)], ";\n");
+    SS_APPEND(ss, "alias ", value_type_alias_, " = ", VALUE_TYPE[static_cast<int>(type_)], ";\n");
   }
   if (usage_ & ShaderUsage::UseIndicesTypeAlias) {
-    SS("alias ", indices_type_alias_, " = ", indices_type_, ";\n");
+    SS_APPEND(ss, "alias ", indices_type_alias_, " = ", indices_type_, ";\n");
   }
   if (usage_ & ShaderUsage::UseElementTypeAlias) {
-    SS("alias ", element_type_alias_, " = ", ELEMENT_TYPE[static_cast<int>(type_)], ";\n");
+    SS_APPEND(ss, "alias ", element_type_alias_, " = ", ELEMENT_TYPE[static_cast<int>(type_)], ";\n");
   }
 
   // Need shape and strides when (not use uniform) and (use shape and stride is enabled)
   if (!(usage_ & ShaderUsage::UseUniform) && (usage_ & ShaderUsage::UseShapeAndStride) && rank_ > 0) {
-    SS("const ", shape, " = ", IndicesType(), "(");
+    SS_APPEND(ss, "const ", shape, " = ", IndicesType(), "(");
 
     bool first = true;
     for (auto dim : dims_.GetDims()) {
@@ -136,7 +136,7 @@ void ShaderIndicesHelper::Impl(std::ostringstream& ss) const {
     ss << ");\n";
 
     if (rank_ > 1) {
-      SS("const ", stride, " = ", GetIndicesType(rank_ - 1), "(");
+      SS_APPEND(ss, "const ", stride, " = ", GetIndicesType(rank_ - 1), "(");
       first = true;
       for (int i = 1; i < rank_; i++) {
         if (!first) {
@@ -152,32 +152,32 @@ void ShaderIndicesHelper::Impl(std::ostringstream& ss) const {
   // Implementation of "fn o2i_{name}"
   if (usage_ & ShaderUsage::UseOffsetToIndices) {
     if (rank_ >= 2) {
-      SS("fn o2i_", name_, "(offset : u32)->", IndicesType(), " {\n");
-      SS("  var indices: ", IndicesType(), ";\n");
-      SS("  var current = offset;\n");
+      SS_APPEND(ss, "fn o2i_", name_, "(offset : u32)->", IndicesType(), " {\n");
+      SS_APPEND(ss, "  var indices: ", IndicesType(), ";\n");
+      SS_APPEND(ss, "  var current = offset;\n");
       for (int i = 0; i < rank_ - 1; i++) {
         auto current_stride = GetElementAt(stride, i, rank_ - 1);
-        SS("  let dim", i, " = current / ", current_stride, ";\n");
-        SS("  let rest", i, " = current % ", current_stride, ";\n");
-        SS("  indices[", i, "] = dim", i, ";\n");
-        SS("  current = rest", i, ";\n");
+        SS_APPEND(ss, "  let dim", i, " = current / ", current_stride, ";\n");
+        SS_APPEND(ss, "  let rest", i, " = current % ", current_stride, ";\n");
+        SS_APPEND(ss, "  indices[", i, "] = dim", i, ";\n");
+        SS_APPEND(ss, "  current = rest", i, ";\n");
       }
-      SS("  indices[", rank_ - 1, "] = current;\n");
-      SS("  return indices;\n");
-      SS("}\n");
+      SS_APPEND(ss, "  indices[", rank_ - 1, "] = current;\n");
+      SS_APPEND(ss, "  return indices;\n");
+      SS_APPEND(ss, "}\n");
     }
   }
 
   // Implementation of "fn i2o_{name}"
   if (usage_ & ShaderUsage::UseIndicesToOffset) {
     if (rank_ >= 2) {
-      SS("fn i2o_", name_, "(indices : ", IndicesType(), ")->u32 {\n");
-      SS("  return ");
+      SS_APPEND(ss, "fn i2o_", name_, "(indices : ", IndicesType(), ")->u32 {\n");
+      SS_APPEND(ss, "  return ");
       for (int i = 0; i < rank_ - 1; i++) {
-        SS("indices[", i, "] * ", GetElementAt(stride, i, rank_ - 1), " + ");
+        SS_APPEND(ss, "indices[", i, "] * ", GetElementAt(stride, i, rank_ - 1), " + ");
       }
-      SS("indices[", rank_ - 1, "];\n");
-      SS("}\n");
+      SS_APPEND(ss, "indices[", rank_ - 1, "];\n");
+      SS_APPEND(ss, "}\n");
     }
   }
 
@@ -186,83 +186,82 @@ void ShaderIndicesHelper::Impl(std::ostringstream& ss) const {
     if (rank_ > 0) {
       for (const auto& broadcasted_result_ptr : broadcasted_to_) {
         const auto& broadcasted_result = *broadcasted_result_ptr;
-        SS("fn ", broadcasted_result.name_, "_bi2o_", name_, "(indices : ", broadcasted_result.indices_type_, ")->u32 {\n");
+        SS_APPEND(ss, "fn ", broadcasted_result.name_, "_bi2o_", name_, "(indices : ", broadcasted_result.indices_type_, ")->u32 {\n");
         if (rank_ == 1) {
-          SS("  return ", broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", shape, ";\n");
+          SS_APPEND(ss, "  return ", broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", shape, ";\n");
         } else {
-          SS("  return ");
+          SS_APPEND(ss, "  return ");
           for (int i = 0; i < rank_ - 1; i++) {
             auto idx = broadcasted_result.IndicesGet("indices", i + broadcasted_result.rank_ - rank_);
             std::string current_stride = rank_ == 2 ? stride : GetElementAt(stride, i, rank_ - 1);
-            SS(current_stride, " * (", idx, " % ", IndicesGet(shape, i), ") + ");
+            SS_APPEND(ss, current_stride, " * (", idx, " % ", IndicesGet(shape, i), ") + ");
           }
-          SS(broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", IndicesGet(shape, rank_ - 1), ";\n");
+          SS_APPEND(ss, broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", IndicesGet(shape, rank_ - 1), ";\n");
         }
-        SS("}\n");
+        SS_APPEND(ss, "}\n");
       }
     }
   }
 }
 
-void ShaderVariableHelper::Impl(std::ostringstream& ss) const {
+void ShaderVariableHelper::Impl(std::ostream& ss) const {
   ShaderIndicesHelper::Impl(ss);
 
   // Implementation of "fn set_{name}"
   if (usage_ & ShaderUsage::UseSet) {
     if (rank_ >= 2) {
-      SS("fn set_", name_, "(d0: u32");
+      SS_APPEND(ss, "fn set_", name_, "(d0: u32");
       for (int i = 1; i < rank_; i++) {
-        SS(", d", i, ": u32");
+        SS_APPEND(ss, ", d", i, ": u32");
       }
-      SS(", value: ", ValueType(), ") {\n");
-      SS("  set_", name_, "_by_indices(d0");
+      SS_APPEND(ss, ", value: ", ValueType(), ") {\n");
+      SS_APPEND(ss, "  set_", name_, "_by_indices(d0");
       for (int i = 1; i < rank_; i++) {
-        SS(", d", i);
+        SS_APPEND(ss, ", d", i);
       }
-      SS(", value);\n");
-      SS("}\n");
+      SS_APPEND(ss, ", value);\n");
+      SS_APPEND(ss, "}\n");
     }
   }
 
   // Implementation of "fn set_{name}_by_indices"
   if (usage_ & ShaderUsage::UseSetByIndices) {
     if (rank_ >= 2) {
-      SS("fn set_", name_, "_by_indices(indices: ", IndicesType(), ", value: ", ValueType(), ") {\n");
-      SS("  ", SetByOffset("i2o_" + name_ + "(indices)", "value"), "\n");
-      SS("}\n");
+      SS_APPEND(ss, "fn set_", name_, "_by_indices(indices: ", IndicesType(), ", value: ", ValueType(), ") {\n");
+      SS_APPEND(ss, "  ", SetByOffset("i2o_" + name_ + "(indices)", "value"), "\n");
+      SS_APPEND(ss, "}\n");
     }
   }
 
   // Implementation of "fn get_{name}"
   if (usage_ & ShaderUsage::UseGet) {
     if (rank_ >= 2) {
-      SS("fn get_", name_, "(d0: u32");
+      SS_APPEND(ss, "fn get_", name_, "(d0: u32");
       for (int i = 1; i < rank_; i++) {
-        SS(", d", i, ": u32");
+        SS_APPEND(ss, ", d", i, ": u32");
       }
-      SS(")->", ValueType(), " {\n");
-      SS("  return get_", name_, "_by_indices(d0");
+      SS_APPEND(ss, ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return get_", name_, "_by_indices(d0");
       for (int i = 1; i < rank_; i++) {
-        SS(", d", i);
+        SS_APPEND(ss, ", d", i);
       }
-      SS(");\n");
-      SS("}\n");
+      SS_APPEND(ss, ");\n");
+      SS_APPEND(ss, "}\n");
     }
   }
 
   // Implementation of "fn get_{name}_by_indices"
   if (usage_ & ShaderUsage::UseGetByIndices) {
     if (rank_ >= 2) {
-      SS("fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
-      SS("  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
-      SS("}\n");
+      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
+      SS_APPEND(ss, "}\n");
     }
   }
 }
 
 std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
+  SS(ss, kStringInitialSizeGetByOffsetImpl);
 
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
@@ -283,12 +282,11 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
       ss << name_ << "[" << offset << "]";
   }
 
-  return ss.str();
+  return SS_GET(ss);
 }
 
 std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
+  SS(ss, kStringInitialSizeSetByOffsetImpl);
 
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
@@ -307,7 +305,7 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       ss << name_ << "[" << offset << "]=" << value << ";";
   }
 
-  return ss.str();
+  return SS_GET(ss);
 }
 
 std::string_view ShaderVariableHelper::StorageType() const {

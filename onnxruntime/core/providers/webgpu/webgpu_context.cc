@@ -378,6 +378,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   }
   if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
     Flush();
+    num_pending_dispatches_ = 0;
   }
 
   return Status::OK();

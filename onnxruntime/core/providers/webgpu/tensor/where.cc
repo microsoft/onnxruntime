@@ -59,12 +59,14 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& b_input = shader.AddInput("b_data", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output_data", ShaderUsage::UseUniform);
 
-  const auto expression = [](const std::string& a, const std::string& b, const std::string& c) -> auto {
-    return "select(" + b + ", " + a + ", " + c + ")";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
+
+  const auto expression = [](std::string_view a, std::string_view b, std::string_view c) -> auto {
+    return absl::StrCat("select(", b, ", ", a, ", ", c, ")");
   };
-  std::string assignment;
+
   if (!is_broadcast_) {
-    assignment = output.SetByOffset(
+    shader.MainFunctionBody() << output.SetByOffset(
         "global_idx",
         expression(a_input.GetByOffset("global_idx"), b_input.GetByOffset("global_idx"), c_input.GetByOffset("global_idx")));
 
@@ -75,47 +77,41 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& output_indices = shader.AddIndices("output_indices");
 
     const auto single_assignment =
-        [&expression, &output_indices, &a_indices, &b_indices, &c_indices](
-            const std::string& rest_str, const std::string& x, const std::string& type_cast = "")
-        -> auto {
+        [&expression, &shader, &output_indices, &a_indices, &b_indices, &c_indices](
+            std::string_view rest_str, const std::string& x, std::string_view type_cast = "")
+        -> void {
       const std::string a_expression = "a_data[index_a" + x + "][component_a" + x + "]";
       const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
       const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << (component_c" + x + " * 8)))";
 
-      std::ostringstream ss;
-      ss.imbue(std::locale::classic());
-      ss << "let output_indices" + x + " = " << output_indices.OffsetToIndices("global_idx * 4u + " + x + "u") << ";\n";
-      ss << "let offset_a" + x + " = " + a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) + ";\n";
-      ss << "let offset_b" + x + " = " + b_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) + ";\n";
-      ss << "let offset_c" + x + " = " + c_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) + ";\n";
-      ss << "let index_a" + x + " = offset_a" + x + " / 4u;\n";
-      ss << "let index_b" + x + " = offset_b" + x + " / 4u;\n";
-      ss << "let index_c" + x + " = offset_c" + x + " / 4u;\n";
-      ss << "let component_a" + x + " = offset_a" + x + " % 4u;\n";
-      ss << "let component_b" + x + " = offset_b" + x + " % 4u;\n";
-      ss << "let component_c" + x + " = offset_c" + x + " % 4u;\n";
-      ss << rest_str + "[" + x + "] = " + type_cast + "(" + expression(a_expression, b_expression, c_expression) + ");\n";
-      return ss.str();
+      shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4 + " + x) << ";\n"
+                                << "let offset_a" << x << " = " << a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
+                                << "let offset_b" << x << " = " << b_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
+                                << "let offset_c" << x << " = " << c_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
+                                << "let index_a" << x << " = offset_a" << x << " / 4;\n"
+                                << "let index_b" << x << " = offset_b" << x << " / 4;\n"
+                                << "let index_c" << x << " = offset_c" << x << " / 4;\n"
+                                << "let component_a" << x << " = offset_a" << x << " % 4;\n"
+                                << "let component_b" << x << " = offset_b" << x << " % 4;\n"
+                                << "let component_c" << x << " = offset_c" << x << " % 4;\n"
+                                << rest_str << "[" << x << "] = " << type_cast << "(" << expression(a_expression, b_expression, c_expression) << ");\n";
     };
 
     if (Outputs()[0].tensor->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
-      assignment =
-          "var data = vec4<u32>(0); \n" +
-          single_assignment("data", "0", "u32") +
-          single_assignment("data", "1", "u32") +
-          single_assignment("data", "2", "u32") +
-          single_assignment("data", "3", "u32") +
-          "output_data[global_idx] = dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(data));\n";
+      shader.MainFunctionBody() << "var data = vec4<u32>(0);\n";
+      single_assignment("data", "0", "u32");
+      single_assignment("data", "1", "u32");
+      single_assignment("data", "2", "u32");
+      single_assignment("data", "3", "u32");
+      shader.MainFunctionBody() << "output_data[global_idx] = dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(data));\n";
     } else {
-      assignment =
-          single_assignment("output_data[global_idx]", "0") +
-          single_assignment("output_data[global_idx]", "1") +
-          single_assignment("output_data[global_idx]", "2") +
-          single_assignment("output_data[global_idx]", "3");
+      single_assignment("output_data[global_idx]", "0");
+      single_assignment("output_data[global_idx]", "1");
+      single_assignment("output_data[global_idx]", "2");
+      single_assignment("output_data[global_idx]", "3");
     }
   }
-  shader.SetMainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                             assignment);
+
   return Status::OK();
 }
 
@@ -138,9 +134,9 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   program
       .CacheHint(is_broadcast)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::None, {(cond_shape.Size() + 3) / 4}, 4},
-                  {x_tensor, ProgramTensorMetadataDependency::None, {(x_shape.Size() + 3) / 4}, 4},
-                  {y_tensor, ProgramTensorMetadataDependency::None, {(y_shape.Size() + 3) / 4}, 4}})
+      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Rank, {(cond_shape.Size() + 3) / 4}, 4},
+                  {x_tensor, ProgramTensorMetadataDependency::Rank, {(x_shape.Size() + 3) / 4}, 4},
+                  {y_tensor, ProgramTensorMetadataDependency::Rank, {(y_shape.Size() + 3) / 4}, 4}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},

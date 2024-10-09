@@ -304,6 +304,7 @@ ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(LoraAdapter);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -623,38 +624,6 @@ typedef struct OrtMIGraphXProviderOptions {
   const char* migraphx_load_model_path;              // migraphx model path name
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
-
-/** \brief WebGPU Execution Provider Options
- *
- * When a user wants to use WebGPU as the execution provider, there are 2 ways to specify the WebGPU device:
- *
- * 1. Use the default WebGPU device. The default WebGPU device is managed by WebGPU EP internally. The user doesn't
- *    need to provide any device information in this case. All the fields should be set to nullptr or 0.
- *
- * 2. Use a custom WebGPU device. The user should create their own handles of `WGPUInstance`, `WGPUAdapter`, and
- *    `WGPUDevice` and use arbitrary number in [1..65536) as the device id. The user should provide the handles
- *    and the device id in the options.
- *
- *    When specifying an existing Device ID, the user should provide the handles of `WGPUInstance`, `WGPUAdapter`, and
- *    `WGPUDevice` in the options. The device id should be the same as the one used previously.
- *
- *    It's user's responsibility to manage the lifecycle of the handles and ensure the handles are valid during the
- *    lifetime of the inference session.
- *
- * About DawnProcTable:
- *
- * When using an ONNX Runtime build that is not directly linked dawn during the build, a pointer to the runtime memory
- * address of the DawnProcTable should be provided. Otherwise, keep it as nullptr.
- *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_WGPU
- */
-typedef struct OrtWGPUProviderOptions {
-  int device_id;          // WebGPU device id.
-  void* instance_handle;  // WebGPU instance handle.
-  void* adapter_handle;   // WebGPU adapter handle.
-  void* device_handle;    // WebGPU device handle.
-  void* dawn_proc_table;  // DawnProcTable pointer.
-} OrtWGPUProviderOptions;
 
 /** \brief OpenVINO Provider Options
  *
@@ -3682,10 +3651,10 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Only used for float32 model.
+       "enable_htp_fp16_precision": Used for float32 model for HTP backend.
        Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": Default. With fp32 precision.
-         - "1": With fp16 precision.
+         - "0": With fp32 precision.
+         - "1": Default. With fp16 precision.
        "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
          - "0": Default. Disabled.
          - "1": Enabled.
@@ -4703,36 +4672,56 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
 
-  /** \brief Append WebGPU execution provider to session options
+  /** \brief Create an OrtLoraAdapter
    *
-   * If WebGPU is not available, this function will return failure.
+   * The function attempts to locate file specified by adapter_file_path, read it and create an OrtLoraAdapter
+   * instance. The adapter_file_path should be a valid path to a file that contains a valid Lora Adapter
+   * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
+   * the platform does not support memory mapping, in which case the file will be read into memory.
    *
-   * \param[in] options
-   * \param[in] wgpu_options - specify the WebGPU provider options.
-   * \param[in] string_options_keys - keys to configure the string options
-   * \param[in] string_options_values - values to configure the string options
-   * \param[in] num_keys - number of keys passed in
-   *
-   * Supported keys are listed as below. All entries are optional.
-   *
-   * | Key                            | Possible Values                                | Default Value  |
-   * | ------------------------------ | ---------------------------------------------- | -------------- |
-   * | "preferredLayout"              | "NHWC" or "NCHW"                               | "NHWC"         |
-   * | "enableGraphCapture"           | "1" or "0"                                     | "0"            |
-   * | "storageBufferCacheMode"       | "disabled", "lazyRelease", "simple", "bucket"  | "bucket"       |
-   * | "uniformBufferCacheMode"       | "disabled", "lazyRelease", "simple", "bucket"  | "lazyRelease"  |
-   * | "queryResolveBufferCacheMode"  | "disabled", "lazyRelease", "simple", "bucket"  | "disabled"     |
-   * | "defaultBufferCacheMode"       | "disabled", "lazyRelease", "simple", "bucket"  | "disabled"     |
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.20.
+   * \param[in] adapter_file_path adapter file path.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
    */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_WGPU,
-                  _In_ OrtSessionOptions* options, _In_ const OrtWGPUProviderOptions* wgpu_options,
-                  _In_reads_(num_keys) const char* const* string_options_keys,
-                  _In_reads_(num_keys) const char* const* string_options_values,
-                  _In_ size_t num_keys);
+  ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function copies the bytes from the array and creates an OrtLoraAdapter instance.
+   *
+   *
+   * \param[in] bytes pointer to a valid Lora Adapter format buffer.
+   * \param[in] num_bytes length of bytes buffer.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   */
+  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
+   */
+  ORT_CLASS_RELEASE(LoraAdapter);
+
+  /** \brief Add the Lora Adapter to the list of active adapters.
+   *
+   * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
+   * OrtApi::CreateLoraAdapter or FromArray. The Lora Adapter will be used by the session to run the model.
+   * The instance of the OrtRunOptions can then be used to customize the Run() calls.
+   * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
+   * Lora adapters that will be active at the same time must not overlap.
+   * This setting does not affect RunWithBinding.
+   *
+   * \param[in] options OrtRunOptions instance
+   * \param[in] adapter OrtLoraAdapter instance
+   */
+  ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
 };
 
 /*

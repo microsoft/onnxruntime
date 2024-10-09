@@ -11,7 +11,6 @@
 
 #include <webgpu/webgpu_cpp.h>
 
-#include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {

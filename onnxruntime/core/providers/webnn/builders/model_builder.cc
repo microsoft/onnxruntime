@@ -340,7 +340,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   }
   // Explicitly release the WebNN builder to free memory.
   wnn_builder_ = emscripten::val::undefined();
-  model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_));
+  model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_, IsMLTensorSupported()));
   model->SetInputs(std::move(input_names_));
   model->SetOutputs(std::move(output_names_));
   model->SetInputOutputInfo(std::move(input_output_info_));

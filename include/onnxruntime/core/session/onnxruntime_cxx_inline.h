@@ -557,6 +557,20 @@ inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
 }
 
+inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
+                                                  OrtAllocator* allocator) {
+  OrtLoraAdapter* p;
+  ThrowOnError(GetApi().CreateLoraAdapter(adapter_path.c_str(), allocator, &p));
+  return LoraAdapter{p};
+}
+
+inline LoraAdapter LoraAdapter::CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
+                                                           OrtAllocator* allocator) {
+  OrtLoraAdapter* p;
+  ThrowOnError(GetApi().CreateLoraAdapterFromArray(bytes, num_bytes, allocator, &p));
+  return LoraAdapter{p};
+}
+
 inline RunOptions::RunOptions() {
   ThrowOnError(GetApi().CreateRunOptions(&p_));
 }
@@ -606,6 +620,11 @@ inline RunOptions& RunOptions::SetTerminate() {
 
 inline RunOptions& RunOptions::UnsetTerminate() {
   ThrowOnError(GetApi().RunOptionsUnsetTerminate(p_));
+  return *this;
+}
+
+inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) {
+  ThrowOnError(GetApi().RunOptionsAddActiveLoraAdapter(p_, adapter));
   return *this;
 }
 
@@ -835,25 +854,6 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ten
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_MIGraphX(this->p_, &provider_options));
-  return *this;
-}
-
-template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_WGPU(const OrtWGPUProviderOptions& wgpu_options,
-                                                                                  const std::unordered_map<std::string, std::string>& string_options) {
-  auto num_entries = string_options.size();
-  std::vector<const char*> keys, values;
-  if (num_entries > 0) {
-    keys.reserve(num_entries);
-    values.reserve(num_entries);
-
-    for (const auto& entry : string_options) {
-      keys.push_back(entry.first.c_str());
-      values.push_back(entry.second.c_str());
-    }
-  }
-
-  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_WGPU(this->p_, &wgpu_options, keys.data(), values.data(), num_entries));
   return *this;
 }
 

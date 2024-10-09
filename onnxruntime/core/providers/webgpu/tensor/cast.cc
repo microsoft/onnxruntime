@@ -106,9 +106,9 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
     default:
       ORT_NOT_IMPLEMENTED("Cast to type ", to_, " is not supported.");
   }
-  sh.SetMainFunctionBody(sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
-                         "  let a = ", input.GetByOffset("global_idx"), ";\n  ",
-                         output.SetByOffset("global_idx", expression));
+  sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                        << "  let a = " << input.GetByOffset("global_idx") << ";\n  "
+                        << output.SetByOffset("global_idx", expression);
 
   return Status::OK();
 }

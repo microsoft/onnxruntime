@@ -91,6 +91,7 @@ if (NOT WIN32)
     google_nsync
     URL ${DEP_URL_google_nsync}
     URL_HASH SHA1=${DEP_SHA1_google_nsync}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/nsync/nsync_1.26.0.patch
     FIND_PACKAGE_ARGS NAMES nsync unofficial-nsync
   )
   #nsync tests failed on Mac Build
@@ -667,9 +668,7 @@ if (onnxruntime_USE_WEBGPU)
   set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
 
   # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
-  endif()
+  set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
 
   if (WIN32)
     # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.

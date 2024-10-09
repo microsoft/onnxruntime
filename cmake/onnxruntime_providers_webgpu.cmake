@@ -5,8 +5,6 @@
     message(FATAL_ERROR "WebGPU EP can not be used in a basic minimal build. Please build with '--minimal_build extended'")
   endif()
 
-  # find_package(Dawn REQUIRED)
-
   add_compile_definitions(USE_WEBGPU=1)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
@@ -14,8 +12,6 @@
   file(GLOB_RECURSE onnxruntime_providers_webgpu_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.cc"
-    # "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
-    # "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
   )
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_webgpu_contrib_ops_cc_srcs})

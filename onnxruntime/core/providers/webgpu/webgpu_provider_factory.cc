@@ -17,7 +17,7 @@ using namespace onnxruntime::webgpu::options;
 namespace onnxruntime {
 
 struct WebGpuProviderFactory : IExecutionProviderFactory {
-  WebGpuProviderFactory(int context_id, const webgpu::WebGpuContext& context, const WebGpuExecutionProviderInfo& webgpu_ep_info)
+  WebGpuProviderFactory(int context_id, webgpu::WebGpuContext& context, const WebGpuExecutionProviderInfo& webgpu_ep_info)
       : context_id_{context_id}, context_{context}, info_{webgpu_ep_info} {
   }
 
@@ -27,7 +27,7 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
  private:
   int context_id_;
-  const webgpu::WebGpuContext& context_;
+  webgpu::WebGpuContext& context_;
   WebGpuExecutionProviderInfo info_;
 };
 
@@ -90,7 +90,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   webgpu_ep_info.storage_buffer_cache_mode = parse_buffer_cache_mode(kStorageBufferCacheMode, webgpu::BufferCacheMode::Bucket);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << webgpu_ep_info.storage_buffer_cache_mode;
 
-  webgpu_ep_info.uniform_buffer_cache_mode = parse_buffer_cache_mode(kUniformBufferCacheMode, webgpu::BufferCacheMode::LazyRelease);
+  webgpu_ep_info.uniform_buffer_cache_mode = parse_buffer_cache_mode(kUniformBufferCacheMode, webgpu::BufferCacheMode::Simple);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << webgpu_ep_info.uniform_buffer_cache_mode;
 
   webgpu_ep_info.query_resolve_buffer_cache_mode = parse_buffer_cache_mode(kQueryResolveBufferCacheMode, webgpu::BufferCacheMode::Disabled);
