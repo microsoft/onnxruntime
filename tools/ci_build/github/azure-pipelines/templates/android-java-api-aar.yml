@@ -92,8 +92,10 @@ jobs:
          # Mount qnn volume if building qnn android package
         if [[ ${{ parameters.packageName }} == *qnn* ]]; then
           QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
+          USE_QNN="1"
         else
           QNN_VOLUME=""
+          USE_QNN="0"
         fi
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -110,7 +112,7 @@ jobs:
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
           onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: jar-maven-signing-linux.yml

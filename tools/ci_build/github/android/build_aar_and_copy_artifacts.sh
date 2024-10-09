@@ -10,6 +10,10 @@ export PATH=/opt/python/cp38-cp38/bin:$PATH
 
 ls /build
 ls /build/deps
+
+# User inputs
+USE_QNN=${1:-0}  # by default qnn will not be included in package
+
 # build the AAR package, using the build settings under /home/onnxruntimedev/.build_settings/
 # if there is also include_ops_and_types.config exists in the same folder, use it to build with included ops/types
 
@@ -30,9 +34,13 @@ if [ -f "$INCLUDE_OPS_CONFIG" ]; then
     COMMAND+=" --include_ops_by_config $INCLUDE_OPS_CONFIG"
 fi
 
-# Check if /qnn_home exists and add it to the command if it does
-if [ -d "$QNN_HOME" ]; then
-    COMMAND+=" --qnn_path $QNN_HOME"
+# Add qnn path to command
+if [ "$USE_QNN" == "1" ]; then
+    if [ -d "$QNN_HOME" ]; then
+        COMMAND+=" --qnn_path $QNN_HOME"
+    else
+        echo "Error: QNN directory does not exist."
+        exit 1
 fi
 
 # Execute the build command
