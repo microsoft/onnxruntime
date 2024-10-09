@@ -345,7 +345,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
     size_t tests_registered = 0;
 
-    if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
+    if (MlasIsSQNBitGemmAvailable<float>(BlkBitWidth, BlkLen, ComputeType)) {
       std::stringstream ss;
       ss << (WithThreadpool ? "SingleThread" : "Threaded")
          << "/isSymmetric" << Symmetric
