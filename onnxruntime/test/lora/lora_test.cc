@@ -203,10 +203,8 @@ TEST(LoraAdapterTest, Load) {
 TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  auto cuda_allocator = cuda_ep->CreatePreferredAllocators()[0];
-
-  auto dml_transfer = cuda_ep->GetDataTransfer();
+  auto cuda_allocator = DefaultCudaExecutionProvider()->CreatePreferredAllocators()[0];
+  auto cuda_transfer = DefaultCudaExecutionProvider()->GetDataTransfer();
 
   auto test_params = GenerateTestParameters<float>()();
   lora::LoraAdapter adapter(std::move(cuda_allocator));
@@ -222,9 +220,9 @@ TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
     ASSERT_EQ(tensor_cpu.Shape().Size(), tensor_device.Shape().Size());
 
     Tensor copy(tensor_cpu.DataType(), tensor_cpu.Shape(), cpu_allocator);
-    ASSERT_TRUE(dml_transfer->CanCopy(tensor_device.Location().device,
+    ASSERT_TRUE(cuda_transfer->CanCopy(tensor_device.Location().device,
                                       copy.Location().device));
-    ASSERT_STATUS_OK(dml_transfer->CopyTensor(tensor_device, copy));
+    ASSERT_STATUS_OK(cuda_transfer->CopyTensor(tensor_device, copy));
 
     auto expected_span = tensor_cpu.DataAsSpan<float>();
     auto copy_span = copy.DataAsSpan<float>();
@@ -239,10 +237,8 @@ TEST(LoraAdapterTest, VerifyDmlDeviceCopy) {
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
 
-  auto dml_ep = DefaultDmlExecutionProvider();
-  auto dml_allocator = dml_ep->CreatePreferredAllocators()[0];
-
-  auto dml_transfer = dml_ep->GetDataTransfer();
+  auto dml_allocator = DefaultDmlExecutionProvider()->CreatePreferredAllocators()[0];
+  auto dml_transfer = DefaultDmlExecutionProvider()->GetDataTransfer();
 
   auto test_params = GenerateTestParameters<float>()();
   lora::LoraAdapter adapter(std::move(dml_allocator));
