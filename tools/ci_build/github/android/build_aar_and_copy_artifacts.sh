@@ -30,11 +30,11 @@ else
 fi
 
 # Copy the built artifacts to give folder for publishing
-BASE_PATH=/build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}
-cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-javadoc.jar  /home/onnxruntimedev/.artifacts
-cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-sources.jar  /home/onnxruntimedev/.artifacts
-cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.aar          /home/onnxruntimedev/.artifacts
-cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.pom          /home/onnxruntimedev/.artifacts
+BASE_PATH=/build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}-${RELEASE_VERSION_SUFFIX}
+cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-${RELEASE_VERSION_SUFFIX}-javadoc.jar  /home/onnxruntimedev/.artifacts
+cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-${RELEASE_VERSION_SUFFIX}-sources.jar  /home/onnxruntimedev/.artifacts
+cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-${RELEASE_VERSION_SUFFIX}.aar          /home/onnxruntimedev/.artifacts
+cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-${RELEASE_VERSION_SUFFIX}.pom          /home/onnxruntimedev/.artifacts
 
 # Copy executables if necessary
 if [ "$PUBLISH_EXECUTABLES" == "1" ]; then
