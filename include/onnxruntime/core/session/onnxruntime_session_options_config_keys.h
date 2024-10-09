@@ -107,7 +107,8 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
-// Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
+// Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "1"
+// for DirectML, and "0" for other execution providers.
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 

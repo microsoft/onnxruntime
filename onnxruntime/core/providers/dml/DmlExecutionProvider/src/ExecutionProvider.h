@@ -352,16 +352,6 @@ namespace Dml
             return m_impl->ReplayGraph(graph_annotation_id);
         }
 
-        OrtDevice GetOrtDeviceByMemTypeForGraphInput(OrtMemType mem_type) const final
-        {
-            if (mem_type == OrtMemTypeDefault)
-            {
-                return m_unpooledDevice;
-            }
-
-            return GetOrtDeviceByMemType(mem_type);
-        };
-
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
         const OrtDevice m_unpooledDevice;

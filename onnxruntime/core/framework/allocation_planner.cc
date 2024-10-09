@@ -767,7 +767,7 @@ class PlannerImpl {
 
             if (!is_implicit_input) {
               OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemTypeForGraphInput(mem_type));
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(mem_type));
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level
@@ -879,14 +879,14 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtDevice GetLocationForNodeWeightInput(size_t input_index, const Node& node, const KernelCreateInfoMap& kernel_create_info_map) {
+  OrtDevice GetLocationForNodeInput(size_t input_index, const Node& node, const KernelCreateInfoMap& kernel_create_info_map) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
     // weights are not output from any node, so it's OK to put its location on CPU provider
-    return p_provider->GetOrtDeviceByMemTypeForGraphInput(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
+    return p_provider->GetOrtDeviceByMemType(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
   }
 
   std::vector<std::pair<int, int>> GetAliasMap(const Node& node, const KernelCreateInfo& kernel_create_info) {
@@ -982,7 +982,7 @@ class PlannerImpl {
         // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
         // the right device before subgraph execution.
         locations[wt_index].emplace_back(
-            GetLocationForNodeWeightInput(node_input_index, node, kernel_create_info_map));
+            GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
       }
     }
 

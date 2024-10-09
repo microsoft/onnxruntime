@@ -71,7 +71,7 @@ namespace Dml
             resource.Attach(static_cast<AllocationInfo*>(ptr));
         }
 
-        void FreeResource(void* p, uint64_t pooledResourceId) final
+        void FreeResource(void* p, uint64_t) final
         {
             AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);
 

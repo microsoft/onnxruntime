@@ -76,7 +76,7 @@ namespace Dml
         bool enableSyncSpinning,
         bool disableMemoryArena) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)),
-            m_unpooledDevice(OrtDevice::GPU, OrtDevice::MemType::DML_UNPOOLED, 0)
+            m_unpooledDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
     {
         D3D12_COMMAND_LIST_TYPE queueType = executionContext->GetCommandListTypeForQueue();
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -230,11 +230,12 @@ namespace Dml
         // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
         auto cpuAllocator = std::make_shared<onnxruntime::CPUAllocator>(OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, ::OrtMemType::OrtMemTypeCPUInput));
 
+        m_unpooledAllocator = std::make_shared<DmlUnpooledBufferAllocator>(m_d3d12Device.Get(), m_context.Get(), OrtDevice::MemType::DEFAULT);
         onnxruntime::AllocatorPtr defaultGpuAllocator;
 
         if (m_memoryArenaDisabled)
         {
-            defaultGpuAllocator = std::make_shared<DmlUnpooledBufferAllocator>(m_d3d12Device.Get(), m_context.Get(), OrtDevice::MemType::DEFAULT);
+            defaultGpuAllocator = m_unpooledAllocator;
         }
         else
         {
@@ -245,10 +246,9 @@ namespace Dml
                 D3D12_HEAP_FLAG_NONE,
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+                std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()),
+                m_unpooledAllocator);
         }
-
-        m_unpooledAllocator = std::make_shared<DmlUnpooledBufferAllocator>(m_d3d12Device.Get(), m_context.Get(), OrtDevice::MemType::DML_UNPOOLED);
 
         return std::vector<onnxruntime::AllocatorPtr>{std::move(defaultGpuAllocator), m_unpooledAllocator, std::move(cpuAllocator)};
     }

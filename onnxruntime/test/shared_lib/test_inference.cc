@@ -2241,7 +2241,7 @@ TEST(CApiTest, basic_cuda_graph) {
 #elif defined(USE_CUDA) || defined(USE_TENSORRT)
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_DML)
-  Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
 
   Ort::Allocator allocator(session, info_mem);
@@ -2501,7 +2501,7 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   auto dml_objects = CreateDmlObjects();
   ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
 
-  Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #else
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;

@@ -7,19 +7,11 @@
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
 #include "AllocationInfo.h"
+#include "DmlUnpooledBufferAllocator.h"
 
 namespace Dml
 {
     class DmlSubAllocator;
-
-    class CPUAllocator : public onnxruntime::IAllocator
-    {
-    public:
-        explicit CPUAllocator(OrtMemType memType);
-
-        void* Alloc(size_t size) override;
-        void Free(void* p) override;
-    };
 
     // Implements a Lotus allocator for D3D12 heap buffers, using a bucket allocation strategy. The allocator
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
@@ -39,10 +31,12 @@ namespace Dml
             D3D12_HEAP_FLAGS heapFlags,
             D3D12_RESOURCE_FLAGS resourceFlags,
             D3D12_RESOURCE_STATES initialState,
-            std::unique_ptr<DmlSubAllocator>&& subAllocator);
+            std::unique_ptr<DmlSubAllocator>&& subAllocator,
+            onnxruntime::AllocatorPtr unpooledAllocator);
 
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size) final;
+        void* Reserve(size_t size) final;
         void Free(void* p) final;
 
     private:
@@ -80,6 +74,7 @@ namespace Dml
 
         ComPtr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
+        onnxruntime::AllocatorPtr m_unpooledAllocator;
 
     #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet

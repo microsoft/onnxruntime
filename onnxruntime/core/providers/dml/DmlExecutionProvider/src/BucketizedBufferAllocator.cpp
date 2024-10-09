@@ -43,12 +43,13 @@ namespace Dml
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
         D3D12_RESOURCE_STATES initialState,
-        std::unique_ptr<DmlSubAllocator>&& subAllocator
+        std::unique_ptr<DmlSubAllocator>&& subAllocator,
+        onnxruntime::AllocatorPtr unpooledAllocator
         )
         : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
+                OrtAllocatorType::OrtArenaAllocator,
                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
             )
         ),
@@ -58,7 +59,8 @@ namespace Dml
         m_resourceFlags(resourceFlags),
         m_initialState(initialState),
         m_context(context),
-        m_subAllocator(std::move(subAllocator))
+        m_subAllocator(std::move(subAllocator)),
+        m_unpooledAllocator(std::move(unpooledAllocator))
     {
     }
 
@@ -136,6 +138,12 @@ namespace Dml
     #endif
 
         return allocInfo.Detach();
+    }
+
+    // IAllocator::Reserve is called when a non-arena allocator is requested (e.g. when allocating initializers)
+    void* BucketizedBufferAllocator::Reserve(size_t size)
+    {
+        return m_unpooledAllocator->Alloc(size);
     }
 
     void BucketizedBufferAllocator::Free(void* p)

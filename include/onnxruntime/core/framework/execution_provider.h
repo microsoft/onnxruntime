@@ -325,15 +325,6 @@ class IExecutionProvider {
   };
 
   /**
-   * Return the appropriate OrtDevice object given OrtMemType for allocating graph inputs, including initializers.
-   * It returns the same allocator as GetOrtDeviceByMemType by default, but it can be overriden by execution providers
-   * if needed.
-   */
-  virtual OrtDevice GetOrtDeviceByMemTypeForGraphInput(OrtMemType mem_type) const {
-    return GetOrtDeviceByMemType(mem_type);
-  };
-
-  /**
    * Create Preferred allocators for the current Execution Provider
    * This function is a stateless function which creates new instances of Allocator, without storing them in EP.
    */
