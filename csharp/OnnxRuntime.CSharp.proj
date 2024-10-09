@@ -146,7 +146,7 @@ CMake creates a target to this project
     <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
     <Message Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
     <MSBuild Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="CopyMiscFiles;Pack"
+             Targets="RenameFilesToPack;Pack"
              Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
 
     <MSBuild Projects ="$(MSBuildProjectFullPath)"

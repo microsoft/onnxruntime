@@ -93,12 +93,17 @@
         Commit: $(BUILD_SOURCEVERSION)
         Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
     </PackageReleaseNotes>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
 
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
 
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <AllowedOutputExtensionsInPackageBuildOutputFolder>
+      $(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb
+    </AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -120,6 +125,16 @@
   -->
   <PropertyGroup Condition="'$(EnableTrainingApis)'=='true'">
     <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_APIS__</OrtConstants>
+  </PropertyGroup>
+
+  <!--
+    Properties that are used when creating the managed package using the Pack target.
+  -->
+  <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
+      <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+      <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
 
   <!--
@@ -156,32 +171,6 @@
     <DefineConstants>$(DefineConstants);$(OrtConstants)</DefineConstants>
   </PropertyGroup>
 
-  <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
-  <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
-    <Message Text="SolutionName='$(SolutionName)'" />
-    <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
-    <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
-    <Message Text="[MSBuild]::GetTargetPlatformIdentifier(TargetFramework)='$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))' " />
-    <Message Text="[MSBuild]::GetTargetFrameworkIdentifier(TargetFramework)='$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))' " />
-    <Message Text="IsWindowsBuild='$(IsWindowsBuild)' IsLinuxBuild='$(IsLinuxBuild)' IsMacOSBuild='$(IsMacOSBuild)'" />
-    <Message Text="IsWindowsTarget='$(IsWindowsTarget)' IsAndroidTarget='$(IsAndroidTarget)' IsIOSTarget='$(IsIOSTarget)' IsMacCatalystTarget='$(IsMacCatalystTarget)'" />
-    <Message Text="OrtConstants='$(OrtConstants)' " />
-    <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
-  </Target>
-
-  <ItemGroup>
-    <None Include="$(OnnxRuntimeRoot)\LICENSE.txt;$(OnnxRuntimeRoot)\ThirdPartyNotices.txt;$(OnnxRuntimeRoot)\ORT_icon_for_light_bg.png;$(OnnxRuntimeRoot)\docs\Privacy.md"
-          PackagePath="\"
-          Pack="true"
-          Visible="false"
-    />
-    <None Include="targets\netstandard\$(PackageId).targets"
-          PackagePath="build\netstandard2.0\$(PackageId).targets"
-          Pack="true"
-          Visible="false"
-    />
-  </ItemGroup>
-
   <!--
     We used to have platform specific files named *.<platform>.cs (e.g. 1.11 release) but don't anymore,
     so the 'shared' is now meaningless.
@@ -195,21 +184,54 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
-  <ItemGroup>
-    <LicenseFile Include="$(OnnxRuntimeRoot)\LICENSE" Visible="false" />
-    <TargetsFile Include="$(OnnxRuntimeRoot)\csharp\src\Microsoft.ML.OnnxRuntime\targets\netstandard\targets.xml" Visible="false" />
-  </ItemGroup>
+  <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
+  <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
+    <Message Text="SolutionName='$(SolutionName)'" />
+    <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
+    <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
+    <Message Text="[MSBuild]::GetTargetPlatformIdentifier(TargetFramework)='$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))' " />
+    <Message Text="[MSBuild]::GetTargetFrameworkIdentifier(TargetFramework)='$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))' " />
+    <Message Text="IsWindowsBuild='$(IsWindowsBuild)' IsLinuxBuild='$(IsLinuxBuild)' IsMacOSBuild='$(IsMacOSBuild)'" />
+    <Message Text="IsWindowsTarget='$(IsWindowsTarget)' IsAndroidTarget='$(IsAndroidTarget)' IsIOSTarget='$(IsIOSTarget)' IsMacCatalystTarget='$(IsMacCatalystTarget)'" />
+    <Message Text="OrtConstants='$(OrtConstants)' " />
+    <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
+   </Target>
 
-  <Target Name="CopyMiscFiles" BeforeTargets="PreBuildEvent">
-    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeRoot)\%(Filename).txt')" />
-    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeRoot)\csharp\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
+  <!--
+  Setup the Pack target related info to create the Microsoft.ML.OnnxRuntime.Managed package
+  -->
+  <Target Name="RenameFilesToPack" BeforeTargets="Pack">
+    <!-- We (painfully) have to rename files if the extensions differs due to nuget implementation details. -->
+    <ItemGroup>
+      <SourceFilesToRename Include="
+        $(OnnxRuntimeRoot)\LICENSE;
+        $(OnnxRuntimeRoot)\csharp\src\Microsoft.ML.OnnxRuntime\targets\netstandard\targets.xml" />
+      <DestFilesToRename Include=
+        "$(NativeBuildOutputDir)\LICENSE.txt;
+         $(NativeBuildOutputDir)\$(PackageId).targets" />
+    </ItemGroup>
+    <!-- rename the files and output to the native build output dir so we keep the source tree clean -->
+    <Copy SourceFiles="@(SourceFilesToRename)" DestinationFiles="@(DestFilesToRename)"/>
   </Target>
 
+  <ItemGroup>
+    <None Include="$(OnnxRuntimeRoot)\ThirdPartyNotices.txt"
+          PackagePath="ThirdPartyNotices.txt" Pack="true" Visible="false"/>
+    <None Include="$(OnnxRuntimeRoot)\docs\Privacy.md"
+          PackagePath="Privacy.md" Pack="true" Visible="false"/>
+    <None Include="$(OnnxRuntimeRoot)\ORT_icon_for_light_bg.png"
+          PackagePath="ORT_icon_for_light_bg.png" Pack="true" Visible="false"/>
+    <None Include="$(OnnxRuntimeRoot)\tools\nuget\nupkg.README.md"
+          PackagePath="README.md" Pack="true" Visible="false"/>
+    <None Include="$(NativeBuildOutputDir)\LICENSE.txt"
+          PackagePath="" Pack="true" Visible="false"/>
+    <None Include="$(NativeBuildOutputDir)\$(PackageId).targets"
+          PackagePath="build\netstandard2.0\$(PackageId).targets" Pack="true" Visible="false"/>
+  </ItemGroup>
+
   <Target Name="CopyPackage" AfterTargets="Pack">
-    <Copy
-      SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
-      DestinationFolder="$(NativeBuildOutputDir)"
-    />
+    <Copy SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDir)" />
   </Target>
 
 </Project>
