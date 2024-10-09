@@ -264,7 +264,7 @@ void DmlCopyTensor() {
 
   // CPU to CPU is not supported
   OrtMemoryInfo* cpu_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
   auto cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   auto dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   WINML_EXPECT_NOT_EQUAL(
@@ -330,7 +330,7 @@ void ValueGetDeviceId() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(gpu_tensor.get(), &device_id), ort_api);
 
   OrtMemoryInfo* cpu_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
   auto unique_cpu_memory_info = UniqueOrtMemoryInfo(cpu_memory_info, ort_api->ReleaseMemoryInfo);
   auto cpu_tensor = CreateTensorFromMemoryInfo(unique_cpu_memory_info.get());
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(cpu_tensor.get(), &device_id), ort_api);

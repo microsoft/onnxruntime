@@ -745,7 +745,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(
 
   // TODO:  what is the difference between the device allocator and the arena allocator?
   OrtMemoryInfo* cpu_memory;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_memory), ort_api);
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory), ort_api);
 
   OrtValue* ort_value;
   RETURN_HR_IF_NOT_OK_MSG(
