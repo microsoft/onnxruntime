@@ -740,10 +740,8 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
     }
   }
 
-#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || USE_WEBGPU
+#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || defined(USE_WEBGPU)
   ASSERT_TRUE(has_api_info);
-#else
-  ASSERT_TRUE(has_api_info || true);
 #endif
 }
 
