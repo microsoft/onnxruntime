@@ -230,14 +230,43 @@ namespace Dml
         {
         }
 
-        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
+        // TODO: Create a DML abstraction for onnxruntime::Stream and get the correct ID3D12CommandQueue from it once we decouple DataTransfer
+        // from the DML EP object
+        onnxruntime::common::Status CopyTensorAsync(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, onnxruntime::Stream&) const final
         {
             return m_impl->CopyTensor(src, dst);
         }
 
+        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
+        {
+            auto status = m_impl->CopyTensor(src, dst);
+
+            if (!status.IsOK())
+            {
+                return status;
+            }
+
+            // IDataTransfer expect all copies to wait until the copy has been completed because it can be called with different
+            // streams or EPs. If async copies are needed, CopyTensorAsync() should be called instead.
+            m_impl->WaitForOutstandingWork();
+
+            return status;
+        }
+
         onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
         {
-            return m_impl->CopyTensors(src_dst_pairs);
+            auto status = m_impl->CopyTensors(src_dst_pairs);
+
+            if (!status.IsOK())
+            {
+                return status;
+            }
+
+            // IDataTransfer expect all copies to wait until the copy has been completed because it can be called with different
+            // streams or EPs. If async copies are needed, CopyTensorAsync() should be called instead.
+            m_impl->WaitForOutstandingWork();
+
+            return status;
         }
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
