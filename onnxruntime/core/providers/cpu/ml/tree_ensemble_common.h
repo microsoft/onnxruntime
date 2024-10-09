@@ -97,7 +97,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
                   const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
                   const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping,
                   int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids, const std::vector<float>& target_class_weights,
-                  const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices);
+                  const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices);
 };
 
 // Below is simple implementation of `bit_cast` as it is supported from c++20 and the current supported version is c++17
@@ -213,7 +213,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
   ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty());
 
-  printf("A\n");
   aggregate_function_ = MakeAggregateFunction(aggregate_function);
   post_transform_ = MakeTransform(post_transform);
   if (!base_values_as_tensor.empty()) {
@@ -228,7 +227,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   n_targets_or_classes_ = n_targets_or_classes;
   max_tree_depth_ = 1000;
   ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max());
-  printf("B\n");
 
   // Additional members
   size_t limit;
@@ -247,7 +245,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (cmodes[i] != cmodes[fpos]) same_mode_ = false;
   }
 
-  printf("C\n");
   n_nodes_ = nodes_treeids.size();
   limit = static_cast<size_t>(n_nodes_);
   InlinedVector<TreeNodeElementId> node_tree_ids;
@@ -258,7 +255,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   std::unordered_map<TreeNodeElementId, size_t, TreeNodeElementId::hash_fn> node_tree_ids_map;
   node_tree_ids_map.reserve(limit);
 
-  printf("D\n");
   InlinedVector<size_t> truenode_ids, falsenode_ids;
   truenode_ids.reserve(limit);
   falsenode_ids.reserve(limit);
@@ -266,7 +262,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Build node_tree_ids and node_tree_ids_map and truenode_ids and falsenode_ids
   for (i = 0; i < limit; ++i) {
-    printf("-- %d/%d\n", (int)i, (int)limit);
     TreeNodeElementId node_tree_id{static_cast<int>(nodes_treeids[i]), static_cast<int>(nodes_nodeids[i])};
     auto p = node_tree_ids_map.insert(std::pair<TreeNodeElementId, size_t>(node_tree_id, i));
     if (!p.second) {
@@ -275,7 +270,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     node_tree_ids.emplace_back(node_tree_id);
   }
 
-  printf("E\n");
   TreeNodeElementId coor;
   for (i = 0; i < limit; ++i) {
     if (cmodes[i] == NODE_MODE::LEAF) {
@@ -310,7 +304,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       // It is valid but no training algorithm would produce a tree where left and right nodes are the same.
     }
   }
-  printf("F\n");
 
   // Sort targets
   InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices;
@@ -319,10 +312,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     indices.emplace_back(
         TreeNodeElementId{target_class_treeids[i], target_class_nodeids[i]}, i);
   }
-  printf("G\n");
 
   std::sort(indices.begin(), indices.end());
-  printf("H\n");
 
   // Let's construct nodes_ such that the false branch is always the next element in nodes_.
   // updated_mapping will translates the old position of each node to the new node position in nodes_.
@@ -341,7 +332,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
   }
   n_trees_ = roots_.size();
-  printf("I\n");
 
   TreeNodeElementId ind;
   SparseValue<ThresholdType> w;
@@ -372,7 +362,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     weights_.push_back(w);
   }
 
-  printf("J\n");
   has_missing_tracks_ = false;
   for (auto itm = nodes_missing_value_tracks_true.begin(); itm != nodes_missing_value_tracks_true.end(); ++itm) {
     if (*itm) {
@@ -380,7 +369,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       break;
     }
   }
-  printf("K\n");
 
   return Status::OK();
 }
@@ -434,7 +422,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
     const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id,
     const InlinedVector<TreeNodeElementId>& node_tree_ids, const std::vector<float>& target_class_weights,
-    const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices) {
+    const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices) {
   // Validate this index maps to the same tree_id as the one we should be building.
   if (node_tree_ids[i].tree_id != tree_id) {
     ORT_THROW("Tree id mismatch. Expected ", tree_id, " but got ", node_tree_ids[i].tree_id, " at position ", i);
@@ -1399,7 +1387,7 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& inf
 #else
   // GetVectorAttrsOrDefault is not part of the minimal build.
   // As a result, TreeEnsemble v5 cannot be available in this build.
-  ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.")
+  ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.");
 #endif
 
   return Init(
