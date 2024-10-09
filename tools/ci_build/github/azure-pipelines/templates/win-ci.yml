@@ -180,12 +180,6 @@ stages:
         displayName: 'List Files'
         workingDirectory: '$(Build.BinariesDirectory)'
 
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-          DisplayName: 'ESRP - Sign C# dlls'
-          DoEsrp: ${{ parameters.DoEsrp }}
-
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
@@ -193,6 +187,15 @@ stages:
           arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
           workingDirectory: '$(Build.BinariesDirectory)'
 
+      - powershell: |
+          $target_directory = "$(Build.BinariesDirectory)/RelWithDebInfo"
+          $target_files = Get-ChildItem $target_directory -Recurse -Force -File -Name
+          Write-Host "Files in $target_directory"
+          foreach ($file in $target_files) {
+              Write-Host $file
+          }
+        displayName: 'List Files'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
       - task: VSBuild@1
         displayName: 'Build'
@@ -205,6 +208,16 @@ stages:
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
+
+      - powershell: |
+          $target_directory = "$(Build.BinariesDirectory)/RelWithDebInfo"
+          $target_files = Get-ChildItem $target_directory -Recurse -Force -File -Name
+          Write-Host "Files in $target_directory"
+          foreach ($file in $target_files) {
+              Write-Host $file
+          }
+        displayName: 'List Files'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
       # For CPU job, tests are run in the same machine as building
       - ${{ if eq(parameters.buildJava, 'true') }}:
