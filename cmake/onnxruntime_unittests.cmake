@@ -562,6 +562,10 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+endif()
+
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -603,6 +607,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
+    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -662,6 +667,13 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
+endif()
+
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
 
 # QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
@@ -1657,7 +1669,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 libprotobuf-lite onnx_proto nsync_cpp)
+      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
@@ -1776,7 +1788,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 libprotobuf-lite ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
+    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
      endif()
 
   if(NOT WIN32)

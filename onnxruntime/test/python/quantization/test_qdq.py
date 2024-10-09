@@ -22,8 +22,8 @@ from op_test_utils import (
     create_clip_node,
 )
 
-from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
-from onnxruntime.quantization.calibrate import TensorData
+from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
+from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
 
 class TestQDQFormat(unittest.TestCase):
@@ -1719,6 +1719,11 @@ class TestQDQ4bit(TestQDQFormat):
         weight_quant_init = initializers["weight_quantized"]
         size_ratio = weight_quant_init.ByteSize() / unpacked_size
         self.assertLess(size_ratio, 0.55)
+
+    def test_json_serialization(self):
+        td = TensorData(lowest=np.array([0.1], dtype=np.float32), highest=np.array([1.1], dtype=np.float32))
+        new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, {"td": td})
+        write_calibration_table(new_calibrate_tensors_range)
 
 
 if __name__ == "__main__":
