@@ -13,6 +13,9 @@ stages:
   - Windows_Packaging_CUDA
   - Windows_Packaging_TensorRT
   - Download_Java_Tools
+  - Setup
+  variables:
+    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
   - job: Jar_Packaging_GPU
     workspace:
@@ -57,6 +60,7 @@ stages:
         failOnStderr: true
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+        ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
     - template: ../templates/jar-maven-signing-win.yml
       parameters:
