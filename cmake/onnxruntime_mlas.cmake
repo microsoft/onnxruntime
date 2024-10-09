@@ -89,6 +89,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         ${MLAS_SRC_DIR}/fp16_neon_common.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp16.cpp
       )
 
       set(mlas_platform_preprocess_srcs
