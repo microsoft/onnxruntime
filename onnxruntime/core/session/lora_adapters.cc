@@ -60,9 +60,17 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
 
 namespace {
 struct DataTransfer {
+  std::unique_ptr<IExecutionProvider> ep;
   std::unique_ptr<IDataTransfer> data_transfer;
   Status CopyTensor(const Tensor& src, Tensor& dst) const {
     return data_transfer->CopyTensor(src, dst);
+  }
+  Status Sync() const {
+#if USE_DML
+    return ep->Sync();
+#else
+    return Status::OK();
+#endif
   }
 };
 }  // namespace
@@ -84,8 +92,8 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info, [[maybe_unused]] Da
   } else if (strcmp(mem_info.name, onnxruntime::DML) == 0) {
 #ifdef USE_DML
     auto ep_factory = onnxruntime::DMLProviderFactoryCreator::Create(ConfigOptions{}, 0, false, false, false);
-    auto ep = ep_factory->CreateProvider();
-    dt.data_transfer = ep->GetDataTransfer();
+    dt.ep = ep_factory->CreateProvider();
+    dt.data_transfer = dt.ep->GetDataTransfer();
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DML provider is not enabled in this build");
 #endif
@@ -139,6 +147,10 @@ void LoraAdapter::InitializeParamsValues() {
       Param lora_param(std::move(ort_value));
       params_values.emplace(std::move(name), std::move(lora_param));
     }
+  }
+
+  if (device_allocator_) {
+    ORT_THROW_IF_ERROR(data_transfer.Sync());
   }
 
   params_values_.swap(params_values);
