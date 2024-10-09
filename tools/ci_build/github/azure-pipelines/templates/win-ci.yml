@@ -180,6 +180,12 @@ stages:
         displayName: 'List Files'
         workingDirectory: '$(Build.BinariesDirectory)'
 
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign C# dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
