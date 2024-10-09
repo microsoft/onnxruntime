@@ -49,6 +49,9 @@ struct OrtVitisAIEpAPI {
   void (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       vaip_core::DllSafe<std::vector<Node*>>* ret_value) = nullptr;
+  int (*vitisai_ep_on_run_start)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
+      vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) = nullptr;
   void Ensure() {
     if (handle_)
       return;
@@ -73,6 +76,7 @@ struct OrtVitisAIEpAPI {
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
   }
 
  private:
@@ -103,6 +107,15 @@ std::optional<std::vector<Node*>> create_ep_context_nodes(
     }
   }
   return std::nullopt;
+}
+
+int vitisai_ep_on_run_start(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
+    vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) {
+  if (s_library_vitisaiep.vitisai_ep_on_run_start) {
+    return s_library_vitisaiep.vitisai_ep_on_run_start(eps, state, get_config_entry);
+  }
+  return 100;
 }
 
 struct MyCustomOpKernel : OpKernel {
@@ -404,6 +417,15 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
 
   the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
     graph.SetInputs(inputs);
+  };
+  the_global_api.session_option_configuration = [](
+                                                    void* mmap, void* session_options, void (*push)(void* mmap, const char* name, const char* value)) {
+    auto options = reinterpret_cast<OrtSessionOptions*>(session_options);
+    auto option_list = options->GetConfigOptions();
+    // option_list.GetConfigEntry
+    for (const auto& option : option_list) {
+      push(mmap, option.first.c_str(), option.second.c_str());
+    }
   };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
   the_global_api.model_to_proto = [](onnxruntime::Model& model) { return model.ToProto().release(); };

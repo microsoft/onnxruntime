@@ -13,7 +13,7 @@ from image_encoder import export_image_encoder_onnx, test_image_encoder_onnx
 from mask_decoder import export_mask_decoder_onnx, test_mask_decoder_onnx
 from prompt_encoder import export_prompt_encoder_onnx, test_prompt_encoder_onnx
 from sam2_demo import run_demo, show_all_images
-from sam2_utils import build_sam2_model, get_decoder_onnx_path, get_image_encoder_onnx_path, setup_logger
+from sam2_utils import load_sam2_model, sam2_onnx_path, setup_logger
 
 
 def parse_arguments():
@@ -94,6 +94,26 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--optimize",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Optimize onnx models",
+    )
+
+    parser.add_argument(
+        "--dtype", required=False, choices=["fp32", "fp16"], default="fp32", help="Data type for inference."
+    )
+
+    parser.add_argument(
+        "--use_gpu",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Optimize onnx models for GPU",
+    )
+
+    parser.add_argument(
         "--verbose",
         required=False,
         default=False,
@@ -105,41 +125,36 @@ def parse_arguments():
     return args
 
 
+def optimize_sam2_model(onnx_model_path, optimized_model_path, float16: bool, use_gpu: bool):
+    print(f"Optimizing {onnx_model_path} to {optimized_model_path} with float16={float16} and use_gpu={use_gpu}...")
+
+    # Import from source directory.
+    transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if transformers_dir not in sys.path:
+        sys.path.insert(0, transformers_dir)
+    from optimizer import optimize_model
+
+    optimized_model = optimize_model(onnx_model_path, model_type="sam2", opt_level=1, use_gpu=use_gpu)
+    if float16:
+        optimized_model.convert_float_to_float16(keep_io_types=False)
+    optimized_model.save_model_to_file(optimized_model_path)
+
+
 def main():
     args = parse_arguments()
 
-    checkpoints_dir = os.path.join(args.sam2_dir, "checkpoints")
-    sam2_config_dir = os.path.join(args.sam2_dir, "sam2_configs")
-    if not os.path.exists(args.sam2_dir):
-        raise FileNotFoundError(f"{args.sam2_dir} does not exist. Please specify --sam2_dir correctly.")
-
-    if not os.path.exists(checkpoints_dir):
-        raise FileNotFoundError(f"{checkpoints_dir} does not exist. Please specify --sam2_dir correctly.")
-
-    if not os.path.exists(sam2_config_dir):
-        raise FileNotFoundError(f"{sam2_config_dir} does not exist. Please specify --sam2_dir correctly.")
-
-    if not os.path.exists(os.path.join(checkpoints_dir, f"{args.model_type}.pt")):
-        raise FileNotFoundError(
-            f"{checkpoints_dir}/{args.model_type}.pt does not exist. Please download checkpoints under the directory."
-        )
-
-    if args.sam2_dir not in sys.path:
-        sys.path.append(args.sam2_dir)
+    sam2_model = load_sam2_model(args.sam2_dir, args.model_type, device="cpu")
 
     pathlib.Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    sam2_model = build_sam2_model(checkpoints_dir, args.model_type, device="cpu")
-
     for component in args.components:
+        onnx_model_path = sam2_onnx_path(args.output_dir, args.model_type, component, args.multimask_output)
         if component == "image_encoder":
-            onnx_model_path = get_image_encoder_onnx_path(args.output_dir, args.model_type)
             if args.overwrite or not os.path.exists(onnx_model_path):
                 export_image_encoder_onnx(sam2_model, onnx_model_path, args.dynamic_batch_axes, args.verbose)
                 test_image_encoder_onnx(sam2_model, onnx_model_path, dynamic_batch_axes=False)
 
         elif component == "mask_decoder":
-            onnx_model_path = os.path.join(args.output_dir, f"{args.model_type}_mask_decoder.onnx")
             if args.overwrite or not os.path.exists(onnx_model_path):
                 export_mask_decoder_onnx(
                     sam2_model,
@@ -155,38 +170,88 @@ def main():
                     not args.disable_dynamic_multimask_via_stability,
                 )
         elif component == "prompt_encoder":
-            onnx_model_path = os.path.join(args.output_dir, f"{args.model_type}_prompt_encoder.onnx")
             if args.overwrite or not os.path.exists(onnx_model_path):
                 export_prompt_encoder_onnx(sam2_model, onnx_model_path)
                 test_prompt_encoder_onnx(sam2_model, onnx_model_path)
-        elif component == "image_decoder":
-            onnx_model_path = get_decoder_onnx_path(args.output_dir, args.model_type, args.multimask_output)
+        else:
+            assert component == "image_decoder"
             if args.overwrite or not os.path.exists(onnx_model_path):
                 export_decoder_onnx(sam2_model, onnx_model_path, args.multimask_output)
                 test_decoder_onnx(sam2_model, onnx_model_path, args.multimask_output)
 
+    suffix = ""
+    convert_to_fp16 = args.dtype == "fp16"
+    if args.optimize:
+        suffix = f"_{args.dtype}_" + ("gpu" if args.use_gpu else "cpu")
+        for component in args.components:
+            onnx_model_path = sam2_onnx_path(args.output_dir, args.model_type, component, args.multimask_output)
+            optimized_model_path = sam2_onnx_path(
+                args.output_dir, args.model_type, component, args.multimask_output, suffix
+            )
+            optimize_sam2_model(onnx_model_path, optimized_model_path, convert_to_fp16, args.use_gpu)
+
     if args.demo:
         # Export required ONNX models for demo if not already exported.
-        onnx_model_path = get_image_encoder_onnx_path(args.output_dir, args.model_type)
-        if not os.path.exists(onnx_model_path):
-            export_image_encoder_onnx(sam2_model, onnx_model_path, args.dynamic_batch_axes, args.verbose)
+        image_encoder_onnx_path = sam2_onnx_path(
+            args.output_dir, args.model_type, "image_encoder", args.multimask_output
+        )
+        if not os.path.exists(image_encoder_onnx_path):
+            export_image_encoder_onnx(sam2_model, image_encoder_onnx_path, args.dynamic_batch_axes, args.verbose)
 
-        onnx_model_path = get_decoder_onnx_path(args.output_dir, args.model_type, True)
-        if not os.path.exists(onnx_model_path):
-            export_decoder_onnx(sam2_model, onnx_model_path, True)
+        image_decoder_onnx_path = sam2_onnx_path(args.output_dir, args.model_type, "image_decoder", False)
+        if not os.path.exists(image_decoder_onnx_path):
+            export_decoder_onnx(sam2_model, image_decoder_onnx_path, False)
 
-        onnx_model_path = get_decoder_onnx_path(args.output_dir, args.model_type, False)
-        if not os.path.exists(onnx_model_path):
-            export_decoder_onnx(sam2_model, onnx_model_path, False)
+        image_decoder_multi_onnx_path = sam2_onnx_path(args.output_dir, args.model_type, "image_decoder", True)
+        if not os.path.exists(image_decoder_multi_onnx_path):
+            export_decoder_onnx(sam2_model, image_decoder_multi_onnx_path, True)
 
-        ort_image_files = run_demo(checkpoints_dir, args.model_type, engine="ort", onnx_directory=args.output_dir)
+        dtype = torch.float32 if args.dtype == "fp32" else torch.float16
+        if suffix:
+            optimized_image_encoder_onnx_path = image_encoder_onnx_path.replace(".onnx", f"{suffix}.onnx")
+            if not os.path.exists(optimized_image_encoder_onnx_path):
+                optimize_sam2_model(
+                    image_encoder_onnx_path, optimized_image_encoder_onnx_path, convert_to_fp16, args.use_gpu
+                )
+
+            optimized_image_decoder_onnx_path = image_decoder_onnx_path.replace(".onnx", f"{suffix}.onnx")
+            if not os.path.exists(optimized_image_decoder_onnx_path):
+                optimize_sam2_model(
+                    image_decoder_onnx_path, optimized_image_decoder_onnx_path, convert_to_fp16, args.use_gpu
+                )
+
+            optimized_image_decoder_multi_onnx_path = image_decoder_multi_onnx_path.replace(".onnx", f"{suffix}.onnx")
+            if not os.path.exists(optimized_image_decoder_multi_onnx_path):
+                optimize_sam2_model(
+                    image_decoder_multi_onnx_path,
+                    optimized_image_decoder_multi_onnx_path,
+                    convert_to_fp16,
+                    args.use_gpu,
+                )
+
+            # Use optimized models to run demo.
+            image_encoder_onnx_path = optimized_image_encoder_onnx_path
+            image_decoder_onnx_path = optimized_image_decoder_onnx_path
+            image_decoder_multi_onnx_path = optimized_image_decoder_multi_onnx_path
+
+        ort_image_files = run_demo(
+            args.sam2_dir,
+            args.model_type,
+            engine="ort",
+            dtype=dtype,
+            image_encoder_onnx_path=image_encoder_onnx_path,
+            image_decoder_onnx_path=image_decoder_onnx_path,
+            image_decoder_multi_onnx_path=image_decoder_multi_onnx_path,
+            use_gpu=args.use_gpu,
+        )
         print("demo output files for ONNX Runtime:", ort_image_files)
 
         # Get results from torch engine to compare.
-        torch_image_files = run_demo(checkpoints_dir, args.model_type, engine="torch", onnx_directory=args.output_dir)
+        torch_image_files = run_demo(args.sam2_dir, args.model_type, engine="torch", dtype=dtype, use_gpu=args.use_gpu)
         print("demo output files for PyTorch:", torch_image_files)
 
-        show_all_images(ort_image_files, torch_image_files)
+        show_all_images(ort_image_files, torch_image_files, suffix)
+        print(f"Combined demo output: sam2_demo{suffix}.png")
 
 
 if __name__ == "__main__":

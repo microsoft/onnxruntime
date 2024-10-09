@@ -5,8 +5,16 @@
 
 #include <string>
 #include <atomic>
+
+#include "core/common/inlined_containers_fwd.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/config_options.h"
+
+namespace onnxruntime {
+namespace lora {
+class LoraAdapter;
+}
+}  // namespace onnxruntime
 
 /**
  * Configuration information for a Run call.
@@ -39,6 +47,8 @@ struct OrtRunOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
   onnxruntime::ConfigOptions config_options;
+
+  onnxruntime::InlinedVector<const onnxruntime::lora::LoraAdapter*> active_adapters;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
