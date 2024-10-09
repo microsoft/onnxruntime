@@ -67,7 +67,7 @@ struct DataTransfer {
 };
 }  // namespace
 
-static Status GetDataTransfer(const OrtMemoryInfo& mem_info, DataTransfer& dt) {
+static Status GetDataTransfer(const OrtMemoryInfo& mem_info, [[maybe_unused]] DataTransfer& dt) {
   ORT_RETURN_IF(strcmp(mem_info.name, onnxruntime::CPU) == 0, "Expecting on device allocator for LoraAdapter");
 
   if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
