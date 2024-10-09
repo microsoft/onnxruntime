@@ -391,7 +391,6 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
 }
 
-#ifdef MLAS_TARGET_AMD64_IX86
 #if !defined(USE_DML)
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
@@ -433,6 +432,17 @@ TEST(MatMulNBits, Float16_Accuracy1) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 1>();
 }
 
+TEST(MatMulNBits, Float16_Accuracy2) {
+  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 2>();
+}
+
 TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4>();
@@ -459,7 +469,6 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
-#endif
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
