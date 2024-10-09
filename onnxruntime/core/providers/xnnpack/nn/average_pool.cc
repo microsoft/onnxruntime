@@ -112,10 +112,13 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr || 
-        IsComputeTypeSupported(x_type->tensor_type().elem_type()), {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 
-                                        ONNX_NAMESPACE::TensorProto_DataType_UINT8})) {
-       break;
+    if (x_type == nullptr ||
+        IsComputeTypeSupported(x_type->tensor_type().elem_type(), {
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                  })) {
+      break;
     }
 
     // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
@@ -205,13 +208,16 @@ AveragePool::AveragePool(const OpKernelInfo& info)
   const auto& input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     avgpool_type_ = OpComputeType::op_compute_type_fp32;
-  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp;
+    avgpool_type_ = OpComputeType::op_compute_type_fp16;
+  }else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
     quant_param = ParseQuantParamForOp(info, input_dtype, 1);
     avgpool_type_ = OpComputeType::op_compute_type_qu8;
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
-    ORT_THROW("unsupported AveragePool in XnnpackEP, we have FLOAT|UINT8, but got ", stype);
+    ORT_THROW("unsupported AveragePool in XnnpackEP, we have FLOAT|FLOAT16|UINT8, but got ", stype);
   }
   struct xnn_operator* p;
   auto ret = CreateXnnpackKernel(pool_attrs_, clip_min_max_, p,
@@ -249,9 +255,12 @@ Status AveragePool::Compute(OpKernelContext* context) const {
 
   std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
 
-  auto reshape_fn = (avgpool_type_ == OpComputeType::op_compute_type_fp32)
-                        ? xnn_reshape_average_pooling2d_nhwc_f32
-                        : xnn_reshape_average_pooling2d_nhwc_qu8;
+  auto reshape_fn = xnn_reshape_average_pooling2d_nhwc_f32;
+  if (avgpool_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_fn = xnn_reshape_average_pooling2d_nhwc_f16;
+  } else {
+    reshape_fn = xnn_reshape_average_pooling2d_nhwc_qu8;
+  }
 
   auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
                            &workspace_size, &workspace_alignment,
@@ -268,7 +277,9 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), workspace.get(),
                                                   X.Data<float>(), Y.MutableData<float>());
-
+  } else if (avgpool_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_average_pooling2d_nhwc_f16(op0_.get(), workspace.get(),
+                                                  X.Data<uint8_t>(), Y.MutableData<MLFloat16>());
   } else if (avgpool_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_average_pooling2d_nhwc_qu8(op0_.get(), workspace.get(),
                                                   X.Data<uint8_t>(), Y.MutableData<uint8_t>());
@@ -317,5 +328,30 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     AveragePool);
 
+#ifdef XNNPACK_FP16_SUPPORTED
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 7, 9, MLFloat16,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    AveragePool);
+
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 10, 10, MLFloat16,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    AveragePool);
+
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 11, 18, MLFloat16,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    AveragePool);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 19, MLFloat16,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    AveragePool);
+#endif
 }  // namespace xnnpack
 }  // namespace onnxruntime

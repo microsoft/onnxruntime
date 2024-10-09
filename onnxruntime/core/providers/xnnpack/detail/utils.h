@@ -82,14 +82,14 @@ using ComputeTypeSet = std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>;
 #ifdef XNNPACK_FP16_SUPPORTED
 bool IsComputeTypeSupported(int32_t compute_type,
                             const ComputeTypeSet& compute_type_set = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT8});
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT8});
 #else
 bool IsComputeTypeSupported(int32_t compute_type,
                             const ComputeTypeSet& compute_type_set = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT8});
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT8});
 #endif
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
