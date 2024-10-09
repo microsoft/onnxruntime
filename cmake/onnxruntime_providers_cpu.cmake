@@ -40,6 +40,11 @@ file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"
 )
 
+file(GLOB_RECURSE onnxruntime_webgpu_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"

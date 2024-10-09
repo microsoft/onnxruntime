@@ -42,7 +42,9 @@ public enum OrtProvider {
   /** The Azure remote endpoint execution provider. */
   AZURE("AzureExecutionProvider"),
   /** The QNN execution provider. */
-  QNN("QNNExecutionProvider");
+  QNN("QNNExecutionProvider"),
+  /** The WebGPU execution provider */
+  WEBGPU("WebGpuExecutionProvider");
 
   private static final Map<String, OrtProvider> valueMap = new HashMap<>(values().length);
 
