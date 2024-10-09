@@ -72,6 +72,14 @@ MlasIsSQNBitGemmAvailable(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+template<typename T>
+bool MLASCALL
+MlasIsSQNBitGemmAvailable(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
@@ -96,6 +104,14 @@ MlasIsSQNBitGemmAvailable(
         }
     }
 }
+
+template
+bool MLASCALL
+MlasIsSQNBitGemmAvailable<float>(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 template<>
@@ -124,7 +140,15 @@ MlasIsSQNBitGemmAvailable<MLAS_FP16>(
             return false;
     }
 }
-#endif
+#else  // !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+template
+bool MLASCALL
+MlasIsSQNBitGemmAvailable<MLAS_FP16>(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+#endif  // end of !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 namespace
 {
@@ -275,6 +299,18 @@ MlasSQNBitGemmBatchWorkspaceSize(
 
     return WorkspaceSize + Alignment - 1;
 }
+
+template
+size_t MLASCALL
+MlasSQNBitGemmBatchWorkspaceSize<float>(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
 
 size_t MLASCALL
 MlasSQNBitGemmPackQuantBDataSize(
@@ -748,11 +784,11 @@ void SQ4BitGemm_CompInt8(
 
         const std::byte* a_row = QuantA;
         const std::byte* b_col = QuantBData + n * ldb;
-        const float* b_col_scale = QuantBScale + n * k_blks;
+        const MLAS_FP16* b_col_scale = QuantBScale + n * k_blks;
         const std::byte* b_col_zp =
             (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-        float* c_blk = C + n;
-        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+        MLAS_FP16* c_blk = C + n;
+        const MLAS_FP16* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
         if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_Fp16_CompInt8 != nullptr) {
             size_t RowsRemaining = RangeCountM;
@@ -1082,3 +1118,18 @@ MlasSQNBitGemmBatch(
         }
     });
 }
+
+template
+void MLASCALL
+MlasSQNBitGemmBatch(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const size_t BlkBitWidth,
+    const size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<float>* DataParams,
+    void* Workspace,
+    MLAS_THREADPOOL* ThreadPool
+);
