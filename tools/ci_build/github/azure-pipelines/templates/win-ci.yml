@@ -170,6 +170,22 @@ stages:
 
       - template: set-version-number-variables-step.yml
 
+      - powershell: |
+          $target_directory = "$(Build.BinariesDirectory)/RelWithDebInfo"
+          $target_files = Get-ChildItem $target_directory -Recurse -Force -File -Name
+          Write-Host "Files in $target_directory"
+          foreach ($file in $target_files) {
+              Write-Host $file
+          }
+        displayName: 'List Files'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign C# dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
