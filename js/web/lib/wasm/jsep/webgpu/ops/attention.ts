@@ -488,17 +488,18 @@ const createAttentionProbsProgramInfo = (
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, ...outputVars)}
   ${shaderHelper.mainStart([TILE_SIZE, TILE_SIZE, 1])}
     // x holds the N and y holds the M
-    let headIdx = workgroup_id.z;
+    let headIdx = workgroup_id.z % uniforms.num_heads;
     let kvHeadIdx = u32(headIdx / uniforms.n_reps);
     let batchIdx = u32(workgroup_id.z / uniforms.num_heads);
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
     var sequence_length = uniforms.M;
     ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
-    let qOffset = sequence_length * uniforms.K * headIdx + m * uniforms.K;
-    ${feedPastKey && presentKey ? 'let pastKeyOffset = kvHeadIdx* uniforms.past_sequence_length * uniforms.K;' : ''};
-    let kOffset = kvHeadIdx* kv_sequence_length * uniforms.K;
-    ${presentKey ? 'let presentKeyOffset = kvHeadIdx * uniforms.N * uniforms.K;' : ''}
+    let absKvHeadIdx = kvHeadIdx + batchIdx * kv_num_heads; // kvHeadIdx is relative to the batch
+    let qOffset = sequence_length * uniforms.K * workgroup_id.z + m * uniforms.K;
+    ${feedPastKey && presentKey ? 'let pastKeyOffset = absKvHeadIdx * uniforms.past_sequence_length * uniforms.K;' : ''};
+    let kOffset = absKvHeadIdx * uniforms.kv_sequence_length * uniforms.K;
+    ${presentKey ? 'let presentKeyOffset = absKvHeadIdx * uniforms.N * uniforms.K;' : ''}
     var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < sequence_length && w + local_id.x < uniforms.K) {
@@ -539,7 +540,7 @@ const createAttentionProbsProgramInfo = (
     }
 
     if (global_id.y < sequence_length && global_id.x < uniforms.N) {
-      let headOffset = headIdx * sequence_length * uniforms.N;
+      let headOffset = workgroup_id.z * sequence_length * uniforms.N;
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
       var sum: f32 = ${(() => {
         switch (components) {
@@ -670,9 +671,10 @@ const createVxAttentionScoreProgramInfo = (
    var sequence_length = uniforms.M;
    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
    let offsetA = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
-   ${feedPastValue && presentValue ? 'let pastValueOffset = kvHeadIdx* uniforms.N * uniforms.past_sequence_length + n;' : ''};
-   let vOffset = kvHeadIdx* uniforms.N * kv_sequence_length + n;
-   ${presentValue ? 'let presentValueOffset = kvHeadIdx* uniforms.N * uniforms.K + n;' : ''}
+    let absKvHeadIdx = kvHeadIdx + batchIdx * kv_num_heads; // kvHeadIdx is relative to the batch
+   ${feedPastValue && presentValue ? 'let pastValueOffset = absKvHeadIdx * uniforms.N * uniforms.past_sequence_length + n;' : ''};
+   let vOffset = absKvHeadIdx * uniforms.N * uniforms.kv_sequence_length + n;
+   ${presentValue ? 'let presentValueOffset = absKvHeadIdx* uniforms.N * uniforms.K + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (m < sequence_length && w + local_id.x < uniforms.K) {
