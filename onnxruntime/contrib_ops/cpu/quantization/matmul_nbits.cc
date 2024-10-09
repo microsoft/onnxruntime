@@ -54,7 +54,7 @@ GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
   return static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(effective_accuracy_level);
 }
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_AMD64)
 // For Fp16, only accuracy level 2 or 4 makes sense.
 template <>
 MLAS_SQNBIT_GEMM_COMPUTE_TYPE
@@ -66,7 +66,7 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
   // Fallback to fp16. If fp16 optimized path is not available, it will further fall back to fp32.
   return CompFp16;
 }
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_AMD64
 }  // namespace
 
 bool GetType(const NodeArg& node_arg, int32_t& type) {
@@ -234,7 +234,7 @@ Status MatMulNBits<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ 
   return Status::OK();
 }
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)  // Non-Apple ARM64
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_AMD64)
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
 bool save_prepacked_initializers,
@@ -263,7 +263,7 @@ bool save_prepacked_initializers,
 
   return Status::OK();
 }
-#else  // !MLAS_F16VEC_INTRINSICS_SUPPORTED
+#else  // !MLAS_F16VEC_INTRINSICS_SUPPORTED && !MLAS_TARGET_AMD64
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        bool save_prepacked_initializers,
@@ -411,7 +411,7 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
   return Status::OK();
 }
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)  // Non-Apple ARM64
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_AMD64)
 template <>
 Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                                               const Tensor* scales,
@@ -456,7 +456,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                       thread_pool);
   return Status::OK();
 }
-#else  // !MLAS_F16VEC_INTRINSICS_SUPPORTED
+#else  // !MLAS_F16VEC_INTRINSICS_SUPPORTED && !MLAS_TARGET_AMD64
 template <>
 Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                                               const Tensor* scales,
@@ -534,7 +534,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
   return Status::OK();
 }
-#endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED
+#endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64
 
 template <>
 Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
