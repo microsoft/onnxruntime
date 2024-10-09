@@ -27,10 +27,10 @@ namespace {
 //    removal is valid or not.
 // 4. Due to rounding effect, we can be get the upperbound and lowerbound of min or max
 //    - Which one to use?
-//      - upperbound of min and lowerbound of max
+//      upperbound of min and lowerbound of max
 //    - Why?
-//      - We want the codomain to be unchanged.
-
+//      We want the codomain to be unchanged, so as long as the domain genreate a codomain that fill the integer value
+//      range will be fine.
 
 // The quantization formula is y = saturate((x / y_scale) + y_zero_point)
 // For (x / y_scale), it rounds to the nearest even. So the allowed quantize limits before saturate need to be taken
@@ -43,7 +43,7 @@ struct quantize_domain {
     int64_t codomain_min = std::numeric_limits<T>::lowest();
     int64_t biased = codomain_min - zp;
     float before_round = float(biased) + 0.5;  // move to upperbound
-    if (biased % 2 == 1) {  // cannot be exact ?.5 because of rounding to even
+    if (biased % 2 == 1) {                     // cannot be exact ?.5 because of rounding to even
       before_round = std::nextafterf(before_round, float(biased));
     }
     return before_round * scale;
@@ -53,14 +53,14 @@ struct quantize_domain {
     int64_t codomain_max = std::numeric_limits<T>::max();
     int64_t biased = codomain_max - zp;
     float before_round = float(biased) - 0.5;  // move to lowerbound
-    if (biased % 2 == 1) {  // cannot be exact ?.5 because of rounding to even
+    if (biased % 2 == 1) {                     // cannot be exact ?.5 because of rounding to even
       before_round = std::nextafterf(before_round, float(biased));
     }
     return before_round * scale;
   }
 };
 
-}
+}  // namespace
 
 // Gets the scale, zero-point, and zero-point type for a QuantizeLinear node that uses per-tensor quantization.
 static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
@@ -100,9 +100,9 @@ static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
 
 // Computes the floating point domain (min_, max_) from a QuantizeLinear node's scale/zero-point.
 static bool GetQDomain(const QnnModelWrapper& qnn_model_wrapper,
-                         const NodeUnit& q_node_unit,
-                         /*out*/ float& min_,
-                         /*out*/ float& max_) {
+                       const NodeUnit& q_node_unit,
+                       /*out*/ float& min_,
+                       /*out*/ float& max_) {
   int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
   int32_t zero_point = 0;
   float scale = 0.0f;
