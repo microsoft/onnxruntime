@@ -86,6 +86,18 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
+        // Create a new execution context and a new command queue that will be reserved for the data transfer
+        D3D12_COMMAND_QUEUE_DESC cmdQueueDesc{};
+        cmdQueueDesc.Type = queueType;
+        cmdQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+
+        ComPtr<ID3D12CommandQueue> dataTransferCommandQueue;
+        ORT_THROW_IF_FAILED(device->CreateCommandQueue(&cmdQueueDesc, IID_PPV_ARGS(&dataTransferCommandQueue)));
+        m_dataTransferContext = wil::MakeOrThrow<ExecutionContext>(device.Get(), nullptr, dataTransferCommandQueue.Get(), enableSyncSpinning, false);
+        m_dataTransferUploadHeap = std::make_shared<PooledUploadHeap>(device.Get(), m_dataTransferContext.Get());
+        m_dataTransferReadbackHeap = std::make_shared<ReadbackHeap>(device.Get(), m_dataTransferContext.Get());
+        m_cpuSyncSpinningEnabled = enableSyncSpinning;
+
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands, enableGraphCapture, enableSyncSpinning, disableMemoryArena);
     }
 
@@ -451,6 +463,130 @@ namespace Dml
     static gsl::span<std::byte> AsByteSpan(void* data, size_t sizeInBytes)
     {
         return gsl::make_span(static_cast<std::byte*>(data), sizeInBytes);
+    }
+
+    bool IsGpuTensor(const onnxruntime::Tensor& tensor)
+    {
+        return strcmp(tensor.Location().name, onnxruntime::CPU) &&
+            !(tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput);
+    }
+
+    onnxruntime::common::Status CopyTensorsHelper(
+        gsl::span<const onnxruntime::IDataTransfer::SrcDstPair> srcDstPairs,
+        PooledUploadHeap& uploadHeap,
+        ReadbackHeap& readbackHeap,
+        ExecutionContext& executionContext)
+    {
+        for (auto& srcDstPair : srcDstPairs)
+        {
+            auto& src = srcDstPair.src.get();
+            auto& dst = srcDstPair.dst.get();
+
+            bool isGpuSrc = IsGpuTensor(src);
+            bool isGpuDst = IsGpuTensor(dst);
+
+            auto gpuDataSizeInBytes = dst.Shape().Size() * dst.DataType()->AsPrimitiveDataType()->Size();
+
+            if (!isGpuSrc && isGpuDst)
+            {
+                //
+                // CPU -> GPU copy (upload)
+                //
+                ID3D12Resource* dstData = GetD3D12ResourceFromAllocation(nullptr, dst.DataRaw());
+                const void* srcData = src.DataRaw();
+
+                constexpr uint64_t dstOffset = 0;
+                const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+
+                uploadHeap.BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, gpuDataSizeInBytes));
+            }
+            else if (isGpuSrc && !isGpuDst)
+            {
+                //
+                // GPU -> CPU copy (readback)
+                //
+
+                void* dstData = dst.MutableDataRaw();
+                ID3D12Resource* srcData = GetD3D12ResourceFromAllocation(nullptr, src.DataRaw());
+
+                const uint64_t srcOffset = 0;
+                const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+
+                // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
+                readbackHeap.ReadbackFromGpu(AsByteSpan(dstData, gpuDataSizeInBytes), srcData, srcOffset, srcState);
+            }
+            else if (isGpuSrc && isGpuDst)
+            {
+                //
+                // GPU -> GPU copy
+                //
+                ID3D12Resource* srcData = GetD3D12ResourceFromAllocation(nullptr, src.DataRaw());
+                ID3D12Resource* dstData = GetD3D12ResourceFromAllocation(nullptr, dst.DataRaw());
+                executionContext.CopyBufferRegion(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, srcData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gpuDataSizeInBytes);
+            }
+            else
+            {
+                assert(!isGpuSrc && !isGpuDst);
+                memcpy(dst.MutableDataRaw(), src.DataRaw(), src.SizeInBytes());
+            }
+        }
+
+        return Status::OK();
+    }
+
+    onnxruntime::common::Status DataTransfer::CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const
+    {
+        onnxruntime::IDataTransfer::SrcDstPair srcDstPair{
+            src,
+            dst,
+            nullptr,
+        };
+
+        auto status = CopyTensorsHelper(gsl::make_span(&srcDstPair, 1), *m_pooledUploadHeap, *m_readbackHeap, *m_executionContext.Get());
+        if (!status.IsOK())
+        {
+            return status;
+        }
+
+        // IDataTransfer expect all copies to wait until the copy has been completed because it can be called with different
+        // streams or EPs. If async copies are needed, CopyTensorAsync() should be called instead.
+        if (IsGpuTensor(src) || IsGpuTensor(dst))
+        {
+            m_executionContext->Flush();
+            m_executionContext->GetCurrentCompletionEvent().WaitForSignal(m_cpuSyncSpinningEnabled);
+        }
+
+        return Status::OK();
+    }
+
+    onnxruntime::common::Status DataTransfer::CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
+    {
+        auto status = CopyTensorsHelper(src_dst_pairs, *m_pooledUploadHeap, *m_readbackHeap, *m_executionContext.Get());
+
+        if (!status.IsOK())
+        {
+            return status;
+        }
+
+        bool syncRequired = false;
+        for (auto& srcDstPair : src_dst_pairs)
+        {
+            if (IsGpuTensor(srcDstPair.src) || IsGpuTensor(srcDstPair.dst))
+            {
+                syncRequired = true;
+                break;
+            }
+        }
+
+        // IDataTransfer expect all copies to wait until the copy has been completed because it can be called with different
+        // streams or EPs. If async copies are needed, CopyTensorAsync() should be called instead.
+        if (syncRequired)
+        {
+            m_executionContext->Flush();
+            m_executionContext->GetCurrentCompletionEvent().WaitForSignal(m_cpuSyncSpinningEnabled);
+        }
+
+        return Status::OK();
     }
 
     HRESULT __stdcall ExecutionProviderImpl::CopyTensor(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept
@@ -916,12 +1052,6 @@ namespace Dml
         return result;
     }
 
-    bool IsGpuTensor(const onnxruntime::Tensor& tensor)
-    {
-        return strcmp(tensor.Location().name, onnxruntime::CPU) &&
-            !(tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput);
-    }
-
     Status ExecutionProviderImpl::CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const
     {
         assert(!m_closed);
@@ -1256,10 +1386,14 @@ namespace Dml
         return std::make_unique<Dml::ExecutionProvider>(dmlDevice, executionContext, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning, disableMemoryArena);
     }
 
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
+    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, const void* ptr)
     {
-        Dml::BucketizedBufferAllocator* pAllocationInfo = static_cast<Dml::BucketizedBufferAllocator*>(allocator);
-        return pAllocationInfo->DecodeDataHandle(ptr)->GetResource();
+        if (ptr == nullptr)
+        {
+            // There is no memory allocated which needs to be decoded.
+            ORT_THROW_HR(E_INVALIDARG);
+        }
+        return static_cast<const AllocationInfo*>(ptr)->GetResource();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

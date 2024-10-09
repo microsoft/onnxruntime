@@ -18,8 +18,11 @@ DmlCommandRecorder::DmlCommandRecorder(
       m_descriptorPool(d3dDevice, 2048),
       m_commandAllocatorRing(d3dDevice, m_queue->GetType(), m_queue->GetCurrentCompletionEvent())
 {
-    ORT_THROW_IF_FAILED(dmlDevice->CreateOperatorInitializer(0, nullptr, IID_PPV_ARGS(&m_initializer)));
-    ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
+    if (dmlDevice)
+    {
+        ORT_THROW_IF_FAILED(dmlDevice->CreateOperatorInitializer(0, nullptr, IID_PPV_ARGS(&m_initializer)));
+        ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
+    }
 }
 
 void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
@@ -32,6 +35,8 @@ void DmlCommandRecorder::InitializeOperator(
     const DML_BINDING_DESC& persistentResourceBinding,
     const DML_BINDING_DESC& inputArrayBinding)
 {
+    ORT_THROW_HR_IF(E_UNEXPECTED, m_dmlDevice == nullptr);
+
     // Reset the initializer to reference the input operator.
     IDMLCompiledOperator* ops[] = { op };
     ORT_THROW_IF_FAILED(m_initializer->Reset(ARRAYSIZE(ops), ops));
@@ -112,6 +117,8 @@ void DmlCommandRecorder::ExecuteOperator(
     gsl::span<const DML_BINDING_DESC> inputBindings,
     gsl::span<const DML_BINDING_DESC> outputBindings)
 {
+    ORT_THROW_HR_IF(E_UNEXPECTED, m_dmlDevice == nullptr);
+
     DML_BINDING_PROPERTIES execBindingProps = op->GetBindingProperties();
 
     const uint32_t numDescriptors = execBindingProps.RequiredDescriptorCount;
@@ -266,7 +273,11 @@ void DmlCommandRecorder::ExecuteCommandList(
         m_commandAllocatorRing.UpdateCurrentAllocatorCompletionEvent(m_queue->GetNextCompletionEvent());
 
         // Fail early if something horrifying happens
-        ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
+        if (m_dmlDevice)
+        {
+            ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
+        }
+
         ORT_THROW_IF_FAILED(m_d3dDevice->GetDeviceRemovedReason());
 
         return;
@@ -338,7 +349,7 @@ void DmlCommandRecorder::CloseAndExecute()
 }
 
 void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList)
-{   
+{
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
@@ -359,7 +370,7 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
         m_queue->ExecuteCommandLists(
                 gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
     }
-    
+
     m_cachedCommandList = m_currentCommandList;
     m_currentCommandList = nullptr;
     m_operationsRecordedInCurrentCommandList = false;
@@ -368,7 +379,11 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
     m_currentDescriptorHeap = nullptr;
 
     // Fail early if something horrifying happens
-    ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
+    if (m_dmlDevice)
+    {
+        ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
+    }
+
     ORT_THROW_IF_FAILED(m_d3dDevice->GetDeviceRemovedReason());
 }
 
