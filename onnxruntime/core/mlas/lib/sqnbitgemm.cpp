@@ -1048,9 +1048,9 @@ MlasSQNBitGemmBatch(
                 reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
             if (ComputeType == CompInt8 && GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
                 PackedQuantBDataStruct packed_quant_b(const_cast<void*>(Data->QuantBDataWorkspace), N, BlockCountK, BlkLen);
-                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<T>*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
-                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
-                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
+                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<float>*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
+                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<float>*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
+                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<float>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
                 PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
                 ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
             } else {
@@ -1119,9 +1119,9 @@ MlasSQNBitGemmBatch(
             reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
         if (ComputeType == CompInt8 && GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
             PackedQuantBDataStruct packed_quant_b(const_cast<void*>(Data->QuantBDataWorkspace), N, BlockCountK, BlkLen);
-            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<T>*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
-            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
-            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
+            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<float>*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
+            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<float>*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
+            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS<float>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
 
             PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
             ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
@@ -1146,6 +1146,7 @@ MlasSQNBitGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 );
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 template
 void MLASCALL
 MlasSQNBitGemmBatch(
@@ -1160,3 +1161,4 @@ MlasSQNBitGemmBatch(
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool
 );
+#endif  // defined(MLAS_FLOAT16_SUPPORT)
