@@ -206,6 +206,14 @@
       device_batched_gemm_instance
       device_softmax_instance
     )
+    # See https://github.com/ROCm/composable_kernel/pull/1105
+    target_compile_options(device_gemm_instance PRIVATE -Wno-pass-failed)
+    target_compile_options(device_gemm_add_fastgelu_instance PRIVATE -Wno-pass-failed)
+    target_compile_options(device_gemm_fastgelu_instance PRIVATE -Wno-pass-failed)
+    target_compile_options(device_gemm_splitk_instance PRIVATE -Wno-pass-failed)
+    target_compile_options(device_gemm_streamk_instance PRIVATE -Wno-pass-failed)
+    target_compile_options(device_batched_gemm_instance PRIVATE -Wno-pass-failed)
+    target_compile_options(device_softmax_instance PRIVATE -Wno-pass-failed)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL)
     if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE)
       target_link_libraries(onnxruntime_providers_rocm PUBLIC onnxruntime_composable_kernel_fmha)
