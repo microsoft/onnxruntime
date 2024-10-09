@@ -41,6 +41,7 @@ if [ "$USE_QNN" == "1" ]; then
     else
         echo "Error: QNN directory does not exist."
         exit 1
+    fi
 fi
 
 # Execute the build command
