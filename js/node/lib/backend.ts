@@ -29,10 +29,12 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   readonly outputNames: string[];
 
   startProfiling(): void {
-    // TODO: implement profiling
+    // startProfiling is a no-op.
+    //
+    // if sessionOptions.enableProfiling is true, profiling will be enabled when the model is loaded.
   }
   endProfiling(): void {
-    // TODO: implement profiling
+    this.#inferenceSession.endProfiling();
   }
 
   async run(

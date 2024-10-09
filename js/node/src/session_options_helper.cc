@@ -204,6 +204,32 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
     sessionOptions.SetLogSeverityLevel(static_cast<int>(logLevelNumber));
   }
 
+  // Profiling
+  if (options.Has("enableProfiling")) {
+    auto enableProfilingValue = options.Get("enableProfiling");
+    ORT_NAPI_THROW_TYPEERROR_IF(!enableProfilingValue.IsBoolean(), options.Env(),
+                                "Invalid argument: sessionOptions.enableProfiling must be a boolean value.");
+
+    if (enableProfilingValue.As<Napi::Boolean>().Value()) {
+      ORT_NAPI_THROW_TYPEERROR_IF(!options.Has("profileFilePrefix"), options.Env(),
+                                  "Invalid argument: sessionOptions.profileFilePrefix is required"
+                                  " when sessionOptions.enableProfiling is set to true.");
+      auto profileFilePrefixValue = options.Get("profileFilePrefix");
+      ORT_NAPI_THROW_TYPEERROR_IF(!profileFilePrefixValue.IsString(), options.Env(),
+                                  "Invalid argument: sessionOptions.profileFilePrefix must be a string."
+                                  " when sessionOptions.enableProfiling is set to true.");
+#ifdef _WIN32
+      auto str = profileFilePrefixValue.As<Napi::String>().Utf16Value();
+      std::basic_string<ORTCHAR_T> profileFilePrefix = std::wstring{str.begin(), str.end()};
+#else
+      std::basic_string<ORTCHAR_T> profileFilePrefix = profileFilePrefixValue.As<Napi::String>().Utf8Value();
+#endif
+      sessionOptions.EnableProfiling(profileFilePrefix.c_str());
+    } else {
+      sessionOptions.DisableProfiling();
+    }
+  }
+
   // external data
   if (options.Has("externalData")) {
     auto externalDataValue = options.Get("externalData");

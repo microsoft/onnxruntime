@@ -28,6 +28,8 @@ export declare namespace Binding {
 
     run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): ReturnType;
 
+    endProfiling(): void;
+
     dispose(): void;
   }
 

@@ -76,6 +76,14 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    */
   Napi::Value Dispose(const Napi::CallbackInfo& info);
 
+  /**
+   * [sync] end the profiling.
+   * @param nothing
+   * @returns nothing
+   * @throw nothing
+   */
+  Napi::Value EndProfiling(const Napi::CallbackInfo& info);
+
   // private members
 
   // persistent constructor

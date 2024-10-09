@@ -37,6 +37,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
       {InstanceMethod("loadModel", &InferenceSessionWrap::LoadModel),
        InstanceMethod("run", &InferenceSessionWrap::Run),
        InstanceMethod("dispose", &InferenceSessionWrap::Dispose),
+       InstanceMethod("endProfiling", &InferenceSessionWrap::EndProfiling),
        InstanceAccessor("inputNames", &InferenceSessionWrap::GetInputNames, nullptr, napi_default, nullptr),
        InstanceAccessor("outputNames", &InferenceSessionWrap::GetOutputNames, nullptr, napi_default, nullptr)});
 
@@ -287,6 +288,20 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
 
   this->disposed_ = true;
   return env.Undefined();
+}
+
+Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
+  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
+
+  Napi::EscapableHandleScope scope(env);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+
+  auto filename = session_->EndProfilingAllocated(allocator);
+  Napi::String filenameValue = Napi::String::From(env, filename.get());
+  return scope.Escape(filenameValue);
 }
 
 Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo& info) {
