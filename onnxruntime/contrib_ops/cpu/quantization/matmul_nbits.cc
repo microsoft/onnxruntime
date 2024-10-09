@@ -441,9 +441,6 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
   }
 
-  auto a_size = static_cast<size_t>(a->Shape().Size());
-  size_t c_size = static_cast<size_t>(y->Shape().Size());
-
   InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS<MLFloat16>> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
     data[i].A = a_data + helper.LeftOffsets()[i];

@@ -312,6 +312,18 @@ MlasSQNBitGemmBatchWorkspaceSize<float>(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
+template
+size_t MLASCALL
+MlasSQNBitGemmBatchWorkspaceSize<MLAS_FP16>(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
 size_t MLASCALL
 MlasSQNBitGemmPackQuantBDataSize(
     size_t N,
@@ -1130,6 +1142,21 @@ MlasSQNBitGemmBatch(
     const size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS<float>* DataParams,
+    void* Workspace,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+template
+void MLASCALL
+MlasSQNBitGemmBatch(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const size_t BlkBitWidth,
+    const size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* DataParams,
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool
 );
