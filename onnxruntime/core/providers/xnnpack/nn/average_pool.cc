@@ -42,6 +42,14 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
                                                    foutput_min, foutput_max, flags, &p);
+  } else if (avgpool_type == OpComputeType::op_compute_type_fp16) {
+    const float output_min = clip_min_max ? clip_min_max->first : -65504.0f;
+    const float output_max = clip_min_max ? clip_min_max->second : 65504.0f;
+    status = xnn_create_average_pooling2d_nhwc_f32(input_padding_top, input_padding_right,
+                                                   input_padding_bottom, input_padding_left,
+                                                   pooling_height, pooling_width,
+                                                   stride_height, stride_width,
+                                                   output_min, output_max, flags, &p);
   } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
     const float output_scale = quant_param[1].first[0];
     const uint8_t output_zero_point = quant_param[1].second;
@@ -104,10 +112,10 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
-      break;
+    if (x_type == nullptr || 
+        IsComputeTypeSupported(x_type->tensor_type().elem_type()), {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 
+                                        ONNX_NAMESPACE::TensorProto_DataType_UINT8})) {
+       break;
     }
 
     // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute

@@ -114,7 +114,7 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad) {
          auto_pad == AutoPadType::SAME_UPPER;
 }
 
-bool IsComputeTypeSupported(int32_t compute_type, ComputeTypeSet compute_type_set) {
+bool IsComputeTypeSupported(int32_t compute_type, const ComputeTypeSet compute_type_set) {
   return std::find(compute_type_set.begin(), compute_type_set.end(), compute_type) != compute_type_set.end();
 }
 

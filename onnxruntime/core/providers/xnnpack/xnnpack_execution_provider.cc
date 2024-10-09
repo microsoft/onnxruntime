@@ -61,6 +61,10 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIn
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, AveragePool);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, AveragePool);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 7, 9, AveragePool);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, AveragePool);
+CLASS_ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool);
+CLASS_ONNX_OPERATOR_KERNEL_CLASS_NAME_FP16(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, AveragePool);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
@@ -166,6 +170,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(1, QLinearSoftmax, kDynamicDomainByCreate),
 
 #ifdef XNNPACK_FP16_SUPPORTED
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(7, 9, MLFloat16, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(10, 10, MLFloat16, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 18, MLFloat16, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED(19, MLFloat16, AveragePool, kMSInternalNHWCDomain),
+
       KERNEL_CREATE_INFO_VERSIONED_TYPED(1, 10, MLFloat16, Conv, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_TYPED(11, MLFloat16, Conv, kMSInternalNHWCDomain),
 
