@@ -4150,7 +4150,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold,
                                                                        const OffsetAlignmentInfo& align_info,
                                                                        bool save_prepacked_constant_initializers,
-                                                                       std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map) const {
+                                                                       std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());

@@ -2031,7 +2031,7 @@ common::Status InferenceSession::Initialize() {
     // During session_state finalize, constant initializers will be prepacked and stored in this hashmap,
     // later these prepacked initializers will be serialized into ONNX data file (in method Model::SaveWithExternalInitializers).
     // ORT will load ONNX data file with prepacked initializers in inference run and no need to do prepack again.
-    std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model

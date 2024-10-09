@@ -501,7 +501,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 
 // Test feature serialize prepack weight is only used in PC with CPU on inference,
 // disable this test for training, other device and eps
-#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN)
+#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN) && !defined(__ANDROID__) && !defined(USE_COREML)
 TEST(InferenceSessionTests, TestPrepackSerialization) {
   SessionOptions so;
   std::string model_name = "model_with_matmul_nbits";

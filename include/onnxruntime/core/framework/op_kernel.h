@@ -140,7 +140,7 @@ class OpKernel {
   //   return std::move(packed_tensor_);
   // }
   // Please refer to matmul_nbits kernel for a complete example
-  virtual std::unique_ptr<Tensor> GetPrePackTensors() {
+  virtual Tensor* GetPrePackTensors() {
     return nullptr;
   }
 
@@ -158,7 +158,7 @@ class OpKernel {
   // @param input_idx : The input index of the tensor in this kernel.
   // @param pre_packed_tensor: The prepacked tensor read from onnx data file and use the prepacked tensor
   // to restore prepacked weight buffer.
-  virtual Status SetPrePackTensors(int /*input_idx*/, std::unique_ptr<Tensor>& /*pre_packed_tensor*/) {
+  virtual Status SetPrePackTensors(int /*input_idx*/, Tensor* /*pre_packed_tensor*/) {
     return Status::OK();
   }
 

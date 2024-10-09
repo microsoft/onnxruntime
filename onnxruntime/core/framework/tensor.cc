@@ -237,6 +237,7 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
 }
 
 Tensor::~Tensor() {
+  std::cout << "Release Tensor at address: " << this << std::endl;
   ReleaseBuffer();
 }
 

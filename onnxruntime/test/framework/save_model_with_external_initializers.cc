@@ -38,7 +38,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
                                const std::filesystem::path& output_external_init_file,
                                size_t initializer_size_threshold,
                                const Graph::OffsetAlignmentInfo& align_info,
-                               std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>>& pre_packed_initializers_name_map,
+                               std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
                                bool save_prepacked_constant_initializers = false) {
   auto logger = DefaultLoggingManager().CreateLogger("LoadSaveAndCompareModel");
   std::shared_ptr<Model> model;
@@ -119,14 +119,14 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
 // Original model does not have external initializers
 TEST(SaveWithExternalInitializers, Mnist) {
   Graph::OffsetAlignmentInfo align_info;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/mnist.onnx"), ORT_TSTR(""), ORT_TSTR("testdata/mnist_with_external_initializers.onnx"), ORT_TSTR("mnist_external_initializers.bin"), 100, align_info, pre_packed_initializers_name_map));
 }
 
 // Original model has external initializers
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
   Graph::OffsetAlignmentInfo align_info;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_name_map));
 }
 
@@ -135,7 +135,7 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
   Graph::OffsetAlignmentInfo align_info;
   align_info.align_offset = true;
   align_info.align_threshold = 0;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_name_map));
 }
 
@@ -147,10 +147,10 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffsetAndSa
   std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
   TensorShape shape = {178};
   // prepack both initializers for test purpose
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unique_ptr<Tensor>>> pre_packed_initializers_name_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
   auto& pre_packed_initializers_name_map_ref = pre_packed_initializers_name_map;
-  pre_packed_initializers_name_map_ref["MatMul.Weight"]["MatMul_0"] = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), shape, alloc);
-  pre_packed_initializers_name_map_ref["scales"]["MatMul_0"] = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), shape, alloc);
+  pre_packed_initializers_name_map_ref["MatMul.Weight"]["MatMul_0"] = new Tensor(DataTypeImpl::GetType<uint8_t>(), shape, alloc);
+  pre_packed_initializers_name_map_ref["scales"]["MatMul_0"] = new Tensor(DataTypeImpl::GetType<float>(), shape, alloc);
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/prepack/model_with_matmul_nbits.onnx"), ORT_TSTR("model_with_matmul_nbits.onnx.data"), ORT_TSTR("testdata/prepack/model_with_matmul_nbits_opt.onnx"), ORT_TSTR("model_with_matmul_nbits_opt.onnx.data"), 0, align_info, pre_packed_initializers_name_map_ref, true));
 }
 
