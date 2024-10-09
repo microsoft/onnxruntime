@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/allocator.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 
@@ -13,6 +14,9 @@ class LayerNormImpl : public OpKernel {
  public:
   LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified = false, bool contrib_op = false);
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
   // This method was created so that it can be called directly from `test/onnx/microbenchmark/layer_normalization.cc`.
   template <typename T, typename U>
@@ -58,6 +62,8 @@ class LayerNormImpl : public OpKernel {
   float epsilon_;
   const bool simplified_;
   const bool contrib_op_;
+  IAllocatorUniquePtr<float> scale_fp32_;
+  IAllocatorUniquePtr<float> bias_fp32_;
 };
 
 }  // namespace onnxruntime

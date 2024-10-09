@@ -24,11 +24,16 @@ Status ComputeJob(
     const T* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
+    const IAllocatorUniquePtr<float>& scale_fp32,
+    const IAllocatorUniquePtr<float>& bias_fp32,
     float epsilon,
     bool simplified,
     T* Y_data,
     U* mean_data,
     U* inv_std_dev_data) {
+  ORT_UNUSED_PARAMETER(scale_fp32);  // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(bias_fp32);   // only used in MLFloat16 overload
+
   const T* p_input = X_data + task_idx * norm_size;
   T* p_output = Y_data + task_idx * norm_size;
 
@@ -77,6 +82,8 @@ Status ComputeJob(
     const MLFloat16* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
+    const IAllocatorUniquePtr<float>& scale_fp32,
+    const IAllocatorUniquePtr<float>& bias_fp32,
     float epsilon,
     bool simplified,
     MLFloat16* Y_data,
@@ -107,13 +114,20 @@ Status ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  float* float_scale = float_input;  // overwrite float_input with scale values, since they have the same size
-  MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
+  float* float_scale = scale_fp32.get();
+  if (float_scale == nullptr) {
+    float_scale = float_input;  // overwrite float_input with scale values, since they have the same size
+    MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
+  }
 
   float* float_bias = nullptr;
   if (bias_data) {
-    float_bias = new float[num_elems];
-    MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
+    if (bias_fp32 != nullptr) {
+      float_bias = bias_fp32.get();
+    } else {
+      float_bias = new float[num_elems];
+      MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
+    }
   }
 
   for (size_t h = 0; h < num_elems; h++) {
@@ -125,8 +139,9 @@ Status ComputeJob(
       float_output[h] = (float_output[h] - mean) / mean_square * float_scale[h] + float_bias[h];
     }
   }
-  delete[] float_scale;  // also deletes float_input
-  if (float_bias) {
+
+  delete[] float_input;  // also takes care of float_scale if reused
+  if (float_bias && (bias_fp32 == nullptr)) {
     delete[] float_bias;
   }
 
@@ -146,10 +161,22 @@ Status ComputeJob(
   return Status::OK();
 }
 
+void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
+  if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
+    auto tensor_data_ptr = tensor.Data<MLFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+
+    MlasConvertHalfToFloatBuffer(tensor_data_ptr, float_ptr.get(), tensor_size);
+    dest = std::move(float_ptr);
+    is_packed = true;
+  }
+}
+
 }  // namespace
 
 LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified, bool contrib_op)
-    : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op} {
+    : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op}, scale_fp32_(nullptr), bias_fp32_(nullptr) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
@@ -212,6 +239,20 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
   return t_disp.InvokeRet<Status, SrcDispatcher>(this, p_ctx, axis_, epsilon_, simplified_, contrib_op_);
 }
 
+Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+
+  is_packed = false;
+  if (input_idx == 1) {  // scale
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, scale_fp32_, is_packed);
+  } else if (input_idx == 2) {  // bias
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, bias_fp32_, is_packed);
+  }
+
+  return Status::OK();
+}
+
 template <typename T, typename U>
 Status LayerNormImpl::ComputeWithoutContext(
     const T* X_data,
@@ -243,8 +284,8 @@ Status LayerNormImpl::ComputeWithoutContext(
   concurrency::ThreadPool::TryBatchParallelFor(
       thread_pool, static_cast<int32_t>(norm_count),
       [&](ptrdiff_t task_idx) {
-        auto status = ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, epsilon, simplified,
-                                 Y_data, mean_data, inv_std_dev_data);
+        auto status = ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_, bias_fp32_,
+                                 epsilon, simplified, Y_data, mean_data, inv_std_dev_data);
         if (status != Status::OK()) {
           return_status = status;
         }
