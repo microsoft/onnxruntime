@@ -80,7 +80,6 @@ stages:
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: iOS_Full_xcframework
   dependsOn: []
