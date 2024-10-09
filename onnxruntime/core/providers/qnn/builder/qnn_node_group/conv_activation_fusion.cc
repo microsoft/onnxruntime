@@ -3,6 +3,7 @@
 #include <gsl/gsl>
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <string>
@@ -16,6 +17,50 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+namespace {
+
+// 1. Clip can be removed iff the codoamin of QuantizeLinear remain unchanged.
+// 2. To remain unchanged, y=QuantizeLinear(Clip(x)) must span the full range of values that can be represented by the
+//    integer type of y. We can use this precondition to eval QuantizeLinear backward to to get the domain.
+// 3. Indicates the domain of QuantizeLinear is strict subset of the codomain of Clip. We can use this to test if a
+//    removal is valid or not.
+// 4. Due to rounding effect, we can be get the upperbound and lowerbound of min or max
+//    - Which one to use?
+//      upperbound of min and lowerbound of max
+//    - Why?
+//      We want the codomain to be unchanged, so as long as the domain genreate a codomain that fill the integer value
+//      range will be fine.
+
+// The quantization formula is y = saturate((x / y_scale) + y_zero_point)
+// For (x / y_scale), it rounds to the nearest even. So the allowed quantize limits before saturate need to be taken
+// care of.
+//
+// The following struct provides a wrapper to compute the domain from codomain (Q output dtype).
+template <typename T>
+struct quantize_domain {
+  static float min_upper(float scale, int zp) {
+    int64_t codomain_min = std::numeric_limits<T>::lowest();
+    int64_t biased = codomain_min - zp;
+    float before_round = float(biased) + 0.5f;  // move to upperbound
+    if (biased % 2 == 1) {                      // cannot be exact ?.5 because of rounding to even
+      before_round = std::nextafterf(before_round, float(biased));
+    }
+    return before_round * scale;
+  }
+
+  static float max_lower(float scale, int zp) {
+    int64_t codomain_max = std::numeric_limits<T>::max();
+    int64_t biased = codomain_max - zp;
+    float before_round = float(biased) - 0.5f;  // move to lowerbound
+    if (biased % 2 == 1) {                      // cannot be exact ?.5 because of rounding to even
+      before_round = std::nextafterf(before_round, float(biased));
+    }
+    return before_round * scale;
+  }
+};
+
+}  // namespace
 
 // Gets the scale, zero-point, and zero-point type for a QuantizeLinear node that uses per-tensor quantization.
 static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
@@ -53,11 +98,11 @@ static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
   return true;
 }
 
-// Computes the floating point range (rmin, rmax) from a QuantizeLinear node's scale/zero-point.
-static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
-                         const NodeUnit& q_node_unit,
-                         /*out*/ float& rmin,
-                         /*out*/ float& rmax) {
+// Computes the floating point domain (min_, max_) from a QuantizeLinear node's scale/zero-point.
+static bool GetQDomain(const QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& q_node_unit,
+                       /*out*/ float& min_,
+                       /*out*/ float& max_) {
   int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
   int32_t zero_point = 0;
   float scale = 0.0f;
@@ -68,23 +113,23 @@ static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
 
   switch (zp_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      rmin = scale * (std::numeric_limits<int8_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<int8_t>::max() - zero_point);
+      min_ = quantize_domain<int8_t>::min_upper(scale, zero_point);
+      max_ = quantize_domain<int8_t>::max_lower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      rmin = scale * (std::numeric_limits<uint8_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<uint8_t>::max() - zero_point);
+      min_ = quantize_domain<uint8_t>::min_upper(scale, zero_point);
+      max_ = quantize_domain<uint8_t>::max_lower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
-      rmin = scale * (std::numeric_limits<int16_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<int16_t>::max() - zero_point);
+      min_ = quantize_domain<int16_t>::min_upper(scale, zero_point);
+      max_ = quantize_domain<int16_t>::max_lower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
-      rmin = scale * (std::numeric_limits<uint16_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<uint16_t>::max() - zero_point);
+      min_ = quantize_domain<uint16_t>::min_upper(scale, zero_point);
+      max_ = quantize_domain<uint16_t>::max_lower(scale, zero_point);
       break;
     }
     default:
@@ -100,10 +145,10 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& q_node_unit,
                              const logging::Logger& logger) {
   assert(clip_node_unit.OpType() == "Clip" && q_node_unit.OpType() == QUANTIZE_LINEAR);
-  float rmin = 0.0f;
-  float rmax = 0.0f;
+  float min_ = 0.0f;
+  float max_ = 0.0f;
 
-  if (!GetQRminRmax(qnn_model_wrapper, q_node_unit, rmin, rmax)) {
+  if (!GetQDomain(qnn_model_wrapper, q_node_unit, min_, max_)) {
     return false;
   }
 
@@ -115,15 +160,14 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
     return false;
   }
 
-  // The clip range must entirely overlap the quantization range (quantization can be smaller).
-  // Clip range:   [------------------]
-  // Quant range:    [-------------]
-  constexpr float epsilon = std::numeric_limits<float>::epsilon();
-  if ((epsilon < clip_min - rmin) || (epsilon < rmax - clip_max)) {
-    return false;
+  // The Clip codomain must entirely overlap the QuantizeLinear domain (quantization can be smaller).
+  // Clip codomain:          [------------------]
+  // QuantizeLinear domain:    [-------------]
+  if (clip_min <= min_ && max_ <= clip_max) {
+    return true;
   }
 
-  return true;
+  return false;
 }
 
 // Returns true if the Relu in the sequence (Relu -> Q) can be removed because it is made redundant by the Q.
@@ -137,16 +181,15 @@ static bool CanQRelaceRelu(const QnnModelWrapper& qnn_model_wrapper, const NodeU
     return false;
   }
 
-  // Relu is redundant if the zero-point is set to the smallest quantized value.
   switch (zp_data_type) {
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_INT8:
-      return zero_point == static_cast<int32_t>(std::numeric_limits<int8_t>::lowest());
+      return quantize_domain<int8_t>::min_upper(scale, zero_point) >= 0;
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UINT8:
-      return zero_point == static_cast<int32_t>(std::numeric_limits<uint8_t>::lowest());
+      return quantize_domain<uint8_t>::min_upper(scale, zero_point) >= 0;
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_INT16:
-      return zero_point == static_cast<int32_t>(std::numeric_limits<int16_t>::lowest());
+      return quantize_domain<int16_t>::min_upper(scale, zero_point) >= 0;
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UINT16:
-      return zero_point == static_cast<int32_t>(std::numeric_limits<uint16_t>::lowest());
+      return quantize_domain<uint16_t>::min_upper(scale, zero_point) >= 0;
     default:
       return false;
   }
