@@ -43,9 +43,9 @@ After CUDA toolkit installation completed on windows, ensure that the `CUDA_PATH
 RuntimeError: [json.exception.type_error.302] type must be string, but is array
 ```
 
-Occurs when you generate models with the Model Builder.
+Only occurs when you generate models with the Model Builder, not with downloaded models.
 
-There was a change in the HuggingFace transformers version 4.45.0 that caused an incompatibility with onnxruntime-genai versions 0.4.0 and earlier, reasolved in 0.5.0. There are two alternative workarounds that you can employ to fix this issue:
+There was a change in the HuggingFace transformers version 4.45.0 that caused an incompatibility with onnxruntime-genai versions 0.4.0 and earlier, resolved in 0.5.0. There are two alternative workarounds that you can employ to fix this issue:
 
-- Option 1: downgrade your transformers version to lower than v4.45.0 (which is the version in which the above change was introduced)
-- Option 2: build onnxruntime-genai from source, using these instructions https://onnxruntime.ai/docs/genai/howto/build-from-source.html
+- Option 1: downgrade your transformers version to lower than v4.45.0 (the version in which the above [change](https://github.com/huggingface/transformers/pull/32535) was introduced)
+- Option 2: build onnxruntime-genai from source, using these instructions [build from source](https://onnxruntime.ai/docs/genai/howto/build-from-source.html)
