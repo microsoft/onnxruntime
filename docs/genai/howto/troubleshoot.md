@@ -31,4 +31,21 @@ The onnxruntime-genai Python package should run without error after this extra s
 
 ### Windows CUDA import error
 
+```
+DLL load failed while importing onnxruntime_genai
+```
+
 After CUDA toolkit installation completed on windows, ensure that the `CUDA_PATH` system environment variable has been set to the path where the toolkit was installed. This variable will be used when importing the onnxruntime_genai python module on Windows. Unset or incorrectly set `CUDA_PATH` variable may lead to a `DLL load failed while importing onnxruntime_genai`.
+
+### Transformers / Tokenizers incompatibility with ONNX Runtime generate()
+
+```
+RuntimeError: [json.exception.type_error.302] type must be string, but is array
+```
+
+Occurs when you generate models with the Model Builder.
+
+There was a change in the HuggingFace transformers version 4.45.0 that caused an incompatibility with onnxruntime-genai versions 0.4.0 and earlier, reasolved in 0.5.0. There are two alternative workarounds that you can employ to fix this issue:
+
+- Option 1: downgrade your transformers version to lower than v4.45.0 (which is the version in which the above change was introduced)
+- Option 2: build onnxruntime-genai from source, using these instructions https://onnxruntime.ai/docs/genai/howto/build-from-source.html
