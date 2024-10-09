@@ -42,8 +42,8 @@ struct quantize_domain {
   static float min_upper(float scale, int zp) {
     int64_t codomain_min = std::numeric_limits<T>::lowest();
     int64_t biased = codomain_min - zp;
-    float before_round = float(biased) + 0.5;  // move to upperbound
-    if (biased % 2 == 1) {                     // cannot be exact ?.5 because of rounding to even
+    float before_round = float(biased) + 0.5f;  // move to upperbound
+    if (biased % 2 == 1) {                      // cannot be exact ?.5 because of rounding to even
       before_round = std::nextafterf(before_round, float(biased));
     }
     return before_round * scale;
@@ -52,8 +52,8 @@ struct quantize_domain {
   static float max_lower(float scale, int zp) {
     int64_t codomain_max = std::numeric_limits<T>::max();
     int64_t biased = codomain_max - zp;
-    float before_round = float(biased) - 0.5;  // move to lowerbound
-    if (biased % 2 == 1) {                     // cannot be exact ?.5 because of rounding to even
+    float before_round = float(biased) - 0.5f;  // move to lowerbound
+    if (biased % 2 == 1) {                      // cannot be exact ?.5 because of rounding to even
       before_round = std::nextafterf(before_round, float(biased));
     }
     return before_round * scale;
