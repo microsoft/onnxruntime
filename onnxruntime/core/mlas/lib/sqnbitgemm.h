@@ -48,6 +48,7 @@ MlasAlignAddress(void* addr, const size_t alignment)
     return addr;
 }
 
+template <typename T>
 struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
@@ -55,17 +56,17 @@ struct PackedQuantBDataStruct {
       // TODO: duplicate code from SQ4BitGemmPackQuantBDataSize
         constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
 
         // _mm256_load_si256 requires alignment on a 32-byte boundary
         PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
-        QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
-        QuantBBlkSum = (float*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
-        PackedQuantBScale = (float*)((std::byte*)QuantBBlkSum + BlkSumSize);
+        QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
+        QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
+        PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
     }
     std::byte* PackedQuantBData;
-    float* PackedQuantBScale;
-    float* QuantBBlkSum;
+    T* PackedQuantBScale;
+    T* QuantBBlkSum;
 
     void* QuantBWorkspace_;
     size_t N_, BlockCountK_, BlkLen_;
@@ -123,7 +124,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* QuantBScaleBegin,
         bool has_zp_input,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct& packed_quant_b,
+        PackedQuantBDataStruct<float>& packed_quant_b,
         MLAS_THREADPOOL* ThreadPool
     );
 
