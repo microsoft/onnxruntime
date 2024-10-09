@@ -823,6 +823,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
       continue;
     }
+
+    // The third input (beta) is optional in LayerNormalization-17 of onnx domain. Make sure 3 inputs are available.
+    if (!(layer_norm_node.InputDefs().size() == 3 && layer_norm_node.InputDefs()[2]->Exists())) {
+      continue;
+    }
+
     // Find Attention after LayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(layer_norm_node, "Attention");
     if (p_attention == nullptr) {
