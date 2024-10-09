@@ -2475,8 +2475,6 @@ struct ThreadPoolSpinningSwitch {
 };
 }  // namespace
 
-// TODO: are we going to do all the ttracing and logging and telemetry for this?
-// TODO: is this the right type? How do we convert to string?
 Status InferenceSession::SetEpDynamicOptions(gsl::span<const char* const> keys,
                                              gsl::span<const char* const> values) {
   Status retval = Status::OK();

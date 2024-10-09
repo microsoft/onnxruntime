@@ -216,7 +216,6 @@ class IExecutionProvider {
 
   /**
      Called when InferenceSession::SetEpDynamicOptions is called
-     TODO: what is the right way of passing parameters?
   */
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) {
