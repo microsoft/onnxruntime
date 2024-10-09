@@ -1029,6 +1029,60 @@ class QDQQuantizer(BaseQuantizer):
 
         return q_weight_name, zp_name, scale_name
 
+    def _adjust_weight_scale_for_int32_bias(
+        self,
+        input_scale: np.ndarray,
+        weight_scale_tp: onnx.TensorProto,
+        bias_float_data: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Checks if the bias scale (input_scale * weight_scale) that we intend to use is too small.
+        A bias scale that is too small leads to quantized bias values that fall outside the range of a int32 and have to
+        be clipped, which decreases accuracy. If this function detects such a scenario, the weight_scale value will be
+        increased to prevent this from happening.
+        """
+        weight_scale: np.ndarray = tensor_proto_to_array(weight_scale_tp)
+
+        # Check the shape of the weight's scale to determine if using per-channel or per-tensor quantization.
+        weight_scale_rank: int = len(weight_scale.shape)
+        is_per_tensor: bool = weight_scale_rank == 0 or (weight_scale_rank == 1 and weight_scale.shape[0] == 1)
+
+        int32_info = np.iinfo(np.int32)
+        qrange = np.array(int32_info.max, dtype=np.float64) - np.array(int32_info.min, dtype=np.float64)
+
+        if is_per_tensor:
+            rmin = np.minimum(bias_float_data.min(), np.array(0, dtype=np.float64))
+            rmax = np.maximum(bias_float_data.max(), np.array(0, dtype=np.float64))
+            absmax = np.maximum(np.abs(rmin), np.abs(rmax))
+            bias_smallest_valid_scale = (2.0 * absmax) / qrange
+            bias_candidate_scale = np.asarray(input_scale * weight_scale, dtype=np.float64)
+
+            if (bias_candidate_scale < bias_smallest_valid_scale) and (bias_candidate_scale > 0.0):
+                # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
+                ratio = bias_smallest_valid_scale / bias_candidate_scale
+                weight_scale *= np.asarray(ratio, dtype=weight_scale.dtype)
+                weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
+        elif weight_scale_rank == 1 and weight_scale.shape == bias_float_data.shape:
+            # per-channel case
+            num_elems = weight_scale.shape[0]
+            updated_an_elem = False
+
+            for i in range(num_elems):
+                bias_rmax = np.abs(bias_float_data[i])
+                bias_smallest_valid_scale = (2.0 * bias_rmax) / qrange
+                bias_candidate_scale = np.asarray(input_scale * weight_scale[i], dtype=np.float64)
+
+                if (bias_candidate_scale < bias_smallest_valid_scale) and (bias_candidate_scale > 0.0):
+                    # The candidate bias scale would be too small, so increase the weight_scale by the necessary ratio.
+                    ratio = bias_smallest_valid_scale / bias_candidate_scale
+                    weight_scale[i] *= np.asarray(ratio, dtype=weight_scale.dtype)
+                    updated_an_elem = True
+
+            if updated_an_elem:
+                weight_scale_tp.CopyFrom(onnx.numpy_helper.from_array(weight_scale, weight_scale_tp.name))
+
+        return weight_scale
+
     def quantize_bias_static(self, bias_name: str, bias_info: QDQBiasQuantInfo) -> str:
         """
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
@@ -1040,15 +1094,25 @@ class QDQQuantizer(BaseQuantizer):
 
         # get scale for weight
         weight_scale_name = self.quantized_value_map[bias_info.weight_name].original.scale_name
-        weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
-        weight_scale = tensor_proto_to_array(weight_initializer)
+        weight_scale_initializer = find_by_name(weight_scale_name, self.model.initializer())
+        weight_scale = tensor_proto_to_array(weight_scale_initializer)
 
         # get scale for input
         input_scale_name = (
             self.quantized_value_map[bias_info.input_name].get_for_consumer(bias_info.node_name).scale_name
         )
-        inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
-        input_scale = tensor_proto_to_array(inputscale_initializer)
+        input_scale_initializer = find_by_name(input_scale_name, self.model.initializer())
+        input_scale = tensor_proto_to_array(input_scale_initializer)
+
+        if self.weight_qType != onnx.TensorProto.FLOAT8E4M3FN and bias_info.beta == 1.0:
+            bias_initializer = find_by_name(bias_name, self.model.initializer())
+            bias_float_data = tensor_proto_to_array(bias_initializer)
+
+            weight_scale = self._adjust_weight_scale_for_int32_bias(
+                input_scale,
+                weight_scale_initializer,
+                bias_float_data,
+            )
 
         (
             quantized_bias_name,
