@@ -279,7 +279,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
         ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, skip_fp32_, gamma_fp32_, beta_fp32_,
-                   bias_fp32_, task_idx, hidden_size, skip_size, epsilon_, simplified,output_data,
+                   bias_fp32_, task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
                    skip_input_bias_add_output_data);
       },
       0);
