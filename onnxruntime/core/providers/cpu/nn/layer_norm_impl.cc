@@ -115,14 +115,14 @@ Status ComputeJob(
   }
 
   float* float_scale = scale_fp32.get();
-  if (float_scale == nullptr) {
+  if (nullptr == float_scale) {
     float_scale = float_input;  // overwrite float_input with scale values, since they have the same size
     MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
   }
 
   float* float_bias = nullptr;
   if (bias_data) {
-    if (bias_fp32 != nullptr) {
+    if (nullptr != bias_fp32) {
       float_bias = bias_fp32.get();
     } else {
       float_bias = new float[num_elems];
@@ -141,7 +141,7 @@ Status ComputeJob(
   }
 
   delete[] float_input;  // also takes care of float_scale if reused
-  if (float_bias && (bias_fp32 == nullptr)) {
+  if (float_bias && (nullptr == bias_fp32)) {
     delete[] float_bias;
   }
 
