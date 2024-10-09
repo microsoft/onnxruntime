@@ -18,7 +18,7 @@ namespace {
 template <typename T,
           typename U,
           typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
-Status ComputeJob(
+void ComputeJob(
     const T* X_data,
     const T* scale_data,
     const T* bias_data,
@@ -71,12 +71,10 @@ Status ComputeJob(
   if (inv_std_dev_data != nullptr) {
     inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / mean_square);
   }
-
-  return Status::OK();
 }
 
 template <typename U>
-Status ComputeJob(
+void ComputeJob(
     const MLFloat16* X_data,
     const MLFloat16* scale_data,
     const MLFloat16* bias_data,
@@ -157,8 +155,6 @@ Status ComputeJob(
   if (inv_std_dev_data != nullptr) {
     inv_std_dev_data[task_idx] = MLFloat16(1 / mean_square);
   }
-
-  return Status::OK();
 }
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
@@ -280,15 +276,11 @@ Status LayerNormImpl::ComputeWithoutContext(
                            scale_size, " and bias size of ", bias_size);
   }
 
-  auto return_status = Status::OK();
   concurrency::ThreadPool::TryBatchParallelFor(
       thread_pool, static_cast<int32_t>(norm_count),
       [&](ptrdiff_t task_idx) {
-        auto status = ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_, bias_fp32_,
-                                 epsilon, simplified, Y_data, mean_data, inv_std_dev_data);
-        if (status != Status::OK()) {
-          return_status = status;
-        }
+        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_, bias_fp32_,
+                   epsilon, simplified, Y_data, mean_data, inv_std_dev_data);
       },
       0);
 
