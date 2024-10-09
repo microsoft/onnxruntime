@@ -318,6 +318,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     if (n == nullptr) {
       continue;
     }
+
     // if node is part of a QDQ group,
     // we will mark it compatible in the first call as long as we support the target node.
     const NodeUnit& node_unit = *node_unit_map[n];
