@@ -4727,16 +4727,17 @@ struct OrtApi {
   /// \name OrtEpDynamicOptions
   /// @{
 
-  /** \brief Set DynamicOptions for EPs
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
    *
    * \param[in] session
    * \param[in] list of keys represented by null-terminated strings
    * \param[in] list of values represented by null-terminated strings
    * \param[in] number of key-value pairs
    *
-   * \since Version xxx
-   * @TODO: update version number
-   * @TODO: should it be SetExecutionProvider... instead of SetEp...?
+   * \since Version 1.20
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);

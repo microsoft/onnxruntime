@@ -288,5 +288,4 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // Specify the type of workload for this session.
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
-// TODO: ep_dynamic.workload_type VS ep.dynamic.workload.type
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
