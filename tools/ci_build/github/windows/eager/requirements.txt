@@ -1,7 +1,7 @@
 setuptools
 wheel
 numpy==1.21.6 ; python_version < '3.9'
-numpy==2.0.0 ; python_version >= '3.9'
+numpy==2.1.2 ; python_version >= '3.9'
 typing_extensions
 torch==2.2.0
 parameterized

@@ -9,7 +9,7 @@ EXTRA_ARG=""
 
 # Put 3.10 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this 
 # config to Azure DevOps Artifacts and download them to a Ubuntu 22.04 machine to run the tests.
-PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp310-cp310/bin/python3.10")
+PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp313-cp313/bin/python3.13" "/opt/python/cp310-cp310/bin/python3.10")
 while getopts "d:p:x:c:" parameter_Option
 do case "${parameter_Option}"
 in

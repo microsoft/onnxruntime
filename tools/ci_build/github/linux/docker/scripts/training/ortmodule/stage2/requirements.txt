@@ -1,7 +1,7 @@
 pandas
 scikit-learn
 numpy==1.21.6 ; python_version < '3.9'
-numpy==2.0.0 ; python_version >= '3.9'
+numpy==2.1.2 ; python_version >= '3.9'
 transformers==v4.36.0
 accelerate==0.25.0
 rsa==4.9

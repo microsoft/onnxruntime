@@ -28,6 +28,8 @@ jobs:
         PythonVersion: '3.11'
       Python312:
         PythonVersion: '3.12'
+      Python313:
+        PythonVersion: '3.13'
   steps:
   - checkout: none
 
