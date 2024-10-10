@@ -1,21 +1,9 @@
-parameters:
-  - name: build_id
-    type: string
-    default: 'latest'
-  - name: project
-    type: string
-    default: 'Lotus'
-  - name: pipeline
-    type: string
-    default: 'Python-CUDA-Packaging-Pipeline'
-
 resources:
-  repositories:
-    - repository: manylinux
-      type: Github
-      endpoint: Microsoft
-      name: pypa/manylinux
-      ref: 5eda9aded5462201e6310105728d33016e637ea7
+  pipelines:
+  - pipeline: build
+    source: 'Python-CUDA-Packaging-Pipeline'
+    trigger: true
+    branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
 
 stages:
   # ****The following Stage depend on all previous tags. ***
