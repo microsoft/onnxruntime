@@ -580,6 +580,10 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+endif()
+
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -621,6 +625,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
+    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -680,6 +685,13 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
+endif()
+
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
 
 # QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
