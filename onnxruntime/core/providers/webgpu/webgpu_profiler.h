@@ -13,11 +13,11 @@ class WebGpuContext;
 
 namespace profiling {
 
-class WebGPUProfiler final : public EpProfiler {
+class WebGpuProfiler final : public EpProfiler {
  public:
-  WebGPUProfiler(int context_id);
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGPUProfiler);
-  ~WebGPUProfiler() {}
+  WebGpuProfiler(webgpu::WebGpuContext& webgpu_context);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuProfiler);
+  ~WebGpuProfiler() {}
   bool StartProfiling(TimePoint) override;
   void EndProfiling(TimePoint, Events&) override;
   void Start(uint64_t) override{};

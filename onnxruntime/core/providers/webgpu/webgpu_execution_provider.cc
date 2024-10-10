@@ -814,7 +814,7 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 }
 
 std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
-  return std::make_unique<profiling::WebGPUProfiler>(context_id_);
+  return std::make_unique<profiling::WebGpuProfiler>(context_);
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {

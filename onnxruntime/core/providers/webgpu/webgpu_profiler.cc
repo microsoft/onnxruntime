@@ -7,16 +7,16 @@
 namespace onnxruntime {
 namespace profiling {
 
-WebGPUProfiler::WebGPUProfiler(int context_id)
-    : webgpu_context_{webgpu::WebGpuContextFactory::GetContext(context_id)} {
+WebGpuProfiler::WebGpuProfiler(webgpu::WebGpuContext& webgpu_context)
+    : webgpu_context_{webgpu_context} {
 }
 
-bool WebGPUProfiler::StartProfiling(TimePoint tp) {
+bool WebGpuProfiler::StartProfiling(TimePoint tp) {
   webgpu_context_.StartProfiling(tp);
   return true;
 }
 
-void WebGPUProfiler::EndProfiling(TimePoint tp, Events& events) {
+void WebGpuProfiler::EndProfiling(TimePoint tp, Events& events) {
   webgpu_context_.EndProfiling(tp, events);
 }
 

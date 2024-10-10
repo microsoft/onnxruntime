@@ -582,7 +582,6 @@ void WebGpuContext::Flush(bool is_on_end) {
             {"cache_key", pending_kernel_info.cache_key},
         };
 
-        // Add time_offset to start_time to avoid gpu time always starting from zero to align with cpu timeline.
         profiling::EventRecord event(profiling::API_EVENT,
                                      -1,
                                      -1,
