@@ -66,7 +66,6 @@ jobs:
     clean: true
     submodules: none
 
-  - template: "templates/use-android-ndk.yml"
 
   - template: templates/get-docker-image-steps.yml
     parameters:

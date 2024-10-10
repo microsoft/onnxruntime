@@ -79,7 +79,6 @@ stages:
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
-    - template: templates/use-android-ndk.yml
     - template: templates/use-android-emulator.yml
       parameters:
         create: true
@@ -201,7 +200,6 @@ stages:
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
-      - template: templates/use-android-ndk.yml
 
       - template: templates/use-android-emulator.yml
         parameters:

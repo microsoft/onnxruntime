@@ -43,7 +43,6 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - template: use-android-ndk.yml
 
   - template: use-android-emulator.yml
     parameters:
