@@ -26,10 +26,9 @@ public enum CoreMLFlags implements OrtFlags {
    * later.
    */
   CREATE_MLPROGRAM(16), // COREML_FLAG_CREATE_MLPROGRAM(0x010)
-  /**
-   * exclude ANE
-   */
+  /** exclude ANE */
   CPU_And_GPU(32); // COREML_FLAG_USE_CPUAndGPU(0x020)
+
   /** The native value of the enum. */
   public final int value;
 
