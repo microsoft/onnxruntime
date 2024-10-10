@@ -215,6 +215,14 @@ class IExecutionProvider {
   }
 
   /**
+     Called when InferenceSession::SetEpDynamicOptions is called
+  */
+  virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
+                                             gsl::span<const char* const> /*values*/) {
+    return Status::OK();
+  }
+
+  /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
      the provider.
    */
