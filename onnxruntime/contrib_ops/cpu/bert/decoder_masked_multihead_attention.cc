@@ -239,7 +239,8 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           V.GetMutable<Tensor>()->MutableData<T>(),
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
-                          head_size, v_head_size, v_hidden_size, attention_bias, context, cross_qk);
+                          head_size, v_head_size, v_hidden_size, attention_bias, context, cross_qk,
+                          parameters.past_sequence_length, true /* use_dmmha */);
   }
 
   // Self-attention, has_beams
