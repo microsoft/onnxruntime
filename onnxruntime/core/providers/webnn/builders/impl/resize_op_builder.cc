@@ -313,7 +313,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     bool using_scales = !using_sizes && !IsEmptyTensor(initializers, scales_name);
 
     if (!using_scales && !using_sizes) {
-      LOGS(logger, VERBOSE) << "Resize: only one of 'scales' and 'sizes' can be specificed";
+      LOGS(logger, VERBOSE) << "Resize: only one of 'scales' and 'sizes' can be specified";
       return false;
     }
 
