@@ -15,23 +15,26 @@ def releaseVersionSuffix = System.properties['releaseVersionSuffix'] ?: ""
 def qnnVersion = System.properties['qnnVersion']
 
 // Since Android requires higher numbers indicating more recent versions
-// This function assumes ORT version number will be in the format of A.B.C[-rcX] such as 1.20.0 or 1.20.0-rc1
-// We generate version code A[0{0,1}]B[0{0,1}]C[0{0,1}]X,
-// for example '1.19.0' -> 10190099, '1.19.0-rc1' -> 10190098
+// This function assumes ORT version number will be in the format of A.B.C[-rc/beta/alpha.D] such as 1.20.0 or 1.20.0-rc.1
+// We generate version code A[0{0,1}]B[0{0,1}]C[0{0,1}]{1,2,3,4}D[01-99]
+// for example '1.20.0' -> 12000400, '1.20.0-rc.1 ' -> 12000301
+// '1.20.0-beta.1' -> 12000201, '1.20.0-alpha.1' -> 12000101
 def getVersionCode(String version) {
-	String[] mainAndRc = version.split('-')
-	String[] codes = mainAndRc[0].split('\\.')
+	String[] versionAndRelSufx = version.split('-')
+	String[] codes = versionAndRelSufx[0].split('\\.')
 	// This will have problem if we have 3 digit [sub]version number, such as 1.7.199
 	// but it is highly unlikely to happen
-	String versionCodeStr = String.format("%d%02d%02d", codes[0] as int, codes[1] as int, codes[2] as int)
-	if (mainAndRc.length > 1 && mainAndRc[1].startsWith('rc')) {
-		// assuming there won't be more than 99 rc versions
-		String rcNumber = mainAndRc[1].substring(3)
-		println("rcNumber: $rcNumber")
-		versionCodeStr += String.format("%02d", 99 - (rcNumber as int))
+	String versionCodeStr  = String.format("%d%02d%02d", codes[0] as int, codes[1] as int, codes[2] as int)
+
+	if (versionAndRelSufx.length > 1) {
+		String suffixType = versionAndRelSufx[1].split('\\.')[0]
+		String suffixNumber = versionAndRelSufx[1].split('\\.')[1]
+		def suffixMap = ['alpha': '1', 'beta': '2', 'rc': '3']
+		versionCodeStr += suffixMap[suffixType] + String.format("%02d", suffixNumber as int)
 	} else {
-		versionCodeStr += "99"
+		versionCodeStr += "400" // For a normal release version without suffix, get the highest version code
 	}
+	println "Version code for $version is $versionCodeStr"
 	return versionCodeStr as int
 }
 

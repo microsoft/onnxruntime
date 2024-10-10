@@ -47,10 +47,6 @@ fi
 # Execute the build command
 eval $COMMAND
 
-# debug
-ls /build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}
-ls /build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}${RELEASE_VERSION_SUFFIX}
-
 # Copy the built artifacts to give folder for publishing
 BASE_PATH=/build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}${RELEASE_VERSION_SUFFIX}
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}${RELEASE_VERSION_SUFFIX}-javadoc.jar  /home/onnxruntimedev/.artifacts
