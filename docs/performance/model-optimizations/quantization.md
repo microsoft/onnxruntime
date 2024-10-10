@@ -282,7 +282,7 @@ quant.model.save_model_to_file(
 
 ```
 
-For AWQ and GTPQ quantization usage, please refer to [Gen-AI model builder](https://github.com/microsoft/onnxruntime-genai/tree/main/src/python/py/models#quantized-pytorch-model).
+For AWQ and GPTQ quantization usage, please refer to [Gen-AI model builder](https://github.com/microsoft/onnxruntime-genai/tree/main/src/python/py/models#quantized-pytorch-model).
 
 ## FAQ
 ### Why am I not seeing performance improvements?
