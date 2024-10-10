@@ -9,8 +9,11 @@ TensorShapeVector StridesForTensor(const Tensor& tensor) {
   const auto& shape = tensor.Shape();
   TensorShapeVector strides(shape.NumDimensions());
   int64_t running_size = 1;
-  for (auto i = shape.NumDimensions(); i > 0; i--) {
-    strides[i - 1] = running_size;
+  for (auto i = shape.NumDimensions(); i > 0;
+    
+    i--) {
+    
+         strides[i - 1] = running_size;
     running_size *= shape[i - 1];
   }
 
@@ -63,6 +66,8 @@ inline void CopyStride(
     Coalesce contiguous dimensions in the tensors. Operates inplace on the function arguments.
 */
 void CoalesceDimensions(std::initializer_list<std::reference_wrapper<TensorShapeVector>>&& tensors_strides,
+
+   
                         TensorShapeVector& shape) {
   const std::size_t dims = shape.size();
 
