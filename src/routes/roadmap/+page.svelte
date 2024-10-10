@@ -1,3 +1,18 @@
+<script>
+	let description = 'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
+	let keywords = 'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.20';
+</script>
+<svelte:head>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+</svelte:head>
+
 <div class="container mx-auto px-8">
 	<h1 class="text-3xl">ONNX Runtime Release Roadmap</h1>
 	<p>

@@ -46,6 +46,7 @@
 				<li>
 					<p class="hover:bg-primary focus:bg-primary">Community</p>
 					<ul class="p-2">
+						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/models'}>Models</a></li>
 						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/roadmap'}>Roadmap</a></li>
 						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/events'}>Events</a></li>
 						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/testimonials'}>Testimonials</a></li>
@@ -94,6 +95,7 @@
 				<details class="z-[1]">
 					<summary class="hover:bg-primary focus:bg-primary">Community</summary>
 					<ul class="p-2">
+						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/models'}>Models</a></li>
 						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/roadmap'}>Roadmap</a></li>
 						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/events'}>Events</a></li>
 						<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/testimonials'}>Testimonials</a></li>
