@@ -17,25 +17,30 @@
 
 namespace Dml
 {
-    class DmlExternalBufferAllocator : public onnxruntime::IAllocator
+    class DmlUnpooledBufferAllocator : public onnxruntime::IAllocator, public IDmlBufferAllocator, public std::enable_shared_from_this<DmlUnpooledBufferAllocator>
     {
     public:
-        DmlExternalBufferAllocator(int device_id) : onnxruntime::IAllocator(
+        DmlUnpooledBufferAllocator(ID3D12Device* d3d12Device, ExecutionContext* context, OrtDevice::MemoryType memoryType) : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            ))
+                OrtDevice(OrtDevice::GPU, memoryType, 0)
+            )),
+            m_d3d12Device(d3d12Device),
+            m_context(context)
         {
-            m_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
         }
+
+        virtual ~DmlUnpooledBufferAllocator() = default;
 
         void* Alloc(size_t size) final
         {
+            size = (size + 3) & ~3;
+
             Microsoft::WRL::ComPtr<ID3D12Resource> resource;
             auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             auto props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-            ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
+            ORT_THROW_IF_FAILED(m_d3d12Device->CreateCommittedResource(
                 &props,
                 D3D12_HEAP_FLAG_NONE,
                 &buffer,
@@ -51,7 +56,7 @@ namespace Dml
             wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
 
             Microsoft::WRL::ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
-                nullptr,
+                shared_from_this(),
                 0,
                 pooledResourceId,
                 resourceWrapper.Get(),
@@ -66,7 +71,34 @@ namespace Dml
             resource.Attach(static_cast<AllocationInfo*>(ptr));
         }
 
+        void FreeResource(void* p, uint64_t) final
+        {
+            AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);
+
+            assert(allocInfo != nullptr); // Can't free nullptr
+
+            if (allocInfo->GetOwner() != this)
+            {
+                // This allocation doesn't belong to this allocator!
+                ORT_THROW_HR(E_INVALIDARG);
+            }
+
+            // Free the resource to the pool if its size matches a bucket size
+            if (!m_context->IsClosed())
+            {
+                // Free the underlying allocation once queued work has completed.
+#ifdef _GAMING_XBOX
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+#else
+                m_context->QueueReference(allocInfo->GetResource());
+#endif
+            }
+
+            allocInfo->DetachResourceWrapper();
+        }
+
     private:
-        Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+        Microsoft::WRL::ComPtr<ID3D12Device> m_d3d12Device;
+        Microsoft::WRL::ComPtr<ExecutionContext> m_context;
     };
 }

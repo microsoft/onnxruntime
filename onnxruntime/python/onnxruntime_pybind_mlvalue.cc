@@ -36,6 +36,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/DmlExecutionProvider/src/PooledUploadHeap.h"
 #include "core/providers/dml/DmlExecutionProvider/src/ReadbackHeap.h"
 #include "core/providers/dml/DmlExecutionProvider/src/AllocationInfo.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlUnpooledBufferAllocator.h"
 #endif
 namespace onnxruntime {
 namespace python {
@@ -234,6 +235,8 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get(), context.Get()).release();
     auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context.Get()).release();
 
+    auto unpooled_allocator = std::make_shared<Dml::DmlUnpooledBufferAllocator>(d3d12_device.Get(), context.Get(), OrtDevice::MemType::DEFAULT);
+
     auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
         d3d12_device.Get(),
         context.Get(),
@@ -241,9 +244,8 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
         D3D12_HEAP_FLAG_NONE,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        std::make_unique<Dml::DmlCommittedResourceAllocator>(d3d12_device.Get()));
-    dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
-    context->SetAllocator(dml_allocator);
+        std::make_unique<Dml::DmlCommittedResourceAllocator>(d3d12_device.Get()),
+        std::move(unpooled_allocator));
 
     ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_readback_heap_guid, sizeof(readback_heap), &readback_heap));
     ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));

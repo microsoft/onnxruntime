@@ -173,7 +173,7 @@ void DmlGetD3D12ResourceFromAllocation() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
     ),
     ort_api
   );
@@ -217,7 +217,7 @@ void GetTensorMemoryInfo() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
     ),
     ort_api
   );
@@ -275,7 +275,7 @@ void DmlCopyTensor() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
     ),
     ort_api
   );
@@ -320,7 +320,7 @@ void ValueGetDeviceId() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
     ),
     ort_api
   );

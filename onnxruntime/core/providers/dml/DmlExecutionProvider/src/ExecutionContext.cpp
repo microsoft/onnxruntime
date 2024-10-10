@@ -22,11 +22,6 @@ namespace Dml
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
 
-    void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
-    {
-        m_dmlRecorder.SetAllocator(allocator);
-    }
-
     void ExecutionContext::CopyBufferRegion(
         ID3D12Resource* dstBuffer,
         uint64_t dstOffset,
@@ -91,6 +86,7 @@ namespace Dml
     }
 
     void ExecutionContext::InitializeOperator(
+        onnxruntime::AllocatorPtr& allocator,
         IDMLCompiledOperator* op,
         const DML_BINDING_DESC& persistentResourceBinding,
         const DML_BINDING_DESC& inputArrayBinding)
@@ -98,10 +94,11 @@ namespace Dml
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
-        m_dmlRecorder.InitializeOperator(op, persistentResourceBinding, inputArrayBinding);
+        m_dmlRecorder.InitializeOperator(allocator, op, persistentResourceBinding, inputArrayBinding);
     }
 
     void ExecutionContext::ExecuteOperator(
+        onnxruntime::AllocatorPtr& allocator,
         IDMLCompiledOperator* op,
         const DML_BINDING_DESC& persistentResourceBinding,
         gsl::span<const DML_BINDING_DESC> inputBindings,
@@ -110,7 +107,7 @@ namespace Dml
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
-        m_dmlRecorder.ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings);
+        m_dmlRecorder.ExecuteOperator(allocator, op, persistentResourceBinding, inputBindings, outputBindings);
     }
 
     void ExecutionContext::AddUAVBarrier()

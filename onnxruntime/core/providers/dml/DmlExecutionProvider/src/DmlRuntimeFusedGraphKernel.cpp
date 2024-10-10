@@ -62,15 +62,21 @@ namespace Dml
             }
         }
 
-        void TranslateAndCompileGraph(const onnxruntime::OpKernelInfo& kernelInfo, std::vector<DML_BUFFER_BINDING> initInputBindings) const
+        void TranslateAndCompileGraph(const onnxruntime::OpKernelInfo& kernelInfo, std::vector<DML_BUFFER_BINDING> initInputBindings, bool captureGraph) const
         {
-            // Allocate a persistent resource and initialize the operator
+            auto providerImpl = static_cast<ExecutionProviderImpl*>(m_provider.Get());
+            auto allocator = captureGraph ? providerImpl->GetUnpooledAllocator() : kernelInfo.GetAllocator(OrtMemType::OrtMemTypeDefault);
+
+            // Allocate a persistent resource and initialize the operator. When capturing a graph, we want to use our own custom unpooled allocator
+            // because we only do it once (usually before execution during a dry run) and don't want to hold onto the memory. On the other hand,
+            // when we're not capturing a graph, the assumption is that the compiled graph will be temporary and may need to be re-created at runtime.
+            // In that situation, we want to use pooled memory to avoid the overhead of memory allocation.
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                    allocator,
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
                     m_persistentResource.ReleaseAndGetAddressOf(),
                     m_persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
 
@@ -78,6 +84,7 @@ namespace Dml
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                allocator,
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
@@ -145,6 +152,11 @@ namespace Dml
                     m_isInitializerTransferable[inputName] = std::make_pair(m_ownedCpuInputs.back().get(), false);
                 }
             }
+
+            const bool captureGraph =
+                providerImpl->GraphCaptureEnabled() &&
+                providerImpl->GetCurrentGraphAnnotationId() != -1 &&
+                !providerImpl->GraphCaptured(providerImpl->GetCurrentGraphAnnotationId());
 
             if (recompileNeeded)
             {
@@ -227,7 +239,7 @@ namespace Dml
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
 
-                TranslateAndCompileGraph(Info(), initInputBindings);
+                TranslateAndCompileGraph(Info(), initInputBindings, captureGraph);
 
                 std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
                 std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
@@ -237,7 +249,7 @@ namespace Dml
 
             // When we are capturing a graph, we don't pool the command list and instead transfer it to the execution provider. Captured graph
             // have the same bindings for their entire lifetime.
-            if (providerImpl->GraphCaptureEnabled() && providerImpl->GetCurrentGraphAnnotationId() != -1 && !providerImpl->GraphCaptured(providerImpl->GetCurrentGraphAnnotationId()))
+            if (captureGraph)
             {
                 auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
                     m_provider.Get(),

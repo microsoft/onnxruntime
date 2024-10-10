@@ -24,7 +24,7 @@ namespace Dml
     class PooledUploadHeap;
     class ReadbackHeap;
     class ExecutionContext;
-    class BucketizedBufferAllocator;
+    class DmlUnpooledBufferAllocator;
     class ExecutionProvider;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
@@ -56,12 +56,14 @@ namespace Dml
         STDMETHOD(AddUAVBarrier)() const noexcept final;
 
         STDMETHOD(InitializeOperator)(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputBindings
             ) const noexcept final;
 
         STDMETHOD(ExecuteOperator)(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<IMLOperatorTensor*> inputTensors,
@@ -69,6 +71,7 @@ namespace Dml
             ) const noexcept final;
 
         STDMETHOD(ExecuteOperator)(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<DML_BINDING_DESC> inputTensors,
@@ -138,8 +141,8 @@ namespace Dml
 
         // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
         STDMETHOD(AllocatePooledResource)(
+            onnxruntime::AllocatorPtr& allocator,
             size_t size,
-            AllocatorRoundingMode roundingMode,
             ID3D12Resource **d3dResource,
             IUnknown* *pooledResource
         ) const noexcept final;
@@ -163,8 +166,6 @@ namespace Dml
         int GetCurrentGraphAnnotationId() const { return m_currentGraphAnnotationId; }
         void AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph);
         bool CpuSyncSpinningEnabled() const noexcept;
-        std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
-        std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
@@ -181,6 +182,11 @@ namespace Dml
 
         onnxruntime::common::Status OnSessionInitializationEnd();
         std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
+
+        onnxruntime::AllocatorPtr GetUnpooledAllocator() const
+        {
+            return m_unpooledAllocator;
+        }
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -211,8 +217,7 @@ namespace Dml
         ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<BucketizedBufferAllocator> m_allocator;
-        std::shared_ptr<onnxruntime::IAllocator> m_cpuInputAllocator;
+        onnxruntime::AllocatorPtr m_unpooledAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
@@ -349,6 +354,7 @@ namespace Dml
 
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
+        const OrtDevice m_unpooledDevice;
     };
 
 } // namespace Dml

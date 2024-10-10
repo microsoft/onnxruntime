@@ -651,7 +651,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(
   OrtMemoryInfo* ort_memory_info;
   RETURN_HR_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
     ),
     ort_api
   );

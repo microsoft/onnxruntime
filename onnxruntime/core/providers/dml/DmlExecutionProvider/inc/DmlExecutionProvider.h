@@ -21,12 +21,6 @@ namespace onnxruntime
     class KernelRegistry;
 }
 
-enum class AllocatorRoundingMode
-{
-    Disabled = 0,
-    Enabled = 1,
-};
-
 namespace Dml
 {
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
@@ -37,7 +31,7 @@ namespace Dml
         bool enableCpuSyncSpinning,
         bool disableMemoryArena);
 
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
+    ID3D12Resource* GetD3D12ResourceFromAllocation(void* ptr);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
 

@@ -59,13 +59,16 @@ namespace Dml
             bool reuseCommandList
         )
         {
-            // Allocate a persistent resource and initialize the operator
+            auto providerImpl = static_cast<ExecutionProviderImpl*>(m_provider.Get());
+
+            // Allocate a persistent resource and initialize the operator. This is done only once during session load,
+            // so we don't want to needlessly pool the temporary memory and instead force the use of our own unpooled memory allocator
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                    providerImpl->GetUnpooledAllocator(),
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourceAllocatorUnknown.GetAddressOf()));
 
@@ -73,6 +76,7 @@ namespace Dml
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                providerImpl->GetUnpooledAllocator(),
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
@@ -139,6 +143,7 @@ namespace Dml
 
                 auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
                 ExecuteOperator(
+                    Info().GetAllocator(OrtMemTypeDefault),
                     m_compiledExecutionPlanOperator.Get(),
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     inputPtrs,
@@ -190,6 +195,7 @@ namespace Dml
         }
 
         void ExecuteOperator(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<ID3D12Resource*> inputTensors,
@@ -246,6 +252,7 @@ namespace Dml
             FillBindingsFromTensors(outputBufferBindings, outputBindings, outputTensors);
 
             ORT_THROW_IF_FAILED(m_provider->ExecuteOperator(
+                allocator,
                 op,
                 persistentResourceBinding,
                 inputBindings,

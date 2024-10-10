@@ -26,8 +26,6 @@ namespace Dml
             bool cpuSyncSpinningEnabled,
             bool keepOpen);
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
-
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close();
@@ -49,11 +47,13 @@ namespace Dml
             gsl::span<const std::byte> pattern /* Data type agnostic value, treated as raw bits */);
 
         void InitializeOperator(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,
             const DML_BINDING_DESC& inputArrayBinding);
 
         void ExecuteOperator(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,
             gsl::span<const DML_BINDING_DESC> inputBindings,

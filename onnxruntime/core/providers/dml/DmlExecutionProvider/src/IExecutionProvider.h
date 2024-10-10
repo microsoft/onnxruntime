@@ -40,12 +40,14 @@ namespace Dml
         STDMETHOD(AddUAVBarrier)() const noexcept = 0;
 
         STDMETHOD(InitializeOperator)(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
 
         STDMETHOD(ExecuteOperator)(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<IMLOperatorTensor*> inputTensors,
@@ -53,6 +55,7 @@ namespace Dml
             ) const noexcept = 0;
 
         STDMETHOD(ExecuteOperator)(
+            onnxruntime::AllocatorPtr& allocator,
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<DML_BINDING_DESC> inputTensors,
@@ -73,7 +76,7 @@ namespace Dml
         STDMETHOD_(void, Flush)() const noexcept = 0;
 
         STDMETHOD_(ID3D12Resource*, DecodeResource)(void* allocation) const noexcept = 0;
-        STDMETHOD(AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
+        STDMETHOD(AllocatePooledResource(onnxruntime::AllocatorPtr&, size_t size, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
         STDMETHOD_(bool, CustomHeapsSupported)() const noexcept = 0;

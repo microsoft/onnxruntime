@@ -75,7 +75,7 @@ public:
         ExecutionProviderImpl* executionProvider = static_cast<ExecutionProviderImpl*>(m_executionProvider.Get());
 
         // Create the DML output tensor for the number of nonzero elements
-        onnxruntime::Tensor outputCountDml(onnxruntime::DataTypeImpl::GetType<uint32_t>(), m_outputCountShape, executionProvider->GetGpuAllocator());
+        onnxruntime::Tensor outputCountDml(onnxruntime::DataTypeImpl::GetType<uint32_t>(), m_outputCountShape, kernelContext.GetAllocator());
         Microsoft::WRL::ComPtr<IMLOperatorTensor> outputCountDmlWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
             &outputCountDml,
             true,
@@ -83,7 +83,7 @@ public:
             true);
 
         // Create the DML output tensor for the coordinates (not cropped)
-        onnxruntime::Tensor intermediateCoordinatesDml(onnxruntime::DataTypeImpl::GetType<int64_t>(), m_outputCoordinatesShape, executionProvider->GetGpuAllocator());
+        onnxruntime::Tensor intermediateCoordinatesDml(onnxruntime::DataTypeImpl::GetType<int64_t>(), m_outputCoordinatesShape, kernelContext.GetAllocator());
         Microsoft::WRL::ComPtr<IMLOperatorTensor> intermediateCoordinatesDmlWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
             &intermediateCoordinatesDml,
             true,
@@ -98,13 +98,14 @@ public:
         if (!m_emptyInput)
         {
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(nonzeroCoordinatesInputTensors),
                 gsl::make_span(nonzeroCoordinatesOutputTensors)));
 
             // Copy the number of nonzero elements back to the CPU
-            onnxruntime::Tensor outputCountCpu(onnxruntime::DataTypeImpl::GetType<uint32_t>(), {1}, executionProvider->GetCpuInputAllocator());
+            onnxruntime::Tensor outputCountCpu(onnxruntime::DataTypeImpl::GetType<uint32_t>(), {1}, kernelContext.GetCpuAllocator());
             Microsoft::WRL::ComPtr<IMLOperatorTensor> outputCountCpuWrapper = wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::TensorWrapper>(
                 &outputCountCpu,
                 false,
@@ -128,7 +129,7 @@ public:
             ComPtr<IDMLCompiledOperator> zeroOperator = InitializeZeroInt64Tensor(tensorSizeInBytes);
 
             // TODO: Remove this hack when DML supports native int64 for NonZero
-            ExecuteZeroInt64Tensor(zeroOperator.Get(), outputTensor.GetInterface().Get());
+            ExecuteZeroInt64Tensor(kernelContext.GetAllocator(), zeroOperator.Get(), outputTensor.GetInterface().Get());
 
             ComPtr<IDMLCompiledOperator> sliceOperator = InitializeSlice(m_intermediateTensorDescs[1], nonzeroElementCount);
 
@@ -137,6 +138,7 @@ public:
             std::array<IMLOperatorTensor*, 1> sliceOutputTensors = {outputTensor.GetInterface().Get()};
 
             ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                kernelContext.GetAllocator(),
                 sliceOperator.Get(),
                 nullptr, // persistent resource binding
                 sliceInputTensors,

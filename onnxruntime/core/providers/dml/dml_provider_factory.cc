@@ -680,12 +680,7 @@ API_IMPL_BEGIN
 ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_allocator, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {
   API_IMPL_BEGIN
 #ifdef USE_DML
-  auto wrapping_allocator = static_cast<onnxruntime::OrtAllocatorImplWrappingIAllocator*>(ort_allocator);
-  auto allocator = wrapping_allocator->GetWrappedIAllocator();
-  if (!allocator) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
-  }
-  *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), allocation);
+  *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocation);
   (*d3d_resource)->AddRef();
 #else
   *d3d_resource = nullptr;

@@ -216,6 +216,9 @@ public:
         ComPtr<ID3D12GraphicsCommandList> commandList;
         executionObject.As(&commandList);
 
+        ComPtr<IMLOperatorAttributes> kernelInfoWrapper;
+        context->QueryInterface(IID_PPV_ARGS(kernelInfoWrapper.GetAddressOf()));
+
         ORT_THROW_IF_FAILED(commandList->GetDevice(IID_ID3D12Device, &m_device));
 
         int64_t isInverseInt;
