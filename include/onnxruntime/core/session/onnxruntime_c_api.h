@@ -304,6 +304,7 @@ ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(LoraAdapter);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3650,10 +3651,10 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Only used for float32 model.
+       "enable_htp_fp16_precision": Used for float32 model for HTP backend.
        Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": Default. With fp32 precision.
-         - "1": With fp16 precision.
+         - "0": With fp32 precision.
+         - "1": Default. With fp16 precision.
        "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
          - "0": Default. Disabled.
          - "1": Enabled.
@@ -4670,6 +4671,76 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
+
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function attempts to locate file specified by adapter_file_path, read it and create an OrtLoraAdapter
+   * instance. The adapter_file_path should be a valid path to a file that contains a valid Lora Adapter
+   * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
+   * the platform does not support memory mapping, in which case the file will be read into memory.
+   *
+   * \param[in] adapter_file_path adapter file path.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   */
+  ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function copies the bytes from the array and creates an OrtLoraAdapter instance.
+   *
+   *
+   * \param[in] bytes pointer to a valid Lora Adapter format buffer.
+   * \param[in] num_bytes length of bytes buffer.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   */
+  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
+   */
+  ORT_CLASS_RELEASE(LoraAdapter);
+
+  /** \brief Add the Lora Adapter to the list of active adapters.
+   *
+   * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
+   * OrtApi::CreateLoraAdapter or FromArray. The Lora Adapter will be used by the session to run the model.
+   * The instance of the OrtRunOptions can then be used to customize the Run() calls.
+   * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
+   * Lora adapters that will be active at the same time must not overlap.
+   * This setting does not affect RunWithBinding.
+   *
+   * \param[in] options OrtRunOptions instance
+   * \param[in] adapter OrtLoraAdapter instance
+   */
+  ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
+
+  /// @}
+  /// \name OrtEpDynamicOptions
+  /// @{
+
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
+   *
+   * \param[in] session
+   * \param[in] list of keys represented by null-terminated strings
+   * \param[in] list of values represented by null-terminated strings
+   * \param[in] number of key-value pairs
+   *
+   * \since Version 1.20
+   */
+  ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                  _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 };
 
 /*

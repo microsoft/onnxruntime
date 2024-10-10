@@ -18,10 +18,10 @@ parameters:
 
 - name: trt_version
   type: string
-  default: '10.3.0.26-1.cuda11.8'
+  default: '10.4.0.26-1.cuda11.8'
   values:
-    - 10.3.0.26-1.cuda11.8
-    - 10.3.0.26-1.cuda12.5
+    - 10.4.0.26-1.cuda11.8
+    - 10.4.0.26-1.cuda12.6
 - name: cuda_version
   type: string
   default: '11.8'
@@ -100,7 +100,7 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
-      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda118xtrt86build${{ parameters.arch }}
+      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
