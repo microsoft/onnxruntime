@@ -452,6 +452,7 @@ Do not modify directly.*
 |SVMClassifier|*in* X:**T1**<br> *out* Y:**T2**<br> *out* Z:**tensor(float)**|1+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(int64), tensor(string)|
 |SVMRegressor|*in* X:**T**<br> *out* Y:**tensor(float)**|1+|**T** = tensor(float)|
 |Scaler|*in* X:**T**<br> *out* Y:**tensor(float)**|1+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
+|TreeEnsemble|*in* X:**T**<br> *out* Y:**T**|5+|**T** = tensor(double), tensor(float)|
 |TreeEnsembleClassifier|*in* X:**T1**<br> *out* Y:**T2**<br> *out* Z:**tensor(float)**|3+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(int64), tensor(string)|
 |||[1, 2]|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(int64), tensor(string)|
 |TreeEnsembleRegressor|*in* X:**T**<br> *out* Y:**tensor(float)**|3+|**T** = tensor(double), tensor(float)|
