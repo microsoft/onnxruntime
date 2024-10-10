@@ -22,7 +22,8 @@ def getVersionCode(String version) {
 	String versionCodeStr = String.format("%d%02d%02d", codes[0] as int, codes[1] as int, codes[2] as int)
 	if (mainAndRc.length > 1 && mainAndRc[1].startsWith('rc')) {
 		// assuming there won't be more than 99 rc versions
-		String rcNumber = mainAndRc[1].substring(2)
+		String rcNumber = mainAndRc[1].substring(3)
+		println("rcNumber: $rcNumber")
 		versionCodeStr += String.format("%02d", 99 - (rcNumber as int))
 	} else {
 		versionCodeStr += "99"
