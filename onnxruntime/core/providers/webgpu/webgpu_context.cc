@@ -16,6 +16,7 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/string_macros.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -125,16 +126,12 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& program) {
+Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
   if (outputs.size() == 0) {
     return Status::OK();
-  }
-
-  if (query_type_ != TimestampQueryType::None) {
-    pending_kernels_.push_back(PendingKernelInfo(program.Name(), inputs, outputs));
   }
 
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -211,6 +208,15 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   bool is_1d_dispatch = (y == 1 && z == 1);
 
   auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
+
+  if (query_type_ != TimestampQueryType::None) {
+    PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
+                                          program.Name(),
+                                          key,
+                                          inputs,
+                                          outputs);
+    pending_kernels_.emplace_back(std::move(pending_kernel_info));
+  }
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
@@ -412,7 +418,7 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "lazy_clear_resource_on_first_use",
-      "timestamp_quantization"
+      "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
@@ -484,55 +490,112 @@ void WebGpuContext::StartProfiling(TimePoint) {
   }
 }
 
-void WebGpuContext::EndProfiling(TimePoint tp, profiling::Events& events) {
+void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
   if (query_type_ != TimestampQueryType::None) {
-    for (size_t p = 0; p < pending_queries_buffers_.size(); p++) {
-      wgpu::Buffer query_read_buffer = pending_queries_buffers_[p];
-      const std::vector<PendingKernelInfo>& pending_kernels = pending_queries_info_[p];
+    ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
+    events.insert(events.end(),
+                  std::make_move_iterator(profiling_events_.begin()),
+                  std::make_move_iterator(profiling_events_.end()));
 
-      ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read, 0, query_read_buffer.GetSize(), wgpu::CallbackMode::WaitAnyOnly, [](wgpu::MapAsyncStatus status, const char* message) {
-                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", message);
-                  })) == Status::OK());
-      auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
-
-      for (int i = 0; i < pending_kernels.size(); i++) {
-        const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
-        const std::string& program_name = pending_kernel_info.program_name;
-        const auto& inputs = pending_kernel_info.inputs;
-        const auto& outputs = pending_kernel_info.outputs;
-        std::ostringstream shapes;
-        for (int s = 0; s < inputs.size(); s++) {
-          const auto& input = inputs[s];
-          shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
-        }
-        for (int s = 0; s < outputs.size(); s++) {
-          const auto& output = outputs[s];
-          shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
-        }
-        uint64_t start_time = mapped_data[i * 2];
-        uint64_t end_time = mapped_data[i * 2 + 1];
-
-        if (p == 0 && i == 0) {
-          query_time_base_ = start_time;
-        }
-        long long time_offset = TimeDiffMicroSeconds(tp);
-        start_time -= query_time_base_;
-        end_time -= query_time_base_;
-        const std::unordered_map<std::string, std::string>& event_args = {{"shapes", shapes.str()}};
-
-        // Add time_offset to start_time to avoid gpu time always starting from zero to align with cpu timeline.
-        profiling::EventRecord event(profiling::API_EVENT, -1, -1, program_name, start_time + time_offset, end_time - start_time, event_args);
-        events.emplace_back(std::move(event));
-      }
-
-      query_read_buffer.Unmap();
-      query_read_buffer.Destroy();
-    }
-    pending_queries_buffers_.clear();
-    pending_queries_info_.clear();
+    profiling_events_.clear();
     // Destroy query_set_ and query_resolve_buffer_ here?
     query_type_ = TimestampQueryType::None;
   }
+}
+
+void WebGpuContext::Flush(bool is_on_end) {
+  if (!current_command_encoder_) {
+    return;
+  }
+
+  EndComputePass();
+
+  if (query_type_ != TimestampQueryType::None && num_pending_dispatches_ > 0) {
+    uint32_t query_count = num_pending_dispatches_ * 2;
+    current_command_encoder_.ResolveQuerySet(
+        query_set_,
+        0,
+        query_count,
+        query_resolve_buffer_,
+        0);
+
+    wgpu::BufferDescriptor bufferDescriptor;
+    bufferDescriptor.size = query_count * sizeof(uint64_t);
+    bufferDescriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+    wgpu::Buffer query_read_buffer = device_.CreateBuffer(&bufferDescriptor);
+
+    current_command_encoder_.CopyBufferToBuffer(
+        query_resolve_buffer_,
+        0,
+        query_read_buffer,
+        0,
+        query_count * sizeof(uint64_t));
+
+    pending_queries_.emplace_back(std::move(pending_kernels_), query_read_buffer);
+    pending_kernels_.clear();
+
+    if (is_on_end) {
+      // if this is the end of inference session run, read the GPU query data and create profiling events
+
+      for (const auto& pending_query : pending_queries_) {
+        const auto& pending_kernels = pending_query.kernels;
+        const auto& pending_query_read_buffer = pending_query.query_buffer;
+
+        ORT_ENFORCE(Wait(pending_query_read_buffer.MapAsync(wgpu::MapMode::Read,
+                                                            0,
+                                                            pending_query_read_buffer.GetSize(),
+                                                            wgpu::CallbackMode::WaitAnyOnly,
+                                                            [](wgpu::MapAsyncStatus status, const char* message) {
+                                                              ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", message);
+                                                            })) == Status::OK());
+        auto mapped_data = static_cast<const uint64_t*>(pending_query_read_buffer.GetConstMappedRange());
+
+        for (int i = 0; i < pending_kernels.size(); i++) {
+          const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
+          const auto& inputs = pending_kernel_info.inputs;
+          const auto& outputs = pending_kernel_info.outputs;
+
+          SS(shapes, 128);
+          for (int s = 0; s < inputs.size(); s++) {
+            const auto& input = inputs[s];
+            shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
+          }
+          for (int s = 0; s < outputs.size(); s++) {
+            const auto& output = outputs[s];
+            shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
+          }
+          uint64_t start_time = mapped_data[i * 2];
+          uint64_t end_time = mapped_data[i * 2 + 1];
+
+          const std::unordered_map<std::string, std::string>& event_args = {
+              {"shapes", SS_GET(shapes)},
+              {"cache_key", pending_kernel_info.cache_key},
+          };
+
+          // Add time_offset to start_time to avoid gpu time always starting from zero to align with cpu timeline.
+          profiling::EventRecord event(profiling::API_EVENT,
+                                       -1,
+                                       -1,
+                                       pending_kernel_info.name,
+                                       static_cast<int64_t>(std::round(start_time / 1000.0)),
+                                       static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
+                                       event_args);
+          profiling_events_.emplace_back(std::move(event));
+        }
+
+        query_read_buffer.Unmap();
+        query_read_buffer.Destroy();
+      }
+
+      pending_queries_.clear();
+    }
+  }
+
+  auto command_buffer = current_command_encoder_.Finish();
+  Device().GetQueue().Submit(1, &command_buffer);
+  BufferManager().RefreshPendingBuffers();
+  current_command_encoder_ = nullptr;
+  num_pending_dispatches_ = 0;
 }
 
 std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> WebGpuContextFactory::contexts_;

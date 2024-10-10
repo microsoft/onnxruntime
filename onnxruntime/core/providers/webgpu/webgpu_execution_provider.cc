@@ -833,7 +833,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
       IncrementRegularRunCountBeforeGraphCapture();
     }
   } else {
-    context_.Flush();
+    context_.Flush(/* is_on_end = */ true);
   }
 
   return Status::OK();

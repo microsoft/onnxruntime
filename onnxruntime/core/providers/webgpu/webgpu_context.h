@@ -7,7 +7,6 @@
 #include <emscripten/emscripten.h>
 #endif
 
-#include <map>
 #include <memory>
 #include <mutex>
 
@@ -87,45 +86,7 @@ class WebGpuContext final {
     }
   }
 
-  void Flush() {
-    if (!current_command_encoder_) {
-      return;
-    }
-
-    EndComputePass();
-
-    if (query_type_ != TimestampQueryType::None) {
-      uint32_t query_count = num_pending_dispatches_ * 2;
-      current_command_encoder_.ResolveQuerySet(
-          query_set_,
-          0,
-          query_count,
-          query_resolve_buffer_,
-          0);
-
-      wgpu::BufferDescriptor bufferDescriptor;
-      bufferDescriptor.size = query_count * sizeof(uint64_t);
-      bufferDescriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
-      wgpu::Buffer query_read_buffer = device_.CreateBuffer(&bufferDescriptor);
-
-      current_command_encoder_.CopyBufferToBuffer(
-          query_resolve_buffer_,
-          0,
-          query_read_buffer,
-          0,
-          query_count * sizeof(uint64_t));
-
-      pending_queries_info_.emplace(pending_queries_buffers_.size(), pending_kernels_);
-      pending_queries_buffers_.push_back(query_read_buffer);
-      pending_kernels_.clear();
-    }
-
-    auto command_buffer = current_command_encoder_.Finish();
-    Device().GetQueue().Submit(1, &command_buffer);
-    BufferManager().RefreshPendingBuffers();
-    current_command_encoder_ = nullptr;
-    num_pending_dispatches_ = 0;
-  }
+  void Flush(bool is_on_end = false);
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
@@ -136,7 +97,7 @@ class WebGpuContext final {
   void StartProfiling(TimePoint);
   void EndProfiling(TimePoint, profiling::Events&);
 
-  Status Run(const ComputeContext& context, const ProgramBase& program);
+  Status Run(ComputeContext& context, const ProgramBase& program);
 
  private:
   enum class TimestampQueryType {
@@ -162,16 +123,41 @@ class WebGpuContext final {
   wgpu::Buffer query_resolve_buffer_;
 
   struct PendingKernelInfo {
-    PendingKernelInfo(std::string program_name, std::vector<ProgramInput> inputs, std::vector<ProgramOutput> outputs)
-        : program_name{program_name}, inputs{inputs}, outputs{outputs} {}
-    std::string program_name;
+    PendingKernelInfo(std::string_view kernel_name,
+                      std::string_view program_name,
+                      std::string_view cache_key,
+                      const std::vector<ProgramInput>& inputs,
+                      const std::vector<ProgramOutput>& outputs)
+        : name{absl::StrJoin({kernel_name, program_name}, "_")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
+
+    PendingKernelInfo(PendingKernelInfo&&) = default;
+    PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(PendingKernelInfo);
+
+    std::string name;
+    std::string cache_key;
     std::vector<ProgramInput> inputs;
     std::vector<ProgramOutput> outputs;
   };
+
+  struct PendingQueryInfo {
+    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
+        : kernels{std::move(kernels)}, query_buffer{query_buffer} {}
+
+    PendingQueryInfo(PendingQueryInfo&&) = default;
+    PendingQueryInfo& operator=(PendingQueryInfo&&) = default;
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(PendingQueryInfo);
+
+    std::vector<PendingKernelInfo> kernels;
+    wgpu::Buffer query_buffer;
+  };
+
   // info of kernels pending submission for a single batch
   std::vector<PendingKernelInfo> pending_kernels_;
-  std::map<size_t, std::vector<PendingKernelInfo>> pending_queries_info_;
-  std::vector<wgpu::Buffer> pending_queries_buffers_;
+  // info of queries pending appending to profiling events
+  std::vector<PendingQueryInfo> pending_queries_;
+
+  std::vector<profiling::EventRecord> profiling_events_;
 
   std::once_flag init_flag_;
 
