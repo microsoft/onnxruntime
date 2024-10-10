@@ -1,3 +1,4 @@
+parameters:
 - name: JarFileDirectory
   type: string
   default: ''
