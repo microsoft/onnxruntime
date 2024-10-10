@@ -1149,6 +1149,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
 
+  // Data structure stores prepacked initializers in format of Tensor.
+  struct PrePackInitializers {
+    // Since one constant initializer could be used by different kernels
+    // and prepacked differently, use an unordered_map to store prepacked
+    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
+  };
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
@@ -1175,14 +1183,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     // The allocation Granularity for mmap() support.
     // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
     int64_t allocation_granularity = 65536;
-  };
-
-  // Data structure stores prepacked initializers in format of Tensor.
-  struct PrePackInitializers {
-    // Since one constant initializer could be used by different kernels
-    // and prepacked differently, use an unordered_map to store prepacked
-    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
   };
 
   /** Gets the GraphProto representation of this Graph

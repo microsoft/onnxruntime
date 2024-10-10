@@ -2080,7 +2080,7 @@ common::Status InferenceSession::Initialize() {
                                             << "   With save_prepacked_constant_initializers option, prepacked initializer will be serialized into data file."
                                             << "2. Load optimized model and external data file in same device, no prepack is need."
                                             << "3. Run inference with optimized model.";
-          } 
+          }
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
