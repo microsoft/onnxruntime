@@ -1456,3 +1456,10 @@ struct OrtRunOptions final {
   }
   PROVIDER_DISALLOW_ALL(OrtRunOptions)
 };
+
+struct OrtSessionOptions final {
+  const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
+    return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
+  }
+  PROVIDER_DISALLOW_ALL(OrtSessionOptions)
+};

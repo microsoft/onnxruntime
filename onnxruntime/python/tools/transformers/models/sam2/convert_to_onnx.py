@@ -251,6 +251,7 @@ def main():
         print("demo output files for PyTorch:", torch_image_files)
 
         show_all_images(ort_image_files, torch_image_files, suffix)
+        print(f"Combined demo output: sam2_demo{suffix}.png")
 
 
 if __name__ == "__main__":

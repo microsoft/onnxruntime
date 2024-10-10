@@ -34,6 +34,7 @@ void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateLstmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -48,6 +49,7 @@ void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
 void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSqueezeUnsqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTernaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTriangularOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

@@ -12,6 +12,13 @@
 namespace onnxruntime {
 namespace test {
 
+template <typename T>
+class TransposeOpTest : public ::testing::Test {
+};
+
+using TransposeOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(TransposeOpTest, TransposeOpTestTypes);
+
 TEST(TransposeOpTest, IsTransposeReshapeTest) {
   std::vector<int64_t> input_dims{1, 2, 3, 4, 1};
   std::vector<size_t> perm{0, 1, 2, 3, 4};
@@ -62,18 +69,27 @@ void TransposeTest(const std::vector<int64_t>& input_shape,
   }
 }
 
+template <typename T>
+std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    std::vector<T> inputs_fp16(inputs.size());
+    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
+    return inputs_fp16;
+  }
+}
+
 // Test 2 dimensional transpose, with no permutation attribute specified
-TEST(TransposeOpTest, TwoDimNoAttr) {
+TYPED_TEST(TransposeOpTest, TwoDimNoAttr) {
   std::vector<int64_t> input_shape({2, 3});
-  std::vector<float> input_vals = {
-      1.0f, 2.0f, 3.0f,
-      4.0f, 5.0f, 6.0f};
+  std::vector<TypeParam> input_vals = GetTypedArray<TypeParam>({1.0f, 2.0f, 3.0f,
+                                                                4.0f, 5.0f, 6.0f});
 
   std::vector<int64_t> expected_shape({3, 2});
-  std::vector<float> expected_vals = {
-      1.0f, 4.0f,
-      2.0f, 5.0f,
-      3.0f, 6.0f};
+  std::vector<TypeParam> expected_vals = GetTypedArray<TypeParam>({1.0f, 4.0f,
+                                                                   2.0f, 5.0f,
+                                                                   3.0f, 6.0f});
 
   TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals,
                 {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: SegFault error
