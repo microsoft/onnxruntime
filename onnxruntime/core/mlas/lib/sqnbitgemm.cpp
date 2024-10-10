@@ -382,9 +382,6 @@ MlasSQNBitGemmPackQuantBData(
 
     if (BlkBitWidth == 4) {
         if (Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
-            // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
-            // assert(QuantBScale == nullptr);
-            // assert(QuantBZeroPoint == nullptr);
             Dispatch->SQ4BitGemmPackQuantBData(
                 N,
                 K,
