@@ -17,7 +17,7 @@ if ! [ -x "$(command -v protoc)" ]; then
 fi
 
 export ONNX_ML=1
-export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 PYTHON_EXE=/usr/bin/python3.9
 
 echo "Installing Pytorch requirements"
