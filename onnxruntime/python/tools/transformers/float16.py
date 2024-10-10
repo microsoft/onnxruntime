@@ -132,6 +132,7 @@ DEFAULT_OP_BLOCK_LIST = [
     "Scaler",
     "TreeEnsembleClassifier",
     "TreeEnsembleRegressor",
+    "TreeEnsemble",
     "ZipMap",
     "NonMaxSuppression",
     "TopK",
