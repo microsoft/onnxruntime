@@ -227,7 +227,7 @@ dependencies {
   implementation "junit:junit:4.12"
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
-  version = rootProject.file('../../../VERSION_NUMBER').text.trim()
+  version = rootProject.file('../../../../VERSION_NUMBER').text.trim()
   implementation ("com.microsoft.onnxruntime:onnxruntime-android:" + version + "@aar")
 //   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
