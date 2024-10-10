@@ -36,33 +36,35 @@ if [ "$cpu_or_gpu" != "gpu" ] && [ "$cpu_or_gpu" != "cpu" ]; then
     exit 1
 fi
 
-echo "Install directory: $install_dir"
-echo "Running on: $cpu_or_gpu"
+echo "install_dir: $install_dir"
+echo "cpu_or_gpu: $cpu_or_gpu"
 
-# Function to install CUDA 12.5
-install_cuda_12() {
-    pushd "$install_dir"
-    wget -q https://developer.download.nvidia.com/compute/cuda/12.5.1/local_installers/cuda_12.5.1_555.42.06_linux.run
-    sh cuda_12.5.1_555.42.06_linux.run --toolkit --toolkitpath="$install_dir/cuda12.5" --silent --override --no-man-page
-    export PATH="$install_dir/cuda12.5/bin:$PATH"
-    export LD_LIBRARY_PATH="$install_dir/cuda12.5/lib64:$LD_LIBRARY_PATH"
+install_cuda_12()
+{
+    pushd $install_dir
+    wget https://developer.download.nvidia.com/compute/cuda/12.6.2/local_installers/cuda_12.6.2_560.35.03_linux.run
+    sh cuda_12.6.2_560.35.03_linux.run --toolkit --toolkitpath=$install_dir/cuda12.6 --silent --override --no-man-page
+
+    export PATH="$install_dir/cuda12.6/bin:$PATH"
+    export LD_LIBRARY_PATH="$install_dir/cuda12.6/lib64:$LD_LIBRARY_PATH"
     popd
 }
 
 # Function to install cuDNN 9.4
 install_cudnn_9() {
     pushd "$install_dir"
-    wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.4.0.58_cuda12-archive.tar.xz
-    mkdir -p "$install_dir/cudnn9.4"
-    tar -Jxvf cudnn-linux-x86_64-9.4.0.58_cuda12-archive.tar.xz -C "$install_dir/cudnn9.4" --strip=1
-    export LD_LIBRARY_PATH="$install_dir/cudnn9.4/lib:$LD_LIBRARY_PATH"
+    wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz
+    mkdir -p "$install_dir/cudnn9.5"
+    tar -Jxvf cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz -C "$install_dir/cudnn9.5" --strip=1
+    export LD_LIBRARY_PATH="$install_dir/cudnn9.5/lib:$LD_LIBRARY_PATH"
     popd
 }
 
 # Install GPU dependencies
 install_gpu() {
-    [ ! -d "$install_dir/cuda12.5" ] && install_cuda_12
-    [ ! -d "$install_dir/cudnn9.4" ] && install_cudnn_9
+    [ ! -d "$install_dir/cuda12.6" ] && install_cuda_12
+    [ ! -d "$install_dir/cudnn9.5" ] && install_cudnn_9
+
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
     pip install onnxruntime-gpu onnx opencv-python matplotlib
 }
@@ -188,15 +190,16 @@ build_onnxruntime_gpu_for_profiling() {
     if [ -n "$CUDA_ARCH" ]; then
         pip install --upgrade pip cmake psutil setuptools wheel packaging ninja numpy==1.26.4
         sh build.sh --config Release --build_dir build/cuda12 --build_shared_lib --parallel \
-                    --use_cuda --cuda_version 12.5 --cuda_home $install_dir/cuda12.5 \
-                    --cudnn_home $install_dir/cudnn9.4 \
-                    --build_wheel --skip_tests \
-                    --cmake_generator Ninja \
-                    --compile_no_warning_as_error \
-                    --enable_cuda_nhwc_ops \
-                    --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=$CUDA_ARCH \
-                    --cmake_extra_defines onnxruntime_ENABLE_NVTX_PROFILE=ON \
-                    --enable_cuda_line_info
+                --use_cuda --cuda_version 12.6 --cuda_home $install_dir/cuda12.6 \
+                --cudnn_home $install_dir/cudnn9.5 \
+                --build_wheel --skip_tests \
+                --cmake_generator Ninja \
+                --compile_no_warning_as_error \
+                --enable_cuda_nhwc_ops \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=$CUDA_ARCH \
+                --cmake_extra_defines onnxruntime_ENABLE_NVTX_PROFILE=ON \
+                --enable_cuda_line_info
+
         pip install build/cuda12/Release/dist/onnxruntime_gpu-*-linux_x86_64.whl numpy==1.26.4
     else
         echo "No CUDA device found."
@@ -205,15 +208,18 @@ build_onnxruntime_gpu_for_profiling() {
     popd
 }
 
-# Run profiling with NVTX
-run_nvtx_profile() {
-    pip install nvtx cuda-python==12.5.0
+# Run profiling with NVTX.
+run_nvtx_profile()
+{
+    pip install nvtx cuda-python==12.6.0
+
+    # Only trace one device to avoid huge output file size.
     device_id=0
     envs="CUDA_VISIBLE_DEVICES=$device_id,ORT_ENABLE_CUDNN_FLASH_ATTENTION=1,LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
     cuda_graph_trace=node
     for engine in ort torch; do
         for component in image_encoder image_decoder; do
-            sudo $install_dir/cuda12.5/bin/nsys profile --capture-range=nvtx --nvtx-capture='one_run' \
+            sudo $install_dir/cuda12.6/bin/nsys profile --capture-range=nvtx --nvtx-capture='one_run' \
                 --gpu-metrics-device $device_id --force-overwrite true \
                 --sample process-tree --backtrace fp --stats true \
                 -t cuda,cudnn,cublas,osrt,nvtx --cuda-memory-usage true --cudabacktrace all \
