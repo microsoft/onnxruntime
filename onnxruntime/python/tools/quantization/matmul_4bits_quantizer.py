@@ -1006,8 +1006,8 @@ class NVAWQWeightOnlyQuantizer:
         try:
             from modelopt.onnx.quantization.int4 import quantize as quantize_int4
         except ImportError:
-            print("Please ensure that the 'modelopt' package is installed")
-            raise ImportError("modelopt.onnx.quantization.int4.quantize_int4 is not installed. Exiting.")
+            print("Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt[all].")
+            raise ImportError("modelopt is not installed. Please install it using pip install nvidia_modelopt[all]. Exiting.")
 
         logger.info("Starting nvidia_awq quantization...")
 
