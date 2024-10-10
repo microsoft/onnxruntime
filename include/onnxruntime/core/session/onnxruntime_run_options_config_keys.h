@@ -43,6 +43,9 @@ static const char* const kOrtRunOptionsConfigQnnPerfModePostRun = "qnn.htp_perf_
 // Set RPC control latency for QNN HTP backend
 static const char* const kOrtRunOptionsConfigQnnRpcControlLatency = "qnn.rpc_control_latency";
 
+// Set RPC polling time for QNN HTP backend, only supported by v69 or higher
+static const char* const kOrtRunOptionsConfigQnnRpcPollingTime = "qnn.rpc_polling_time";
+
 // Set graph annotation id for CUDA EP. Use with enable_cuda_graph=true.
 // The value should be an integer. If the value is not set, the default value is 0 and
 // ORT session only captures one cuda graph before another capture is requested.
