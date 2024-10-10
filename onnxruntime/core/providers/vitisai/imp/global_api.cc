@@ -292,7 +292,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto {
     return vaip_core::DllSafe(graph.GetConsumerNodes(node_arg_name));
   };
-  the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto{ return vaip_core::DllSafe(graph.Nodes()); };
+  the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto { return vaip_core::DllSafe(graph.Nodes()); };
   the_global_api.graph_get_name = [](const Graph& graph) -> const std::string& { return graph.Name(); };
   the_global_api.graph_reverse_dfs_from = [](const Graph& graph, gsl::span<const Node* const> from,
                                              const auto& enter, const auto& leave, const auto& stop) {
