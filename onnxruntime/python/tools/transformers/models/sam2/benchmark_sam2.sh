@@ -4,12 +4,8 @@
 # Licensed under the MIT License.
 # -------------------------------------------------------------------------
 
-# Usage:
-#   Activate a conda environment with Python 3.11 before running this script:
-#     conda create -n sam2_gpu python=3.11 -y && conda activate sam2_gpu
-#     bash benchmark_sam2.sh <install_dir> <cpu|gpu>
-#   To run GPU profiling, set the third argument to 'true':
-#     bash benchmark_sam2.sh <install_dir> gpu true
+# Please refer to README.md for the prerequisites and usage of this script.
+#   bash benchmark_sam2.sh <install_dir> <cpu|gpu> [profiling]
 
 python="$CONDA_PREFIX/bin/python3"
 
