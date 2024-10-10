@@ -1068,6 +1068,13 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const
   static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
   auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
+  std::vector<const char*>keys;
+  std::vector<const char*>values;
+  keys.push_back("hello_key1");
+  keys.push_back("hello_key2");
+  values.push_back("hello_value1");
+  values.push_back("hello_value2");
+  ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys.data(),values.data(),keys.size()));
   ThrowOnError(GetApi().Run(this->p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
 }
 
