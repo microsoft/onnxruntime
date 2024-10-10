@@ -89,27 +89,24 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
   }
 
-  // If block_size is specified, we need to expand the non-scalar scale and zero_point tensors.
+  // If block_size is specified, use WebNN's tile to expand the non-scalar scale and zero_point tensors.
   if (block_size > 1 && !scale_shape.empty()) {
-    emscripten::val concat_scale_inputs = emscripten::val::array();
-    emscripten::val concat_zero_point_inputs = emscripten::val::array();
-    for (int i = 0; i < block_size; i++) {
-      concat_scale_inputs.call<void>("push", scale);
-      if (has_zero_point)
-        concat_zero_point_inputs.call<void>("push", zero_point);
-    }
+    // Now the scale's size is equal to the input's size.
+    std::vector<uint32_t> repeats(input_shape.size(), 1);
+    repeats[axis] = block_size;
+    emscripten::val repetitions = emscripten::val::array(repeats);
 
-    emscripten::val concat_scale_options = emscripten::val::object();
-    concat_scale_options.set("label", node.Name() + "_concat_scale");
-    scale = model_builder.GetBuilder().call<emscripten::val>("concat", concat_scale_inputs, axis, concat_scale_options);
+    emscripten::val tile_scale_options = emscripten::val::object();
+    tile_scale_options.set("label", node.Name() + "_tile_scale");
+    scale = model_builder.GetBuilder().call<emscripten::val>("tile", scale, repetitions, tile_scale_options);
 
     if (has_zero_point) {
-      // Concatenate the zero_point tensor along the axis dimension.
+      // Tile the zero_point tensor along the axis dimension.
       // If zero_point is not provided, leave WebNN to handle the broadcast.
-      emscripten::val concat_zero_point_options = emscripten::val::object();
-      concat_zero_point_options.set("label", node.Name() + "_concat_zero_point");
+      emscripten::val tile_zero_point_options = emscripten::val::object();
+      tile_zero_point_options.set("label", node.Name() + "_tile_zero_point");
       zero_point = model_builder.GetBuilder().call<emscripten::val>(
-          "concat", concat_zero_point_inputs, axis, concat_zero_point_options);
+          "tile", zero_point, repetitions, tile_zero_point_options);
     }
   }
 
