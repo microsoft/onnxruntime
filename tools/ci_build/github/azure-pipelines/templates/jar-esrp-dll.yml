@@ -31,9 +31,9 @@ steps:
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - template: win-esrp-dll.yml
-      parameters:
-        FolderPath: '${{ parameters.JarFileDirectory }}\jar_extracted_full_files'
-        DisplayName: 'ESRP - Sign C# dlls'
+    parameters:
+      FolderPath: '${{ parameters.JarFileDirectory }}\jar_extracted_full_files'
+      DisplayName: 'ESRP - Sign C# dlls'
 
   - task: PowerShell@2
     displayName: 'Packing onnxruntime jar file'
