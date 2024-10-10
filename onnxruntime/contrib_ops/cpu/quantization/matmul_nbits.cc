@@ -98,11 +98,18 @@ class MatMulNBits final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
+  void ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor, int input_idx);
+
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Tensor* GetPrePackTensors() override;
+
+  Status SetPrePackTensors(int input_idx, Tensor& pre_packed_tensor) override;
 
  private:
   const size_t K_;
@@ -119,6 +126,8 @@ class MatMulNBits final : public OpKernel {
   size_t packed_b_size_{0};
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
+  std::optional<Tensor> packed_tensor_{std::nullopt};
+  MLDataType prepack_tensor_data_type_;
 
   bool has_zp_input_{false};
 
@@ -149,7 +158,21 @@ class MatMulNBits final : public OpKernel {
 };
 
 template <typename T1>
+void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor, int input_idx) {
+  if (input_idx == InputIndex::B) {
+    prepack_tensor_data_type_ = tensor.DataType();
+  }
+
+  std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / prepack_tensor_data_type_->Size()) + 1};
+  packed_tensor_ = Tensor(prepack_tensor_data_type_,
+                          TensorShape(weights_dims),
+                          packed_b_.get(),
+                          OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+}
+
+template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                bool save_prepacked_initializers,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -185,11 +208,16 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_AMD64_IX86
   }
 
+  if (save_prepacked_initializers) {
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
+  }
+
   return Status::OK();
 }
 
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                       bool save_prepacked_initializers,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -237,6 +265,28 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       is_packed = false;
     }
 #endif  // MLAS_TARGET_AMD64_IX86
+  }
+
+  if (save_prepacked_initializers) {
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
+  }
+
+  return Status::OK();
+}
+
+template <typename T1>
+Tensor* MatMulNBits<T1>::GetPrePackTensors() {
+  if (!packed_tensor_.has_value()) {
+    return nullptr;
+  }
+
+  return &(packed_tensor_.value());
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, Tensor& pre_packed_tensor) {
+  if (input_idx == 1) {
+    packed_b_ = BufferUniquePtr(pre_packed_tensor.MutableDataRaw());
   }
 
   return Status::OK();
