@@ -319,27 +319,27 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #ifdef XNNPACK_FP16_SUPPORTED
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
-    AveragePool, kMSInternalNHWCDomain, 7, 9, MLFloat,
+    AveragePool, kMSInternalNHWCDomain, 7, 9, MLFloat16,
     kXnnpackExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     AveragePool);
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
-    AveragePool, kMSInternalNHWCDomain, 10, 10, MLFloat,
+    AveragePool, kMSInternalNHWCDomain, 10, 10, MLFloat16,
     kXnnpackExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     AveragePool);
 
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
-    AveragePool, kMSInternalNHWCDomain, 11, 18, MLFloat,
+    AveragePool, kMSInternalNHWCDomain, 11, 18, MLFloat16,
     kXnnpackExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     AveragePool);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    AveragePool, kMSInternalNHWCDomain, 19, MLFloat,
+    AveragePool, kMSInternalNHWCDomain, 19, MLFloat16,
     kXnnpackExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     AveragePool);
 #endif
 
