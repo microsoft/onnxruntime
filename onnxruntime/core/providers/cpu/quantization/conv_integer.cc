@@ -33,6 +33,18 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
 
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    ConvInteger,
+    kOnnxDomain,
+    10,
+    uint8_t_int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    ConvInteger);
+
 Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
@@ -42,12 +54,17 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   if (num_inputs >= 3) {
     const auto* X_Zero_Point = context->Input<Tensor>(2);
     ORT_ENFORCE(IsScalarOr1ElementVector(X_Zero_Point), "Must be a scalar or 1D tensor or size 1.");
-    input_offset = *(X_Zero_Point->Data<uint8_t>());
+    input_offset = *static_cast<const uint8_t*>(X_Zero_Point->DataRaw());
   }
   if (num_inputs >= 4) {
     const auto* W_Zero_Point = context->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(W_Zero_Point), "Non per-tensor quantization is not supported now.");
-    filter_offset = *(W_Zero_Point->Data<uint8_t>());
+    if (W->IsDataType<uint8_t>())
+      filter_offset = *static_cast<const uint8_t*>(W_Zero_Point->DataRaw());
+    else if (W->IsDataType<int8_t>())
+      filter_offset = *static_cast<const int8_t*>(W_Zero_Point->DataRaw());
+    else
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported data type for W_Zero_Point.");
   }
 
   const int64_t N = X->Shape()[0];
@@ -109,9 +126,9 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  const auto* Xdata = X->Data<uint8_t>();
-  const auto* Wdata = W->Data<uint8_t>();
-  auto* Ydata = Y->MutableData<int32_t>();
+  const auto* Xdata = static_cast<const uint8_t*>(X->DataRaw());
+  const auto* Wdata = static_cast<const uint8_t*>(W->DataRaw());
+  auto* Ydata = Y->template MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
@@ -155,6 +172,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       gemm_shape.M = static_cast<size_t>(M / conv_attrs_.group);
       gemm_shape.N = static_cast<size_t>(output_image_size);
       gemm_shape.K = static_cast<size_t>(kernel_dim);
+      gemm_shape.AIsSigned = W->IsDataType<int8_t>();
 
       MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
       gemm_params.A = Wdata + group_id * W_offset;
