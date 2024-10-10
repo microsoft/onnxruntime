@@ -128,7 +128,7 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
     op_type_ = OpComputeType::op_compute_type_qu8;
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-    ORT_THROW("unsupported Conv in softmax, we have FLOAT|FLOAT16|UINT8, but got ", stype);
+    ORT_THROW("unsupported compute type in softmax, we have FLOAT|FLOAT16|UINT8, but got ", stype);
   }
 
   if (op_type_ == OpComputeType::op_compute_type_fp32 || op_type_ == OpComputeType::op_compute_type_fp16) {

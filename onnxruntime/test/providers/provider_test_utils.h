@@ -11,7 +11,7 @@
 
 // XNNPACK_FP16_SUPPORTED scope is too big, so add USE_XNNPACK to avoid the FP16 tests enabled for other EPs
 #if defined(USE_XNNPACK) && defined(XNNPACK_FP16_SUPPORTED)
-  #define ENABLE_XNNPACK_FP16_TESTS
+#define ENABLE_XNNPACK_FP16_TESTS
 #endif
 
 namespace onnxruntime {

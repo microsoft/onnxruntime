@@ -95,8 +95,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     op_type_ = OpComputeType::op_compute_type_fp16;
   } else {
-    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
-    ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", stype);
+    ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", OpTypeToString(op_type_));
   }
 
   const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
@@ -165,8 +164,8 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
     if (C_matrix_exists_) {
       bias_Data = tensor.Data<MLFloat16>();
     }
-    float output_min = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->first) : -65504.0f;
-    float output_max = clip_min_max_ ? onnxruntime::math::floatToHalf(clip_min_max_->second) : 65504.0f;
+    float output_min = clip_min_max_ ? clip_min_max_->first : -65504.0f;
+    float output_max = clip_min_max_ ? clip_min_max_->second : 65504.0f;
     status = xnn_create_fully_connected_nc_f16(
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
@@ -210,7 +209,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
                                    threadpool);
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_xx returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_", OpTypeToString(op_type_), " returned ", status);
   }
 
   status = xnn_status_invalid_state;
@@ -223,7 +222,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_xx returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_", OpTypeToString(op_type_), " returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);

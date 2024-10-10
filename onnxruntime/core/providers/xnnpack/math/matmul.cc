@@ -75,7 +75,7 @@ MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info, /*enable_caches*/
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     op_type_ = OpComputeType::op_compute_type_fp16;
   } else {
-    ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", op_type_str_);
+    ORT_THROW("unsupported MatMul in XnnpackEP, we have FLOAT|FLOAT16, but got ", op_type_str_);
   }
 }
 
