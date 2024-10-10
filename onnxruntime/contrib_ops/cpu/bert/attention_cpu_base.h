@@ -37,9 +37,9 @@ class AttentionCPUBase : public AttentionBase {
                         int v_hidden_size,         // hidden size of V (D_v)
                         const Tensor* attn_bias,   // additive bias applied on scaled QK.
                         OpKernelContext* context,
-                        Tensor* scaled_qk = nullptr,  // output buffer for QK (if needed)
-                        int past_sequence_length = 0, // sequence length of past state
-                        bool use_dmmha = false        // whether used in DecoderMaskedMultiHeadAttention
+                        Tensor* scaled_qk = nullptr,   // output buffer for QK (if needed)
+                        int past_sequence_length = 0,  // sequence length of past state
+                        bool use_dmmha = false         // whether used in DecoderMaskedMultiHeadAttention
   ) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));

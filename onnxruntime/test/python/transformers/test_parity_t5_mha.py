@@ -753,9 +753,9 @@ def compare_t5_self_attention_decoder(
         use_past=True,
     )
 
-    T5CrossAttention = T5Attention(
+    T5CrossAttention = T5Attention(  # noqa: N806
         config, is_static_kv=False, use_decoder_masked_kernel=use_dmmha, beam_width=beam_width
-    )  # noqa: N806
+    )
 
     hidden_states, _, past_key_value, _, position_bias, *maybe_cache_indirection = T5CrossAttention.create_inputs()
     cache_indirection = maybe_cache_indirection[0] if beam_width > 1 else None

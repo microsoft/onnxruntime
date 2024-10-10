@@ -130,16 +130,6 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
   Tensor* cross_qk = nullptr;
 
-  parameters.is_mha = true;
-
-  // Update the q buffers
-  parameters.q = const_cast<T*>(query->Data<T>());
-
-  // Update the attention bias for self attention
-  if (attention_bias != nullptr) {
-    parameters.attention_bias = const_cast<T*>(attention_bias->Data<T>());
-  }
-
   // Decoder cross-attention
   if (past_key == nullptr && present_key == nullptr) {
     if (attention_bias != nullptr) {
