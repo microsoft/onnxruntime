@@ -79,10 +79,9 @@ const Adapter* ValidateAndGetAdapterFromBytes(gsl::span<const uint8_t> bytes) {
 
 template <class T>
 struct WriteDataForLittleEndian {
-  Status operator()(gsl::span<const uint8_t> src, gsl::span<uint8_t> dest) const {
+  Status operator()(gsl::span<const uint8_t> src, gsl::span<unsigned char> dest) const {
     auto src_span = ReinterpretAsSpan<const T>(src);
-    auto dest_span = ReinterpretAsSpan<unsigned char>(dest);
-    return onnxruntime::utils::WriteLittleEndian<T>(src_span, dest_span);
+    return onnxruntime::utils::WriteLittleEndian<T>(src_span, dest);
   }
 };
 
@@ -95,16 +94,22 @@ void SaveLoraParameter(flatbuffers::FlatBufferBuilder& flat_builder, std::string
 
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data_vec;
   if constexpr (endian::native == endian::big) {
-    onnxruntime::utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,
-                                             int16_t, uint16_t, int32_t, uint32_t,
-                                             int64_t, uint64_t,
-                                             BFloat16, MLFloat16>
-        disp(static_cast<int32_t>(data_type));
+    const auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
+    if (elem_type->Size() > 1) {
+      InlinedVector<uint8_t> be_data(data.size());
+      auto be_data_span = ReinterpretAsSpan<unsigned char>(AsSpan(be_data));
 
-    InlinedVector<uint8_t> be_data(data.size());
-    auto status = disp.InvokeRet<Status, WriteDataForLittleEndian>(data, be_data);
-    ORT_THROW_IF_ERROR(status);
-    data_vec = flat_builder.CreateVector<uint8_t>(be_data.data(), be_data.size());
+      onnxruntime::utils::MLTypeCallDispatcher<float, double,
+                                               int16_t, uint16_t, int32_t, uint32_t,
+                                               int64_t, uint64_t,
+                                               BFloat16, MLFloat16>
+          disp(static_cast<int32_t>(data_type));
+
+      ORT_THROW_IF_ERROR((disp.InvokeRet<Status, WriteDataForLittleEndian>(data, be_data_span)));
+      data_vec = flat_builder.CreateVector<uint8_t>(be_data.data(), be_data.size());
+    } else {
+      data_vec = flat_builder.CreateVector(data.data(), data.size());
+    }
   } else {
     data_vec = flat_builder.CreateVector(data.data(), data.size());
   }
@@ -113,12 +118,33 @@ void SaveLoraParameter(flatbuffers::FlatBufferBuilder& flat_builder, std::string
 
 template <class T>
 struct ReadDataForBigEndian {
-  Status operator()(gsl::span<const uint8_t> src, Tensor& dst) const {
-    auto src_span = ReinterpretAsSpan<const unsigned char>(src);
+  Status operator()(gsl::span<const unsigned char> src, Tensor& dst) const {
     auto dst_span = dst.MutableDataAsSpan<T>();
-    return onnxruntime::utils::ReadLittleEndian<T>(src_span, dst_span);
+    return onnxruntime::utils::ReadLittleEndian<T>(src, dst_span);
   }
 };
+
+// If BE, we a allocate memory within the tensor and copy there swapping bytes
+static Status CreateOrtValueForBePlatforms(const Parameter& param, const MLDataType elem_type,
+                                           gsl::span<const int64_t> shape, OrtValue& result) {
+  static const AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+
+  auto src_span = ReinterpretAsSpan<const unsigned char>(
+      gsl::make_span<const uint8_t>(param.raw_data()->data(), param.raw_data()->size()));
+
+  const auto data_type = param.data_type();
+
+  Tensor tensor(elem_type, shape, cpu_allocator);
+  onnxruntime::utils::MLTypeCallDispatcher<float, double,
+                                           int16_t, uint16_t, int32_t, uint32_t,
+                                           int64_t, uint64_t,
+                                           BFloat16, MLFloat16>
+      disp(static_cast<int32_t>(data_type));
+
+  ORT_RETURN_IF_ERROR((disp.InvokeRet<Status, ReadDataForBigEndian>(src_span, tensor)));
+  Tensor::InitOrtValue(std::move(tensor), result);
+  return Status::OK();
+}
 
 std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter& param) {
   OrtValue result;
@@ -129,28 +155,28 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   const auto data_type = param.data_type();
   // Copying shape takes care of endianess using flatbuffers accessors
   TensorShapeVector shape(param.dims()->begin(), param.dims()->end());
-  static const AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   const auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
+  static const OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
-  // If BE, we a allocate memory within the tensor and copy there swapping bytes
   if constexpr (endian::native == endian::big) {
-    gsl::span<const uint8_t> src_span(param.raw_data()->data(), param.raw_data()->size());
-    Tensor tensor(elem_type, shape, cpu_allocator);
-    onnxruntime::utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,
-                                             int16_t, uint16_t, int32_t, uint32_t,
-                                             int64_t, uint64_t,
-                                             BFloat16, MLFloat16>
-        disp(static_cast<int32_t>(data_type));
-
-    auto status = disp.InvokeRet<Status, ReadDataForBigEndian>(src_span, tensor);
-    ORT_THROW_IF_ERROR(status);
-    Tensor::InitOrtValue(std::move(tensor), result);
+    if (elem_type->Size() > 1) {
+      ORT_THROW_IF_ERROR(CreateOrtValueForBePlatforms(param, elem_type, shape, result));
+    } else {
+      // Single byte elements allow us to create OrtValue directly on top
+      // of raw data
+      // const_cast is necessary due to Tensor class API
+      Tensor::InitOrtValue(elem_type,
+                           TensorShape(shape),
+                           const_cast<uint8_t*>(param.raw_data()->data()),
+                           cpu_meminfo,
+                           result);
+    }
   } else {
     // const_cast is necessary due to Tensor class API
     Tensor::InitOrtValue(elem_type,
                          TensorShape(shape),
                          const_cast<uint8_t*>(param.raw_data()->data()),
-                         cpu_allocator->Info(),
+                         cpu_meminfo,
                          result);
   }
 
