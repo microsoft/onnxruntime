@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <unordered_map>
 
 #include "core/framework/kernel_type_str_resolver.h"
