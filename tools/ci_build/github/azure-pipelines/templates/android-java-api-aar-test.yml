@@ -62,7 +62,7 @@ jobs:
       cp -av $(Build.SourcesDirectory)/java/src/test/android ./
       cd ./android
       mkdir -p app/libs
-      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)-${{parameters.ReleaseVersionSuffix}}.aar app/libs/onnxruntime-android.aar
+      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/onnxruntime-android.aar
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)

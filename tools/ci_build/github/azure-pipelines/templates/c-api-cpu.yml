@@ -85,6 +85,8 @@ stages:
 
 - stage: Android_Java_API_AAR_Packaging_QNN
   dependsOn: Setup
+  variables:
+    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
   - template: android-java-api-aar.yml
     parameters:
