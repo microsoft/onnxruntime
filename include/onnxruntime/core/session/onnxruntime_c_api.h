@@ -4732,10 +4732,10 @@ struct OrtApi {
    * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
    * Look for `kOrtEpDynamicOptions`
    *
-   * \param[in] session
-   * \param[in] list of keys represented by null-terminated strings
-   * \param[in] list of values represented by null-terminated strings
-   * \param[in] number of key-value pairs
+   * \param[in] sess ORT session
+   * \param[in] keys List of keys represented by null-terminated strings
+   * \param[in] values List of values represented by null-terminated strings
+   * \param[in] kv_len Number of key-value pairs
    *
    * \since Version 1.20
    */
