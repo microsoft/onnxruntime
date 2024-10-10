@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/tensor/unfold.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
+#include "core/platform/threadpool.h"
 
 #include <vector>
 #include <numeric>
@@ -29,7 +30,8 @@ Status LaunchUnfoldTensor(const T* input,
                           int64_t unfold_dim_size,
                           int64_t tailing_dims_size,
                           int64_t unfold_size,
-                          int64_t step_size) {
+                          int64_t step_size,
+                          concurrency::ThreadPool* tp) {
   int64_t unfold_dim_size_dst = (unfold_dim_size - unfold_size) / step_size + 1;
   int64_t N = leading_dims_size * unfold_dim_size_dst * tailing_dims_size * unfold_size;
 
@@ -37,17 +39,21 @@ Status LaunchUnfoldTensor(const T* input,
   int64_t stride_fold_dim_src = tailing_dims_size * step_size;
   int64_t stride_leading_src = tailing_dims_size * unfold_dim_size;
 
-  for (int64_t idx = 0; idx < N; ++idx) {
-    const int64_t idx_leading = idx / stride_leading_dst;
-    int64_t n = idx % stride_leading_dst;
-    const int64_t stride_fold_dim_dst = tailing_dims_size * unfold_size;
-    const int64_t idx_fold = n / stride_fold_dim_dst;
-    n %= stride_fold_dim_dst;
-    const int64_t idx_tailing = n / unfold_size;
-    const int64_t idx_append = n % unfold_size;
+  static constexpr double cost = 1.0;
+  concurrency::ThreadPool::TryParallelFor(tp, N, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    for (std::ptrdiff_t i = begin; i != end; ++i) {
+      const int64_t idx = static_cast<int64_t>(i);
+      const int64_t idx_leading = idx / stride_leading_dst;
+      int64_t n = idx % stride_leading_dst;
+      const int64_t stride_fold_dim_dst = tailing_dims_size * unfold_size;
+      const int64_t idx_fold = n / stride_fold_dim_dst;
+      n %= stride_fold_dim_dst;
+      const int64_t idx_tailing = n / unfold_size;
+      const int64_t idx_append = n % unfold_size;
 
-    int64_t idx_src = idx_leading * stride_leading_src + idx_fold * stride_fold_dim_src + idx_tailing + idx_append * tailing_dims_size;
-    output[idx] = input[idx_src];
+      int64_t idx_src = idx_leading * stride_leading_src + idx_fold * stride_fold_dim_src + idx_tailing + idx_append * tailing_dims_size;
+      output[idx] = input[idx_src];
+    }
   }
 
   return Status::OK();
@@ -72,19 +78,21 @@ Status UnfoldTensor::Compute(OpKernelContext* ctx) const {
   TensorShape output_shape(output_dims);
   Tensor* output_tensor = ctx->Output(0, output_shape);
 
+  auto* tp = ctx->GetOperatorThreadPool();
+
   Status status;
   if (input_tensor.IsDataType<float>()) {
     status = LaunchUnfoldTensor<float>(input_tensor.Data<float>(), output_tensor->MutableData<float>(),
-                                       leading_dims, input_dims[dim], tailing_dims, size_, step_);
+                                       leading_dims, input_dims[dim], tailing_dims, size_, step_, tp);
   } else if (input_tensor.IsDataType<double>()) {
     status = LaunchUnfoldTensor<double>(input_tensor.Data<double>(), output_tensor->MutableData<double>(),
-                                        leading_dims, input_dims[dim], tailing_dims, size_, step_);
+                                        leading_dims, input_dims[dim], tailing_dims, size_, step_, tp);
   } else if (input_tensor.IsDataType<int32_t>()) {
     status = LaunchUnfoldTensor<int32_t>(input_tensor.Data<int32_t>(), output_tensor->MutableData<int32_t>(),
-                                         leading_dims, input_dims[dim], tailing_dims, size_, step_);
+                                         leading_dims, input_dims[dim], tailing_dims, size_, step_, tp);
   } else if (input_tensor.IsDataType<int64_t>()) {
     status = LaunchUnfoldTensor<int64_t>(input_tensor.Data<int64_t>(), output_tensor->MutableData<int64_t>(),
-                                         leading_dims, input_dims[dim], tailing_dims, size_, step_);
+                                         leading_dims, input_dims[dim], tailing_dims, size_, step_, tp);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported data type: ", input_tensor.DataType());
   }
