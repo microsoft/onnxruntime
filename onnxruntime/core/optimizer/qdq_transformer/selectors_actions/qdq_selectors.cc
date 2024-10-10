@@ -160,6 +160,19 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
+bool DropQDQNodeResizeNearestSelector::Check(const GraphViewer& graph_viewer,
+                                             const Node& node,
+                                             const std::vector<const Node*>& dq_nodes,
+                                             const std::vector<const Node*>& q_nodes) const {
+  if (!DropQDQNodeGroupSelector::Check(graph_viewer, node, dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  const onnx::AttributeProto* mode = graph_utils::GetNodeAttribute(node, "mode");
+  // default mode is 'nearest'
+  return mode == nullptr || mode->s() == "nearest";
+}
+
 bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
                                     const std::vector<const Node*>& dq_nodes,

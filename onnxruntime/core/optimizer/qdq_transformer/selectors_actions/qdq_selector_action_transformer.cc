@@ -43,6 +43,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   const std::string drop_action_name{"drop"};
   const std::string drop_action_no_int16_name{"drop_no_int16_support"};
   const std::string drop_action_no_int16_and_positive_scale_name{"drop_no_int16_support_and_positive_scale"};
+  const std::string drop_action_resize_nearest_name{"drop_resize_nearest"};
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
@@ -56,6 +57,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
   std::unique_ptr<Action> drop_action_no_int16_and_positive_scale = std::make_unique<MergeIntoTargetFixed>(
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
+  std::unique_ptr<Action> drop_action_resize_nearest = std::make_unique<MergeIntoTargetFixed>(
+      std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
   std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTargetFixed>(std::move(moves));
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -68,14 +71,11 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative
   // scale will change the ordering of the elements between quantized & de-quantized values.
   std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
-  std::unique_ptr<NodeSelector> selector_no_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false,
-                                                                                                false,
-                                                                                                true,
-                                                                                                providers);
-  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
+  std::unique_ptr<NodeSelector> selector_resize_nearest = std::make_unique<QDQ::DropQDQNodesResizeNearestSelector>(false, false, true, providers);
+  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_resize_nearest_name,
                                                          {{"Resize", {}}},
-                                                         std::move(selector_no_16bit),
-                                                         std::move(drop_action_no_int16));
+                                                         std::move(selector_resize_nearest),
+                                                         std::move(drop_action_resize_nearest));
 
   std::unique_ptr<NodeSelector> selector_no_16bit_and_positive_scale =
       std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false, providers);
