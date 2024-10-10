@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -246,7 +247,7 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
   RunMatMulZeroKTest<int32_t>();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(ENABLE_XNNPACK_FP16_TESTS)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
