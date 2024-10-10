@@ -49,7 +49,7 @@ TEST(SoftmaxOperator, Simple) {
   RunTest(x_vals, expected_vals, dimensions);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(ENABLE_XNNPACK_FP16_TESTS)
 TEST(SoftmaxOperator, Simple_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
