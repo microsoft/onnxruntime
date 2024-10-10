@@ -6,7 +6,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp38-cp38/bin:$PATH
+export PATH=/opt/python/cp312-cp312/bin:$PATH
 
 ls /build
 ls /build/deps
