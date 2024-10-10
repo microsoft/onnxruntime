@@ -10,10 +10,9 @@ TensorShapeVector StridesForTensor(const Tensor& tensor) {
   TensorShapeVector strides(shape.NumDimensions());
   int64_t running_size = 1;
   for (auto i = shape.NumDimensions(); i > 0;
-    
-    i--) {
-    
-         strides[i - 1] = running_size;
+
+       i--) {
+    strides[i - 1] = running_size;
     running_size *= shape[i - 1];
   }
 
@@ -67,7 +66,6 @@ inline void CopyStride(
 */
 void CoalesceDimensions(std::initializer_list<std::reference_wrapper<TensorShapeVector>>&& tensors_strides,
 
-   
                         TensorShapeVector& shape) {
   const std::size_t dims = shape.size();
 
