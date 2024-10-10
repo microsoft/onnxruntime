@@ -91,13 +91,13 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
                                const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
                                const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
                                const std::vector<float>& target_class_weights, const std::vector<ThresholdType>& target_class_weights_as_tensor,
-                               const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices);
+                               const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices);
   size_t AddNodes(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<size_t>& truenode_ids,
                   const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
                   const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
                   const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping,
                   int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids, const std::vector<float>& target_class_weights,
-                  const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices);
+                  const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices);
 };
 
 // Below is simple implementation of `bit_cast` as it is supported from c++20 and the current supported version is c++17
@@ -379,7 +379,7 @@ bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAr
     const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
     const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
     const std::vector<float>& target_class_weights, const std::vector<ThresholdType>& target_class_weights_as_tensor,
-    const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices) {
+    const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices) {
   // Leaves have values set at 0
   if (cmodes[left_id] != cmodes[right_id] || nodes_featureids[left_id] != nodes_featureids[right_id] || (!nodes_values_as_tensor.empty() && nodes_values_as_tensor[left_id] != nodes_values_as_tensor[right_id]) || (nodes_values_as_tensor.empty() && node_values[left_id] != node_values[right_id])) {
     return false;
@@ -422,7 +422,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
     const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id,
     const InlinedVector<TreeNodeElementId>& node_tree_ids, const std::vector<float>& target_class_weights,
-    const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices) {
+    const std::vector<ThresholdType>& target_class_weights_as_tensor, InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices) {
   // Validate this index maps to the same tree_id as the one we should be building.
   if (node_tree_ids[i].tree_id != tree_id) {
     ORT_THROW("Tree id mismatch. Expected ", tree_id, " but got ", node_tree_ids[i].tree_id, " at position ", i);
