@@ -83,9 +83,9 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info, [[maybe_unused]] Da
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
     if (cuda_provider_info != nullptr) {
       dt.data_transfer = cuda_provider_info->CreateGPUDataTransfer();
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA provider could not be loaded");
+      return Status::OK();
     }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA provider could not be loaded");
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA provider is not enabled in this build");
 #endif
@@ -94,14 +94,13 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info, [[maybe_unused]] Da
     auto ep_factory = onnxruntime::DMLProviderFactoryCreator::Create(ConfigOptions{}, 0, false, false, false);
     dt.ep = ep_factory->CreateProvider();
     dt.data_transfer = dt.ep->GetDataTransfer();
+    return Status::OK();
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DML provider is not enabled in this build");
 #endif
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported device allocator");
   }
 
-  return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported device allocator");
 }
 
 static Status CreateOrtValueOnDevice(const OrtValue& ort_value_mapped,
