@@ -158,6 +158,7 @@ class WebGpuContext final {
   std::vector<PendingQueryInfo> pending_queries_;
 
   std::vector<profiling::EventRecord> profiling_events_;
+  uint64_t gpu_timestamp_offset_ = 0;
 
   std::once_flag init_flag_;
 
