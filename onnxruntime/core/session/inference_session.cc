@@ -2027,10 +2027,6 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    bool save_prepacked_constant_initializers =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
-    Graph::PrePackInitializers pre_packed_initializers;
-
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
@@ -2070,6 +2066,9 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           Graph::OffsetAlignmentInfo align_info;
           align_info.align_offset = true;
+          bool save_prepacked_constant_initializers =
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
+          Graph::PrePackInitializers pre_packed_initializers;
           if (save_prepacked_constant_initializers) {
             LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
                                             << "Use this option only when run model inference on PC with CPU."
