@@ -187,7 +187,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       op_type_ = OpComputeType::op_compute_type_qs8;
-      break;      
+      break;
     default:
       auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
       ORT_THROW("unsupported op in Resize, we have FLOAT|FLOAT16|UINT8|INT8, but get ", stype);
@@ -266,7 +266,7 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
   auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f32;
   if (op_type_ == OpComputeType::op_compute_type_fp16) {
     reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f16;
-  } else if(op_type_ == OpComputeType::op_compute_type_qu8) {
+  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_u8;
   } else if (op_type_ == OpComputeType::op_compute_type_qs8) {
     reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_s8;
@@ -286,7 +286,7 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
                                                   output->MutableData<float>());
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_setup_resize_bilinear2d_nhwc_f16(op0_.get(), workspace.get(), input->Data<MLFloat16>(),
-                                                 output->MutableData<MLFloat16>());
+                                                  output->MutableData<MLFloat16>());
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_resize_bilinear2d_nhwc_u8(op0_.get(), workspace.get(), input->Data<uint8_t>(),
                                                  output->MutableData<uint8_t>());
@@ -363,20 +363,20 @@ ONNX_OPERATOR_KERNEL_EX(Resize, kMSInternalNHWCDomain, 19, kXnnpackExecutionProv
 
 #ifdef XNNPACK_FP16_SUPPORTED
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>()}),
-                                  Resize);
+                                        KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>()}),
+                                        Resize);
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
-                                  Resize);
+                                        KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
+                                        Resize);
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, 17, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
-                                  Resize);
+                                        KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
+                                        Resize);
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 18, 18, MLFloat16, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
-                                  Resize);
+                                        KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
+                                        Resize);
 ONNX_OPERATOR_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 19, MLFloat16, kXnnpackExecutionProvider,
-                                KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
-                                Resize);
+                              KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<MLFloat16>()}),
+                              Resize);
 #endif
 }  // namespace xnnpack
 }  // namespace onnxruntime
