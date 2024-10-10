@@ -27,7 +27,7 @@ class EinsumOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -37,7 +37,7 @@ enum class RecognizedOperatorType {
   Identity,
   ReduceSum,
   Transpose,
-  Diagonal,  // TODO: support diagonal, but now wait for webnn triangular op
+  Diagonal,
   Multiply,
   Pairwise,
   Total,
@@ -701,6 +701,12 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
+  if (input_defs.size() > 2) {
+    // TODO: Support more than two inputs.
+    LOGS(logger, VERBOSE) << "EinSum only supports up to two inputs.";
+    return false;
+  }
+
   NodeAttrHelper helper(node);
   const auto equation = helper.Get("equation", std::string(" "));
   std::vector<uint32_t> label_indices;
@@ -729,9 +735,25 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+
+  const auto& op_type = node.OpType();
+  int32_t input0_type;
+  int32_t input1_type;
+  bool has_input1 = input_defs.size() > 1 && input_defs[1]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      (has_input1 && !GetType(*input_defs[1], input1_type, logger))) {
+    return false;
+  }
+
+  if (has_input1 && input0_type != input1_type) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
+    return false;
+  }
 
   NodeAttrHelper helper(node);
   const auto equation = helper.Get("equation", std::string(" "));
@@ -749,58 +771,17 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDevice
   RecognizedOperatorType recognized_operator_type = DetermineRecognizedOperatorType(label_indices, components,
                                                                                     output_dimensions);
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
   if (recognized_operator_type == RecognizedOperatorType::None) {
     LOGS(logger, VERBOSE) << "The equation is not supported in Einsum.";
     return false;
   } else if (recognized_operator_type == RecognizedOperatorType::Pairwise) {
-    // WebNN gemm and matmul only support float32 and float16 input data types.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
+    // Map to WebNN's gemm or matmul
+    return IsDataTypeSupportedByOp("MatMul", input0_type, wnn_limits, "a", "inputs", logger);
   } else if (recognized_operator_type == RecognizedOperatorType::ReduceSum) {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT64,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT64,
-    };
-
-    if (device_type == WebnnDeviceType::CPU) {
-      // WebNN CPU backend doesn't support uint32 and uint64 for reduceSum
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-    }
+    return IsDataTypeSupportedByOp("ReduceSum", input0_type, wnn_limits, "input", "inputs", logger);
   } else {
-    supported_data_types = webnn_supported_data_types;
+    return IsDataTypeSupportedByOp("Identity", input0_type, wnn_limits, "input", "inputs", logger);
   }
-  const auto& op_type = node.OpType();
-  int32_t input0_type;
-  int32_t input1_type;
-  bool has_input1 = input_defs.size() > 1 && input_defs[1]->Exists();
-
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      (has_input1 && !GetType(*input_defs[1], input1_type, logger))) {
-    return false;
-  }
-
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  if (has_input1 && input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
 }
 
 void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
