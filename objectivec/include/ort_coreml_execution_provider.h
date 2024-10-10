@@ -29,7 +29,10 @@ NS_ASSUME_NONNULL_BEGIN
  * Whether the CoreML execution provider should run on CPU only.
  */
 @property BOOL useCPUOnly;
-
+/**
+ * exclude ANE in CoreML.
+ */
+@property BOOL useCPUAndGPU;
 /**
  * Whether the CoreML execution provider is enabled on subgraphs.
  */
