@@ -14,12 +14,12 @@ namespace Dml
         bool cpuSyncSpinningEnabled,
         bool keepOpen
         )
-        : m_queue(std::make_shared<CommandQueue>(queue, cpuSyncSpinningEnabled))
+        : m_d3dDevice(d3d12Device)
+        , m_queue(std::make_shared<CommandQueue>(queue, cpuSyncSpinningEnabled))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
         , m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
         , m_keepOpen(keepOpen)
     {
-        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
 
     void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)

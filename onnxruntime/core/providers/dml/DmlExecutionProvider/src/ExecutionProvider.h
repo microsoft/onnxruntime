@@ -226,19 +226,16 @@ namespace Dml
     public:
         DataTransfer() = delete;
 
-        DataTransfer(ExecutionProviderImpl* impl) : m_impl(impl)
+        DataTransfer(bool cpuSyncSpinningEnabled, ExecutionContext* executionContext, std::shared_ptr<PooledUploadHeap> pooledUploadHeap, std::shared_ptr<ReadbackHeap> readbackHeap)
+        : m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
+        , m_executionContext(executionContext)
+        , m_pooledUploadHeap(std::move(pooledUploadHeap))
+        , m_readbackHeap(std::move(readbackHeap))
         {
         }
 
-        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
-        {
-            return m_impl->CopyTensor(src, dst);
-        }
-
-        onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
-        {
-            return m_impl->CopyTensors(src_dst_pairs);
-        }
+        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final;
+        onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const final;
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
@@ -247,7 +244,10 @@ namespace Dml
         }
 
     private:
-        ComPtr<ExecutionProviderImpl> m_impl;
+        bool m_cpuSyncSpinningEnabled = false;
+        ComPtr<ExecutionContext> m_executionContext;
+        std::shared_ptr<PooledUploadHeap> m_pooledUploadHeap;
+        std::shared_ptr<ReadbackHeap> m_readbackHeap;
     };
 
     class ExecutionProvider : public onnxruntime::IExecutionProvider
@@ -267,7 +267,7 @@ namespace Dml
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
         {
-            return std::make_unique<DataTransfer>(m_impl.Get());
+            return std::make_unique<DataTransfer>(m_cpuSyncSpinningEnabled, m_dataTransferContext.Get(), m_dataTransferUploadHeap, m_dataTransferReadbackHeap);
         }
 
         const void* GetExecutionHandle() const noexcept final override
@@ -349,6 +349,10 @@ namespace Dml
 
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
+        ComPtr<ExecutionContext> m_dataTransferContext;
+        std::shared_ptr<PooledUploadHeap> m_dataTransferUploadHeap;
+        std::shared_ptr<ReadbackHeap> m_dataTransferReadbackHeap;
+        bool m_cpuSyncSpinningEnabled = false;
     };
 
 } // namespace Dml
