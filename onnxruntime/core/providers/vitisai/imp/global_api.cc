@@ -254,10 +254,10 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.model_main_graph = [](Model& model) -> Graph& { return model.MainGraph(); };
   the_global_api.graph_get_model = [](const Graph& graph) -> const Model& { return graph.GetModel(); };
-  the_global_api.graph_get_inputs_unsafe = [](const Graph& graph) -> auto{
+  the_global_api.graph_get_inputs_unsafe = [](const Graph& graph) -> auto {
     return vaip_core::DllSafe(graph.GetInputs());
   };
-  the_global_api.graph_get_outputs_unsafe = [](const Graph& graph) -> auto{
+  the_global_api.graph_get_outputs_unsafe = [](const Graph& graph) -> auto {
     return vaip_core::DllSafe(graph.GetOutputs());
   };
   the_global_api.graph_set_outputs = [](Graph& graph, gsl::span<const NodeArg* const> outputs) {
@@ -289,7 +289,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     }
     return status.Code();
   };
-  the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto{
+  the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto {
     return vaip_core::DllSafe(graph.GetConsumerNodes(node_arg_name));
   };
   the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto{ return vaip_core::DllSafe(graph.Nodes()); };
