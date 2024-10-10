@@ -21,7 +21,7 @@ public enum CoreMLFlags implements OrtFlags {
    * have dynamic shapes.
    */
   ONLY_ALLOW_STATIC_INPUT_SHAPES(8), // COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES(0x008)
-    /**
+  /**
    * Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or
    * later.
    */

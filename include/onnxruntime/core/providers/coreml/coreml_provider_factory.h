@@ -31,7 +31,7 @@ enum COREMLFlags {
   // Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or later.
   COREML_FLAG_CREATE_MLPROGRAM = 0x010,
 
-  //Exclude ANE as sometimes this decrease performance
+  // Exclude ANE as sometimes this decrease performance
   COREML_FLAG_USE_CPUAndGPU = 0x020,
   // Keep COREML_FLAG_LAST at the end of the enum definition
   // And assign the last COREMLFlag to it
