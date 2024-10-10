@@ -2027,15 +2027,14 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    // hashmap pre_packed_initializers_name_map is used to store prepacked initializers during model save.
-    // During session_state finalize, constant initializers will be prepacked and stored in this hashmap,
-    // later these prepacked initializers will be serialized into ONNX data file (in method Model::SaveWithExternalInitializers).
-    // ORT will load ONNX data file with prepacked initializers in inference run and no need to do prepack again.
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    bool save_prepacked_constant_initializers =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
+    Graph::PrePackInitializers pre_packed_initializers;
+
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
-                                             pre_packed_initializers_name_map,
+                                             pre_packed_initializers,
                                              !saving_model,
                                              saving_ort_format));
 
@@ -2071,8 +2070,6 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           Graph::OffsetAlignmentInfo align_info;
           align_info.align_offset = true;
-          bool save_prepacked_constant_initializers =
-              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
           if (save_prepacked_constant_initializers) {
             LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
                                             << "Use this option only when run model inference on PC with CPU."
@@ -2083,14 +2080,14 @@ common::Status InferenceSession::Initialize() {
                                             << "   With save_prepacked_constant_initializers option, prepacked initializer will be serialized into data file."
                                             << "2. Load optimized model and external data file in same device, no prepack is need."
                                             << "3. Run inference with optimized model.";
-          }
+          } 
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
                                                                              optimized_model_external_initializers_min_size_in_bytes,
                                                                              align_info,
                                                                              save_prepacked_constant_initializers,
-                                                                             pre_packed_initializers_name_map));
+                                                                             pre_packed_initializers));
         }
       }
     }

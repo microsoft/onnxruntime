@@ -386,7 +386,7 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::pa
                                                        size_t initializer_size_threshold,
                                                        const Graph::OffsetAlignmentInfo& align_info,
                                                        bool save_prepacked_constant_initializers,
-                                                       std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const {
+                                                       Graph::PrePackInitializers& pre_packed_initializers) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
@@ -394,7 +394,7 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::pa
                                                                          initializer_size_threshold,
                                                                          align_info,
                                                                          save_prepacked_constant_initializers,
-                                                                         pre_packed_initializers_name_map);
+                                                                         pre_packed_initializers);
   return result;
 }
 
@@ -614,7 +614,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
                                                 size_t initializer_size_threshold,
                                                 const Graph::OffsetAlignmentInfo& align_info,
                                                 bool save_prepacked_constant_initializers,
-                                                std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) {
+                                                Graph::PrePackInitializers& pre_packed_initializers) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
@@ -623,7 +623,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
     status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name,
                                                  initializer_size_threshold,
                                                  align_info, save_prepacked_constant_initializers,
-                                                 pre_packed_initializers_name_map);
+                                                 pre_packed_initializers);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -656,10 +656,10 @@ Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::
                                            size_t initializer_size_threshold,
                                            const Graph::OffsetAlignmentInfo& align_info,
                                            bool save_prepacked_constant_initializers,
-                                           std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) {
+                                           Graph::PrePackInitializers& pre_packed_initializers) {
   return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold,
                                            align_info, save_prepacked_constant_initializers,
-                                           pre_packed_initializers_name_map);
+                                           pre_packed_initializers);
 }
 
 Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -778,7 +778,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
                                            size_t initializer_size_threshold,
                                            const Graph::OffsetAlignmentInfo& align_info,
                                            bool save_prepacked_constant_initializers,
-                                           std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) {
+                                           Graph::PrePackInitializers& pre_packed_initializers) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
   }
@@ -788,7 +788,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
   auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
                                                                 initializer_size_threshold,
                                                                 align_info, save_prepacked_constant_initializers,
-                                                                pre_packed_initializers_name_map);
+                                                                pre_packed_initializers);
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {

@@ -4150,7 +4150,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold,
                                                                        const OffsetAlignmentInfo& align_info,
                                                                        bool save_prepacked_constant_initializers,
-                                                                       std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const {
+                                                                       PrePackInitializers& pre_packed_initializers) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4170,18 +4170,18 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
   for (const auto& initializer : graph_proto_->initializer()) {
     bool use_pre_packed_initializer = false;
-    std::vector<TensorProto> pre_packed_initializers;
+    std::vector<TensorProto> pre_packed_initializers_tensor_proto;
     // If this initializer has been prepacked, saved prepacked external initializer instead of original one.
     // Since one initializer could be used by multiple kernels and been prepacked differently,
     // Save each prepacked initializers seperately, chagne the initializer name to [initializer_name]:[kernel_name]
     // to avoid conflict. Change the node input name accordingly.
     // IT could potentially make the ONNX data file larger since we store multiple prepacked initializers into disk
     // but this could be rare case.
-    if (save_prepacked_constant_initializers && pre_packed_initializers_name_map.count(initializer.name())) {
-      for (const auto& item : pre_packed_initializers_name_map[initializer.name()]) {
+    if (save_prepacked_constant_initializers && pre_packed_initializers.pre_packed_initializers_name_map.count(initializer.name())) {
+      for (const auto& item : pre_packed_initializers.pre_packed_initializers_name_map[initializer.name()]) {
         auto kernel_name = item.first;
         std::string prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer.name(), kernel_name);
-        pre_packed_initializers.push_back(utils::TensorToTensorProto(*item.second, prepacked_initializer_name));
+        pre_packed_initializers_tensor_proto.push_back(utils::TensorToTensorProto(item.second, prepacked_initializer_name));
         use_pre_packed_initializer = true;
 
         for (auto& node : *result.mutable_node()) {
@@ -4206,7 +4206,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     } else {
 #endif
       if (use_pre_packed_initializer) {
-        for (auto pre_packed_initializer : pre_packed_initializers) {
+        for (auto pre_packed_initializer : pre_packed_initializers_tensor_proto) {
           // Dense tensors larger than the threshold are added to the external file.
           TensorProto* output_proto = result.add_initializer();
           std::vector<uint8_t> raw_data;

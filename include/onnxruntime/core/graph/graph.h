@@ -1177,6 +1177,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     int64_t allocation_granularity = 65536;
   };
 
+  // Data structure stores prepacked initializers in format of Tensor.
+  struct PrePackInitializers {
+    // Since one constant initializer could be used by different kernels
+    // and prepacked differently, use an unordered_map to store prepacked
+    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
+  };
+
   /** Gets the GraphProto representation of this Graph
   @param external_file_path File path of the binary file to use for initializers.
   @param model_file_path path of the model file.
@@ -1192,15 +1200,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                                   size_t initializer_size_threshold,
                                                                   const OffsetAlignmentInfo& align_info,
                                                                   bool save_prepacked_constant_initializers,
-                                                                  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const;
+                                                                  PrePackInitializers& pre_packed_initializers) const;
 
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold) const {
     OffsetAlignmentInfo default_options;
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    Graph::PrePackInitializers pre_packed_initializers;
     return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options,
-                                                false, pre_packed_initializers_name_map);
+                                                false, pre_packed_initializers);
   }
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */

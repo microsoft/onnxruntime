@@ -338,10 +338,7 @@ TensorTypeBase::~TensorTypeBase() {
 
 template <typename T>
 static void Delete(void* p) {
-  if (p) {
-    delete static_cast<T*>(p);
-    p = nullptr;
-  }
+  delete static_cast<T*>(p);
 }
 
 DeleteFunc TensorTypeBase::GetDeleteFunc() const {

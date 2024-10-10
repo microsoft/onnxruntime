@@ -400,10 +400,10 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                                        const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
                                                        bool save_prepacked_constant_initializers,
-                                                       std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                                       Graph::PrePackInitializers& pre_packed_initializers,
                                                        std::unordered_set<std::string>& pre_packed_initializers_name_set) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
-                                     save_prepacked_constant_initializers, &pre_packed_initializers_name_map,
+                                     save_prepacked_constant_initializers, &pre_packed_initializers,
                                      &pre_packed_initializers_name_set](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     std::unordered_map<std::string, std::string> pre_packed_kernel_input_map;
@@ -439,8 +439,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // If prepacked weights already read from ONNX data file (this happens we ORT reads data file with prepacked
                   // weights serialized), only need to set prepacked weights once to kernel.
                   is_kernel_prepacked = true;
-                  Tensor* const_initialized_tensor_mutable = constant_initialized_tensors[ort_value_idx].GetMutable<Tensor>();
-                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensors(input_idx, const_initialized_tensor_mutable));
+                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensors(input_idx, *(constant_initialized_tensors[ort_value_idx].GetMutable<Tensor>())));
                 }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
                 else if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
@@ -512,12 +511,12 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // if intended to save prepacked initializers, get prepacked tensors from kernel and save in hashmap,
                   // will save to data file later
                   if (save_prepacked_constant_initializers) {
-                    Tensor* tensor = kernel->GetPrePackTensors();
+                    auto tensor = kernel->GetPrePackTensors();
 
                     if (tensor != nullptr) {
                       // save prepacked initializers per initializer and kernel since one initializer could
                       // be used by multiple kernels
-                      pre_packed_initializers_name_map[input_name][kernel_name] = tensor;
+                      pre_packed_initializers.pre_packed_initializers_name_map[input_name][kernel_name] = std::move(*tensor);
 
                       pre_packed_kernel_input_map[kernel_name] = input_name;
                     }
@@ -540,11 +539,11 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // multiple times and use different initializers to store prepacked weights, this piece of logic
                   // might introduce bug and need a per kernel strategy to update prepacked weights.
                   if (save_prepacked_constant_initializers && pre_packed_kernel_input_map.count(kernel_name)) {
-                    Tensor* tensor = kernel->GetPrePackTensors();
+                    auto tensor = kernel->GetPrePackTensors();
 
                     if (tensor != nullptr) {
                       auto existing_input_name = pre_packed_kernel_input_map[kernel_name];
-                      pre_packed_initializers_name_map[existing_input_name][kernel_name] = tensor;
+                      pre_packed_initializers.pre_packed_initializers_name_map[existing_input_name][kernel_name] = std::move(*tensor);
                     }
                   }
                 }
@@ -1229,7 +1228,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
-                                          std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                          Graph::PrePackInitializers& pre_packed_initializers,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1243,7 +1242,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
-                                  remove_initializers, constant_initializers_use_count, pre_packed_initializers_name_map);
+                                  remove_initializers, constant_initializers_use_count, pre_packed_initializers);
 }
 
 static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
@@ -1377,7 +1376,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                              std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map,
+                                              Graph::PrePackInitializers& pre_packed_initializers,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
@@ -1572,7 +1571,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map,
                                                           save_prepacked_constant_initializers,
-                                                          pre_packed_initializers_name_map,
+                                                          pre_packed_initializers,
                                                           pre_packed_initializers_name_set));
   }
 
@@ -1612,7 +1611,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                                subgraph_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, pre_packed_initializers_name_map, subgraph_outer_scope_node_arg_to_location_map, true));
+          constant_initializers_use_count, pre_packed_initializers, subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());
