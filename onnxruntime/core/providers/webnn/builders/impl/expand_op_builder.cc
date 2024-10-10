@@ -95,11 +95,6 @@ bool ExpandOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     return false;
   }
 
-  if (input_shape.empty()) {
-    LOGS(logger, VERBOSE) << "Expand does not support empty input's shape.";
-    return false;
-  }
-
   std::vector<int64_t> output_shape;
   if (!GetBidirectionalBroadcastShape(input_shape, new_shape, output_shape)) {
     LOGS(logger, VERBOSE) << "The input cannot expand to shape " << GetShapeString(new_shape);
