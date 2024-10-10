@@ -52,6 +52,10 @@ struct OrtVitisAIEpAPI {
   int (*vitisai_ep_on_run_start)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
       vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) = nullptr;
+  int (*vitisai_ep_set_ep_dynamic_options)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+      const char* const* keys,
+      const char* const* values, size_t kv_len) = nullptr;
   void Ensure() {
     if (handle_)
       return;
@@ -77,6 +81,7 @@ struct OrtVitisAIEpAPI {
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_set_ep_dynamic_options", (void**)&vitisai_ep_set_ep_dynamic_options));
   }
 
  private:
@@ -114,6 +119,15 @@ int vitisai_ep_on_run_start(
     vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) {
   if (s_library_vitisaiep.vitisai_ep_on_run_start) {
     return s_library_vitisaiep.vitisai_ep_on_run_start(eps, state, get_config_entry);
+  }
+  return 100;
+}
+
+int vitisai_ep_set_ep_dynamic_options(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const char* const* keys,
+    const char* const* values, size_t kv_len) {
+  if (s_library_vitisaiep.vitisai_ep_set_ep_dynamic_options) {
+    return s_library_vitisaiep.vitisai_ep_set_ep_dynamic_options(eps, keys, values, kv_len);
   }
   return 100;
 }
@@ -240,10 +254,10 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.model_main_graph = [](Model& model) -> Graph& { return model.MainGraph(); };
   the_global_api.graph_get_model = [](const Graph& graph) -> const Model& { return graph.GetModel(); };
-  the_global_api.graph_get_inputs_unsafe = [](const Graph& graph) -> auto {
+  the_global_api.graph_get_inputs_unsafe = [](const Graph& graph) -> auto{
     return vaip_core::DllSafe(graph.GetInputs());
   };
-  the_global_api.graph_get_outputs_unsafe = [](const Graph& graph) -> auto {
+  the_global_api.graph_get_outputs_unsafe = [](const Graph& graph) -> auto{
     return vaip_core::DllSafe(graph.GetOutputs());
   };
   the_global_api.graph_set_outputs = [](Graph& graph, gsl::span<const NodeArg* const> outputs) {
@@ -275,10 +289,10 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     }
     return status.Code();
   };
-  the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto {
+  the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto{
     return vaip_core::DllSafe(graph.GetConsumerNodes(node_arg_name));
   };
-  the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto { return vaip_core::DllSafe(graph.Nodes()); };
+  the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto{ return vaip_core::DllSafe(graph.Nodes()); };
   the_global_api.graph_get_name = [](const Graph& graph) -> const std::string& { return graph.Name(); };
   the_global_api.graph_reverse_dfs_from = [](const Graph& graph, gsl::span<const Node* const> from,
                                              const auto& enter, const auto& leave, const auto& stop) {

@@ -115,4 +115,12 @@ common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOption
   return Status::OK();
 }
 
+common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                             gsl::span<const char* const> values) {
+  auto error_code = vitisai_ep_set_ep_dynamic_options(**execution_providers_, keys.data(), values.data(), std::min(keys.size(), values.size()));
+  if (error_code) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, std::to_string(error_code));
+  }
+  return Status::OK();
+}
 }  // namespace onnxruntime
