@@ -177,6 +177,7 @@ def _build_aar(args):
             if "--enable_training_apis" in build_settings["build_params"]
             else "-DENABLE_TRAINING_APIS=0"
         ),
+        "-DreleaseVersionSuffix=" + os.getenv("RELEASE_VERSION_SUFFIX", ""),
     ]
 
     # Add qnn specific parameters
