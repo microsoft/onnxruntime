@@ -31,11 +31,12 @@ class DecoderMaskedMultiHeadAttention final : public OpKernel, public AttentionC
                                  const Tensor* attn_bias,
                                  const Tensor* cache_indir,
                                  OpKernelContext* context,
+                                 int beam_width,
                                  Tensor* scaled_qk = nullptr) const;
   void ComputeAttentionProbsWithBeams(T* attention_probs,
                                       const T* Q,
                                       const T* K,
-                                      const T* mask_index_data,
+                                      const int32_t* mask_index_data,
                                       int batch_size,
                                       int past_sequence_length,
                                       int max_sequence_length,
@@ -45,6 +46,7 @@ class DecoderMaskedMultiHeadAttention final : public OpKernel, public AttentionC
                                       ThreadPool* tp,
                                       const T* attn_bias_data,
                                       const int32_t* cache_indir_data,
+                                      int beam_width,
                                       T* scaled_qk_data = nullptr) const;
   void ComputeVxAttentionScoreWithBeams(T* output,
                                         T* tmp_buffer,
@@ -57,6 +59,7 @@ class DecoderMaskedMultiHeadAttention final : public OpKernel, public AttentionC
                                         const T* past_value,
                                         T* present_value,
                                         const int32_t* cache_indir_data,
+                                        int beam_width,
                                         ThreadPool* tp) const;
   Status Compute(OpKernelContext* context) const override;
 
