@@ -24,7 +24,7 @@
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",
     "react": "^18.1.0",
-    "react-native": "^0.69.7",
+    "react-native": "^0.75.3",
     "react-native-builder-bob": "^0.18.2"
   },
   "peerDependencies": {
@@ -83,21 +83,23 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
-    "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn e2e && yarn pods",
+    "bootstrap": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e && npm run pods",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
-    "unpack-common": "cd e2e && yarn add --no-lockfile file:./onnxruntime-common.tgz",
+    "unpack-common": "cd e2e && npm install --no-save ./onnxruntime-common.tgz",
     "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
-    "unpack-libs": "cd e2e && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
+    "unpack-libs": "cd e2e && npm install --no-save ./onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && pod-install --quiet",
-    "e2e": "yarn --cwd e2e"
+    "e2e": "npm --prefix e2e install",
+    "e2e:android": "npm --prefix e2e run android",
+    "e2e:ios": "npm --prefix e2e run ios",
+    "e2e:start": "npm --prefix e2e run start"
   },
   "types": "dist/typescript/index.d.ts",
   "name": "onnxruntime-react-native",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/Microsoft/onnxruntime/issues"
-  },
-  "packageManager": "yarn@1.22.19"
+  }
 }

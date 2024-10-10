@@ -6,7 +6,7 @@ plugins {
 def minSdkVer = System.properties.get("minSdkVer")?:24
 
 android {
-	compileSdkVersion 32
+	compileSdkVersion 33
 
 	defaultConfig {
 		applicationId "ai.onnxruntime.example.javavalidator"
