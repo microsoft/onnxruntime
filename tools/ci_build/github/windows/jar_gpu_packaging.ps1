@@ -12,8 +12,8 @@ Remove-Item -Path libcustom_op_library.so
 7z a $Env:BUILD_BINARIESDIRECTORY\java-artifact\onnxruntime-java-win-x64\onnxruntime-$Env:ONNXRUNTIMEVERSION.jar .
 popd
 pushd onnxruntime-java-win-x64
-ren onnxruntime-$Env:ONNXRUNTIMEVERSION.jar onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION-$Env:ReleaseVersionSuffix.jar .jar
-ren onnxruntime-$Env:ONNXRUNTIMEVERSION-javadoc.jar onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION-$Env:ReleaseVersionSuffix-javadoc.jar
-ren onnxruntime-$Env:ONNXRUNTIMEVERSION-sources.jar onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION-$Env:ReleaseVersionSuffix-sources.jar
-ren onnxruntime-$Env:ONNXRUNTIMEVERSION.pom onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION-$Env:ReleaseVersionSuffix.pom
+ren onnxruntime-$Env:ONNXRUNTIMEVERSION.jar onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION$Env:ReleaseVersionSuffix.jar .jar
+ren onnxruntime-$Env:ONNXRUNTIMEVERSION-javadoc.jar onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION$Env:ReleaseVersionSuffix-javadoc.jar
+ren onnxruntime-$Env:ONNXRUNTIMEVERSION-sources.jar onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION$Env:ReleaseVersionSuffix-sources.jar
+ren onnxruntime-$Env:ONNXRUNTIMEVERSION.pom onnxruntime_gpu-$Env:ONNXRUNTIMEVERSION$Env:ReleaseVersionSuffix.pom
 popd

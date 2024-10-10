@@ -7,7 +7,7 @@ def headersDir = System.properties['headersDir']
 def publishDir = System.properties['publishDir']
 def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
-def releaseVersionSuffix = System.properties['releaseVersionSuffix']
+def releaseVersionSuffix = System.properties['releaseVersionSuffix'] ?: ""
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 
 // Since Android requires higher numbers indicating more recent versions
@@ -29,10 +29,10 @@ def getVersionCode(String version) {
 	}
 	return versionCodeStr as int
 }
-println(releaseVersionSuffix)
+
 project.buildDir = buildDir
 def project_version = rootProject.file('../VERSION_NUMBER').text.trim()
-project.version = releaseVersionSuffix ? "${project_version}-${releaseVersionSuffix}" : project_version
+project.version = releaseVersionSuffix ? "${project_version}${releaseVersionSuffix}" : project_version
 project.group = "com.microsoft.onnxruntime"
 
 def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name

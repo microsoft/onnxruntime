@@ -4,6 +4,7 @@ parameters:
   PreReleaseVersionSuffixNumber: 0
 stages:
 - stage: Setup
+  condition: always()
   jobs:
   - job: Set_Variables
     pool:
