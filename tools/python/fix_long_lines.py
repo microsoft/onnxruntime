@@ -10,7 +10,12 @@ import tempfile
 
 from util import logger, run
 
-_log = logger.get_logger("fix_long_lines", logging.INFO)
+_log = logger.get_logger("fix_long_lines", 
+                         
+                         
+                         
+                         
+                         logging.INFO)
 
 
 # look for long lines in the file, and if found run clang-format on those lines
