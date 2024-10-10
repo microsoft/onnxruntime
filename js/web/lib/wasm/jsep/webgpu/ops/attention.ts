@@ -399,6 +399,7 @@ const createAttentionProbsProgramInfo = (
   const presentKeyShape = presentKey
     ? [parameters.batchSize, kvNumHeads, totalSequenceLength, parameters.headSize]
     : undefined;
+
   // TODO: handle mask
 
   const alpha = attributes.scale === 0 ? 1.0 / Math.sqrt(parameters.headSize) : attributes.scale;
@@ -494,8 +495,8 @@ const createAttentionProbsProgramInfo = (
     let n = workgroup_id.x * TILE_SIZE;
     var sequence_length = uniforms.M;
     ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
-    let absKvHeadIdx = kvHeadIdx + batchIdx * kv_num_heads; // kvHeadIdx is relative to the batch
-    let qOffset = sequence_length * uniforms.K * workgroup_id.z + m * uniforms.K;
+    let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx;
+    let qOffset = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
     ${feedPastKey && presentKey ? 'let pastKeyOffset = absKvHeadIdx * uniforms.past_sequence_length * uniforms.K;' : ''};
     let kOffset = absKvHeadIdx * uniforms.kv_sequence_length * uniforms.K;
     ${presentKey ? 'let presentKeyOffset = absKvHeadIdx * uniforms.N * uniforms.K;' : ''}
@@ -509,24 +510,18 @@ const createAttentionProbsProgramInfo = (
       ${(() => {
         if (feedPastKey && presentKey) {
           return `
-              if (n + local_id.y < uniforms.past_sequence_length * uniforms.n_reps) {
-                tileK[idx] = past_key[pastKeyOffset + u32((n + local_id.y) / uniforms.n_reps) * uniforms.K + w + local_id.x];
-              } else if (n + local_id.y - uniforms.past_sequence_length < uniforms.kv_sequence_length * uniforms.n_reps) {
-                tileK[idx] = key[kOffset + u32((n + local_id.y - uniforms.past_sequence_length) / uniforms.n_reps) * uniforms.K + w + local_id.x];
+              if (n + local_id.y < uniforms.past_sequence_length) {
+                tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+              } else {
+                tileK[idx] =
+                         key[kOffset + (n + local_id.y - uniforms.past_sequence_length) * uniforms.K + w + local_id.x];
               }`;
         } else {
-          return `if (n + local_id.y < uniforms.kv_sequence_length * uniforms.n_reps) {
-                    tileK[idx] = key[kOffset + u32((n + local_id.y) / uniforms.n_reps) * uniforms.K + w + local_id.x];
-                  }`;
+          return 'tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];';
         }
       })()}
       ${
-        presentKey
-          ? `
-          let present_key_idx = presentKeyOffset + u32((n + local_id.y) / uniforms.n_reps) * uniforms.K + w + local_id.x;
-          present_key[present_key_idx] = tileK[idx];
-          `
-          : ''
+        presentKey ? 'present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];' : ''
       }
       }
       workgroupBarrier();
@@ -670,7 +665,7 @@ const createVxAttentionScoreProgramInfo = (
    var sequence_length = uniforms.M;
    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
    let offsetA = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
-    let absKvHeadIdx = kvHeadIdx + batchIdx * kv_num_heads; // kvHeadIdx is relative to the batch
+   let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx; // kvHeadIdx is relative to the batch
    ${feedPastValue && presentValue ? 'let pastValueOffset = absKvHeadIdx * uniforms.N * uniforms.past_sequence_length + n;' : ''};
    let vOffset = absKvHeadIdx * uniforms.N * uniforms.kv_sequence_length + n;
    ${presentValue ? 'let presentValueOffset = absKvHeadIdx * uniforms.N * uniforms.K + n;' : ''}
@@ -684,21 +679,17 @@ const createVxAttentionScoreProgramInfo = (
         ${(() => {
           if (feedPastValue && presentValue) {
             return `
-        if (w + local_id.y < uniforms.past_sequence_length * uniforms.n_reps) {
-          tileV[idx] = past_value[pastValueOffset + u32((w + local_id.y) / uniforms.n_reps) * uniforms.N];
-        } else if (w + local_id.y - uniforms.past_sequence_length < uniforms.kv_sequence_length * uniforms.n_reps) {
-          tileV[idx] = v[vOffset + u32((w + local_id.y - uniforms.past_sequence_length) / uniforms.n_reps) * uniforms.N];
+        if (w + local_id.y < uniforms.past_sequence_length) {
+          tileV[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
+        } else {
+          tileV[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];
         }
       `;
           } else {
-            return `
-              if (w + local_id.y < uniforms.kv_sequence_length * uniforms.n_reps) {
-                tileV[idx] = v[vOffset + u32((w + local_id.y) / uniforms.n_reps) * uniforms.N];
-              }
-        `;
+            return 'tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N];';
           }
         })()}
-        ${presentValue ? 'present_value[presentValueOffset + u32((w + local_id.y) / uniforms.n_reps) * uniforms.N] = tileV[idx];' : ''}
+        ${presentValue ? 'present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];' : ''}
       }
      workgroupBarrier();
      for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
