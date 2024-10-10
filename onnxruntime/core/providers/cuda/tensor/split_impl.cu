@@ -157,6 +157,7 @@ Status SplitImpl(cudaStream_t stream, const size_t element_size, const int block
   return Status::OK();
 }
 
+#ifndef USE_ROCM
 template <typename T>
 __global__ void _Split3InnerKernel(const int64_t size0_in_byte,
                                    const int64_t size1_in_byte,
@@ -263,6 +264,7 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
 
   return Status::OK();
 }
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

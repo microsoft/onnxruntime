@@ -25,7 +25,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.0
+    value: 6.1
   - name: RocmVersionPatchSuffix
     value: ".3"
   - name: BuildConfig
@@ -254,6 +254,33 @@ jobs:
       filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
       arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
     displayName: 'Check ROCm Environment'
+
+  # TODO: move to use ci_build/build.py driven tests
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        docker run --rm \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri/renderD$DRIVER_RENDER \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user onnxruntimedev \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e OPENBLAS_NUM_THREADS=1 \
+          -e OPENMP_NUM_THREADS=1 \
+          -e MKL_NUM_THREADS=1 \
+          -e PYTHONPATH=/build/$(BuildConfig) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
+            /bin/bash -c "
+              set -ex; \
+              pip install -r /onnxruntime_src/tools/ci_build/requirements/transformers-test/requirements.txt; \
+              pytest /onnxruntime_src/onnxruntime/test/python/transformers/test_flash_attn_rocm.py -v -n 4 --reruns 1"
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Run tranformers tests'
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:

@@ -3,5 +3,5 @@ wheel
 numpy==1.21.6 ; python_version < '3.9'
 numpy==2.0.0 ; python_version >= '3.9'
 typing_extensions
-torch==1.13.1
+torch==2.2.0
 parameterized

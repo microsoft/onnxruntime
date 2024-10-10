@@ -10,6 +10,9 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "openvino/core/version.hpp"
+#ifdef USE_OVEP_NPU_MEMORY
+#include "core/providers/openvino/ov_allocator.h"
+#endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
@@ -34,6 +37,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
   global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
   global_context_->disable_cpu_fallback = info.disable_cpu_fallback_;
+  global_context_->ep_context_embed_mode = info.so_epctx_embed_mode_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
@@ -47,7 +51,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
       } else {
-        for (std::string device : available_devices) {
+        for (const std::string& device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
                                                                        info.precision_ == "FP16" ||
@@ -146,11 +150,6 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
 
-    if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
-      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(graph_body_viewer,
-                                                                         *GetLogger()));
-    }
-
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
@@ -183,5 +182,19 @@ common::Status OpenVINOExecutionProvider::Compile(
 
   return Status::OK();
 }
+
+#ifdef USE_OVEP_NPU_MEMORY
+std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo npu_allocator_info{
+      [this](OrtDevice::DeviceId device_id) {
+        return std::make_unique<OVRTAllocator>(global_context_->ie_core.Get(), OrtDevice::NPU, device_id, OpenVINO_RT_NPU);
+      },
+      0,
+  };
+
+  // fill in allocator
+  return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
+}
+#endif
 
 }  // namespace onnxruntime

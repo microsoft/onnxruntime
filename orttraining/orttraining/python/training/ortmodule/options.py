@@ -75,7 +75,7 @@ class _LoggingOptions:
 
     def _extract_info(self, log_level):
         # get the log_level from os env variable
-        # OS environment variable log level superseeds the locally provided one
+        # OS environment variable log level supersedes the locally provided one
         self._validate(log_level)
         log_level = LogLevel[os.getenv(_LoggingOptions._log_level_environment_key, log_level.name)]
         return log_level
@@ -197,7 +197,7 @@ class _MemoryOptimizationLevel(IntFlag):
 
     USER_SPECIFIED = 0  # Fully respect user-specified config
     TRANSFORMER_LAYERWISE_RECOMPUTE = (
-        1  # Enable all recomputable subgraphs (excluding compromised recomptable graphs) per layer
+        1  # Enable all recomputable subgraphs (excluding compromised recomputable graphs) per layer
     )
     TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE = 2  # Enable all recomputable subgraphs per layer
 

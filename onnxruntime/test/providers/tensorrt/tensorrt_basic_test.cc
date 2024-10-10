@@ -122,6 +122,18 @@ void CreateBaseModel(const PathString& model_name,
   status = onnxruntime::Model::Save(model, model_name);
 }
 
+std::vector<char> ReadFileFromDisk(const PathString& path) {
+  std::fstream file(path.c_str(), std::fstream::binary | std::fstream::in | std::fstream::ate);
+  std::vector<char> file_bytes;
+  if (file.is_open()) {
+    auto fsize = file.tellg();
+    file.seekg(0, std::ios_base::beg);
+    file_bytes.resize(fsize);
+    file.read(file_bytes.data(), fsize);
+  }
+  return file_bytes;
+}
+
 bool HasCacheFileWithPrefix(const std::string& prefix, std::string file_dir = "") {
   std::filesystem::path target_dir;
   if (file_dir.empty()) {
@@ -360,7 +372,8 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
 }
 
 TEST(TensorrtExecutionProviderTest, EPContextNode) {
-  PathString model_name = ORT_TSTR("EPContextNode_test.onnx");
+  std::string model_name_str = "EPContextNode_test.onnx";
+  PathString model_name = ToPathString(model_name_str);
   std::string graph_name = "EPContextNode_test";
   std::string sess_log_id = "EPContextNode_test";
   std::vector<int> dims = {1, 3, 2};
@@ -461,11 +474,11 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object3{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params3;
-  model_name = ToPathString(params.trt_ep_context_file_path);
+  PathString ctx_model_name = ToPathString(params.trt_ep_context_file_path);
   params3.trt_engine_cache_enable = 1;
   execution_provider = TensorrtExecutionProviderWithOptions(&params3);
   EXPECT_TRUE(session_object3.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  status = session_object3.Load(model_name);
+  status = session_object3.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object3.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -490,10 +503,10 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object4{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params4;
-  model_name = ORT_TSTR("./context_model_folder/EPContextNode_test_ctx.onnx");
+  ctx_model_name = ToPathString("./context_model_folder/EPContextNode_test_ctx.onnx");
   execution_provider = TensorrtExecutionProviderWithOptions(&params4);
   EXPECT_TRUE(session_object4.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  status = session_object4.Load(model_name);
+  status = session_object4.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object4.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -514,7 +527,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params5.trt_dump_ep_context_model = 1;
   params5.trt_ep_context_embed_mode = 1;
   params5.trt_ep_context_file_path = "EP_Context_model_2.onnx";
-  model_name = ORT_TSTR("EPContextNode_test.onnx");
   execution_provider = TensorrtExecutionProviderWithOptions(&params5);
   EXPECT_TRUE(session_object5.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object5.Load(model_name);
@@ -528,10 +540,10 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   InferenceSession session_object6{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params6;
   params6.trt_ep_context_embed_mode = 1;
-  model_name = ToPathString(params5.trt_ep_context_file_path);
+  ctx_model_name = ToPathString(params5.trt_ep_context_file_path);
   execution_provider = TensorrtExecutionProviderWithOptions(&params6);
   EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  status = session_object6.Load(model_name);
+  status = session_object6.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object6.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -543,6 +555,61 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   // Y: 1, 3, 3, 2, 2, 2
   // Z: 1, 3, 3, 2, 2, 2
   RunSession(session_object6, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 7: Run context model with ONNX in memory
+   */
+  auto model_bytes = ReadFileFromDisk(model_name);
+  std::string ctx_model_name_str = "EP_Context_model_weight_stripped.onnx";
+  ctx_model_name = ToPathString(ctx_model_name_str);
+  InferenceSession session_object7{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params7;
+  params7.trt_dump_ep_context_model = 1;
+  params7.trt_ep_context_embed_mode = 1;
+  params7.trt_weight_stripped_engine_enable = 1;
+  params7.trt_ep_context_file_path = ctx_model_name_str.c_str();
+  execution_provider = TensorrtExecutionProviderWithOptions(&params7);
+  EXPECT_TRUE(session_object7.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object7.Load(model_bytes.data(), static_cast<int>(model_bytes.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_object7.Initialize();
+  std::cerr << status.ErrorMessage();
+  ASSERT_TRUE(status.IsOK());
+  RunSession(session_object7, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 7: Refit weightless context model with ONNX in memory
+   */
+  auto ctx_model_bytes = ReadFileFromDisk(ctx_model_name);
+  InferenceSession session_object8{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params8;
+  params8.trt_weight_stripped_engine_enable = 1;
+  params8.trt_onnx_bytestream = model_bytes.data();
+  params8.trt_onnx_bytestream_size = model_bytes.size();
+  execution_provider = TensorrtExecutionProviderWithOptions(&params8);
+  EXPECT_TRUE(session_object8.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object8.Load(ctx_model_bytes.data(), static_cast<int>(ctx_model_bytes.size()));
+  std::cerr << status.ErrorMessage();
+  ASSERT_TRUE(status.IsOK());
+  status = session_object8.Initialize();
+  std::cerr << status.ErrorMessage();
+  ASSERT_TRUE(status.IsOK());
+  RunSession(session_object8, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 7: Refit weightless context model with ONNX from disk
+   */
+  InferenceSession session_object9{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params9;
+  params9.trt_weight_stripped_engine_enable = 1;
+  params9.trt_onnx_model_folder_path = model_name_str.c_str();
+  execution_provider = TensorrtExecutionProviderWithOptions(&params9);
+  EXPECT_TRUE(session_object9.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object9.Load(ctx_model_bytes.data(), static_cast<int>(ctx_model_bytes.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_object9.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  RunSession(session_object9, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {

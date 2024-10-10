@@ -27,7 +27,7 @@ $Env:CMAKE_PREFIX_PATH = "$install_prefix"
 New-Item -Path "$install_prefix" -ItemType Directory -Force
 
 # Setup compile flags
-$compile_flags = @('/MP', '/guard:cf', '/DWIN32', '/D_WINDOWS', '/DWINVER=0x0A00', '/D_WIN32_WINNT=0x0A00', '/DNTDDI_VERSION=0x0A000000', '/W3')
+$compile_flags = @('/MP', '/guard:cf', '/DWIN32', '/D_WINDOWS', '/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR', '/DWINVER=0x0A00', '/D_WIN32_WINNT=0x0A00', '/DNTDDI_VERSION=0x0A000000', '/W3')
 $linker_flags=@('/guard:cf')
 
 if ($use_cache) {

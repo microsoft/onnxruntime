@@ -100,6 +100,16 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
     }
   }
   for (const auto& output : node_unit.Outputs()) {
+    for (const auto& dim : output.node_arg.Shape()->dim()) {
+      if (!dim.has_dim_value()) {
+        LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported for now, for output:" << output.node_arg.Name();
+        return false;
+      }
+      if (dim.dim_value() == 0 && output.node_arg.Shape()->dim_size() > 1) {
+        LOGS_DEFAULT(WARNING) << "Zero in shape is not supported for now, for output:" << output.node_arg.Name();
+        return false;
+      }
+    }
     if (output.quant_param.has_value()) {
       if (!has_supported_shape(output.quant_param->scale, node_unit.Name(), node_unit.OpType()))
         return false;

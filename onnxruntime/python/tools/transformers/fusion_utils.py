@@ -159,7 +159,7 @@ class FusionUtils:
             tensor (TensorProto): transposed tensor
         """
         if not isinstance(tensor, onnx_proto.TensorProto):
-            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+            raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
         if len(tensor.dims) != 2 or tensor.data_type != onnx_proto.TensorProto.INT8:
             raise ValueError("Only INT8 2-D tensors can be transposed")

@@ -285,6 +285,7 @@ void IterateSubgraphFromNode(Graph& graph,
       PushAllOutputNode(graph, to_visit, cur, visited);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "FastGelu", {1}, kMSDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {20}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {1}, kMSDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "QuickGelu", {1}, kMSDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Sqrt", {6, 13})) {
@@ -508,7 +509,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
                                              *embedding_node);
 
   // Add flatten pattern to each input node of the subgraph
-  // to flattern the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
+  // to flatten the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
   InsertFlattenPatternForInput(graph, *embedding_node, 1, squeeze_out_arg, logger);
   handled_input_count++;
   for (auto& node : candidate_inputs) {

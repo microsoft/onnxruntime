@@ -139,6 +139,21 @@ data are casted to float/double to calculate for precision, so if there is any C
 Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  const auto& version_map = graph.DomainToVersionMap();
+  const auto& onnx_version = version_map.find(kOnnxDomain);
+  // LayerNorm is an official ONNX operator as of opset 17, so we can fuse in level 1 if it is available
+  const bool onnx_layernorm_available = (onnx_version != version_map.end() && onnx_version->second >= 17);
+  const bool fuse_in_level_1 = onnx_layernorm_available || allow_contrib_op_in_level_1_;
+
+  if ((optimization_level_ == TransformerLevel::Level1 && !fuse_in_level_1) ||
+      // The following check assumes that there is a LayerNormFusion instance registered in Level1 that may have
+      // already done this fusion, in which case we don't need to do it again.
+      (optimization_level_ == TransformerLevel::Level2 && fuse_in_level_1)) {
+    return Status::OK();
+  }
+
+  const auto compatible_providers = GetCompatibleExecutionProviders();
+
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;

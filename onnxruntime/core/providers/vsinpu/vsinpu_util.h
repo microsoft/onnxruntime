@@ -118,7 +118,7 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
 
 void GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    const GraphViewer& graph_viewer, const NodeUnitIODef& io_def, const std::filesystem::path& model_path,
     float& scale, int32_t& zero_point,
     std::optional<std::vector<float>>& pcq_scales,
     std::optional<std::vector<int32_t>>& pcq_zps);

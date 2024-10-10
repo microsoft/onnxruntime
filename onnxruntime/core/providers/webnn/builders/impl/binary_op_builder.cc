@@ -22,7 +22,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType device_type, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -35,18 +35,21 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   if (op_type == "Add") {
-    output = model_builder.GetBuilder().call<emscripten::val>("add", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("add", input0, input1, options);
   } else if (op_type == "Sub") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sub", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("sub", input0, input1, options);
   } else if (op_type == "Mul") {
-    output = model_builder.GetBuilder().call<emscripten::val>("mul", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("mul", input0, input1, options);
   } else if (op_type == "Div") {
-    output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1, options);
   } else if (op_type == "Pow") {
-    output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1, options);
   } else if (op_type == "PRelu") {
-    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -83,7 +86,7 @@ bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   return true;
 }
 
-bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -94,36 +97,14 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDevice
       !GetType(*input_defs[1], input1_type, logger))
     return false;
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  // WebNN prelu op only supports float32, float16, int32, int8 input data types.
-  if (op_type == "Prelu") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-    };
-    // WebNN CPU backend doesn't support int32 for prelu.
-    if (device_type == WebnnDeviceType::CPU) {
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    }
-  } else {
-    supported_data_types = webnn_supported_data_types;
-  }
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  std::array<int32_t, 2> input_types{input0_type, input1_type};
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  std::string webnn_input_name = op_type == "PRelu" ? "input" : "a";
+  std::string onnx_input_name = op_type == "PRelu" || op_type == "Pow" ? "X" : "A";
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger);
 }
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

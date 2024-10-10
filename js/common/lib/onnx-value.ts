@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from './tensor.js';
+import { Tensor } from './tensor.js';
 
 export type NonTensorType = never;
 
@@ -10,7 +10,7 @@ export type NonTensorType = never;
  *
  * NOTE: currently not support non-tensor
  */
-export type OnnxValue = Tensor|NonTensorType;
+export type OnnxValue = Tensor | NonTensorType;
 
 /**
  * Type OnnxValueDataLocation represents the location of the data of an OnnxValue.

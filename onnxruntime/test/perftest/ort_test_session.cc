@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
 #include <algorithm>
 #include <limits>
+#include <fstream>
 #include <set>
 #include <list>
 #include <type_traits>
@@ -33,10 +35,18 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
+
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
-  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                    output_names_raw_ptr.data(), output_names_raw_ptr.size());
+
+  if (!use_device_mem) {
+    auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                                      output_names_raw_ptr.data(), output_names_raw_ptr.size());
+  } else {
+    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
+  }
+
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
   return duration_seconds;
@@ -300,7 +310,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::copy(supported_options.begin(), supported_options.end(),
                     std::ostream_iterator<std::string>(str_stream, ","));
           std::string str = str_stream.str();
-          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+          ORT_THROW("Wrong value for " + key + ". select from: " + str);
         }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
@@ -510,9 +520,42 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
+#if defined(_MSC_VER)
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif  // defined(_MSC_VER)
+    std::istringstream ss(ov_string);
+    std::string token;
+    bool enable_fast_math = false;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [ACL] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "enable_fast_math") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          enable_fast_math = (value == "true") || (value == "True");
+        } else {
+          ORT_THROW(
+              "[ERROR] [ACL] You have selcted an invalid value for the key 'enable_fast_math'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else {
+        ORT_THROW(
+            "[ERROR] [ACL] Unrecognized option: ", key);
+      }
+    }
     Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
-                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+        OrtSessionOptionsAppendExecutionProvider_ACL(session_options, enable_fast_math));
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
@@ -550,6 +593,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         "XNNPACK", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
+#endif
+  } else if (provider_name_ == onnxruntime::kWebGpuExecutionProvider) {
+#ifdef USE_WEBGPU
+    session_options.AppendExecutionProvider(
+        "WebGPU", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
+#else
+    ORT_THROW("WebGPU is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
@@ -635,6 +685,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
 
+  if (!performance_test_config.run_config.register_custom_op_path.empty()) {
+    session_options.RegisterCustomOpsLibrary(performance_test_config.run_config.register_custom_op_path.c_str());
+  }
+
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
     fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
     session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
@@ -698,6 +752,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16"};
+        size_t num_gpus = 10;
+        for (size_t i = 0; i <= num_gpus; i++) {
+          ov_supported_device_types.emplace("GPU." + std::to_string(i));
+        }
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
@@ -806,6 +864,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
               "should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "use_device_mem") {
+        if (value == "true" || value == "True") {
+          use_device_mem = true;
+        }
       } else {
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
@@ -816,8 +878,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   }
 
-  session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
-
+  if (!performance_test_config.model_info.load_via_path) {
+    session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+  } else {
+    std::ifstream file(performance_test_config.model_info.model_file_path.c_str(),
+                       std::ios::binary | std::ios::in | std::ios::ate);
+    if (file.is_open()) {
+      const std::streampos fsize = file.tellg();
+      file.seekg(0, std::ios_base::beg);
+      std::vector<char> model_bytes(narrow<size_t>(fsize));
+      file.read(model_bytes.data(), narrow<std::streamsize>(fsize));
+      session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
+    } else {
+      ORT_THROW("Model file could not be opened.\n");
+    }
+  }
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
@@ -835,6 +910,27 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   for (size_t i = 0; i != input_count; ++i) {
     input_names_str_[i] = m.GetInputName(i);
     input_names_[i] = input_names_str_[i].c_str();
+  }
+
+  if (use_device_mem) {
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo("OpenVINO_RT_NPU", OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+    custom_allocator_ = std::make_unique<Ort::Allocator>(session_, memory_info);
+    for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
+      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+
+      std::vector<int64_t> output_shape = tensor_info.GetShape();
+
+      // free dimensions are treated as 1 if not overridden
+      for (int64_t& dim : output_shape) {
+        if (dim == -1) {
+          dim = 1;
+        }
+      }
+
+      outputs_.push_back(Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)output_shape.data(),
+                                                  output_shape.size(), tensor_info.GetElementType()));
+    }
   }
 }
 
@@ -922,23 +1018,31 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      if (!use_device_mem) {
+        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+      }
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1 if not overriden
+      // free dimensions are treated as 1 if not overridden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;
         }
       }
-
-      auto allocator = Ort::AllocatorWithDefaultOptions();
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                         input_node_dim.size(), tensor_info.GetElementType());
-      InitializeTensorWithSeed(seed, input_tensor);
-      PreLoadTestData(0, i, std::move(input_tensor));
+      if (use_device_mem) {
+        Ort::Value input_tensor = Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)input_node_dim.data(),
+                                                           input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, input_tensor);
+        PreLoadTestData(0, i, std::move(input_tensor));
+      } else {
+        auto allocator = Ort::AllocatorWithDefaultOptions();
+        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
+                                                           input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, input_tensor);
+        PreLoadTestData(0, i, std::move(input_tensor));
+      }
     }
   }
   return true;

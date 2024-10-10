@@ -17,43 +17,57 @@
 
 // sampled from [@tensorflow/tfjs] tfjs-backend-webgpu/src/conv_backprop_webgpu.ts
 
-import {DataType} from '../../../../wasm-common';
-import {LOG_DEBUG} from '../../../log';
-import {TensorView} from '../../../tensor-view';
-import {ShapeUtil} from '../../../util';
-import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
-import {ConvTransposeAttributes} from '../conv-transpose';
+import { DataType } from '../../../../wasm-common';
+import { LOG_DEBUG } from '../../../log';
+import { TensorView } from '../../../tensor-view';
+import { ShapeUtil } from '../../../util';
+import { ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../../types';
+import {
+  createTensorShapeVariables,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+  tensorTypeToWsglStorageType,
+  UniformsArrayType,
+} from '../common';
+import { ConvTransposeAttributes } from '../conv-transpose';
 
-const createConvTranspose2DOpProgramShaderSource =
-    (shaderHelper: ShaderHelper, inputs: readonly TensorView[], outputShape: readonly number[], hasBias: boolean,
-     is1DimensionDispatch: boolean, isVec4 = false, dataType: string, uniforms: UniformsArrayType,
-     isChannelsLast = false): string => {
-      const rowDim = isChannelsLast ? 1 : 2;
-      const colDim = isChannelsLast ? 2 : 3;
-      const channelDim = isChannelsLast ? 3 : 1;
-      const workPerThread = isVec4 ? 2 : 1;
+const createConvTranspose2DOpProgramShaderSource = (
+  shaderHelper: ShaderHelper,
+  inputs: readonly TensorView[],
+  outputShape: readonly number[],
+  hasBias: boolean,
+  is1DimensionDispatch: boolean,
+  isVec4 = false,
+  dataType: string,
+  uniforms: UniformsArrayType,
+  isChannelsLast = false,
+): string => {
+  const rowDim = isChannelsLast ? 1 : 2;
+  const colDim = isChannelsLast ? 2 : 3;
+  const channelDim = isChannelsLast ? 3 : 1;
+  const workPerThread = isVec4 ? 2 : 1;
 
-      let declareFunctions = `
+  let declareFunctions = `
   fn setOutputAtIndex(flatIndex : u32, value : ${isVec4 ? `vec4<${dataType}>` : dataType}) {
     result[flatIndex] = ${isVec4 ? `vec4<${dataType}>` : dataType}(value);
   }`;
-      if (hasBias) {
-        declareFunctions += `
+  if (hasBias) {
+    declareFunctions += `
     fn getBiasByOutputCoords(coords : vec4<u32>) -> ${isVec4 ? `vec4<${dataType}>` : dataType} {
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
     }`;
-      }
-      const components = isVec4 ? 4 : 1;
-      const w = inputVariable('W', inputs[1].dataType, inputs[1].dims.length, components);
-      const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims.length, components);
-      const inputVariables = [dy, w];
-      if (hasBias) {
-        inputVariables.push(inputVariable('bias', inputs[2].dataType, [outputShape[channelDim]].length, components));
-      }
-      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
+  }
+  const components = isVec4 ? 4 : 1;
+  const w = inputVariable('W', inputs[1].dataType, inputs[1].dims.length, components);
+  const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims.length, components);
+  const inputVariables = [dy, w];
+  if (hasBias) {
+    inputVariables.push(inputVariable('bias', inputs[2].dataType, [outputShape[channelDim]].length, components));
+  }
+  const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
 
-      const codeSnippet4 = `{
+  const codeSnippet4 = `{
         let batch: u32 = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} / uniforms.result_shape[1];
         let r = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} % uniforms.result_shape[1];
         let c = ${is1DimensionDispatch ? 'global_id.y' : 'workgroup_id.y'} * ${workPerThread};
@@ -157,7 +171,7 @@ const createConvTranspose2DOpProgramShaderSource =
           ${output.set('batch', 'r', 'c + i', 'd1', 'value')};
         }
       }`;
-      const codeSnippet = `
+  const codeSnippet = `
           let outputIndices = ${output.offsetToIndices('global_idx')};
           let batch = ${output.indicesGet('outputIndices', 0)};
           let d1 = ${output.indicesGet('outputIndices', channelDim)};
@@ -197,8 +211,10 @@ const createConvTranspose2DOpProgramShaderSource =
               var inputChannel = groupId * uniforms.input_channels_per_group;
               for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + 1) {
                 let xValue = ${
-          isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') :
-                           dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
+                  isChannelsLast
+                    ? dy.get('batch', 'idyR', 'idyC', 'inputChannel')
+                    : dy.get('batch', 'inputChannel', 'idyR', 'idyC')
+                };
                 let wValue = ${w.get('inputChannel', 'wOutChannel', 'u32(wRPerm)', 'u32(wCPerm)')};
                 dotProd = dotProd + xValue * wValue;
                 inputChannel = inputChannel + 1;
@@ -209,101 +225,113 @@ const createConvTranspose2DOpProgramShaderSource =
           ${output.setByOffset('global_idx', 'value')};
         `;
 
-      return `
+  return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
   ${declareFunctions}
 
     ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')};
   ${isVec4 ? codeSnippet4 : codeSnippet}}`;
-    };
+};
 
-export const createConvTranspose2DProgramInfo =
-    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
-     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
-      const hasBias = inputs.length > 2;
-      // const isChannelsLast = attributes.format === 'NHWC';
-      const outputShape = attributes.outputShape;
-      const outputSize = ShapeUtil.size(outputShape);
+export const createConvTranspose2DProgramInfo = (
+  inputs: readonly TensorView[],
+  attributes: ConvTransposeAttributes,
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
+): ProgramInfo => {
+  const hasBias = inputs.length > 2;
+  // const isChannelsLast = attributes.format === 'NHWC';
+  const outputShape = attributes.outputShape;
+  const outputSize = ShapeUtil.size(outputShape);
 
-      // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-      // TODO Enable isVec4 for performance
-      // Disabled due to weight matrix layout issue
-      // const isVec4 = attributes.group === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
-      const dispatch = [
-        Math.ceil(outputSize / 64),
-        1,
-        1,
-      ];
-      LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
+  // const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
+  // TODO Enable isVec4 for performance
+  // Disabled due to weight matrix layout issue
+  // const isVec4 = attributes.group === 1 && isChannelsLast && inChannels % 4 === 0 && outChannels % 4 === 0;
+  const dispatch = [Math.ceil(outputSize / 64), 1, 1];
+  LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
 
-      const isChannelsLast = attributes.format === 'NHWC';
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
-      const strides = [attributes.strides[0], attributes.strides[1]];
-      const filterDims =
-          [attributes.kernelShape[isChannelsLast ? 1 : 2], attributes.kernelShape[isChannelsLast ? 2 : 3]];
-      const dilations = [attributes.dilations[0], attributes.dilations[1]];
-      const effectiveFilterDims = [
-        filterDims[0] +
-            (attributes.dilations[0] <= 1 ?
-                 0 :
-                 (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)),
-        filterDims[1] +
-            (attributes.dilations[1] <= 1 ?
-                 0 :
-                 (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1))
-      ];
-      const pads = [
-        effectiveFilterDims[0] - 1 - Math.floor((attributes.pads[0] + attributes.pads[2]) / 2),
-        effectiveFilterDims[1] - 1 - Math.floor(attributes.pads[1] + attributes.pads[3]) / 2
-      ];
+  const isChannelsLast = attributes.format === 'NHWC';
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+  const strides = [attributes.strides[0], attributes.strides[1]];
+  const filterDims = [attributes.kernelShape[isChannelsLast ? 1 : 2], attributes.kernelShape[isChannelsLast ? 2 : 3]];
+  const dilations = [attributes.dilations[0], attributes.dilations[1]];
+  const effectiveFilterDims = [
+    filterDims[0] +
+      (attributes.dilations[0] <= 1
+        ? 0
+        : (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)),
+    filterDims[1] +
+      (attributes.dilations[1] <= 1
+        ? 0
+        : (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)),
+  ];
+  const pads = [
+    effectiveFilterDims[0] - 1 - Math.floor((attributes.pads[0] + attributes.pads[2]) / 2),
+    effectiveFilterDims[1] - 1 - Math.floor(attributes.pads[1] + attributes.pads[3]) / 2,
+  ];
 
-      const isVec4 = false;
-      const group = attributes.group;
-      const wShape = inputs[1].dims;
-      const inputChannelsPerGroup = wShape[0] / group;
-      const outputChannelsPerGroup = wShape[1];
+  const isVec4 = false;
+  const group = attributes.group;
+  const wShape = inputs[1].dims;
+  const inputChannelsPerGroup = wShape[0] / group;
+  const outputChannelsPerGroup = wShape[1];
 
-      const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: strides},
-        {type: DataType.uint32, data: filterDims}, {type: DataType.uint32, data: dilations},
-        {type: DataType.uint32, data: effectiveFilterDims}, {type: DataType.int32, data: pads},
-        {type: DataType.uint32, data: inputChannelsPerGroup}, {type: DataType.uint32, data: outputChannelsPerGroup},
-        ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims)
-      ];
-      if (hasBias) {
-        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-        inputDependencies.push('rank');
-      }
-      programUniforms.push(...createTensorShapeVariables(outputShape));
+  const programUniforms: ProgramUniform[] = [
+    { type: DataType.uint32, data: outputSize },
+    { type: DataType.uint32, data: strides },
+    { type: DataType.uint32, data: filterDims },
+    { type: DataType.uint32, data: dilations },
+    { type: DataType.uint32, data: effectiveFilterDims },
+    { type: DataType.int32, data: pads },
+    { type: DataType.uint32, data: inputChannelsPerGroup },
+    { type: DataType.uint32, data: outputChannelsPerGroup },
+    ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims),
+  ];
+  if (hasBias) {
+    programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+    inputDependencies.push('rank');
+  }
+  programUniforms.push(...createTensorShapeVariables(outputShape));
 
-      const is1DimensionDispatch = dispatch[1] === 1 && dispatch[2] === 1;
-      const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const uniforms: UniformsArrayType = [
-          {name: 'output_size', type: 'u32'}, {name: 'strides', type: 'u32', length: strides.length},
-          {name: 'filter_dims', type: 'u32', length: filterDims.length},
-          {name: 'dilations', type: 'u32', length: filterDims.length},
-          {name: 'effective_filter_dims', type: 'u32', length: effectiveFilterDims.length},
-          {name: 'pads', type: 'i32', length: pads.length}, {name: 'input_channels_per_group', type: 'u32'},
-          {name: 'output_channels_per_group', type: 'u32'}
-        ];
-        const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-        return `${
-            createConvTranspose2DOpProgramShaderSource(
-                shaderHelper, inputs, outputShape, hasBias, is1DimensionDispatch, isVec4, dataType, uniforms,
-                isChannelsLast)}`;
-      };
-      return {
-        name: 'ConvTranspose2D',
-        shaderCache: {hint: `${attributes.cacheKey};`, inputDependencies},
-        getRunData: () => ({
-          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
-          outputs: [{
-            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
-            dataType: inputs[0].dataType
-          }],
-          programUniforms
-        }),
-        getShaderSource
-      };
-    };
+  const is1DimensionDispatch = dispatch[1] === 1 && dispatch[2] === 1;
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const uniforms: UniformsArrayType = [
+      { name: 'output_size', type: 'u32' },
+      { name: 'strides', type: 'u32', length: strides.length },
+      { name: 'filter_dims', type: 'u32', length: filterDims.length },
+      { name: 'dilations', type: 'u32', length: filterDims.length },
+      { name: 'effective_filter_dims', type: 'u32', length: effectiveFilterDims.length },
+      { name: 'pads', type: 'i32', length: pads.length },
+      { name: 'input_channels_per_group', type: 'u32' },
+      { name: 'output_channels_per_group', type: 'u32' },
+    ];
+    const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+    return `${createConvTranspose2DOpProgramShaderSource(
+      shaderHelper,
+      inputs,
+      outputShape,
+      hasBias,
+      is1DimensionDispatch,
+      isVec4,
+      dataType,
+      uniforms,
+      isChannelsLast,
+    )}`;
+  };
+  return {
+    name: 'ConvTranspose2D',
+    shaderCache: { hint: `${attributes.cacheKey};`, inputDependencies },
+    getRunData: () => ({
+      dispatchGroup: { x: dispatch[0], y: dispatch[1], z: dispatch[2] },
+      outputs: [
+        {
+          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+          dataType: inputs[0].dataType,
+        },
+      ],
+      programUniforms,
+    }),
+    getShaderSource,
+  };
+};

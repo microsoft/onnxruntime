@@ -53,10 +53,14 @@ Status ExpandOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<int64_t> output_shape;
   ORT_RETURN_IF_NOT(GetBidirectionalBroadcastShape(input_shape, new_shape, output_shape), "Cannot get output shape.");
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   emscripten::val output =
       model_builder.GetBuilder().call<emscripten::val>("expand",
                                                        input,
-                                                       emscripten::val::array(GetVecUint32FromVecInt64(output_shape)));
+                                                       emscripten::val::array(GetVecUint32FromVecInt64(output_shape)),
+                                                       options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }

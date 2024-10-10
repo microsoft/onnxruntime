@@ -44,3 +44,25 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
+
+- stage: Debug
+  dependsOn: Setup
+  jobs:
+  - job: D1
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    variables:
+      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
+    steps:
+    - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+    - bash: echo $(MyVar)
+    - bash: echo $(BuildTime)
+    - bash: echo $(BuildDate)
+    - template: ../templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'

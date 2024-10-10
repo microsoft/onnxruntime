@@ -925,8 +925,8 @@ def find_model_path(path):
 
     logger.info(target_model_path)
     if len(target_model_path) > 1:
-        logger.error("We expect to find only one model in " + path)  # noqa: G003
-        raise
+        logger.error("We expect to find only one model in %s", path)
+        raise RuntimeError
 
     return target_model_path[0]
 
@@ -1007,7 +1007,7 @@ def parse_models_info_from_file(root_dir, path, models):
                 models[row["model_name"]] = {}
             else:
                 logger.error("Model name must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             model = models[row["model_name"]]
 
@@ -1018,19 +1018,19 @@ def parse_models_info_from_file(root_dir, path, models):
                     model["working_directory"] = os.path.join(root_working_directory, row["working_directory"])
             else:
                 logger.error("Model path must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             if "model_path" in row:
                 model["model_path"] = row["model_path"]
             else:
                 logger.error("Model path must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             if "test_data_path" in row:
                 model["test_data_path"] = row["test_data_path"]
             else:
                 logger.error("Test data path must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             if "model_path_fp16" in row:
                 model["model_path_fp16"] = row["model_path_fp16"]

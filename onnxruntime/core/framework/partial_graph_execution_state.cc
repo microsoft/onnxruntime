@@ -50,7 +50,7 @@ PartialGraphExecutionState::~PartialGraphExecutionState() {
 DeviceStreamCollection* PartialGraphExecutionState::GetDeviceStreamCollection(const SessionState& session_state) {
   if (device_stream_collection_ == nullptr) {
     device_stream_collection_ = session_state.AcquireDeviceStreamCollection();
-    // the life-time of partial graph execution state is in-consistant with session,
+    // the life-time of partial graph execution state is inconsistent with session,
     // so we can't make sure it is safe to return the device stream collection to
     // session when deconstruct partial graph execution state.
     // so let's always delete the stream collections.

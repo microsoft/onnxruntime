@@ -96,6 +96,9 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<MLFloat16>());
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<int32_t>());
       break;
@@ -114,6 +117,11 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   weight.mutable_floatvalue()->Assign(data.begin(), data.end());
 }
 
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const MLFloat16> data) {
+  const char* data_byte_ptr = reinterpret_cast<const char*>(data.data());
+  weight.mutable_float16value()->assign(data_byte_ptr, data_byte_ptr + data.size_bytes());
+}
+
 namespace {
 template <typename T>
 void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
@@ -122,6 +130,15 @@ void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParam
   std::transform(data.begin(), data.end(), google::protobuf::RepeatedFieldBackInserter(&weight_floats),
                  [](T v) { return narrow<float>(v); });
   *weight.mutable_floatvalue() = std::move(weight_floats);
+}
+
+template <typename T>
+void CreateCoreMLWeightConvertingDataToFloat16s(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
+  std::vector<MLFloat16> weight_float16s{};
+  weight_float16s.reserve(data.size());
+  std::transform(data.begin(), data.end(), std::back_inserter(weight_float16s),
+                 [](T v) { return MLFloat16(float(v)); });
+  CreateCoreMLWeight(weight, weight_float16s);
 }
 }  // namespace
 
@@ -164,6 +181,7 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
                        const ONNX_NAMESPACE::TensorShapeProto* shape, bool convert_scalar = false) {
   tensor_type.set_datatype(data_type);
+
   if (shape) {
     auto rank = shape->dim_size();
     if (convert_scalar && rank == 0) {
@@ -192,6 +210,13 @@ void CopyDataToTensorValue(MILSpec::TensorValue& tensor_value, gsl::span<const T
 template <>
 void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, gsl::span<const float> data) {
   tensor_value.mutable_floats()->mutable_values()->Add(data.begin(), data.end());
+}
+
+template <>
+void CopyDataToTensorValue<MLFloat16>(MILSpec::TensorValue& tensor_value, gsl::span<const MLFloat16> data) {
+  const char* begin = reinterpret_cast<const char*>(data.data());
+  const char* end = begin + (data.size() * sizeof(MLFloat16));
+  tensor_value.mutable_bytes()->mutable_values()->assign(begin, end);
 }
 
 template <>
@@ -289,6 +314,14 @@ MILSpec::Value CreateScalarTensorValue(const T& data) {
 // explicit specializations for types we handle so the implementation can be in the .cc file
 template MILSpec::Value CreateTensorValue<int64_t, int32_t>(gsl::span<const int64_t> data,
                                                             std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<float, float>(gsl::span<const float> data,
+                                                        std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<MLFloat16, MLFloat16>(gsl::span<const MLFloat16> data,
+                                                                std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<bool, bool>(gsl::span<const bool> data,
+                                                      std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<std::string, std::string>(gsl::span<const std::string> data,
+                                                                    std::optional<gsl::span<const int64_t>> shape);
 
 template MILSpec::Value CreateScalarTensorValue(const float& data);
 template MILSpec::Value CreateScalarTensorValue(const int32_t& data);
@@ -308,12 +341,35 @@ COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& n
 
 void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std::string_view value_name) {
   MILSpec::Argument arg;
-  arg.mutable_arguments()->Add()->set_name(std::string(value_name));
+  arg.mutable_arguments()->Add()->set_name(value_name.data(), value_name.size());
 
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output) {
+void AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_name,
+                               const std::vector<std::string_view>& value_names) {
+  MILSpec::Argument arg;
+  for (const auto& value : value_names) {
+    arg.mutable_arguments()->Add()->set_name(value.data(), value.size());
+  }
+
+  (*op.mutable_inputs())[input_name] = std::move(arg);
+}
+
+void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
+                                    int32_t element_type, std::optional<gsl::span<const int64_t>> shape) {
+  auto& outputs = *op.mutable_outputs();
+  auto& output_arg = *outputs.Add();
+  output_arg.set_name(output_name.data(), output_name.size());
+
+  MILSpec::ValueType& value = *output_arg.mutable_type();
+  MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
+
+  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(element_type), shape, /*convert_scalar*/ true);
+}
+
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                        std::optional<int32_t> override_element_type) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output.Name());
@@ -321,8 +377,10 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
-  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(output.TypeAsProto()->tensor_type().elem_type()),
-                    output.Shape(), /*convert_scalar*/ true);
+  auto elem_type = override_element_type ? *override_element_type
+                                         : output.TypeAsProto()->tensor_type().elem_type();
+
+  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
 }
 
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,

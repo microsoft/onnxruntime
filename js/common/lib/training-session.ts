@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession} from './inference-session.js';
-import {OnnxValue} from './onnx-value.js';
-import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js';
+import { InferenceSession } from './inference-session.js';
+import { OnnxValue } from './onnx-value.js';
+import { TrainingSession as TrainingSessionImpl } from './training-session-impl.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -11,7 +11,7 @@ export declare namespace TrainingSession {
   /**
    * Either URI file path (string) or Uint8Array containing model or checkpoint information.
    */
-  type UriOrBuffer = string|Uint8Array;
+  type UriOrBuffer = string | Uint8Array;
 }
 
 /**
@@ -36,8 +36,10 @@ export interface TrainingSession {
    * @param options - Optional. A set of options that controls the behavior of model training.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
-  runTrainStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
-      Promise<InferenceSession.ReturnType>;
+  runTrainStep(
+    feeds: InferenceSession.FeedsType,
+    options?: InferenceSession.RunOptions,
+  ): Promise<InferenceSession.ReturnType>;
 
   /**
    * Run a single train step with the given inputs and options.
@@ -50,8 +52,10 @@ export interface TrainingSession {
    values.
    */
   runTrainStep(
-      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+    feeds: InferenceSession.FeedsType,
+    fetches: InferenceSession.FetchesType,
+    options?: InferenceSession.RunOptions,
+  ): Promise<InferenceSession.ReturnType>;
 
   /**
    * Runs a single optimizer step, which performs weight updates for the trainable parameters using the optimizer model.
@@ -68,8 +72,10 @@ export interface TrainingSession {
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
    values.
    */
-  runEvalStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
-      Promise<InferenceSession.ReturnType>;
+  runEvalStep(
+    feeds: InferenceSession.FeedsType,
+    options?: InferenceSession.RunOptions,
+  ): Promise<InferenceSession.ReturnType>;
 
   /**
    * Run a single eval step with the given inputs and options using the eval model.
@@ -82,8 +88,10 @@ export interface TrainingSession {
    values.
    */
   runEvalStep(
-      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+    feeds: InferenceSession.FeedsType,
+    fetches: InferenceSession.FetchesType,
+    options?: InferenceSession.RunOptions,
+  ): Promise<InferenceSession.ReturnType>;
 
   // #endregion
 
@@ -186,8 +194,10 @@ export interface TrainingSessionFactory {
    *
    * @returns Promise that resolves to a TrainingSession object
    */
-  create(trainingOptions: TrainingSessionCreateOptions, sessionOptions?: InferenceSession.SessionOptions):
-      Promise<TrainingSession>;
+  create(
+    trainingOptions: TrainingSessionCreateOptions,
+    sessionOptions?: InferenceSession.SessionOptions,
+  ): Promise<TrainingSession>;
 
   // #endregion
 }

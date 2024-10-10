@@ -160,6 +160,7 @@ class PlannerTest : public ::testing::Test {
   ExecutionProviders execution_providers_;
   std::unique_ptr<concurrency::ThreadPool> tp_;
   DataTransferManager dtm_;
+  ExternalDataLoaderManager edlm_;
   profiling::Profiler profiler_;
   std::unique_ptr<SessionOptions> sess_options_;
   std::unique_ptr<SessionState> state_;
@@ -198,7 +199,7 @@ class PlannerTest : public ::testing::Test {
     sess_options_->enable_mem_pattern = false;
     sess_options_->use_deterministic_compute = false;
     sess_options_->enable_mem_reuse = true;
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
@@ -282,7 +283,7 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
@@ -1288,7 +1289,7 @@ TEST_F(PlannerTest, MultiStream) {
 
   CreatePlan({}, false);
 
-  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA separately";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
@@ -1883,7 +1884,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
       reuse_pairs.erase(reused);
     }  // if
-  }    // for
+  }  // for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 
@@ -2078,6 +2079,7 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
   ASSERT_EQ(plan->allocation_plan[14].alloc_kind, AllocKind::kReuse) << "The input of reshape and gather will reuse the output of shape";
 
   int gather_count = 0;
+  ASSERT_GT(plan->execution_plan.size(), 1) << "Number of execution plans should be greater than 1";
   for (size_t i = 0; i < plan->execution_plan[1]->steps_.size(); i++) {
     if (strstr(typeid(*(plan->execution_plan[1]->steps_[i])).name(), "LaunchKernelStep")) {
       const Node* node = sess.GetSessionState().GetGraphViewer().GetNode(plan->execution_plan[1]->steps_[i]->GetNodeIndex());

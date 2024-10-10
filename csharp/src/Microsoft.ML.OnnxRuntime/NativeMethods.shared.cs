@@ -302,6 +302,29 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseROCMProviderOptions;
         public IntPtr CreateAndRegisterAllocatorV2;
         public IntPtr RunAsync;
+        public IntPtr UpdateTensorRTProviderOptionsWithValue;
+        public IntPtr GetTensorRTProviderOptionsByName;
+        public IntPtr UpdateCUDAProviderOptionsWithValue;
+        public IntPtr GetCUDAProviderOptionsByName;
+        public IntPtr KernelContext_GetResource;
+        public IntPtr SetUserLoggingFunction;
+        public IntPtr ShapeInferContext_GetInputCount;
+        public IntPtr ShapeInferContext_GetInputTypeShape;
+        public IntPtr ShapeInferContext_GetAttribute;
+        public IntPtr ShapeInferContext_SetOutputTypeShape;
+        public IntPtr SetSymbolicDimensions;
+        public IntPtr ReadOpAttr;
+        public IntPtr SetDeterministicCompute;
+        public IntPtr KernelContext_ParallelFor;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO_V2;
+        public IntPtr SessionOptionsAppendExecutionProvider_VitisAI;
+        public IntPtr KernelContext_GetScratchBuffer;
+        public IntPtr KernelInfoGetAllocator;
+        public IntPtr AddExternalInitializersFromFilesInMemory;
+        public IntPtr CreateLoraAdapter;
+        public IntPtr CreateLoraAdapterFromArray;
+        public IntPtr ReleaseLoraAdapter;
+        public IntPtr RunOptionsAddActiveLoraAdapter;
     }
 
     internal static class NativeMethods
@@ -540,6 +563,13 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
             OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
+            CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
+                typeof(DCreateLoraAdapter));
+            CreateLoraAdapterFromArray = (DCreateLoraAdapterFromArray)Marshal.GetDelegateForFunctionPointer (api_.CreateLoraAdapterFromArray, typeof(DCreateLoraAdapterFromArray));
+            ReleaseLoraAdapter = (DReleaseLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.ReleaseLoraAdapter,
+                typeof(DReleaseLoraAdapter));
+            OrtRunOptionsAddActiveLoraAdapter = (DOrtRunOptionsAddActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
+                api_.RunOptionsAddActiveLoraAdapter, typeof(DOrtRunOptionsAddActiveLoraAdapter));
         }
 
         internal class NativeLib
@@ -1263,7 +1293,49 @@ namespace Microsoft.ML.OnnxRuntime
 
 #endregion
 
-#region RunOptions API
+#region LoraAdapter API
+        /// <summary>
+        /// Memory maps the adapter file, wraps it into the adapter object
+        /// and returns it.
+        /// </summary>
+        /// <param name="adapter_path">absolute path to the adapter file</param>
+        /// <param name="allocator">optional device allocator or null</param>
+        /// <param name="lora_adapter">New LoraAdapter object</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapter(
+                byte[] adapter_path, // This takes const ORTCHAR_T* use GetPlatformSerializedString
+                IntPtr /* OrtAllocator */ allocator, // optional
+                out IntPtr lora_adapter
+            );
+        public static DCreateLoraAdapter CreateLoraAdapter;
+
+        /// <summary>
+        /// Creates LoraAdapter instance from a byte array that must
+        /// represents a valid LoraAdapter formst.
+        /// </summary>
+        /// <param name="bytes">bytes</param>
+        /// <param name="size">size in bytes</param>
+        /// <param name="allocator">optional device allocator</param>
+        /// <param name="lora_adapter">resuling LoraAdapter instance</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapterFromArray(
+                byte[] bytes,
+                UIntPtr size,
+                IntPtr /* OrtAllocator */ allocator, // optional
+                out IntPtr lora_adapter
+            );
+        public static DCreateLoraAdapterFromArray CreateLoraAdapterFromArray;
+
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DReleaseLoraAdapter(IntPtr /* OrtLoraAdapter* */ lora_adapter);
+        public static DReleaseLoraAdapter ReleaseLoraAdapter;
+
+#endregion
+
+    #region RunOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRunOptions(out IntPtr /* OrtRunOptions** */ runOptions);
@@ -1307,6 +1379,12 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsUnsetTerminate(IntPtr /* OrtRunOptions* */ options);
         public static DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsAddActiveLoraAdapter(
+            IntPtr /* OrtRunOptions* */ options,
+            IntPtr /* OrtLoraAdapter* */ lora_adapter);
+        public static DOrtRunOptionsAddActiveLoraAdapter OrtRunOptionsAddActiveLoraAdapter;
 
         /// <summary>
         /// Add run config entry
@@ -1357,7 +1435,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtAllocatorType allocatorType,
             int identifier,
             OrtMemType memType,
-            out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo // memory ownership transfered to caller
+            out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo // memory ownership transferred to caller
         );
 
         public static DOrtCreateMemoryInfo OrtCreateMemoryInfo;
@@ -1506,7 +1584,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Destroy OrtIoBinding instance created by OrtCreateIoBinding
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseIoBinding(IntPtr /*(OrtIoBinding)*/ io_binding);
 
@@ -1516,7 +1594,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Bind OrtValue to the model input with the specified name
         /// If binding with the specified name already exists, it will be replaced
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         /// <param name="name">model input name (utf-8)</param>
         /// <param name="ort_value">OrtValue that is used for input (may wrap arbitrary memory).
         ///      The param instance is copied internally so this argument may be released.
@@ -1544,7 +1622,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Bind OrtValue to the model output with the specified name
         /// If binding with the specified name already exists, it will be replaced
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         /// <param name="name">model output name (utf-8)</param>
         /// <param name="ort_value">OrtValue that is used for output (may wrap arbitrary memory).
         ///      The param instance is copied internally so this argument may be released.
@@ -1605,7 +1683,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// The function returns output values after the model has been run with RunWithBinding()
         /// It returns a natively allocated buffer of OrtValue pointers. All of the OrtValues must be individually
         /// released after no longer needed. You may use OrtValue disposable class to wrap the native handle and properly dispose it
-        /// in connection with DisposableList<T>. All values are returned in the same order as they were bound.
+        /// in connection with DisposableList{T}. All values are returned in the same order as they were bound.
         /// The buffer that contains OrtValues must deallocated using the same allocator that was specified as an argument.
         /// You may use an instance OrtMemoryAllocation to properly dispose of the native memory.
         /// </summary>
@@ -1643,9 +1721,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Provides element-level access into a tensor.
         /// </summary>
-        /// <param name="location_values">a pointer to an array of index values that specify an element's location in the tensor data blob</param>
-        /// <param name="location_values_count">length of location_values</param>
-        /// <param name="out">a pointer to the element specified by location_values</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtTensorAt(IntPtr /*(OrtIoBinding)*/ io_binding);
 
@@ -1656,10 +1732,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// sharing between multiple sessions that use the same env instance.
         /// Lifetime of the created allocator will be valid for the duration of the environment.
         /// Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+        /// </summary>
         /// <param name="env">Native OrtEnv instance</param>
         /// <param name="memInfo">Native OrtMemoryInfo instance</param>
         /// <param name="arenaCfg">Native OrtArenaCfg instance</param>
-        /// <retruns>A pointer to native ortStatus indicating success/failure</retruns>
+        /// <returns>A pointer to native ortStatus indicating success/failure</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateAndRegisterAllocator(IntPtr /*(OrtEnv*)*/ env,
                                                                                IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
@@ -1890,7 +1967,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtFillStringTensor OrtFillStringTensor;
 
         /// \param value A tensor created from OrtCreateTensor... function.
-        /// \param index The index of the entry in the tensor to resize. <summary>
+        /// \param index The index of the entry in the tensor to resize.
         /// \param length_in_bytes Length to resize the string to.
         /// \param buffer The resized buffer.
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]

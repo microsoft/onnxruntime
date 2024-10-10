@@ -6,7 +6,7 @@
 const ort = require('onnxruntime-web');
 const testFunction = require('./common');
 
-it('Node.js E2E testing - WebAssembly backend (no threads)', async function() {
+it('Node.js E2E testing - WebAssembly backend (no threads)', async function () {
   ort.env.wasm.numThreads = 1;
-  await testFunction(ort, {executionProviders: ['wasm']});
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

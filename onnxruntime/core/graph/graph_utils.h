@@ -8,6 +8,9 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 
+#include <string>
+#include <vector>
+
 namespace onnxruntime {
 namespace graph_utils {
 
@@ -247,7 +250,8 @@ e.g. Node A produces outputs A1 and A2.
      to replace B1 (output index 0 for node B) with A2 (output index 1 for node A) as input to the downstream node C.
      The edge that existed between B and C for B1 will be removed, and replaced with an edge between A and C for A2.
 */
-void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx);
+void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement,
+                                int replacement_output_idx);
 
 /** Replace the input to a node with a NodeArg.
 @remarks The replacement only updates the node's input definition and does not create any edges,
@@ -302,11 +306,13 @@ inline void FinalizeNodeFusion(Graph& graph,
     The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
     All nodes in 'nodes' will be removed.
 */
-inline void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node) {
+inline void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes,
+                               Node& replacement_node) {
   FinalizeNodeFusion(graph, nodes, replacement_node, replacement_node);
 }
 
-inline void FinalizeNodeFusion(Graph& graph, std::initializer_list<std::reference_wrapper<Node>> nodes, Node& replacement_node) {
+inline void FinalizeNodeFusion(Graph& graph, std::initializer_list<std::reference_wrapper<Node>> nodes,
+                               Node& replacement_node) {
   FinalizeNodeFusion(graph, AsSpan(nodes), replacement_node, replacement_node);
 }
 
@@ -357,17 +363,23 @@ struct EdgeEndToMatch {
     It is recommended to match path from bottom to top direction to avoid such issue.
     It is because each node input (dst_arg_index) only accepts one input edge.
 */
-bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
+bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match,
+              std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
-inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
+inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match,
+                     std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   return FindPath(node, is_input_edge, AsSpan(edges_to_match), result, logger);
 }
 
 /** Same as FindPath above, but return the references of matched Node
  */
-bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match,
+              std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
 
-inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
+inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge,
+                     std::initializer_list<EdgeEndToMatch> edges_to_match,
+                     std::vector<std::reference_wrapper<Node>>& result,
+                     const logging::Logger& logger) {
   return FindPath(graph, node, is_input_edge, AsSpan(edges_to_match), result, logger);
 }
 

@@ -17,7 +17,7 @@ struct Alibi {
   const int max_seqlen_k, max_seqlen_q;
 
   __forceinline__ __device__ Alibi(const float alibi_slope, const int max_seqlen_k, const int max_seqlen_q)
-      : alibi_slope(alibi_slope), max_seqlen_k(max_seqlen_k), max_seqlen_q(max_seqlen_q){};
+      : alibi_slope(alibi_slope), max_seqlen_k(max_seqlen_k), max_seqlen_q(max_seqlen_q) {};
 
   template <typename Engine, typename Layout>
   __forceinline__ __device__ void apply_alibi(Tensor<Engine, Layout>& tensor,

@@ -52,6 +52,8 @@ class TensorRTCacheModelHandler {
                             std::string compute_capability,
                             bool weight_stripped_engine_refit,
                             std::string onnx_model_folder_path,
+                            const void* onnx_model_bytestream,
+                            size_t onnx_model_bytestream_size,
                             bool detailed_build_log)
       : trt_engine_(trt_engine),
         trt_runtime_(trt_runtime),
@@ -59,6 +61,8 @@ class TensorRTCacheModelHandler {
         compute_capability_(compute_capability),
         weight_stripped_engine_refit_(weight_stripped_engine_refit),
         onnx_model_folder_path_(onnx_model_folder_path),
+        onnx_model_bytestream_(onnx_model_bytestream),
+        onnx_model_bytestream_size_(onnx_model_bytestream_size),
         detailed_build_log_(detailed_build_log) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
@@ -74,6 +78,8 @@ class TensorRTCacheModelHandler {
   std::string compute_capability_;
   bool weight_stripped_engine_refit_;
   std::string onnx_model_folder_path_;
+  const void* onnx_model_bytestream_;
+  size_t onnx_model_bytestream_size_;
   bool detailed_build_log_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

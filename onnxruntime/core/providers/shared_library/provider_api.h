@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
@@ -108,6 +108,7 @@ struct NodeProto;
 struct SparseTensorProto;
 struct StringStringEntryProto;
 struct StringStringEntryProtos;  // RepeatedPtrField
+struct OperatorSetIdProto;
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
@@ -120,7 +121,9 @@ struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
+struct FunctionProto;
 struct InferenceContext;
+struct OpSchema;
 class GraphInferencer;
 using InferenceFunction = std::function<void(InferenceContext&)>;
 }  // namespace ONNX_NAMESPACE
@@ -146,6 +149,7 @@ struct ConfigOptions;
 struct DataTransferManager;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
+enum class IndexedSubGraph_SourceOfSchema : uint8_t;
 struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;
@@ -217,6 +221,7 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 #include "provider_wrappedtypes.h"
@@ -278,6 +283,9 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
+
+std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);

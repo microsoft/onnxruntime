@@ -3,7 +3,6 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
@@ -40,36 +39,17 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
-  disable_fused_self_attention_ =
-      sizeof(T) != 2 ||
-      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
+  kernel_options_ = this->GetAttentionKernelOptions();
 
-  enable_trt_flash_attention_ =
-      sizeof(T) == 2 &&
-      !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
+  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
 
-  enable_fused_causal_attention_ =
-      sizeof(T) == 2 &&
-      ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
+  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ =
-      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
+  enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
 
-#if USE_FLASH_ATTENTION
-  disable_flash_attention_ =
-      sizeof(T) != 2 ||
-      onnxruntime::ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
-  min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
-      attention::kMinSeqLenForFlashAttentionPackedQKV,
-      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
-#else
-  disable_flash_attention_ = true;
-  min_seq_len_for_flash_attention_packed_qkv_ = 0;
-#endif
+  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
+
+  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 }
 
 template <typename T>
@@ -79,7 +59,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
@@ -94,7 +74,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   bias != nullptr ? bias->Shape() : bias_shape,
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
@@ -124,7 +104,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             (nullptr == relative_position_bias) &&
+                             (nullptr == attention_bias) &&
                              nullptr == past &&
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
@@ -134,7 +114,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.num_heads,
                                                               parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
-  if (use_flash_attention && parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
+  if (use_flash_attention && parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
   }
   // Allocate buffers
@@ -143,7 +123,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention) {
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
     parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
@@ -166,11 +146,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // where past state is empty.
         bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
         bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                       nullptr == relative_position_bias &&
+                                       nullptr == attention_bias &&
                                        parameters.past_sequence_length == 0 &&
                                        parameters.hidden_size == parameters.v_hidden_size &&
-                                       FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                          enable_trt_flash_attention_, true);
+                                       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
+                                                                         enable_trt_flash_attention_, true);
         if (use_causal_fused_runner) {
           // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
           if (nullptr == fused_fp16_runner_.get()) {
@@ -189,10 +169,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                               (nullptr == mask_index || is_mask_1d_seq_len) &&
                               nullptr == past &&
                               nullptr == present &&
-                              nullptr == relative_position_bias &&
+                              nullptr == attention_bias &&
                               parameters.hidden_size == parameters.v_hidden_size &&
-                              FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                 enable_trt_flash_attention_, false);
+                              FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
+                                                                enable_trt_flash_attention_, false);
 
       if (use_fused_runner) {
         // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
@@ -204,8 +184,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         }
 
         // In case some kernel not loaded due to shared memory limit, we need to double check here.
-        const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-        if (fused_fp16_runner_->isValid(S)) {
+        const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(sequence_length);
+        if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
           fused_runner = fused_fp16_runner_.get();
         }
       }
@@ -220,16 +200,27 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == past &&
       nullptr == present &&
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
-      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+      (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
+      (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
 
-  if (use_memory_efficient_attention) {
-    bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = (nullptr == relative_position_bias || is_good_for_rpb);
-  }
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
+
+  if (kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    if (fused_runner != nullptr) {
+      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
+    }
+
+    debug_info.Print("Attention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
+  }
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
@@ -255,6 +246,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
+  constexpr bool use_cudnn_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -266,9 +258,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    fused_runner,
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
-                                                   use_memory_efficient_attention);
+                                                   use_memory_efficient_attention,
+                                                   use_cudnn_flash_attention,
+                                                   false);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
-  ;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
@@ -283,11 +276,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr != past) {
     data.past = reinterpret_cast<const CudaT*>(past->Data<T>());
   }
-  if (nullptr != relative_position_bias) {
-    data.relative_position_bias = reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  if (nullptr != attention_bias) {
+    data.attention_bias = reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
   }
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.workspace_bytes = workSpaceSize;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   if (nullptr != present) {
     data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
@@ -302,7 +296,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
 
-  return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
+  cudnnHandle_t cudnn = GetCudnnHandle(context);
+  return QkvToContext<CudaT>(device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

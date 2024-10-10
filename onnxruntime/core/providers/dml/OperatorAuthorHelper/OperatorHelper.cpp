@@ -606,8 +606,7 @@ namespace OperatorHelper
 
     std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
         gsl::span<const uint32_t> sizes,
-        int32_t transBatch,
-        int32_t transpose)
+        int32_t transBatch)
     {
         const uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(sizes.size());
         std::vector<uint32_t> newStrides(dimensionCount);
@@ -633,11 +632,6 @@ namespace OperatorHelper
             std::rotate(newStrides.begin(), newStrides.begin() + 1, newStrides.end() - 1);
         }
 
-        if (transpose && dimensionCount > 1)
-        {
-            std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
-            std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
-        }
 
         return std::make_pair(newSizes, newStrides);
     }
@@ -852,7 +846,7 @@ namespace OperatorHelper
             {
                 ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]),
                     "Output channel must be equivalent to filter channel.");
-            } 
+            }
 
             for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i)
             {
@@ -1149,11 +1143,11 @@ namespace OperatorHelper
             HandleEmptyAxes(axes, inputShape, false);
         }
 
-        uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
-        for (int32_t i = 0; i < axes.size(); i++)
+        size_t numAxes = axes.size();
+        for (size_t i = 0; i < numAxes; i++)
         {
             auto xi_begin = padding[i];
-            auto xi_end = padding[i+axes.size()];
+            auto xi_end = padding[i+numAxes];
             m_startPadding[axes[i]] = xi_begin;
             m_endPadding[axes[i]] = xi_end;
         }
@@ -1857,14 +1851,13 @@ namespace OperatorHelper
         DowncastDimensions(gsl::span(shapeData), /*out*/ m_blockShape);
 
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
-        m_dilations = {dimCount, 1};
-        m_pads = {dimCount * 2, 0};
-        m_strides = {dimCount, 1};
+        m_dilations.assign(dimCount, 1);
+        m_pads.assign(dimCount, 0);
+        m_strides.assign(dimCount, 1);
 
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
-            m_dilations.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
@@ -1872,7 +1865,6 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Pads, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
-            m_pads.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_pads);
             ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount * 2);
         }
@@ -1880,7 +1872,6 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
-            m_strides.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }
@@ -1891,7 +1882,7 @@ namespace OperatorHelper
         m_outputShape.resize(2 + m_imageShape.size());
         m_outputShape[0] = m_inputShape[0];                     // N
         m_outputShape[1] = m_inputShape[1] / blockShapeProduct; // C
-        for (int i = 2; i < m_outputShape.size(); i++)
+        for (size_t i = 2; i < m_outputShape.size(); i++)
         {
             m_outputShape[i] = m_imageShape[i - 2];
         };

@@ -31,7 +31,7 @@ const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NA
 const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_MAP = {{"sequential", ORT_SEQUENTIAL},
                                                                                       {"parallel", ORT_PARALLEL}};
 
-void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sessionOptions) {
+void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions) {
   for (uint32_t i = 0; i < epList.Length(); i++) {
     Napi::Value epValue = epList[i];
     std::string name;
@@ -59,7 +59,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
       // TODO: handling CPU EP options
 #ifdef USE_CUDA
     } else if (name == "cuda") {
-      OrtCUDAProviderOptionsV2 *options;
+      OrtCUDAProviderOptionsV2* options;
       Ort::GetApi().CreateCUDAProviderOptions(&options);
       options->device_id = deviceId;
       sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
@@ -67,7 +67,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
 #endif
 #ifdef USE_TENSORRT
     } else if (name == "tensorrt") {
-      OrtTensorRTProviderOptionsV2 *options;
+      OrtTensorRTProviderOptionsV2* options;
       Ort::GetApi().CreateTensorRTProviderOptions(&options);
       options->device_id = deviceId;
       sessionOptions.AppendExecutionProvider_TensorRT_V2(*options);
@@ -95,7 +95,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
   }
 }
 
-void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions &sessionOptions) {
+void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions) {
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");

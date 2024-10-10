@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 import argparse
@@ -65,7 +66,7 @@ def _check_python_version():
 def _str_to_bool(s):
     """Convert string to bool (in argparse context)."""
     if s.lower() not in ["true", "false"]:
-        raise ValueError("Need bool; got %r" % s)
+        raise ValueError(f"Need bool; got {s!r}")
     return {"true": True, "false": False}[s.lower()]
 
 
@@ -260,9 +261,6 @@ def parse_arguments():
     parser.add_argument(
         "--wheel_name_suffix",
         help="Suffix to append to created wheel names. This value is currently only used for nightly builds.",
-    )
-    parser.add_argument(
-        "--numpy_version", help="Installs a specific version of numpy before building the python binding."
     )
     parser.add_argument("--skip-keras-test", action="store_true", help="Skip tests with Keras if keras is installed")
 
@@ -463,6 +461,12 @@ def parse_arguments():
         action="store_true",
         help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only.",
     )
+    # Dependency search with vcpkg
+    parser.add_argument(
+        "--use_vcpkg",
+        action="store_true",
+        help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
+    )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
@@ -566,6 +570,7 @@ def parse_arguments():
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
     parser.add_argument("--use_jsep", action="store_true", help="Build with JavaScript kernels.")
+    parser.add_argument("--use_webgpu", action="store_true", help="Build with WebGPU support.")
     parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
@@ -613,6 +618,7 @@ def parse_arguments():
             "MinGW Makefiles",
             "Ninja",
             "NMake Makefiles",
+            "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
             "Xcode",
@@ -647,9 +653,7 @@ def parse_arguments():
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test")
     parser.add_argument(
         "--use_acl",
-        nargs="?",
-        const="ACL_1905",
-        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002", "ACL_2308"],
+        action="store_true",
         help="Build with ACL for ARM architectures.",
     )
     parser.add_argument("--acl_home", help="Path to ACL home dir")
@@ -720,7 +724,7 @@ def parse_arguments():
 
     # Code coverage
     parser.add_argument(
-        "--code_coverage", action="store_true", help="Generate code coverage when targetting Android (only)."
+        "--code_coverage", action="store_true", help="Generate code coverage when targeting Android (only)."
     )
 
     # lazy tensor support.
@@ -757,6 +761,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
+    parser.add_argument("--use_avx512", action="store_true", help="Enable AVX512 instructions")
     parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
@@ -808,7 +813,7 @@ def resolve_executable_path(command_or_path):
 def get_linux_distro():
     try:
         with open("/etc/os-release") as f:
-            dist_info = dict(line.strip().split("=", 1) for line in f.readlines())
+            dist_info = dict(line.strip().split("=", 1) for line in f)
         return dist_info.get("NAME", "").strip('"'), dist_info.get("VERSION", "").strip('"')
     except (OSError, ValueError):
         return "", ""
@@ -865,16 +870,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def install_python_deps(numpy_version=""):
-    dep_packages = ["setuptools", "wheel", "pytest"]
-    dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
-    dep_packages.append("sympy>=1.10")
-    dep_packages.append("packaging")
-    dep_packages.append("cerberus")
-    dep_packages.append("psutil")
-    run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
 def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
@@ -1011,6 +1006,7 @@ def generate_build_tree(
         # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
+        "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
@@ -1057,15 +1053,11 @@ def generate_build_tree(
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
-        "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
-        "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
-        "-Donnxruntime_USE_ACL_1908=" + ("ON" if args.use_acl == "ACL_1908" else "OFF"),
-        "-Donnxruntime_USE_ACL_2002=" + ("ON" if args.use_acl == "ACL_2002" else "OFF"),
-        "-Donnxruntime_USE_ACL_2308=" + ("ON" if args.use_acl == "ACL_2308" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
+        "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -1248,7 +1240,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
-        cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
+        cmake_args += [f"-DLLVM_DIR={args.llvm_path}"]
 
     if args.use_cuda and not is_windows():
         nvml_stub_path = cuda_home + "/lib64/stubs"
@@ -1321,6 +1313,9 @@ def generate_build_tree(
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
+
+    if args.use_jsep and args.use_webgpu:
+        raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1464,7 +1459,7 @@ def generate_build_tree(
     if args.enable_lazy_tensor:
         import torch
 
-        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     if args.use_azure:
@@ -1594,7 +1589,7 @@ def generate_build_tree(
                         else:
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
-                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
+                        cudaflags.append(f'-Xcompiler="{cuda_compile_flags_str}"')
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
@@ -1662,16 +1657,16 @@ def generate_build_tree(
         temp_cmake_args = cmake_args.copy()
         if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
-                "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
-                "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
+                "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
+                "-DCMAKE_CXX_FLAGS={}".format(" ".join(cxxflags)),
             ]
         if cudaflags is not None and len(cudaflags) != 0:
-            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT={}".format(" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
-                "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
-                "-DCMAKE_MODULE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
-                "-DCMAKE_SHARED_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+                "-DCMAKE_EXE_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
+                "-DCMAKE_MODULE_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
+                "-DCMAKE_SHARED_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
             ]
         run_subprocess(
             [
@@ -2108,10 +2103,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
-            if args.use_tensorrt:
-                run_subprocess(
-                    [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
-                )
+            # if args.use_tensorrt:
+            #     run_subprocess(
+            #         [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
+            #     )
 
             try:
                 import onnx  # noqa: F401
@@ -2145,7 +2140,14 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
                         run_subprocess(
-                            [sys.executable, "-m", "pip", "install", "-r", "requirements-transformers-test.txt"],
+                            [
+                                sys.executable,
+                                "-m",
+                                "pip",
+                                "install",
+                                "-r",
+                                "requirements/transformers-test/requirements.txt",
+                            ],
                             cwd=SCRIPT_DIR,
                         )
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
@@ -2211,6 +2213,7 @@ def build_python_wheel(
     use_cuda,
     cuda_version,
     use_rocm,
+    use_migraphx,
     rocm_version,
     use_dnnl,
     use_tensorrt,
@@ -2262,6 +2265,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+        elif use_migraphx:
+            args.append("--use_migraphx")
         elif use_openvino:
             args.append("--use_openvino")
         elif use_dnnl:
@@ -2278,10 +2283,10 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
-        elif use_azure:
-            args.append("--use_azure")
         elif use_qnn:
             args.append("--use_qnn")
+        elif use_azure:
+            args.append("--use_azure")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2587,13 +2592,19 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.use_migraphx:
-        args.use_rocm = True
-
     if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+    if (
+        args.build_csharp
+        or args.build_nuget
+        or args.build_java
+        or args.build_nodejs
+        or (args.enable_pybind and not args.enable_training)
+    ):
+        # If pyhon bindings are enabled, we embed the shared lib in the python package.
+        # If training is enabled, we don't embed the shared lib in the python package since training requires
+        # torch interop.
         args.build_shared_lib = True
 
     if args.build_nuget and cross_compiling:
@@ -2745,7 +2756,7 @@ def main():
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
-                # builds (Override any user-defined behaviour for test if any)
+                # builds (Override any user-defined behavior for test if any)
                 if args.test:
                     log.warning(
                         "Cannot test on host build machine for cross-compiled "
@@ -2808,7 +2819,10 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps(args.numpy_version)
+            run_subprocess(
+                [sys.executable, "-m", "pip", "install", "-r", "requirements/pybind/requirements.txt"],
+                cwd=SCRIPT_DIR,
+            )
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
@@ -2876,7 +2890,8 @@ def main():
     # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
     # either.
     if args.build:
-        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and the target OS is Windows
+        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and
+        #  the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
             default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
@@ -2887,6 +2902,7 @@ def main():
                 args.use_cuda,
                 args.cuda_version,
                 args.use_rocm,
+                args.use_migraphx,
                 args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,

@@ -21,6 +21,7 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#pragma once
 #include <memory>
 #include <vector>
 #include <utility>
@@ -136,8 +137,10 @@ class ResizeOpBuilder : public BaseOpBuilder {
         for (int i = 0; i < input_shape.size(); i++) {
           out_shape[i] = input_shape[i] * scales[input_shape.size() - 1 - i];
         }
+        target_h = static_cast<int>(out_shape[1]);
+        target_w = static_cast<int>(out_shape[0]);
         op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize>(resize_type, 0, align_corners,
-                                                                         half_pixel_center, out_shape[1], out_shape[0]);
+                                                                         half_pixel_center, target_h, target_w);
       }
     }
 

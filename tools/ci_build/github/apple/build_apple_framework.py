@@ -89,18 +89,52 @@ def _build_for_apple_sysroot(
     pathlib.Path(framework_dir).mkdir(parents=True, exist_ok=True)
 
     # copy the Info.plist, framework_info.json, and header files
-    shutil.copy(info_plist_path, framework_dir)
-    shutil.copy(framework_info_path, os.path.dirname(framework_dir))
-    header_dir = os.path.join(framework_dir, "Headers")
-    pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
-    for _header in headers:
-        shutil.copy(_header, header_dir)
 
-    # use lipo to create a fat ort library
-    lipo_command = ["lipo", "-create"]
-    lipo_command += ort_libs
-    lipo_command += ["-output", os.path.join(framework_dir, "onnxruntime")]
-    subprocess.run(lipo_command, shell=False, check=True)
+    # macos requires different framework structure:
+    # https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/FrameworkAnatomy.html
+    if sysroot == "macosx" or sysroot == "macabi":
+        # create headers and resources directory
+        header_dir = os.path.join(framework_dir, "Versions", "A", "Headers")
+        resource_dir = os.path.join(framework_dir, "Versions", "A", "Resources")
+        pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(resource_dir).mkdir(parents=True, exist_ok=True)
+
+        shutil.copy(info_plist_path, resource_dir)
+        shutil.copy(framework_info_path, os.path.dirname(framework_dir))
+
+        for _header in headers:
+            shutil.copy(_header, header_dir)
+
+        # use lipo to create a fat ort library
+        lipo_command = ["lipo", "-create"]
+        lipo_command += ort_libs
+        lipo_command += ["-output", os.path.join(framework_dir, "Versions", "A", "onnxruntime")]
+        subprocess.run(lipo_command, shell=False, check=True)
+
+        # create the symbolic link
+        pathlib.Path(os.path.join(framework_dir, "Versions", "Current")).symlink_to("A", target_is_directory=True)
+        pathlib.Path(os.path.join(framework_dir, "Headers")).symlink_to(
+            "Versions/Current/Headers", target_is_directory=True
+        )
+        pathlib.Path(os.path.join(framework_dir, "Resources")).symlink_to(
+            "Versions/Current/Resources", target_is_directory=True
+        )
+        pathlib.Path(os.path.join(framework_dir, "onnxruntime")).symlink_to("Versions/Current/onnxruntime")
+
+    else:
+        shutil.copy(info_plist_path, framework_dir)
+        shutil.copy(framework_info_path, os.path.dirname(framework_dir))
+        header_dir = os.path.join(framework_dir, "Headers")
+        pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
+
+        for _header in headers:
+            shutil.copy(_header, header_dir)
+
+        # use lipo to create a fat ort library
+        lipo_command = ["lipo", "-create"]
+        lipo_command += ort_libs
+        lipo_command += ["-output", os.path.join(framework_dir, "onnxruntime")]
+        subprocess.run(lipo_command, shell=False, check=True)
 
     return framework_dir
 
@@ -166,7 +200,7 @@ def _build_package(args):
     xcframework_dir = os.path.join(build_dir, "framework_out")
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, "LICENSE"), xcframework_dir)
-    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True)
+    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True, symlinks=True)
     _merge_framework_info_files(framework_info_files_to_merge, os.path.join(build_dir, "xcframework_info.json"))
 
     # remove existing xcframework if any

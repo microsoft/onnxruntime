@@ -23,6 +23,10 @@ parameters:
   displayName: 'Stage that the initial stage of react-native-ci depends on'
   type: string
   default: ''
+  
+- name: enable_code_sign
+  displayName: Use GPG to sign the jars
+  type: boolean
 
 stages:
 - stage: Build_Packages
@@ -36,12 +40,13 @@ stages:
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'For_React_Native'
+      enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
 
   - job: Build_Ios_Pod_For_React_Native
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
 
     timeoutInMinutes: 90
 
@@ -52,7 +57,6 @@ stages:
 
     steps:
     - template: use-xcode-version.yml
-
     - task: UsePythonVersion@0
       displayName: Use python 3.9
       inputs:
@@ -61,7 +65,7 @@ stages:
         architecture: "x64"
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - template: mac-build-step-with-cache.yml
@@ -99,9 +103,7 @@ stages:
   jobs:
   - job: ReactNative_CI
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 90
@@ -109,7 +111,7 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: Clean Agent Directories
       condition: always()
-
+    - template: use-xcode-version.yml
     - task: UsePythonVersion@0
       displayName: Use python 3.9
       inputs:
@@ -118,9 +120,9 @@ stages:
         architecture: "x64"
 
     - task: JavaToolInstaller@0
-      displayName: Use jdk 11
+      displayName: Use jdk 17
       inputs:
-        versionSpec: '11'
+        versionSpec: '17'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
 
@@ -267,7 +269,10 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all --configuration android.emu.release --loglevel trace
+          detox test --record-logs all \
+                     --configuration android.emu.release \
+                     --loglevel trace \
+                     --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
 
@@ -301,7 +306,7 @@ stages:
         scheme: 'OnnxruntimeModuleTest'
         packageApp: false
         destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 13,OS=latest'
+        destinationSimulators: 'iPhone 14,OS=16.4'
         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
         xcprettyArgs: '--output build/reports/test-results.xml'
         publishJUnitResults: true
@@ -317,8 +322,16 @@ stages:
       displayName: Publish React Native iOS Instrumented Test Results
 
     - script: |
+        xcrun simctl list devices
+      displayName: List iOS Simulators
+      continueOnError: true
+
+    - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
-        detox test --record-logs all --configuration ios.sim.release --loglevel trace
+          detox test --record-logs all \
+                     --configuration ios.sim.release \
+                     --loglevel trace \
+                     --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
 

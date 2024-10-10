@@ -29,7 +29,7 @@ class _SupportedOpsChecker:
         self._ops_seen = set()
 
         with open(filename) as f:
-            for line in f.readlines():
+            for line in f:
                 # we're looking for a markdown table with 2 columns. first is op name. second is caveats
                 # op name is domain:op
                 if line.startswith("|"):
@@ -513,11 +513,11 @@ def check_nnapi_partitions(model, require_fixed_input_sizes: bool):
     return _check_ep_partitioning(model, config_path, require_fixed_input_sizes)
 
 
-def check_coreml_partitions(model: onnx.ModelProto, require_fixed_input_sizes: bool, config_filename):
+def check_coreml_partitions(model: onnx.ModelProto, require_fixed_input_sizes: bool, config_filename: str):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
-    local_config = script_dir / "coreml_supported_ops.md"
+    local_config = script_dir / config_filename
     if local_config.exists():
         config_path = local_config
     else:

@@ -62,7 +62,7 @@ input_counts=1
 # Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 
-# If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
+# If you have multiple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
 
 # This script will generate a logs file with a list of commands used in tests.

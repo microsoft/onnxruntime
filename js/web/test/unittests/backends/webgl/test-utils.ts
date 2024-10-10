@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {WebGLContext} from '../../../../lib/onnxjs/backends/webgl/webgl-context';
+import { WebGLContext } from '../../../../lib/onnxjs/backends/webgl/webgl-context';
 
 export function createAscendingArray(size: number): Float32Array {
-  return new Float32Array(Array.from({length: size}, (_v, i) => (i + 1)));
+  return new Float32Array(Array.from({ length: size }, (_v, i) => i + 1));
 }
 
 // Returns an array by injecting 3 zeros after every element in the input array to be used for creating unpacked
 // texture.
 export function generateArrayForUnpackedTexture(input: Float32Array): Float32Array {
   const output = new Float32Array(input.length * 4);
-  for (let i = 0; i < (input.length * 4); i += 4) {
+  for (let i = 0; i < input.length * 4; i += 4) {
     output[i] = input[i / 4];
   }
   return output;
@@ -19,7 +19,11 @@ export function generateArrayForUnpackedTexture(input: Float32Array): Float32Arr
 
 // create a webgl texture and fill it with the array content
 export function createTextureFromArray(
-    glContext: WebGLContext, dataArray: Float32Array, width: number, height: number): WebGLTexture {
+  glContext: WebGLContext,
+  dataArray: Float32Array,
+  width: number,
+  height: number,
+): WebGLTexture {
   const gl = glContext.gl;
 
   // create the texture
@@ -46,12 +50,14 @@ export function createTextureFromArray(
 
 // create a cpu array and download GPU texture data to this array
 export function createArrayFromTexture(
-    gl: WebGLRenderingContext, texture: WebGLTexture, width: number, height: number): Float32Array {
+  gl: WebGLRenderingContext,
+  texture: WebGLTexture,
+  width: number,
+  height: number,
+): Float32Array {
   const resultDataBuffer = new Float32Array(width * height * 4);
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.framebufferTexture2D(
-      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture,
-      0);  // 0, we aren't using MIPMAPs
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0); // 0, we aren't using MIPMAPs
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, resultDataBuffer);
   return resultDataBuffer;
 }
@@ -130,7 +136,7 @@ export function generateExpected(inputArray: Float32Array, inputShape: number[])
           result[ii++] = 0;
         }
 
-        if ((j + 1) < inputHeight) {
+        if (j + 1 < inputHeight) {
           result[ii++] = inputArray[(j + 1) * inputWidth + i + b * (inputHeight * inputWidth)];
         } else {
           result[ii++] = 0;

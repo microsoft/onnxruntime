@@ -174,6 +174,7 @@ MLDataType DataTypeImpl::GetType<UInt4x2>() { return Provider_GetHost()->DataTyp
 
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
+MLDataType DataTypeImpl::GetTensorTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTensorTypeFromOnnxType(onnx_type); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
 template <>
@@ -353,16 +354,12 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 #endif
 
 #ifdef USE_MIGRAPHX
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
-  return g_host->CreateROCMPinnedAllocator(name);
-}
-
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
 #endif
 
@@ -612,12 +609,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* relative_position_bias,
+                                  const Tensor* attention_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, relative_position_bias, parameters,
+                                               mask_index, past, attention_bias, parameters,
                                                max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,

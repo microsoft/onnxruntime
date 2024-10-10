@@ -113,7 +113,9 @@ void GraphEP::UpdateTensorMap(const std::string& name, const std::shared_ptr<tim
   }
 }
 
-std::shared_ptr<NodeIOInfo> GraphEP::ConstructNodeIO(const std::shared_ptr<tim::vx::Operation>& op, std::vector<NodeArg*> input_arg, std::vector<NodeArg*> output_arg) {
+std::shared_ptr<NodeIOInfo> GraphEP::ConstructNodeIO(const std::shared_ptr<tim::vx::Operation>& op,
+                                                     std::vector<NodeArg*> input_arg,
+                                                     std::vector<NodeArg*> output_arg) {
   auto info = std::make_shared<vsi::npu::NodeIOInfo>();
   info->op_ = op;
   std::vector<std::string> input_names, output_names;
@@ -173,7 +175,6 @@ std::shared_ptr<tim::vx::Tensor> GraphEP::MapTIMVXTensor(
   const auto& arg = nudef.node_arg;
 
   if (tensors_.end() != tensors_.find(nudef.node_arg.Name())) {
-    // if (!quant_param.has_value() || quant_param.has_value() && tensors_[arg.Name()]->GetSpec().GetQuantization().Type() != tim::vx::QuantType::NONE)
     return tensors_.find(arg.Name())->second;
   }
   auto shape = vsi::npu::util::OnnxShapeToTIMVXShape(vsi::npu::util::GetTensorShape(arg));
@@ -190,16 +191,18 @@ std::shared_ptr<tim::vx::Tensor> GraphEP::MapTIMVXTensor(
     std::optional<std::vector<float>> scales;
     std::optional<std::vector<int32_t>> zps;
     if (nudef.quant_param.has_value()) {
-      util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+      util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                              nudef, node_unit.ModelPath(),
                                              scale, zp, scales, zps);
     } else {
       auto target_nodeunit = all_quantized_op_inputs_[arg.Name()][0];
       auto qinput = all_quantized_op_inputs_[arg.Name()][0]->Inputs();
-      auto it = std::find_if(qinput.begin(), qinput.end(), [&arg](const NodeUnitIODef& nud) { return nud.node_arg.Name() == arg.Name(); });
+      auto it = std::find_if(qinput.begin(), qinput.end(), [&arg](const NodeUnitIODef& nud) {
+        return nud.node_arg.Name() == arg.Name();
+      });
       bool is_conv_bias = std::distance(qinput.begin(), it) == 2;
       if (!is_conv_bias || it->quant_param.has_value()) {
-        util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+        util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                                *it, target_nodeunit->ModelPath(),
                                                scale, zp, scales, zps);
       } else if (!it->quant_param.has_value()) {
@@ -209,11 +212,12 @@ std::shared_ptr<tim::vx::Tensor> GraphEP::MapTIMVXTensor(
         std::optional<std::vector<int32_t>> in_zps, w_zps;
 
         // onnx defines conv bias with non quantization, but it must be quantized in VSINPU support
-        // The bias scale is set as input_scale * weight_scale if per layer quantized, input_scale* weight_scale[i] if per channel quantized
-        util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+        // The bias scale is set as input_scale * weight_scale if per layer quantized,
+        // otherwise input_scale* weight_scale[i] if per channel quantized
+        util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                                qinput[0], target_nodeunit->ModelPath(),
                                                in_scale, in_zp, in_scales, in_zps);
-        util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+        util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                                qinput[1], target_nodeunit->ModelPath(),
                                                w_scale, w_zp, w_scales, w_zps);
         scale = in_scale * w_scale;

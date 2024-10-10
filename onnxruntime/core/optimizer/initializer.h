@@ -10,7 +10,6 @@
 #include <filesystem>
 #include "core/common/common.h"
 #include "core/common/narrow.h"
-#include "core/common/path.h"
 #include "core/framework/allocator.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/tensor_shape.h"

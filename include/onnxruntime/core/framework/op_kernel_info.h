@@ -8,7 +8,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 

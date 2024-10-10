@@ -24,5 +24,18 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
                              std::vector<int64_t>& pads_out,
                              bool use_nchw) ORT_MUST_USE_RESULT;
 
+// Compute pads and output shape for ConvTranspose.
+common::Status ComputeConvTransposePadsAndOutputShape(const std::vector<int64_t> input_shape,
+                                                      const int64_t weight_size_y,
+                                                      const int64_t weight_size_x,
+                                                      const std::vector<int64_t>& onnx_pads,
+                                                      const std::vector<int64_t>& onnx_strides,
+                                                      const std::vector<int64_t>& onnx_dilations,
+                                                      const std::vector<int64_t>& onnx_output_padding,
+                                                      AutoPadType auto_pad_type,
+                                                      std::vector<int64_t>& pads_out,
+                                                      std::vector<int64_t>& output_shape_out,
+                                                      bool use_nchw) ORT_MUST_USE_RESULT;
+
 }  // namespace webnn
 }  // namespace onnxruntime

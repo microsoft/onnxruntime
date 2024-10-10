@@ -26,7 +26,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#if !defined(_AIX)
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 #include <iostream>
@@ -43,8 +45,12 @@ limitations under the License.
 #define ORT_USE_CPUINFO
 #endif
 
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#include <sys/sysctl.h>
+#endif
+
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/platform/scoped_resource.h"
@@ -300,6 +306,22 @@ class PosixEnv : public Env {
       ret.resize(GetNumPhysicalCpuCores());
     }
     return ret;
+  }
+
+  int GetL2CacheSize() const override {
+#ifdef _SC_LEVEL2_CACHE_SIZE
+    return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
+#else
+    int value = 0;  // unknown
+#if (defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)) && defined(HW_L2CACHESIZE)
+    int mib[2] = {CTL_HW, HW_L2CACHESIZE};
+    size_t len = sizeof(value);
+    if (sysctl(mib, 2, &value, &len, NULL, 0) < 0) {
+      return -1;  // error
+    }
+#endif
+    return value;
+#endif
   }
 
   void SleepForMicroseconds(int64_t micros) const override {

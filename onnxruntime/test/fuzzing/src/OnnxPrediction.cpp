@@ -9,6 +9,7 @@
 // Uses the onnxruntime to load the model
 // into a session.
 //
+#if defined(_WIN32) || defined(_WIN64)
 OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file, Ort::Env& env)
     : raw_model{nullptr},
       ptr_session{std::make_unique<Ort::Session>(env, onnx_model_file.c_str(), empty_session_option)},
@@ -16,6 +17,16 @@ OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file, Ort::Env& env)
       output_names(ptr_session->GetOutputCount()) {
   init();
 }
+#else
+OnnxPrediction::OnnxPrediction(std::wstring& onnx_model_file, Ort::Env& env)
+    : raw_model{nullptr},
+      // Convert std::wstring to std::string
+      ptr_session{std::make_unique<Ort::Session>(env, wstring_to_string(onnx_model_file).c_str(), empty_session_option)},
+      input_names(ptr_session->GetInputCount()),
+      output_names(ptr_session->GetOutputCount()) {
+  init();
+}
+#endif
 
 // Uses the onnx to seri
 //
@@ -60,7 +71,7 @@ std::wostream& operator<<(std::wostream& out, OnnxPrediction& pred) {
   auto pretty_print = [&out](auto ptr, Ort::Value& val) {
     out << L"[";
     std::wstring msg = L"";
-    for (int i = 0; i < val.GetTensorTypeAndShapeInfo().GetElementCount(); i++) {
+    for (int i = 0; i < static_cast<int>(val.GetTensorTypeAndShapeInfo().GetElementCount()); i++) {
       out << msg << ptr[i];
       msg = L", ";
     }
@@ -84,28 +95,15 @@ void GenerateDataForInputTypeTensor(OnnxPrediction& predict,
   (void)input_name;
   (void)input_index;
 
-  auto pretty_print = [&input_name](auto raw_data) {
-    Logger::testLog << input_name << L" = ";
-    Logger::testLog << L"[";
-    std::wstring msg = L"";
-    for (int i = 0; i < raw_data.size(); i++) {
-      Logger::testLog << msg << raw_data[i];
-      msg = L", ";
-    }
-    Logger::testLog << L"]\n";
-  };
-
   if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     auto raw_data = GenerateRandomData(0.0f, elem_count, seed);
-    // pretty_print(raw_data);
     predict << std::move(raw_data);
   } else if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     int32_t initial = 0;
     auto raw_data = GenerateRandomData(initial, elem_count, seed);
-    // pretty_print(raw_data);
     predict << std::move(raw_data);
   } else {
-    throw std::exception("only floats are implemented");
+    throw std::runtime_error("only floats are implemented");
   }
 }
 
@@ -143,7 +141,7 @@ void OnnxPrediction::PrintOutputValues() {
 void OnnxPrediction::init() {
   // Initialize model input names
   //
-  for (int i = 0; i < ptr_session->GetInputCount(); i++) {
+  for (int i = 0; i < static_cast<int>(ptr_session->GetOutputCount()); i++) {
     // TODO Use push_back on input_names instead of assignment
     input_names_ptrs.push_back(ptr_session->GetInputNameAllocated(i, alloc));
     input_names[i] = input_names_ptrs.back().get();
@@ -152,7 +150,7 @@ void OnnxPrediction::init() {
 
   // Initialize model output names
   //
-  for (int i = 0; i < ptr_session->GetOutputCount(); i++) {
+  for (int i = 0; i < static_cast<int>(ptr_session->GetOutputCount()); i++) {
     // TODO Use push_back on output_names instead of assignment
     output_names_ptrs.push_back(ptr_session->GetOutputNameAllocated(i, alloc));
     output_names[i] = output_names_ptrs.back().get();
@@ -169,8 +167,7 @@ Ort::AllocatorWithDefaultOptions& OnnxPrediction::GetAllocator() {
 void OnnxPrediction::SetupInput(
     InputGeneratorFunctionType GenerateData,
     size_t seed) {
-  Logger::testLog << L"input data:\n";
-  for (int i = 0; i < ptr_session->GetInputCount(); i++) {
+  for (int i = 0; i < static_cast<int>(ptr_session->GetOutputCount()); i++) {
     auto inputType = ptr_session->GetInputTypeInfo(i);
 
     if (inputType.GetONNXType() == ONNX_TYPE_TENSOR) {

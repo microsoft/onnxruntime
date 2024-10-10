@@ -69,6 +69,7 @@ class TensorData:
     _floats = frozenset(["avg", "std", "lowest", "highest", "hist_edges"])
 
     def __init__(self, **kwargs):
+        self._attrs = list(kwargs.keys())
         for k, v in kwargs.items():
             if k not in TensorData._allowed:
                 raise ValueError(f"Unexpected value {k!r} not in {TensorData._allowed}.")
@@ -90,6 +91,12 @@ class TensorData:
         if not hasattr(self, "avg") or not hasattr(self, "std"):
             raise AttributeError(f"Attributes 'avg' and/or 'std' missing in {dir(self)}.")
         return (self.avg, self.std)
+
+    def to_dict(self):
+        # This is needed to serialize the data into JSON.
+        data = {k: getattr(self, k) for k in self._attrs}
+        data["CLS"] = self.__class__.__name__
+        return data
 
 
 class TensorsData:
@@ -125,11 +132,23 @@ class TensorsData:
             raise RuntimeError(f"Only an existing tensor can be modified, {key!r} is not.")
         self.data[key] = value
 
+    def keys(self):
+        return self.data.keys()
+
     def values(self):
         return self.data.values()
 
     def items(self):
         return self.data.items()
+
+    def to_dict(self):
+        # This is needed to serialize the data into JSON.
+        data = {
+            "CLS": self.__class__.__name__,
+            "data": self.data,
+            "calibration_method": self.calibration_method,
+        }
+        return data
 
 
 class CalibrationMethod(Enum):
@@ -565,16 +584,29 @@ class HistogramCalibrater(CalibraterBase):
         """
         Entropy Calibrator collects operators' tensors as well as generates tensor histogram for each operator.
         """
+        input_names_set = {node_arg.name for node_arg in self.infer_session.get_inputs()}
+        output_names = [node_arg.name for node_arg in self.infer_session.get_outputs()]
+
         while True:
             inputs = data_reader.get_next()
             if not inputs:
                 break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            outputs = self.infer_session.run(None, inputs)
+
+            # Copy np.ndarray only for graph outputs that are also graph inputs to workaround bug:
+            # https://github.com/microsoft/onnxruntime/issues/21922
+            fixed_outputs = []
+            for output_index, output in enumerate(outputs):
+                if output_names[output_index] in input_names_set:
+                    fixed_outputs.append(copy.copy(output))
+                else:
+                    fixed_outputs.append(output)
+
+            self.intermediate_outputs.append(fixed_outputs)
 
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
-        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
             dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
@@ -812,7 +844,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -834,7 +866,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist[: len(old_hist)] += old_hist
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
@@ -1076,7 +1108,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i
-            end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
+            end_index = min(zero_bin_index + i + 1, num_bins)
 
             thresholds[i - num_half_quantized_bin] = (hist_edges[start_index], hist_edges[end_index])
 

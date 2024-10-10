@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -105,6 +105,7 @@ struct OrtShapeInferContext {
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
+    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->type);
     return onnxruntime::Status::OK();
   }
 

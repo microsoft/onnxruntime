@@ -6,11 +6,12 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
+#include <string>
 #include <vector>
 
 #include "core/common/flatbuffers.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
@@ -19,6 +20,7 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -92,6 +94,7 @@ class SessionState {
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
+               const ExternalDataLoaderManager& external_data_loader_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
@@ -295,6 +298,8 @@ class SessionState {
 
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
+  const ExternalDataLoaderManager& GetExternalDataLoaderMgr() const noexcept { return external_data_loader_mgr_; }
+
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -302,6 +307,10 @@ class SessionState {
   void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
+
+  std::unordered_map<std::string, std::unique_ptr<Tensor>>* GetMutableBufferedTensors() {
+    return &name_to_buffered_tensor_;
+  }
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
@@ -508,6 +517,8 @@ class SessionState {
 
   const DataTransferManager& data_transfer_mgr_;
 
+  const ExternalDataLoaderManager& external_data_loader_mgr_;
+
   const SessionOptions& sess_options_;
 
   std::optional<NodeIndexInfo> node_index_info_;
@@ -562,6 +573,12 @@ class SessionState {
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;
 #endif
+
+  // Holds the tensors which provide memory buffer for TensorProtos
+  // Use case: in optimizer, transform a TensorProto to a new TensorProto whose the memory buffer is
+  // allocated by CPU instead by protobuf's arena. Arena style memory allocators do not fully release
+  // a instance's memory which may result large memory consumption, which is a tradeoff for speed.
+  std::unordered_map<std::string, std::unique_ptr<Tensor>> name_to_buffered_tensor_;
 };
 
 }  // namespace onnxruntime

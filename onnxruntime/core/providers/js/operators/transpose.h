@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/providers/js/js_kernel.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {

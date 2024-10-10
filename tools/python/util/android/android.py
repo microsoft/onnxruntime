@@ -30,7 +30,7 @@ def get_sdk_tool_paths(sdk_root: str):
     sdk_root = Path(sdk_root).resolve(strict=True)
 
     return SdkToolPaths(
-        # do not use sdk_root/tools/emulator as that is superceeded by sdk_root/emulator/emulator
+        # do not use sdk_root/tools/emulator as that is superseded by sdk_root/emulator/emulator
         emulator=str((sdk_root / "emulator" / filename("emulator", "exe")).resolve(strict=True)),
         adb=str((sdk_root / "platform-tools" / filename("adb", "exe")).resolve(strict=True)),
         sdkmanager=str(

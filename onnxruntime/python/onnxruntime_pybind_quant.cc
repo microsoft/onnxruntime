@@ -67,7 +67,7 @@ void QuantizeMatMul4BitsBlockwise(
 }
 
 template <typename T>
-void QuantizeQDQMatMul4BitsBlockwise(
+bool QuantizeQDQMatMul4BitsBlockwise(
     py::array_t<uint8_t> dst,          // shape: [K, N / 2]
     py::array_t<T> src,                // shape: [K, N]
     py::array_t<T> scale,              // shape: [block_per_K, N]
@@ -85,7 +85,7 @@ void QuantizeQDQMatMul4BitsBlockwise(
   py::buffer_info scale_buf = scale.request();
   py::buffer_info zp_buf = zero_points.request();
 
-  MlasQDQQuantizeBlockwise<T, 4>(
+  return MlasQDQQuantizeBlockwise<T, 4>(
       reinterpret_cast<const T*>(src_buf.ptr),
       reinterpret_cast<T*>(scale_buf.ptr),
       is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),

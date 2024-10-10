@@ -56,7 +56,7 @@ LoggingManager* LoggingManager::GetDefaultInstance() {
   return static_cast<LoggingManager*>(DefaultLoggerManagerInstance().load());
 }
 
-// GSL_SUPRESS(i.22) is broken. Ignore the warnings for the static local variables that are trivial
+// GSL_SUPPRESS(i.22) is broken. Ignore the warnings for the static local variables that are trivial
 // and should not have any destruction order issues via pragmas instead.
 // https://developercommunity.visualstudio.com/content/problem/249706/gslsuppress-does-not-work-for-i22-c-core-guideline.html
 #ifdef _MSC_VER

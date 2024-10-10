@@ -5,7 +5,7 @@
 
 #include <utility>
 #include <random>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"

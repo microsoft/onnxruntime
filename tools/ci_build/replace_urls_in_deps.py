@@ -53,10 +53,10 @@ def main():
         csv_file_path = backup_csv_file_path
     else:
         # Make a copy before modifying it
-        print("Making a copy to %s" % str(backup_csv_file_path))
+        print(f"Making a copy to {backup_csv_file_path!s}")
         shutil.copy(csv_file_path, backup_csv_file_path)
 
-    print("Reading from %s" % str(csv_file_path))
+    print(f"Reading from {csv_file_path!s}")
     # Read the whole file into memory first
     with csv_file_path.open("r", encoding="utf-8") as f:
         depfile_reader = csv.reader(f, delimiter=";")
@@ -69,7 +69,7 @@ def main():
             deps.append(Dep(row[0], row[1], row[2]))
 
     csv_file_path = Path(REPO_DIR) / "cmake" / "deps.txt"
-    print("Writing to %s" % str(csv_file_path))
+    print(f"Writing to {csv_file_path!s}")
     # Write updated content back
     with csv_file_path.open("w", newline="", encoding="utf-8") as f:
         depfile_writer = csv.writer(f, delimiter=";")

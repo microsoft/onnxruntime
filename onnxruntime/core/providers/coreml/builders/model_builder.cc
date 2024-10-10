@@ -641,6 +641,14 @@ std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::st
 
 template <>
 std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const MLFloat16> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
+  auto input_value = CreateTensorValue<MLFloat16>(value, shape);
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
+}
+
+template <>
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
                                                gsl::span<const int64_t> value,
                                                std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<int64_t, int32_t>(value, shape);  // CoreML uses int32
@@ -811,6 +819,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         multi_array->set_datatype(ArrayFeatureType::FLOAT32);
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        multi_array->set_datatype(ArrayFeatureType::FLOAT16);
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         multi_array->set_datatype(ArrayFeatureType::INT32);
         break;
@@ -839,6 +850,13 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     if (is_input) {
       // the model inputs need to be wired up as args to the 'main' function.
       auto tensor_value_type = CreateNamedTensorValueType(node_arg, /*convert_scalar*/ true);
+
+      // we need to convert int64 to int32 here as well
+      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+        tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
+            OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+      }
+
       tensor_value_type.set_name(name);
 
       mlprogram_main_fn_->mutable_inputs()->Add(std::move(tensor_value_type));

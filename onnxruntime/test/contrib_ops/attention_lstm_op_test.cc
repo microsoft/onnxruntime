@@ -266,8 +266,8 @@ static const std::vector<float> s_M_2batch{0.1f, -0.25f, 1.0f, 1.0f, -1.0f, -1.5
                                            0.1f, -0.25f, 0.5f, -0.25f, -1.25f, 0.25f, -1.0f, 1.5f, -1.25f};
 
 // real seq lens for memory
-static std::vector<int> s_mem_seq_lenghts{3};
-static const std::vector<int> s_mem_seq_lenghts_2batch{3, 2};
+static std::vector<int> s_mem_seq_lengths{3};
+static const std::vector<int> s_mem_seq_lengths_2batch{3, 2};
 
 // [batch_size=1, input_max_step=3, input_only_depth=3]
 static std::vector<float> s_X_T_data{
@@ -352,7 +352,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAMZeroAttention) {
 
   RunAttnLstmTest(
       X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
-      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lenghts, &zero_attn_layer_weight,
+      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lengths, &zero_attn_layer_weight,
       input_only_depth, batch_size, cell_hidden_size, input_max_step,
       memory_max_step, memory_depth, am_attn_size, aw_attn_size,
       &B_data, nullptr, nullptr, nullptr, &s_seq_lengths,
@@ -389,7 +389,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAM) {
 
   RunAttnLstmTest(
       X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
-      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lenghts, &s_attn_layer_weight,
+      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lengths, &s_attn_layer_weight,
       input_only_depth, batch_size, cell_hidden_size, input_max_step,
       memory_max_step, memory_depth, am_attn_size, aw_attn_size,
       &B_data, nullptr, nullptr, nullptr, &s_seq_lengths,
@@ -428,7 +428,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAMShortenSeqLength) {
 
   RunAttnLstmTest(
       X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
-      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lenghts, &s_attn_layer_weight,
+      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lengths, &s_attn_layer_weight,
       input_only_depth, batch_size, cell_hidden_size, input_max_step,
       memory_max_step, memory_depth, am_attn_size, aw_attn_size,
       &B_data, nullptr, nullptr, nullptr, &shortenSeqLen,
@@ -467,7 +467,7 @@ TEST(AttnLSTMTest, ReverseLstmWithBahdanauAMShortenSeqLength) {
 
   RunAttnLstmTest(
       X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
-      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lenghts, &s_attn_layer_weight,
+      s_memory_layer_weight, s_query_layer_weight, s_attn_v, s_M_data, &s_mem_seq_lengths, &s_attn_layer_weight,
       input_only_depth, batch_size, cell_hidden_size, input_max_step,
       memory_max_step, memory_depth, am_attn_size, aw_attn_size,
       &B_data, nullptr, nullptr, nullptr, &shortenSeqLen,
@@ -521,7 +521,7 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAMShortenSeqLength) {
 
   RunAttnLstmTest(
       X_data, d_W_data, d_R_data, Y_data, Y_h_data, Y_c_data,
-      d_memory_layer_weight, d_query_layer_weight, d_attn_v, s_M_data, &s_mem_seq_lenghts, &d_attn_layer_weight,
+      d_memory_layer_weight, d_query_layer_weight, d_attn_v, s_M_data, &s_mem_seq_lengths, &d_attn_layer_weight,
       input_only_depth, batch_size, cell_hidden_size, input_max_step,
       memory_max_step, memory_depth, am_attn_size, aw_attn_size,
       &d_B_data, nullptr, nullptr, nullptr, &shortenSeqLen,
@@ -578,7 +578,7 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAM2BatchShortenSeqLen) {
 
   RunAttnLstmTest(
       X_data, d_W_data, d_R_data, Y_data, Y_h_data, Y_c_data,
-      d_memory_layer_weight, d_query_layer_weight, d_attn_v, s_M_2batch, &s_mem_seq_lenghts_2batch, &d_attn_layer_weight,
+      d_memory_layer_weight, d_query_layer_weight, d_attn_v, s_M_2batch, &s_mem_seq_lengths_2batch, &d_attn_layer_weight,
       input_only_depth, batch2Size, cell_hidden_size, inputMaxStep4,
       memory_max_step, memory_depth, am_attn_size, aw_attn_size,
       &d_B_data, nullptr, nullptr, nullptr, &s_seq_lengths_2batch,

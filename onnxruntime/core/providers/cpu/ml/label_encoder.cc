@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/label_encoder.h"
 #include <algorithm>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {

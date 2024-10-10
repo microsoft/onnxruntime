@@ -11,7 +11,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 
 // implements MemCpy node insertion in graph transform
-// note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTranformer
+// note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTransformer
 class TransformerMemcpyImpl {
  public:
   TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider)

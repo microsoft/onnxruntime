@@ -24,9 +24,9 @@ namespace Experimental {
 
 struct Session : Ort::Session {
   Session(Env& env, std::basic_string<ORTCHAR_T>& model_path, SessionOptions& options)
-      : Ort::Session(env, model_path.data(), options){};
+      : Ort::Session(env, model_path.data(), options) {};
   Session(Env& env, void* model_data, size_t model_data_length, SessionOptions& options)
-      : Ort::Session(env, model_data, model_data_length, options){};
+      : Ort::Session(env, model_data, model_data_length, options) {};
 
   // overloaded Run() with sensible defaults
   std::vector<Ort::Value> Run(const std::vector<std::string>& input_names,
@@ -52,7 +52,7 @@ struct Session : Ort::Session {
 
 struct Value : Ort::Value {
   Value(OrtValue* p)
-      : Ort::Value(p){};
+      : Ort::Value(p) {};
 
   template <typename T>
   static Ort::Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);

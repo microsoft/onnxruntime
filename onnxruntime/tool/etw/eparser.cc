@@ -7,7 +7,7 @@
 
 // Get the length of the property data. For MOF-based events, the size is inferred from the data type
 // of the property. For manifest-based events, the property can specify the size of the property value
-// using the length attribute. The length attribue can specify the size directly or specify the name
+// using the length attribute. The length attribute can specify the size directly or specify the name
 // of another property in the event data that contains the size. If the property does not include the
 // length attribute, the size is inferred from the data type. The length will be zero for variable
 // length, null-terminated strings and structures.
@@ -16,7 +16,7 @@ DWORD GetPropertyLength(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i,
 
 // Get the size of the array. For MOF-based events, the size is specified in the declaration or using
 // the MAX qualifier. For manifest-based events, the property can specify the size of the array
-// using the count attribute. The count attribue can specify the size directly or specify the name
+// using the count attribute. The count attribute can specify the size directly or specify the name
 // of another property in the event data that contains the size.
 
 DWORD GetArraySize(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, PUSHORT ArraySize);

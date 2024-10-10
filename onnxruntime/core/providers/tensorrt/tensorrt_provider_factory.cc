@@ -116,6 +116,8 @@ struct Tensorrt_Provider : Provider {
     info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
     info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
     info.engine_hw_compatible = options.trt_engine_hw_compatible != 0;
+    info.onnx_bytestream = options.trt_onnx_bytestream;
+    info.onnx_bytestream_size = options.trt_onnx_bytestream_size;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

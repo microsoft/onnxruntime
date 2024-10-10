@@ -83,6 +83,14 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
 
 // helper function
 
+constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
+                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                            const int64_t pad_head, const int64_t pad_tail) {
+  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
+  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
+  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
+}
+
 inline Status ComputePad(const int64_t in_dim,
                          const int64_t stride, const int64_t kernel, const int64_t dilation,
                          AutoPadType pad_type,
@@ -106,6 +114,15 @@ inline Status ComputePad(const int64_t in_dim,
       // is retained as is
       SafeInt<int64_t> legacy_target_size = (SafeInt<int64_t>(in_dim) + stride - 1) / stride;
       SafeInt<int64_t> pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      // out_dim = floor((in_dim + 2p - k) / s) + 1
+      // => if (in_dim + 2p - k) is not divisible by s we can remove the floor with following equation:
+      // out_dim + eps = ((in_dim + 2p - k) / s) + 1 ;where eps is in [0.0, 1.0]
+      // therefore in edge cases padding can lower calculated above than it should be
+      SafeInt<int64_t> actual_out_size = ComputeOutputShape(in_dim, stride, kernel, /*dilation*/ 1,
+                                                            pad_needed, pad_needed);
+      if (actual_out_size < legacy_target_size) {
+        pad_needed += 1;
+      }
       // make sure padding is symmetric
       if (force_symmetric_auto_padding) {
         // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
@@ -124,14 +141,6 @@ inline Status ComputePad(const int64_t in_dim,
   }
 
   return Status::OK();
-}
-
-constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
-                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
-                                            const int64_t pad_head, const int64_t pad_tail) {
-  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
-  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
-  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
 }
 
 inline Status ComputePadAndOutputShape(const int64_t in_dim,
@@ -169,6 +178,40 @@ inline void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
 template <template <typename...> class Container, typename T>
 T Product(const Container<T>& c) {
   return accumulate(c.cbegin(), c.cend(), static_cast<T>(1), std::multiplies<T>());
+}
+
+/// <summary>
+/// Compute the output shape for broadcasting the given input shapes of lhs and rhs.
+/// </summary>
+inline Status ComputeBroadcastOutputShape(const std::string& node_name,
+                                          const TensorShape& lhs_shape,
+                                          const TensorShape& rhs_shape,
+                                          TensorShape& out_shape) {
+  size_t lhs_rank = lhs_shape.NumDimensions();
+  size_t rhs_rank = rhs_shape.NumDimensions();
+  size_t out_rank = std::max(lhs_rank, rhs_rank);
+
+  std::vector<int64_t> output_dims(out_rank, 0);
+  for (size_t i = 0; i < out_rank; ++i) {
+    int64_t lhs_dim = 1;
+    if (i < lhs_rank)
+      lhs_dim = lhs_shape[lhs_rank - 1 - i];
+    int64_t rhs_dim = 1;
+    if (i < rhs_rank)
+      rhs_dim = rhs_shape[rhs_rank - 1 - i];
+    int64_t max = std::max(lhs_dim, rhs_dim);
+    int64_t min = std::min(lhs_dim, rhs_dim);
+    int64_t out_dim = (min == 0 ? min : max);  // special case a dim value of 0.
+    if (lhs_dim != out_dim && lhs_dim != 1)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
+                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+    if (rhs_dim != out_dim && rhs_dim != 1)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i,
+                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+    output_dims[out_rank - 1 - i] = out_dim;
+  }
+  out_shape = TensorShape(output_dims);
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

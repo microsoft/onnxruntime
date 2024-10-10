@@ -60,7 +60,7 @@ class DynamicSettings {
   }
 
  private:
-  DynamicSettings() : onnx_fusion_status_(true){};
+  DynamicSettings() : onnx_fusion_status_(true) {};
   bool onnx_fusion_status_;
 };
 

@@ -21,6 +21,7 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#pragma once
 #include <memory>
 #include <vector>
 #include <utility>
@@ -67,7 +68,8 @@ class SoftmaxOpBuilder : public BaseOpBuilder {
         auto reshaped_spec = inputs[0]->GetSpec().AsTransientSpec().SetShape(
             std::vector<uint32_t>{first_dim, last_dim});
         auto reshaped_input = graph_ep->GetGraph()->CreateTensor(reshaped_spec);
-        auto reshaped_output = graph_ep->GetGraph()->CreateTensor(inputs[0]->GetSpec().AsTransientSpec());
+        auto reshaped_output = graph_ep->GetGraph()->CreateTensor(
+            inputs[0]->GetSpec().AsTransientSpec());
 
         auto reshape_input_op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Reshape>(
             std::vector<uint32_t>{first_dim, last_dim});

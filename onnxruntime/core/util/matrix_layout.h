@@ -15,13 +15,9 @@
 #pragma once
 
 #include <cstdint>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
-#if defined(_MSC_VER)
-#define ORT_FORCEINLINE __forceinline
-#else
-#define ORT_FORCEINLINE __attribute__((always_inline)) inline
-#endif
+#include "core/util/force_inline.h"
 
 namespace onnxruntime {
 

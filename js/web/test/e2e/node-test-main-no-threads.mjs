@@ -7,7 +7,7 @@ import * as ort from 'onnxruntime-web';
 
 import testFunction from './common.mjs';
 
-it('Node.js E2E testing - WebAssembly backend[esm]', async function() {
+it('Node.js E2E testing - WebAssembly backend[esm]', async function () {
   ort.env.wasm.numThreads = 1;
-  await testFunction(ort, {executionProviders: ['wasm']});
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

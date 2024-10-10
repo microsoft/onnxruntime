@@ -25,7 +25,7 @@ class NormalizationOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -42,6 +42,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   const auto rank = input_shape.size();
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   std::vector<int64_t> scale_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[1], scale_shape, logger), "Cannot get scale shape");
@@ -116,7 +117,12 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         new_shape.erase(insertion_point, insertion_point + excess_rank);
         *insertion_point = sum;
       }
-      input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
+      emscripten::val reshape_input_options = emscripten::val::object();
+      reshape_input_options.set("label", node.Name() + "_reshape_input");
+      input = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input,
+                                                               emscripten::val::array(new_shape),
+                                                               reshape_input_options);
     }
 
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
@@ -126,8 +132,12 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
       std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
-      output = model_builder.GetBuilder().call<emscripten::val>(
-          "reshape", output, emscripten::val::array(output_shape));
+      emscripten::val reshape_output_options = emscripten::val::object();
+      reshape_output_options.set("label", node.Name() + "reshape_output");
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(output_shape),
+                                                                reshape_output_options);
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);
@@ -172,7 +182,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -193,30 +203,21 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const Webn
     return false;
   }
 
-  // WebNN batchNormalization, instanceNormalization, layerNormalization
-  // only support float32 and float16 input data types.
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-  };
-
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  std::vector<int32_t> input_types = {input0_type, input1_type};
+  if (has_input2) {
+    input_types.push_back(input2_type);
+  }
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (has_input4) {
+    input_types.push_back(input4_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type ||
-      (has_input2 && input0_type != input2_type) ||
-      (has_input3 && input0_type != input3_type) ||
-      (has_input4 && input0_type != input4_type)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

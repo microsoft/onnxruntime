@@ -39,9 +39,9 @@ class DnnlConvGrad {
   std::vector<int64_t> GetKernelShape(DnnlNode& node);
   /* Get the 'pads' attribute */
   dnnl::memory::dims GetPads(DnnlNode& node, ConvShape shape);
-  /* Get the padding left values from the infered pads */
+  /* Get the padding left values from the inferred pads */
   dnnl::memory::dims GetPaddingLeft(const std::vector<int64_t>& onnx_padding, ConvShape shape);
-  /* Get the padding right values from the infered pads */
+  /* Get the padding right values from the inferred pads */
   dnnl::memory::dims GetPaddingRight(const std::vector<int64_t>& onnx_padding, ConvShape shape);
   /*
    * Get the 'dilations' attribute.
@@ -49,9 +49,9 @@ class DnnlConvGrad {
    *    - For Onnx a non-dilated kernel would be all 1s
    *    - For OneDNN a non-dilated kernel would be all 0s
    *
-   * The memory dimentions returned is in the form expected for OneDNN each dilation dimention
-   * will be 1 less than the dilated dimention expected by Onnx specification. Be aware of this
-   * fact as 'dilations' are used in any calcuations since this could result in an off-by-one
+   * The memory dimensions returned is in the form expected for OneDNN each dilation dimension
+   * will be 1 less than the dilated dimension expected by Onnx specification. Be aware of this
+   * fact as 'dilations' are used in any calculations since this could result in an off-by-one
    * error.
    */
   dnnl::memory::dims GetDilations(DnnlNode& node, ConvShape shape);

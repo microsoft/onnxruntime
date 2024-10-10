@@ -18,7 +18,7 @@ class DnnlNode;
 class DnnlNodeArg {
  public:
   DnnlNodeArg(DnnlNode* node, size_t index, bool is_output)
-      : node_(node), index_(index), is_output_(is_output){};
+      : node_(node), index_(index), is_output_(is_output) {};
   DnnlNodeArg() = default;
   DnnlNode* GetNode() { return node_; };
   size_t GetIndex() { return index_; };

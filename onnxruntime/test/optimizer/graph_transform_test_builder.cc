@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
@@ -61,7 +62,7 @@ NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(name);
   tensor_proto.set_data_type(elem_type);
-  tensor_proto.set_raw_data(raw_data.data(), raw_data.size());
+  utils::SetRawDataInTensorProto(tensor_proto, raw_data.data(), raw_data.size());
 
   for (auto& dim : shape) {
     tensor_proto.add_dims(dim);
@@ -140,7 +141,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double relative_per_sample_tolerance,
                        std::unique_ptr<GraphTransformer> transformer,
                        const std::function<void(SessionOptions&)>& add_session_options,
-                       const InlinedHashSet<std::string>& disabled_optimizers) {
+                       const InlinedHashSet<std::string>& disabled_optimizers,
+                       std::unique_ptr<IExecutionProvider> ep) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -157,6 +159,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+  std::shared_ptr<IExecutionProvider> ep_shared = ep ? std::move(ep) : nullptr;
 
   auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches,
                        std::unique_ptr<GraphTransformer> transformer = nullptr) {
@@ -170,6 +173,10 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       add_session_options(session_options);
     }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
+    if (ep_shared) {
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep_shared));
+    }
+
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));
@@ -246,14 +253,14 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
       ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
     }
 #if SAVE_TEST_GRAPH
-    ORT_RETURN_IF_ERROR(Model::Save(model, "model_original.onnx"));
+    ORT_RETURN_IF_ERROR(Model::Save(model, ToPathString("model_original.onnx")));
 #endif
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
     if (post_graph_checker) {
       ORT_RETURN_IF_ERROR(post_graph_checker(graph));
     }
 #if SAVE_TEST_GRAPH
-    ORT_RETURN_IF_ERROR(Model::Save(model, "model_optimized.onnx"));
+    ORT_RETURN_IF_ERROR(Model::Save(model, ToPathString("model_optimized.onnx")));
 #endif
   };
 

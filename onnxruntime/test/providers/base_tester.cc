@@ -73,7 +73,7 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
       }
     } else {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
-      tensor_proto.set_raw_data(tensor.DataRaw(), buffer_size);
+      utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
     // 4. name
@@ -657,6 +657,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -712,6 +713,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+          execution_provider = DefaultWebGpuExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

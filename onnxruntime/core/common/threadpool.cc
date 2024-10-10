@@ -636,7 +636,7 @@ bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
 }
 
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
-  // When not using OpenMP, we parallelise over the N threads created by the pool
+  // When not using OpenMP, we parallelize over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
     if (tp->force_hybrid_ || CPUIDInfo::GetCPUIDInfo().IsHybrid()) {

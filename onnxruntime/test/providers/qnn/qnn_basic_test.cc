@@ -236,6 +236,51 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   Ort::Session session(*ort_env, ort_model_path, so);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
+  Ort::SessionOptions so;
+
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv.int4_weights.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  TensorShape input_shape = {1, 3, 8, 8};
+  std::vector<float> input0_data(input_shape.Size(), 0.2f);
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), &input_shape[0], input_shape.NumDimensions()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
+}
+#endif  // #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
@@ -790,14 +835,14 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
 
 // Test that models run with various SoC model values
 TEST_F(QnnHTPBackendTests, HTPSocModels) {
-  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
-                                                      "0",  // "Unknown"
+  constexpr std::array<const char*, 3> soc_models = {"",   // No explicit SoC model specified
+                                                     "0",  // "Unknown"
 #if defined(_M_ARM64)
-                                                      "37" };  // SC8280X
+                                                     "37"};  // SC8280X
 #elif defined(__linux__)
-                                                      "30" };  // SM8350
+                                                     "30"};  // SM8350
 #else
-                                                      "" };
+                                                     ""};
 #endif
 
   for (auto soc_model : soc_models) {
@@ -867,10 +912,28 @@ static GetTestModelFn BuildCastAddTestCase() {
   };
 }
 
-// A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)
-// the value pair(1, 0.00392156886) at index #1 don't match,
-// which is -0.996078 from 1
-TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
+TEST_F(QnnHTPBackendTests, ProfilingTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "detailed";
+  provider_options["profiling_file_path"] = "detailed_profile.csv";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
+
+TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -901,6 +964,63 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
                   13,
                   ExpectedEPNodeAssignment::All,
                   0.008f);
+}
+
+// Test that QNN EP only handles nodes with static shapes and rejects nodes with dynamic shape I/O.
+TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
+  // Local function that builds a model in which the last two nodes use dynamic shapes.
+  auto model_build_fn = [](ModelTestBuilder& builder) {
+    NodeArg* input1 = builder.MakeInput<float>(std::vector<int64_t>{1, 2, 8, 8},
+                                               GetFloatDataInRange(0.0f, 1.0f, 128));
+    NodeArg* input2 = builder.MakeInput<int64_t>(std::vector<int64_t>{3}, std::vector<int64_t>{1, 2, 49});
+
+    // Add a Conv with known shapes. QNN EP should support it.
+    NodeArg* weight = builder.MakeInitializer<float>(std::vector<int64_t>{2, 2, 2, 2},
+                                                     GetFloatDataInRange(-0.3f, 0.3f, 16));
+    NodeArg* bias = builder.MakeInitializer<float>(std::vector<int64_t>{2}, {0.0f, 1.0f});
+
+    auto* conv_output = builder.MakeIntermediate();
+    builder.AddNode("Conv", {input1, weight, bias}, {conv_output});
+
+    // Add a Reshape to a dynamic shape. QNN EP should reject this node.
+    auto* reshape_output = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {conv_output, input2}, {reshape_output});
+
+    // Add a Softmax. QNN EP should reject this node because its input has a dynamic shape.
+    NodeArg* output = builder.MakeOutput();
+    builder.AddNode("Softmax", {reshape_output}, {output});
+  };
+
+  // Local function that checks that the nodes with dynamic shape I/O were assigned to CPU EP.
+  std::function<void(const Graph&)> ep_graph_checker = [](const Graph& graph) {
+    for (const Node& node : graph.Nodes()) {
+      const std::string& ep_name = node.GetExecutionProviderType();
+      const std::string& op_type = node.OpType();
+      if (op_type == "Reshape" || op_type == "Softmax") {
+        EXPECT_EQ(ep_name, kCpuExecutionProvider);
+      } else {
+        EXPECT_EQ(ep_name, kQnnExecutionProvider);
+      }
+    }
+  };
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
+                                                        // CPU EP will use fp32, so we can relax accuracy requirements.
+
+  RunQnnModelTest(model_build_fn,
+                  provider_options,
+                  /*opset*/ 19,
+                  ExpectedEPNodeAssignment::Some,
+                  /*abs_err*/ 1e-4f,
+                  logging::Severity::kERROR,
+                  /*verify_output*/ true,
+                  &ep_graph_checker);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

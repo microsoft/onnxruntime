@@ -5,7 +5,7 @@
 
 #include <algorithm>
 #include <string>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
 #include "core/providers/js/js_kernel.h"
 namespace onnxruntime {

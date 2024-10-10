@@ -29,8 +29,6 @@ class SliceOpBuilder : public BaseOpBuilder {
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   // TODO: Support Slice opset < 10, which uses attributes for starts and ends.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -97,9 +95,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                  sizes.begin(),
                  [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", inputs,
                                                                             emscripten::val::array(starts),
-                                                                            emscripten::val::array(sizes));
+                                                                            emscripten::val::array(sizes),
+                                                                            options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
@@ -158,30 +159,6 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
         return false;
       }
     }
-  }
-
-  return true;
-}
-
-bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                                            const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
-  // WebNN CPU backend doesn't support uint64 input data type for slice.
-  if (device_type == WebnnDeviceType::CPU) {
-    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-  }
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
   }
 
   return true;

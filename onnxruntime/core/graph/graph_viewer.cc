@@ -332,7 +332,7 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionO
 }
 
 const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {
-  // TODO: See if we need to calculate the root_nodes_ of the filtered graph.
+  // TODO(somebody): See if we need to calculate the root_nodes_ of the filtered graph.
   // GetRootNodes is only used by parallel executor currently, and isn't relevant to the usage of a filtered graph.
   ORT_ENFORCE(filter_info_ == nullptr, "Not supported with filtered graph.");
 

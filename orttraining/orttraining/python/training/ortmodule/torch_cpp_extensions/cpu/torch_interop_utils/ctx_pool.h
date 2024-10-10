@@ -58,8 +58,8 @@ class PyNodeSharedPointerPool {
   }
 
  private:
-  PyNodeSharedPointerPool(){};
-  ~PyNodeSharedPointerPool(){};
+  PyNodeSharedPointerPool() {};
+  ~PyNodeSharedPointerPool() {};
 
   PyNodeSharedPointerPool(const PyNodeSharedPointerPool&) = delete;
   PyNodeSharedPointerPool& operator=(const PyNodeSharedPointerPool&) = delete;

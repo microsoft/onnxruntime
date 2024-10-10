@@ -52,8 +52,10 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                      SafeInt<uint32_t>(num_post_axis_elements)};
 
   emscripten::val inputs = model_builder.GetOperand(input_defs[0]->Name());
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
-      "reshape", inputs, emscripten::val::array(new_shape));
+      "reshape", inputs, emscripten::val::array(new_shape), options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

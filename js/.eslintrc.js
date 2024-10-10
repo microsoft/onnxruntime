@@ -14,42 +14,47 @@ module.exports = {
     'test/data/',
     'dist/',
   ],
-  env: { 'es6': true },
+  env: { es6: true },
   parser: '@typescript-eslint/parser',
-  parserOptions: { 'project': true, 'sourceType': 'module' },
+  parserOptions: { project: true, sourceType: 'module' },
   plugins: ['@typescript-eslint', 'prefer-arrow', 'header', 'import', 'unicorn', 'jsdoc'],
   rules: {
     'unicorn/filename-case': 'error',
     'header/header': [
-      2, 'line', [
-        ' Copyright (c) Microsoft Corporation. All rights reserved.',
-        ' Licensed under the MIT License.'
-      ], 2
+      2,
+      'line',
+      [' Copyright (c) Microsoft Corporation. All rights reserved.', ' Licensed under the MIT License.'],
+      2,
     ],
-    'import/no-extraneous-dependencies': ['error', { 'devDependencies': false }],
-    'import/no-internal-modules': ['error', {
-      'allow': ['**/lib/**'],
-    }],
+    'import/no-extraneous-dependencies': ['error', { devDependencies: false }],
+    'import/no-internal-modules': [
+      'error',
+      {
+        allow: ['**/lib/**'],
+      },
+    ],
     'import/no-unassigned-import': 'error',
-    '@typescript-eslint/array-type': ['error', { 'default': 'array-simple' }],
+    '@typescript-eslint/array-type': ['error', { default: 'array-simple' }],
     '@typescript-eslint/await-thenable': 'error',
     '@typescript-eslint/ban-types': [
-      'error', {
-        'types': {
-          'Object': { 'message': 'Use {} instead.' },
-          'String': { 'message': 'Use \'string\' instead.' },
-          'Number': { 'message': 'Use \'number\' instead.' },
-          'Boolean': { 'message': 'Use \'boolean\' instead.' }
-        }
-      }
+      'error',
+      {
+        types: {
+          Object: { message: 'Use {} instead.' },
+          String: { message: "Use 'string' instead." },
+          Number: { message: "Use 'number' instead." },
+          Boolean: { message: "Use 'boolean' instead." },
+        },
+      },
     ],
     '@typescript-eslint/naming-convention': 'error',
     '@typescript-eslint/consistent-type-assertions': 'error',
     '@typescript-eslint/member-delimiter-style': [
-      'error', {
-        'multiline': { 'delimiter': 'semi', 'requireLast': true },
-        'singleline': { 'delimiter': 'semi', 'requireLast': false }
-      }
+      'error',
+      {
+        multiline: { delimiter: 'semi', requireLast: true },
+        singleline: { delimiter: 'semi', requireLast: false },
+      },
     ],
     '@typescript-eslint/no-empty-function': 'error',
     '@typescript-eslint/no-explicit-any': 'error',
@@ -57,28 +62,25 @@ module.exports = {
     '@typescript-eslint/no-for-in-array': 'error',
     '@typescript-eslint/no-inferrable-types': 'error',
     '@typescript-eslint/no-misused-new': 'error',
-    '@typescript-eslint/no-namespace': ['error', { 'allowDeclarations': true }],
+    '@typescript-eslint/no-namespace': ['error', { allowDeclarations: true }],
     '@typescript-eslint/no-non-null-assertion': 'off',
-    '@typescript-eslint/no-require-imports': ['error', { 'allow': ['^node:']}],
-    '@typescript-eslint/no-var-requires': ['error', { 'allow': ['^node:']}],
+    '@typescript-eslint/no-require-imports': ['error', { allow: ['^node:'] }],
+    '@typescript-eslint/no-var-requires': ['error', { allow: ['^node:'] }],
     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
-    '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     '@typescript-eslint/promise-function-async': 'error',
-    '@typescript-eslint/quotes': ['error', 'single'],
     '@typescript-eslint/restrict-plus-operands': 'error',
     '@typescript-eslint/semi': ['error', 'always'],
-    '@typescript-eslint/triple-slash-reference':
-      ['error', { 'path': 'always', 'types': 'prefer-import', 'lib': 'always' }],
+    '@typescript-eslint/triple-slash-reference': ['error', { path: 'always', types: 'prefer-import', lib: 'always' }],
     'arrow-body-style': 'error',
-    'camelcase': 'error',
+    camelcase: 'error',
     'constructor-super': 'error',
-    'curly': 'error',
+    curly: 'error',
     'default-case': 'error',
     'dot-notation': 'error',
-    'eqeqeq': ['error', 'smart'],
+    eqeqeq: ['error', 'smart'],
     'guard-for-in': 'error',
     'id-match': 'error',
-    'max-len': ['error', { 'code': 120, 'ignorePattern': '^import\\s.+\\sfrom\\s.+;$' }],
     'new-parens': 'error',
     'no-bitwise': 'error',
     'no-caller': 'error',
@@ -117,136 +119,159 @@ module.exports = {
     'object-shorthand': 'error',
     'prefer-arrow/prefer-arrow-functions': 'error',
     'prefer-const': 'error',
-    'radix': 'error',
-    'use-isnan': 'error'
+    radix: 'error',
+    'use-isnan': 'error',
   },
-  overrides: [{
-    files: ['node/**/*.ts'],
-    env: { 'es6': true, 'node': true }
-  }, {
-    files: ['common/lib/**/*.ts', 'node/lib/**/*.ts'],
-    rules: {
-      'jsdoc/check-alignment': 'error',
-      'jsdoc/check-indentation': 'error',
-    }
-  }, {
-    files: ['common/test/**/*.ts'],
-    rules: {
-      '@typescript-eslint/naming-convention': 'off',
-      'import/no-extraneous-dependencies': 'off',
-    }
-  }, {
-    files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'], rules: {
-      '@typescript-eslint/naming-convention': 'off',
-      '@typescript-eslint/no-empty-function': 'off',
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/no-var-requires': 'off',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
-      'camelcase': 'off',
-      'prefer-arrow/prefer-arrow-functions': 'off',
-      'import/no-extraneous-dependencies': 'off',
-      'import/no-unassigned-import': 'off',
-      'import/no-internal-modules': 'off',
-      'no-console': 'off',
-      'no-empty': 'off',
-      'no-unused-expressions': 'off',
-    }
-  }, {
-    files: ['web/lib/**/*.ts'], rules: {
-      'no-underscore-dangle': ['error', {
-        'allow': [
-          '_free',
-          '_malloc',
-          '_JsepGetNodeName',
-          '_JsepOutput',
-          '_OrtAddFreeDimensionOverride',
-          '_OrtAddRunConfigEntry',
-          '_OrtAddSessionConfigEntry',
-          '_OrtAppendExecutionProvider',
-          '_OrtBindInput',
-          '_OrtBindOutput',
-          '_OrtClearBoundOutputs',
-          '_OrtCreateBinding',
-          '_OrtCreateRunOptions',
-          '_OrtCreateSession',
-          '_OrtCreateSessionOptions',
-          '_OrtCreateTensor',
-          '_OrtEndProfiling',
-          '_OrtFree',
-          '_OrtGetInputName',
-          '_OrtGetInputOutputCount',
-          '_OrtGetLastError',
-          '_OrtGetOutputName',
-          '_OrtGetTensorData',
-          '_OrtInit',
-          '_OrtReleaseBinding',
-          '_OrtReleaseRunOptions',
-          '_OrtReleaseSession',
-          '_OrtReleaseSessionOptions',
-          '_OrtReleaseTensor',
-          '_OrtRun',
-          '_OrtRunWithBinding',
-          '_OrtTrainingCopyParametersFromBuffer',
-          '_OrtTrainingCopyParametersToBuffer',
-          '_OrtTrainingCreateSession',
-          '_OrtTrainingEvalStep',
-          '_OrtTrainingGetModelInputOutputCount',
-          '_OrtTrainingGetModelInputOutputName',
-          '_OrtTrainingGetParametersSize',
-          '_OrtTrainingLazyResetGrad',
-          '_OrtTrainingLoadCheckpoint',
-          '_OrtTrainingOptimizerStep',
-          '_OrtTrainingReleaseCheckpoint',
-          '_OrtTrainingReleaseSession',
-          '_OrtTrainingRunTrainStep'
-        ]
-      }]
-    }
-  }, {
-    files: ['web/lib/onnxjs/**/*.ts'], rules: {
-      // TODO: those rules are useful. should turn on them in future (webgl refactor)
-      '@typescript-eslint/no-empty-function': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
-      '@typescript-eslint/no-use-before-define': 'off',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
-      '@typescript-eslint/restrict-plus-operands': 'off',
-      'import/no-internal-modules': 'off',
-      'prefer-arrow/prefer-arrow-functions': 'off',
-      'no-param-reassign': 'off',
-      'no-underscore-dangle': 'off',
-      'guard-for-in': 'off'
-    }
-  }, {
-    files: ['react_native/e2e/src/**/*.ts', 'react_native/e2e/src/**/*.tsx'], rules: {
-      '@typescript-eslint/no-non-null-assertion': 'off',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
-      'unicorn/filename-case': 'off',
-      'no-invalid-this': 'off',
-      'no-console': 'off'
-    }
-  }, {
-    files: ['react_native/lib/**/*.ts'], rules: {
-      '@typescript-eslint/naming-convention': 'off'
-    }
-  }, {
-    files: ['react_native/scripts/**/*.ts'], rules: {
-      'import/no-extraneous-dependencies': 'off',
-      'prefer-arrow/prefer-arrow-functions': 'off',
-      'no-console': 'off'
-    }
-  }, {
-    files: ['scripts/**/*.ts'], rules: {
-      'import/no-extraneous-dependencies': 'off',
-      'no-console': 'off'
-    }
-  }, {
-    files: ['web/lib/**/3rd-party/**/*.ts'], rules: {
-      'header/header': 'off',
-      'unicorn/filename-case': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
-    }
-  }],
+  overrides: [
+    {
+      files: ['node/**/*.ts'],
+      env: { es6: true, node: true },
+    },
+    {
+      files: ['common/lib/**/*.ts', 'node/lib/**/*.ts'],
+      rules: {
+        'jsdoc/check-alignment': 'error',
+        'jsdoc/check-indentation': 'error',
+      },
+    },
+    {
+      files: ['common/test/**/*.ts'],
+      rules: {
+        '@typescript-eslint/naming-convention': 'off',
+        'import/no-extraneous-dependencies': 'off',
+      },
+    },
+    {
+      files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'],
+      rules: {
+        '@typescript-eslint/naming-convention': 'off',
+        '@typescript-eslint/no-empty-function': 'off',
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/no-require-imports': 'off',
+        '@typescript-eslint/no-var-requires': 'off',
+        '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+        camelcase: 'off',
+        'prefer-arrow/prefer-arrow-functions': 'off',
+        'import/no-extraneous-dependencies': 'off',
+        'import/no-unassigned-import': 'off',
+        'import/no-internal-modules': 'off',
+        'no-console': 'off',
+        'no-empty': 'off',
+        'no-unused-expressions': 'off',
+      },
+    },
+    {
+      files: ['web/lib/**/*.ts'],
+      rules: {
+        'no-underscore-dangle': [
+          'error',
+          {
+            allow: [
+              '_free',
+              '_malloc',
+              '_JsepGetNodeName',
+              '_JsepOutput',
+              '_OrtAddFreeDimensionOverride',
+              '_OrtAddRunConfigEntry',
+              '_OrtAddSessionConfigEntry',
+              '_OrtAppendExecutionProvider',
+              '_OrtBindInput',
+              '_OrtBindOutput',
+              '_OrtClearBoundOutputs',
+              '_OrtCreateBinding',
+              '_OrtCreateRunOptions',
+              '_OrtCreateSession',
+              '_OrtCreateSessionOptions',
+              '_OrtCreateTensor',
+              '_OrtEndProfiling',
+              '_OrtFree',
+              '_OrtGetInputName',
+              '_OrtGetInputOutputCount',
+              '_OrtGetLastError',
+              '_OrtGetOutputName',
+              '_OrtGetTensorData',
+              '_OrtInit',
+              '_OrtReleaseBinding',
+              '_OrtReleaseRunOptions',
+              '_OrtReleaseSession',
+              '_OrtReleaseSessionOptions',
+              '_OrtReleaseTensor',
+              '_OrtRun',
+              '_OrtRunWithBinding',
+              '_OrtTrainingCopyParametersFromBuffer',
+              '_OrtTrainingCopyParametersToBuffer',
+              '_OrtTrainingCreateSession',
+              '_OrtTrainingEvalStep',
+              '_OrtTrainingGetModelInputOutputCount',
+              '_OrtTrainingGetModelInputOutputName',
+              '_OrtTrainingGetParametersSize',
+              '_OrtTrainingLazyResetGrad',
+              '_OrtTrainingLoadCheckpoint',
+              '_OrtTrainingOptimizerStep',
+              '_OrtTrainingReleaseCheckpoint',
+              '_OrtTrainingReleaseSession',
+              '_OrtTrainingRunTrainStep',
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ['web/lib/onnxjs/**/*.ts'],
+      rules: {
+        // TODO: those rules are useful. should turn on them in future (webgl refactor)
+        '@typescript-eslint/no-empty-function': 'off',
+        '@typescript-eslint/explicit-module-boundary-types': 'off',
+        '@typescript-eslint/no-use-before-define': 'off',
+        '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+        '@typescript-eslint/restrict-plus-operands': 'off',
+        'import/no-internal-modules': 'off',
+        'prefer-arrow/prefer-arrow-functions': 'off',
+        'no-param-reassign': 'off',
+        'no-underscore-dangle': 'off',
+        'guard-for-in': 'off',
+      },
+    },
+    {
+      files: ['react_native/e2e/src/**/*.ts', 'react_native/e2e/src/**/*.tsx'],
+      rules: {
+        '@typescript-eslint/no-non-null-assertion': 'off',
+        '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+        'unicorn/filename-case': 'off',
+        'no-invalid-this': 'off',
+        'no-console': 'off',
+      },
+    },
+    {
+      files: ['react_native/lib/**/*.ts'],
+      rules: {
+        '@typescript-eslint/naming-convention': 'off',
+      },
+    },
+    {
+      files: ['react_native/scripts/**/*.ts'],
+      rules: {
+        'import/no-extraneous-dependencies': 'off',
+        'prefer-arrow/prefer-arrow-functions': 'off',
+        'no-console': 'off',
+      },
+    },
+    {
+      files: ['scripts/**/*.ts'],
+      rules: {
+        'import/no-extraneous-dependencies': 'off',
+        'no-console': 'off',
+      },
+    },
+    {
+      files: ['web/lib/**/3rd-party/**/*.ts'],
+      rules: {
+        'header/header': 'off',
+        'unicorn/filename-case': 'off',
+        '@typescript-eslint/explicit-module-boundary-types': 'off',
+      },
+    },
+  ],
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/eslint-recommended',

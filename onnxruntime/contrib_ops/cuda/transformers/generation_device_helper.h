@@ -7,7 +7,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 

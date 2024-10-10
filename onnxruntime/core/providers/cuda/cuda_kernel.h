@@ -94,6 +94,12 @@ class CudaKernel : public OpKernel {
     return provider_->UseTF32();
   }
 
+#ifndef DISABLE_CONTRIB_OPS
+  const AttentionKernelOptions* GetAttentionKernelOptions() const {
+    return provider_->GetAttentionKernelOptions();
+  }
+#endif
+
   tunable::CudaTuningContext* GetTuningContext() const {
     return static_cast<tunable::CudaTuningContext*>(provider_->GetTuningContext());
   }

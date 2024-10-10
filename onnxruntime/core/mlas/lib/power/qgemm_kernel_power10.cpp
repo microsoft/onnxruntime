@@ -874,10 +874,18 @@ MlasQgemmStoreVectorMMA
 {
     size_t RowCount;
     __vector signed int vsum0, vsum1, vsum2, vsum3;
+#if defined(_AIX) && defined(__clang__)
+    __vector signed int columnsum = *reinterpret_cast<const __vector int *>(&ColumnSumBuffer[pos]);
+#else
     __vector signed int columnsum = *reinterpret_cast<const __vector int32_t *>(&ColumnSumBuffer[pos]);
+#endif
     C += VectorCount;
     if (ZeroPointB != nullptr) {
+#if defined(_AIX) && defined(__clang__)
+        __vector signed int zeropoint = *reinterpret_cast<const __vector int *>(&ZeroPointB[pos]);
+#else
         __vector signed int zeropoint = *reinterpret_cast<const __vector int32_t *>(&ZeroPointB[pos]);
+#endif
         if (ZeroMode) {
             for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
                 vsum0 = vec_splats(RowSumBuffer[RowCount + 0]) * zeropoint + columnsum;

@@ -4,8 +4,6 @@
 #pragma once
 #include "migraphx_inc.h"
 
-#pragma once
-
 namespace onnxruntime {
 
 // -----------------------------------------------------------------------
