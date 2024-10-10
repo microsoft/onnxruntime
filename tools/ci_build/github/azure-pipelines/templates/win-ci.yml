@@ -197,6 +197,34 @@ stages:
         displayName: 'List Files'
         workingDirectory: '$(Build.BinariesDirectory)'
 
+      - powershell: |
+          $target_directory = "$(Build.BinariesDirectory)/RelWithDebInfo"
+          #$target_directory = "D:\Features\EngineeringSystem\Task DLLs in maven\RelWithDebInfo"
+          $publish_directory = $target_directory.Replace("RelWithDebInfo", "ort_explore")
+
+          New-Item -ItemType Directory -Force -Path $publish_directory
+          $target_files = Get-ChildItem $target_directory -Recurse -Force -File -Name
+          $patterns = @("*.sln", "*.csproj", "*.vcxproj", "*.jar", "*.jar.rule")
+          foreach ($file in $target_files) {
+              foreach ($pattern in $patterns) {
+                  if ($file -like $pattern) {
+                      $source_file = "$target_directory\$file"
+                      $file_name = $file.Split("\")[-1]
+                      $destination_file = "$publish_directory\$file_name"
+                      Copy-Item -Path $source_file -Destination $destination_file -Force
+                      Write-Host "Copied $source_file to $destination_file"
+                  }
+              }
+          }
+        displayName: 'Copy Potential Files'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+      - task: PublishBuildArtifacts@1
+          displayName: 'Publish ORT Explore artifacts'
+          inputs:
+            pathtoPublish: '$(Build.BinariesDirectory)/ort_explore'
+            artifactName: 'ort_explore'
+
       - task: VSBuild@1
         displayName: 'Build'
         inputs:
