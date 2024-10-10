@@ -220,10 +220,10 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)'
 
       - task: PublishBuildArtifacts@1
-          displayName: 'Publish ORT Explore artifacts'
-          inputs:
-            pathtoPublish: '$(Build.BinariesDirectory)/ort_explore'
-            artifactName: 'ort_explore'
+        displayName: 'Publish ORT Explore artifacts'
+        inputs:
+          pathtoPublish: '$(Build.BinariesDirectory)/ort_explore'
+          artifactName: 'ort_explore'
 
       - task: VSBuild@1
         displayName: 'Build'
