@@ -180,7 +180,7 @@ stages:
               /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
               cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
-              export PATH=/opt/python/cp312-cp312/bin:$PATH \
+              export PATH=/opt/python/cp312-cp312/bin:$PATH; \
               python3 -m pip install /build/Release/dist/*.whl; \
               python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
                         ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
