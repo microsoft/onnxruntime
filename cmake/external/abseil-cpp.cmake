@@ -55,7 +55,6 @@ absl::log_internal_log_impl
 absl::log_internal_strip
 absl::log_internal_message
 absl::log_internal_format
-absl::log_internal_check_op
 absl::synchronization
 absl::str_format
 absl::flags
@@ -143,5 +142,4 @@ absl::throw_delegate
 absl::memory
 absl::charset
 absl::endian
-absl::config
-)
+absl::config)
