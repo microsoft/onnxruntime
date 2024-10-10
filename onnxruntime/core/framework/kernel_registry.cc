@@ -310,9 +310,12 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
+      int since_version = i->second.kernel_def->SinceVersion().first;
+      std::string since_version_str = std::to_string(since_version);
       return Status(common::ONNXRUNTIME, common::FAIL,
                     "Failed to add kernel for " + key +
-                        ": Conflicting with a registered kernel with op versions.");
+                        ": Conflicting with a registered kernel with op versions. the since version is: " + 
+                        since_version_str);
     }
   }
 

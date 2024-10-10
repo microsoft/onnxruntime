@@ -200,7 +200,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED_TYPED(11, 12, MLFloat16, Resize, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED_TYPED(13, 17, MLFloat16, Resize, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED_TYPED(18, 18, MLFloat16, Resize, kMSInternalNHWCDomain),
-      KERNEL_CREATE_INFO_TYPED(19, MLFloat16, Resize, kMSInternalNHWCDomain),      
+      KERNEL_CREATE_INFO_TYPED(19, MLFloat16, Resize, kMSInternalNHWCDomain),
 
       KERNEL_CREATE_INFO_VERSIONED_TYPED(8, 9, MLFloat16, MaxPool, kMSInternalNHWCDomain),
       KERNEL_CREATE_INFO_VERSIONED_TYPED(10, 10, MLFloat16, MaxPool, kMSInternalNHWCDomain),
