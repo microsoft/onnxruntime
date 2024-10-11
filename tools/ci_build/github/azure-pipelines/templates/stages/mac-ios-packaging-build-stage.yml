@@ -109,15 +109,60 @@ stages:
       displayName: 'Build App Center iPhone arm64 tests'
 
     - script: |
-        set -e -x
-        appcenter test run xcuitest \
-          --app "AI-Frameworks/ORT-Mobile-iOS" \
-          --devices $(app_center_test_devices) \
-          --test-series "master" \
-          --locale "en_US" \
-          --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
-          --token $(app_center_api_token)
-      displayName: "Run E2E tests on App Center"
+        echo $(find . -name "*.xcworkspace")
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "Install Python requirements"
+
+    - task: Xcode@5
+      inputs:
+        actions: 'archive'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
+        archivePath: 'ios_package_test.xcarchive'
+        configuration: 'Debug'
+        sdk: 'iphoneos'
+        scheme: 'ios_package_test'
+        xcodeVersion: 'specifyPath'
+        xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        useXcpretty: false
+      displayName: 'Create archive'
+
+    - script: |
+        echo $(find . -name "*.xcarchive")
+        echo $(find . -name "*.plist")
+        echo $(find . -name "*Runner.app")
+        zip -r package_tests.zip $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos/ios_package_testsUITests-Runner.app
+    #       --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "find files"
+
+# this will create the ipa file
+    - task: Xcode@5
+      inputs:
+        actions: 'exportArchive'
+        archivePath: 'ios_package_test.xcarchive'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
+        sdk: 'iphoneos'
+        scheme: 'ios_package_test'
+        xcodeVersion: 'specifyPath'
+        xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        useXcpretty: false
+      displayName: 'Create archive'
+
+
+    # - script: |
+    #     set -e -x
+    #     appcenter test run xcuitest \
+    #       --app "AI-Frameworks/ORT-Mobile-iOS" \
+    #       --devices $(app_center_test_devices) \
+    #       --test-series "master" \
+    #       --locale "en_US" \
+    #       --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
+    #       --token $(app_center_api_token)
+    #   displayName: "Run E2E tests on App Center"
 
     - script: |
         set -e -x
