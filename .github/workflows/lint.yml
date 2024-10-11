@@ -72,6 +72,38 @@ jobs:
           category: lintrunner
           checkout_path: ${{ github.workspace }}
 
+  auto-apply-fixes:
+    name: Suggest fixes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # Version range or exact version of Python to use, using SemVer's version range syntax. Reads from .python-version if unset.
+          python-version: "3.10"
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pip install lintrunner lintrunner-adapters
+          lintrunner init
+      - name: Run lintrunner on all files
+        run: |
+          set +e
+          lintrunner f --all-files -v
+          exit 0
+      - uses: parkerbxyz/suggest-changes@v1
+        with:
+          comment: 'You can commit the suggested changes from lintrunner.'
+
   lint-cpp:
     name: Optional Lint C++
     runs-on: ubuntu-latest
