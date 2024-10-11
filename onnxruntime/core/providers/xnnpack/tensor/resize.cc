@@ -335,22 +335,26 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, 17, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 18, 18, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
@@ -360,23 +364,5 @@ ONNX_OPERATOR_KERNEL_EX(Resize, kMSInternalNHWCDomain, 19, kXnnpackExecutionProv
                                                                  DataTypeImpl::GetTensorType<uint8_t>(),
                                                                  DataTypeImpl::GetTensorType<int8_t>()}),
                         Resize);
-
-#ifdef XNNPACK_FP16_SUPPORTED
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Resize);
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Resize);
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, 17, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Resize);
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 18, 18, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Resize);
-ONNX_OPERATOR_TYPED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 19, MLFloat16, kXnnpackExecutionProvider,
-                              KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()),
-                              Resize);
-#endif
 }  // namespace xnnpack
 }  // namespace onnxruntime
