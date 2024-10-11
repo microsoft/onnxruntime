@@ -1436,4 +1436,3 @@ if __name__ == "__main__":
     )
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
-    
