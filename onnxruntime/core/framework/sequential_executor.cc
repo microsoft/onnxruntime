@@ -339,7 +339,6 @@ class KernelScope {
     if (session_state_.Profiler().IsEnabled()) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-      auto& profiler = session_state_.Profiler();
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
       kernel_begin_time_ = session_state_.Profiler().Start();
