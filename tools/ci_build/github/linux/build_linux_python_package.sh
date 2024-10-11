@@ -26,16 +26,32 @@ done
 
 
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel")
-if [[ "$EXTRA_ARG" == *"training"* ]]; then
-   echo "Skip building unit tests because the container is a manylinux docker"
-   BUILD_ARGS+=("--cmake_extra_defines" "onnxruntime_BUILD_UNIT_TESTS=OFF")
-fi
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
 fi
 
 ARCH=$(uname -m)
+
+# No release binary for ccache aarch64, so we need to build it from source.
+if ! [ -x "$(command -v ccache)" ]; then
+    ccache_url="https://github.com/ccache/ccache/archive/refs/tags/v4.8.tar.gz"
+    pushd .
+    curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o ccache_src.tar.gz $ccache_url
+    mkdir ccache_main
+    cd ccache_main
+    tar -zxf ../ccache_src.tar.gz --strip=1
+
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release ..
+    make
+    make install
+    which ccache
+    popd
+    rm -f ccache_src.tar.gz
+    rm -rf ccache_src
+fi
 
 echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
@@ -60,9 +76,13 @@ if [ "$BUILD_DEVICE" == "NPU" ]; then
     BUILD_ARGS+=("--use_qnn" "--qnn_home=/qnn_sdk")
 fi
 
+export ONNX_ML=1
+export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   rm -rf /build/"$BUILD_CONFIG"
+  ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt  
   ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
 
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
