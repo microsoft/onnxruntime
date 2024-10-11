@@ -149,11 +149,11 @@ SQ4BitGemmPackQuantBData_CompFp16(
             const size_t k_blk = tid % k_blk_num;
             const size_t n = n_blk * n_blk_dim;
 
-            const size_t data_offset = n * ld + k_blk * k_blk_bytes;
-            const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + data_offset;
-            uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + data_offset;
-
             if (n + n_blk_dim <= N) {
+                const size_t data_offset = n * ld + k_blk * k_blk_bytes * n_blk_dim;
+                const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + data_offset;
+                uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + data_offset;
+
                 uint8x8_t v0 = vld1_u8(src);
                 uint8x8_t v1 = vld1_u8(src + ld);
                 uint8x8_t v2 = vld1_u8(src + 2*ld);
@@ -166,14 +166,18 @@ SQ4BitGemmPackQuantBData_CompFp16(
                 Transpose8x8(v0, v1, v2, v3, v4, v5, v6, v7);
 
                 vst1_u8(dst, v0);
-                vst1_u8(dst + ld, v1);
-                vst1_u8(dst + 2*ld, v2);
-                vst1_u8(dst + 3*ld, v3);
-                vst1_u8(dst + 4*ld, v4);
-                vst1_u8(dst + 5*ld, v5);
-                vst1_u8(dst + 6*ld, v6);
-                vst1_u8(dst + 7*ld, v7);
+                vst1_u8(dst + 8, v1);
+                vst1_u8(dst + 16, v2);
+                vst1_u8(dst + 24, v3);
+                vst1_u8(dst + 32, v4);
+                vst1_u8(dst + 40, v5);
+                vst1_u8(dst + 48, v6);
+                vst1_u8(dst + 56, v7);
             } else {
+                const size_t data_offset = n * ld + k_blk * k_blk_bytes;
+                const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + data_offset;
+                uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + data_offset;
+
                 for (; n < N; ++n, src += ld, dst += ld) {
                     uint8x8_t v0 = vld1_u8(src);
                     uint8x8_t v_even = vand_u8(v0, vdup_n_u8(0x0F));
@@ -185,5 +189,208 @@ SQ4BitGemmPackQuantBData_CompFp16(
             }
         }
     );
+}
+
+MLAS_FORCEINLINE
+void
+Q4BitBlkDequantB_16K_8N(
+    const std::byte* src_ptr,
+    const float16x8_t& scale,
+    const float16x8_t& neg_scaled_zp,
+    MLAS_FP16* dst_ptr
+) {
+    constexpr uint8x8_t low_mask = vdup_n_u8(0x0F);
+
+    uint8x8_t b01 = vld1_u8(src_ptr);
+    uint8x8_t b23 = vld1_u8(src_ptr + 8);
+    uint8x8_t b45 = vld1_u8(src_ptr + 16);
+    uint8x8_t b67 = vld1_u8(src_ptr + 24);
+    uint8x8_t b89 = vld1_u8(src_ptr + 32);
+    uint8x8_t bab = vld1_u8(src_ptr + 40);
+    uint8x8_t bcd = vld1_u8(src_ptr + 48);
+    uint8x8_t bef = vld1_u8(src_ptr + 56);
+
+    float16x8_t b0 = vcvtq_f16_u16(vshll_n_u8(vand_u8(b01, low_mask), 0));
+    float16x8_t b1 = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(b01, 4), 0));
+    float16x8_t b2 = vcvtq_f16_u16(vshll_n_u8(vand_u8(b23, low_mask), 0));
+    float16x8_t b3 = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(b23, 4), 0));
+    float16x8_t b4 = vcvtq_f16_u16(vshll_n_u8(vand_u8(b45, low_mask), 0));
+    float16x8_t b5 = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(b45, 4), 0));
+    float16x8_t b6 = vcvtq_f16_u16(vshll_n_u8(vand_u8(b67, low_mask), 0));
+    float16x8_t b7 = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(b67, 4), 0));
+    float16x8_t b8 = vcvtq_f16_u16(vshll_n_u8(vand_u8(b89, low_mask), 0));
+    float16x8_t b9 = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(b89, 4), 0));
+    float16x8_t ba = vcvtq_f16_u16(vshll_n_u8(vand_u8(bab, low_mask), 0));
+    float16x8_t bb = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(bab, 4), 0));
+    float16x8_t bc = vcvtq_f16_u16(vshll_n_u8(vand_u8(bcd, low_mask), 0));
+    float16x8_t bd = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(bcd, 4), 0));
+    float16x8_t be = vcvtq_f16_u16(vshll_n_u8(vand_u8(bef, low_mask), 0));
+    float16x8_t bf = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(bef, 4), 0));
+
+    float16x8_t c0 = vfmaq_f16(neg_scaled_zp, b0, scale);
+    float16x8_t c1 = vfmaq_f16(neg_scaled_zp, b1, scale);
+    float16x8_t c2 = vfmaq_f16(neg_scaled_zp, b2, scale);
+    float16x8_t c3 = vfmaq_f16(neg_scaled_zp, b3, scale);
+    float16x8_t c4 = vfmaq_f16(neg_scaled_zp, b4, scale);
+    float16x8_t c5 = vfmaq_f16(neg_scaled_zp, b5, scale);
+    float16x8_t c6 = vfmaq_f16(neg_scaled_zp, b6, scale);
+    float16x8_t c7 = vfmaq_f16(neg_scaled_zp, b7, scale);
+    float16x8_t c8 = vfmaq_f16(neg_scaled_zp, b8, scale);
+    float16x8_t c9 = vfmaq_f16(neg_scaled_zp, b9, scale);
+    float16x8_t ca = vfmaq_f16(neg_scaled_zp, ba, scale);
+    float16x8_t cb = vfmaq_f16(neg_scaled_zp, bb, scale);
+    float16x8_t cc = vfmaq_f16(neg_scaled_zp, bc, scale);
+    float16x8_t cd = vfmaq_f16(neg_scaled_zp, bd, scale);
+    float16x8_t ce = vfmaq_f16(neg_scaled_zp, be, scale);
+    float16x8_t cf = vfmaq_f16(neg_scaled_zp, bf, scale);
+
+    vst1q_f16(dst_ptr, c0);
+    vst1q_f16(dst_ptr + 8, c1);
+    vst1q_f16(dst_ptr + 16, c2);
+    vst1q_f16(dst_ptr + 24, c3);
+    vst1q_f16(dst_ptr + 32, c4);
+    vst1q_f16(dst_ptr + 40, c5);
+    vst1q_f16(dst_ptr + 48, c6);
+    vst1q_f16(dst_ptr + 56, c7);
+    vst1q_f16(dst_ptr + 64, c8);
+    vst1q_f16(dst_ptr + 72, c9);
+    vst1q_f16(dst_ptr + 80, ca);
+    vst1q_f16(dst_ptr + 88, cb);
+    vst1q_f16(dst_ptr + 96, cc);
+    vst1q_f16(dst_ptr + 104, cd);
+    vst1q_f16(dst_ptr + 112, ce);
+    vst1q_f16(dst_ptr + 120, cf);
+}
+
+MLAS_FORCEINLINE
+void
+Q4BitBlkDequantB_16K_1N(
+    const std::byte* src_ptr,
+    const float16x8_t& scale,
+    const float16x8_t& neg_scaled_zp,
+    MLAS_FP16* dst_ptr
+) {
+    constexpr uint8x8_t low_mask = vdup_n_u8(0x0F);
+
+    uint8x8_t v0 = vld1_u8(src_ptr);
+
+    float16x8_t f_low = vcvtq_f16_u16(vshll_n_u8(vand_u8(v0, low_mask), 0));
+    float16x8_t f_high = vcvtq_f16_u16(vshll_n_u8(vshr_n_u8(v0, 4), 0));
+
+    float16x8_t c0 = vfmaq_f16(neg_scaled_zp, f_low, scale);
+    float16x8_t c1 = vfmaq_f16(neg_scaled_zp, f_high, scale);
+
+    vst1q_f16(dst_ptr, c0);
+    vst1q_f16(dst_ptr + 8, c1);
+}
+
+void
+Q4BitBlkDequantBForSgemm_CompFp16(
+    size_t BlkLen,
+    MLAS_FP16* FpData,
+    const std::byte* QuantBData,
+    const MLAS_FP16* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    size_t CountN,
+    size_t K,
+    size_t BlockCountK
+) {
+    constexpr size_t nbits = 4;
+    constexpr size_t kk_blk_dim = 16;
+    constexpr size_t n_blk_dim = 8;
+    assert(BlkLen > 0 && BlkLen % kk_blk_dim == 0);
+
+    const size_t kk_blk_num = BlockCountK * BlkLen / kk_blk_dim;
+    const size_t kk_blk_bytes = MlasQNBitBlkDataSizeInBytes(nbits, kk_blk_dim);
+    const size_t kk_n_src_bytes = kk_blk_bytes * n_blk_dim;
+    const size_t kk_n_dst_size = kk_blk_dim * n_blk_dim;
+    const size_t ld_blk_src = kk_blk_num * kk_n_src_bytes;
+    const size_t ld_blk_dst = BlkLen * BlockCountK * n_blk_dim;
+    const size_t ld_blk_scale = BlockCountK * n_blk_dim;
+    const size_t ld_zp = (BlockCountK + 1) / 2;
+    const size_t ld_blk_zp = ld_zp * n_blk_dim;
+    constexpr float16x8_t zp_mid_point_vec = vdupq_n_f16(8.0f);
+
+    int n = 0;
+    for (; n + n_blk_dim <= CountN; n += n_blk_dim) {
+        const MLAS_FP16* scales_ptr = QuantBScale;
+        const std::byte* zero_points_ptr = QuantBZeroPoint;
+        const std::byte* src_ptr = QuantBData;
+        MLAS_FP16* dst_ptr = FpData;
+
+        for (int k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
+            // prepare scales and zero_points for the block
+            MLAS_FP16 scales[n_blk_dim];
+            uint16_t zero_points[n_blk_dim];
+            float16x8_t scale_vec;
+            float16x8_t neg_scaled_zp_vec;
+
+            UnrolledLoop<n_blk_dim>([&](int nn){
+                scales[nn] = scales_ptr[nn * BlockCountK];
+            });
+            scale_vec = vld1q_f16(scales);
+
+            if (QuantBZeroPoint) {
+                UnrolledLoop<n_blk_dim>([&](int nn){
+                    uint8_t zp = zero_points_ptr[nn * ld_zp];
+                    zp = (k_blk_i & 1) ? (zp >> 4) : (zp & 0x0F);
+                    zero_points[nn] = static_cast<uint16_t>(zp);
+                });
+                uint16x8_t zp_u16_vec = vld1_u16(zero_points);
+                neg_scaled_zp_vec = vcvtq_f16_u16(zp_u16_vec);
+            } else {
+                neg_scaled_zp_vec = zp_mid_point_vec;
+            }
+            neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
+
+            for (int kk = 0; kk < BlkLen; kk += kk_blk_dim) {
+                Q4BitBlkDequantB_16K_8N(src_ptr, scale_vec, neg_scaled_zp_vec, dst_ptr);
+
+                src_ptr += kk_n_src_bytes;
+                dst_ptr += kk_n_dst_size;
+            }
+
+            ++scales_ptr;
+            if (QuantBZeroPoint) {
+                zero_points_ptr += k_blk_i & 1;
+            }
+        }
+
+        QuantBData += ld_blk_src;
+        FpData += ld_blk_dst;
+        QuantBScale += ld_blk_scale;
+        QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + ld_blk_zp : nullptr;
+    }
+
+    // remaining N
+    for (; n < CountN; ++n) {
+        for (int k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
+            MLAS_FP16 scale = QuantBScale[0];
+            float16x8_t scale_vec = vdupq_n_f16(scale);
+            float16x8_t neg_scaled_zp_vec;
+
+            if (QuantBZeroPoint) {
+                uint8_t zero_point = QuantBZeroPoint[0];
+                zero_point = (k_blk_i & 1) ? (zero_point >> 4) : (zero_point & 0x0F);
+                uint16x8_t zp_u16_vec = vdupq_n_u16(static_cast<uint16_t>(zero_point));
+                neg_scaled_zp_vec = vcvtq_f16_u16(zp_u16_vec);
+            } else {
+                neg_scaled_zp_vec = zp_mid_point_vec;
+            }
+            neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
+
+            for (int kk = 0; kk < BlkLen; kk += kk_blk_dim) {
+                Q4BitBlkDequantB_16K_1N(QuantBData, scale_vec, neg_scaled_zp_vec, FpData);
+
+                QuantBData += kk_blk_bytes;
+                FpData += kk_blk_dim;
+            }
+
+            ++QuantBScale;
+            if (QuantBZeroPoint) {
+                QuantBZeroPoint += k_blk_i & 1;
+            }
+        }
+    }
 }
 }  // namespace sqnbitgemm_neon
