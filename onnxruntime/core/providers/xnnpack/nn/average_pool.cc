@@ -89,10 +89,12 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   // share the common checks here for fp32 and quant-op
   const auto& inputs = node_unit.Inputs();
   // use do {} while(false) so it's easier to set a breakpoint on the return
-  static const ComputeTypeSet compute_type_set = { ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                   ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                   ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-  } do {
+  static const ComputeTypeSet compute_type_set = {
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+  };
+  do {
     if (node_unit.SinceVersion() < 7) {
       break;
     }
@@ -153,8 +155,7 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     supported = true;
-  }
-  while (false);
+  } while (false);
 
   return supported;
 }
