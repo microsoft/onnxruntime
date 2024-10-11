@@ -47,7 +47,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: get-docker-image-steps.yml
+  - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
       Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
