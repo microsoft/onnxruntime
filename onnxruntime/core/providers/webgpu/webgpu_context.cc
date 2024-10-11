@@ -518,17 +518,17 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                                   })) == Status::OK());
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
-      for (int i = 0; i < pending_kernels.size(); i++) {
+      for (size_t i = 0; i < pending_kernels.size(); i++) {
         const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
         const auto& inputs = pending_kernel_info.inputs;
         const auto& outputs = pending_kernel_info.outputs;
 
         SS(shapes, 128);
-        for (int s = 0; s < inputs.size(); s++) {
+        for (size_t s = 0; s < inputs.size(); s++) {
           const auto& input = inputs[s];
           shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
         }
-        for (int s = 0; s < outputs.size(); s++) {
+        for (size_t s = 0; s < outputs.size(); s++) {
           const auto& output = outputs[s];
           shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
         }
