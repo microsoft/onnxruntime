@@ -90,8 +90,8 @@ Status DynamicTimeWarping::Compute(OpKernelContext* ctx) const {
   Tensor* output_tensor = ctx->Output(0, TensorShape{2LL, SafeInt<int64_t>(result_len)});
   auto* output_data = output_tensor->MutableData<int32_t>();
   for (int k = 0; k < result_len; ++k) {
-    output_data[k] = path_helper[result_len - k - 1][0];
-    output_data[k + result_len] = path_helper[result_len - k - 1][1];
+    output_data[k] = path_helper[static_cast<size_t>(result_len) - k - 1][0];
+    output_data[k + result_len] = path_helper[static_cast<size_t>(result_len) - k - 1][1];
   }
 
   return Status::OK();

@@ -69,8 +69,9 @@ Status UnfoldTensor::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(dim < rank, "input rank:", rank, " is not bigger than attribut specified dim: ", dim);
   ORT_ENFORCE(input_dims[dim] >= size_, "dimsize:", input_dims[dim], " is less than unfold size:", size_);
 
-  int64_t leading_dims = std::accumulate(input_dims.begin(), input_dims.begin() + dim, 1LL, std::multiplies<int64_t>());
-  int64_t tailing_dims = std::accumulate(input_dims.begin() + (dim + 1),
+  int64_t leading_dims = std::accumulate(input_dims.begin(), input_dims.begin() + static_cast<size_t>(dim),
+                                         1LL, std::multiplies<int64_t>());
+  int64_t tailing_dims = std::accumulate(input_dims.begin() + static_cast<size_t>(dim + 1),
                                          input_dims.end(), 1LL, std::multiplies<int64_t>());
 
   std::vector<int64_t> output_dims(rank + 1, 0);
