@@ -260,6 +260,11 @@ stages:
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
+    - template: jar-esrp-dll.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        JarFileName: 'onnxruntime-$(OnnxRuntimeVersion).jar'
+
     - template: jar-maven-signing-win.yml
       parameters:
         JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
