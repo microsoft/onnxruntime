@@ -350,13 +350,14 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
       const int beam_batch_index = batch_index / beam_width;
       const T* q_vec = Q + i * head_size;
       const int attn_bias_base_offset = ((broadcast_attn_bias_dim_0 ? 0 : (beam_batch_index * num_heads_)) +
-                                    (broadcast_attn_bias_dim_1 ? 0 : head_index)) * probs_matrix_size;
+                                         (broadcast_attn_bias_dim_1 ? 0 : head_index)) *
+                                        static_cast<int>(probs_matrix_size);
 
       {
         // Calculate the latest position of the attention_probs
         // (1, H) x (T, H)^T -> (1, T)
         // Decompose into T (1, H) x (1, H)^T -> (1, 1) operations
-        auto last_offset = past_sequence_length + i * probs_matrix_size;
+        auto last_offset = past_sequence_length + i * static_cast<int>(probs_matrix_size);
         T* attention_probs_ptr = reinterpret_cast<T*>(attention_probs) + last_offset;
         math::Dot<float, CPUMathUtil>(head_size, q_vec, K + i * head_size, attention_probs_ptr, nullptr);
 
@@ -380,7 +381,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
           const int beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) *
                                         max_sequence_length * head_size;
           const T* past_k_vec = past_key_data + beam_batch_offset + beam_offset + j * head_size;
-          T* output = reinterpret_cast<T*>(attention_probs) + j + i * probs_matrix_size;
+          T* output = reinterpret_cast<T*>(attention_probs) + j + i * static_cast<int>(probs_matrix_size);
           math::Dot<float, CPUMathUtil>(head_size, q_vec, past_k_vec, output, nullptr);
           // Apply the attention bias and mask
           if (attn_bias_data != nullptr) {
@@ -461,7 +462,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeVxAttentionScoreWithBeams(
             for (int j = 0; j < past_sequence_length; ++j) {
               const int* beam_indices = &cache_indir_data[batch_index * max_sequence_length];
               const int beam_offset = beam_indices[j] * num_heads_ * max_sequence_length * v_head_size;
-              const int beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) * max_sequence_length * v_head_size;
+              const int beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) *
+                                            max_sequence_length * v_head_size;
               const T* past_value_vec = past_value_data + beam_offset + beam_batch_offset;
               const T* attn_probs_ptr = attention_probs + j + i * total_sequence_length;
 
