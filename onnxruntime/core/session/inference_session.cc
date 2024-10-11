@@ -2475,6 +2475,24 @@ struct ThreadPoolSpinningSwitch {
 };
 }  // namespace
 
+Status InferenceSession::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                             gsl::span<const char* const> values) {
+  Status retval = Status::OK();
+
+  if (!is_inited_) {
+    LOGS(*session_logger_, ERROR) << "Session was not initialized";
+    return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+  }
+
+  // TODO: only call SetEpDynamicOptions for all providers in-use
+  for (auto& xp : execution_providers_) {
+    auto status = xp->SetEpDynamicOptions(keys, values);
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  return retval;
+}
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
