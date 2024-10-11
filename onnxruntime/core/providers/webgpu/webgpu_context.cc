@@ -218,7 +218,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
 
-  if (is_profiling_ && query_type_ != TimestampQueryType::None) {
+  if (is_profiling_) {
     PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
                                           program.Name(),
                                           key,
@@ -589,7 +589,7 @@ void WebGpuContext::Flush() {
 
   EndComputePass();
 
-  if (is_profiling_ && query_type_ != TimestampQueryType::None && num_pending_dispatches_ > 0) {
+  if (is_profiling_ && num_pending_dispatches_ > 0) {
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(
         query_set_,
