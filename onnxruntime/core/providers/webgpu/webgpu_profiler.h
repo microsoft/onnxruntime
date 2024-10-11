@@ -27,7 +27,7 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
  private:
   WebGpuContext& context_;
   bool enabled_{false};
-  onnxruntime::profiling::Events events_; // cached GPU events
+  onnxruntime::profiling::Events events_;  // cached GPU events
 };
 
 }  // namespace webgpu
