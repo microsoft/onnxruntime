@@ -255,8 +255,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
         provider_output_defs_.insert(arg);
     }
   } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider &&
-             node_provider_type != kRocmExecutionProvider && node_provider_type != kMIGraphXExecutionProvider &&
-             node_provider_type != kWebGpuExecutionProvider) {
+             node_provider_type != kRocmExecutionProvider && node_provider_type != kMIGraphXExecutionProvider) {
     for (const auto* arg : node.InputDefs()) {
       if (arg->Exists())
         non_provider_input_defs_.insert(arg);
