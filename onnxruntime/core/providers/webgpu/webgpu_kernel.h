@@ -22,13 +22,10 @@ class WebGpuKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     ComputeContext context{*p_op_kernel_context};
-#ifndef NDEBUG
+
     context.PushErrorScope();
-#endif
     Status s = ComputeInternal(context);
-#ifndef NDEBUG
     ORT_RETURN_IF_ERROR(context.PopErrorScope());
-#endif
 
     return s;
   }
