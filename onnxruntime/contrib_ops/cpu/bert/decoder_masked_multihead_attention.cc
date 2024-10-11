@@ -291,7 +291,7 @@ Status DecoderMaskedMultiHeadAttention<T>::ApplyAttentionWithBeams(
   ComputeVxAttentionScoreWithBeams(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
                                    static_cast<const T*>(attention_probs), V, batch_size,
                                    past_sequence_length, max_sequence_length, v_head_size, past_value->Data<T>(),
-                                   present_value->MutableData<T>(), cache_indir->Data<int32_t>(), tp);
+                                   present_value->MutableData<T>(), cache_indir->Data<int32_t>(), beam_width, tp);
 
   return Status::OK();
 }
@@ -377,7 +377,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
           math::Dot<float, CPUMathUtil>(head_size, q_vec, past_k_vec, output, nullptr);
           // Apply the attention bias and mask
           if (attn_bias_data != nullptr) {
-            const int attn_bias_beam_offset = beam_indices[i] * num_heads_ * probs_matrix_size;
+            const int attn_bias_beam_offset = beam_indices[i] * num_heads_ * static_cast<int>(probs_matrix_size);
             *output += attn_bias_data[j + attn_bias_beam_offset];
           }
           bool is_masked = (mask_index_data != nullptr) &&
