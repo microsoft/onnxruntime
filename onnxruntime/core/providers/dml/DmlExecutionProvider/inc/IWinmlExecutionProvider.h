@@ -65,10 +65,6 @@ namespace Windows::AI::MachineLearning::Adapter
             bool isBeforeOp,
             uint32_t resourceCount,
             IUnknown** resources) = 0;
-
-        // Waits for flushed work, discards unflushed work, and discards associated references to
-        // prevent circular references.  Must be the last call on the object before destruction.
-        virtual void Close() = 0;
     };
 
     using MLOperatorTensorGetter = std::function<std::variant<Microsoft::WRL::ComPtr<IMLOperatorTensor>, std::vector<Microsoft::WRL::ComPtr<IMLOperatorTensor>>>(uint32_t index)>;

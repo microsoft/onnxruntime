@@ -40,6 +40,8 @@ namespace Dml
             bool enableCpuSyncSpinning,
             bool disableMemoryArena);
 
+        virtual ~ExecutionProviderImpl();
+
         void ReleaseCompletedReferences();
 
     public: // implements Dml::IExecutionProvider
@@ -129,10 +131,6 @@ namespace Dml
 
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
         STDMETHOD_(void, Flush)() const override;
-
-        // Waits for flushed work, discards unflushed work, and discards associated references to
-        // prevent circular references.  Must be the last call on the object before destruction.
-        void Close() override;
 
         void WaitForOutstandingWork();
 
@@ -253,7 +251,7 @@ namespace Dml
     class ExecutionProvider : public onnxruntime::IExecutionProvider
     {
     public:
-        virtual ~ExecutionProvider();
+        virtual ~ExecutionProvider() = default;
         ExecutionProvider() = delete;
 
         explicit ExecutionProvider(
