@@ -36,7 +36,7 @@ if [ "$ENABLE_CACHE" = true ] ; then
     # No release binary for ccache aarch64, so we need to build it from source.
     if ! [ -x "$(command -v ccache)" ]; then
         ccache_url="https://github.com/ccache/ccache/archive/refs/tags/v4.8.tar.gz"
-        pushd .
+        cd /build
         curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o ccache_src.tar.gz $ccache_url
         mkdir ccache_main
         cd ccache_main
@@ -49,7 +49,6 @@ if [ "$ENABLE_CACHE" = true ] ; then
         make install
         export PATH=/build/bin:$PATH
         which ccache
-        popd
         rm -f ccache_src.tar.gz
         rm -rf ccache_src
     fi
