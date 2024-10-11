@@ -20,7 +20,7 @@ env:
 
 jobs:
   ARM64-Xcode16:
-    runs-on: macos-14
+    runs-on: macos-15
 
     env:
       xcode_version: 16
@@ -61,7 +61,7 @@ jobs:
           --use_binskim_compliant_compile_flags
 
   ARM64-Xcode16-targeting-iphonesimulator:
-    runs-on: macos-14
+    runs-on: macos-15
 
     env:
       xcode_version: 16
