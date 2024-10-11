@@ -43,6 +43,11 @@ parameters:
   displayName: Use GPG to sign the jars
   type: boolean
 
+- name: ReleaseVersionSuffix
+  displayName: Release Version Suffix
+  type: string
+  default: ''
+
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
@@ -114,6 +119,7 @@ jobs:
           -e ORT_VERSION=$(OnnxRuntimeVersion) \
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
+          -e RELEASE_VERSION_SUFFIX=${{parameters.ReleaseVersionSuffix}} \
           onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
