@@ -44,7 +44,7 @@ if ! [ -x "$(command -v ccache)" ]; then
 
     mkdir build
     cd build
-    cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release ..
+    cmake -DCMAKE_INSTALL_PREFIX=/build -DCMAKE_BUILD_TYPE=Release ..
     make
     make install
     which ccache
@@ -52,6 +52,7 @@ if ! [ -x "$(command -v ccache)" ]; then
     rm -f ccache_src.tar.gz
     rm -rf ccache_src
 fi
+export PATH=/build/bin:$PATH
 
 echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
