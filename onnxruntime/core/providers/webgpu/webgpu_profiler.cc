@@ -5,20 +5,19 @@
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
-namespace profiling {
+namespace webgpu {
 
-WebGpuProfiler::WebGpuProfiler(webgpu::WebGpuContext& webgpu_context)
-    : webgpu_context_{webgpu_context} {
-}
+WebGpuProfiler::WebGpuProfiler(WebGpuContext& context) : context_{context} {}
 
-bool WebGpuProfiler::StartProfiling(TimePoint tp) {
-  webgpu_context_.StartProfiling(tp);
+bool WebGpuProfiler::StartProfiling(TimePoint) {
+  enabled_ = true;
   return true;
 }
 
-void WebGpuProfiler::EndProfiling(TimePoint tp, Events& events) {
-  webgpu_context_.EndProfiling(tp, events);
+void WebGpuProfiler::EndProfiling(TimePoint tp, onnxruntime::profiling::Events& events) {
+  context_.EndProfiling(tp, events, events_);
+  enabled_ = false;
 }
 
-}  // namespace profiling
+}  // namespace webgpu
 }  // namespace onnxruntime

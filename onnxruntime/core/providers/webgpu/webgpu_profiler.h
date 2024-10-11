@@ -9,23 +9,26 @@ namespace onnxruntime {
 
 namespace webgpu {
 class WebGpuContext;
-}
 
-namespace profiling {
-
-class WebGpuProfiler final : public EpProfiler {
+class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
  public:
-  WebGpuProfiler(webgpu::WebGpuContext& webgpu_context);
+  WebGpuProfiler(WebGpuContext& context);
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuProfiler);
   ~WebGpuProfiler() {}
   bool StartProfiling(TimePoint) override;
-  void EndProfiling(TimePoint, Events&) override;
-  void Start(uint64_t) override{};
-  void Stop(uint64_t) override{};
+  void EndProfiling(TimePoint, onnxruntime::profiling::Events&) override;
+  void Start(uint64_t) override {
+  }
+  void Stop(uint64_t) override {
+  }
+  inline bool Enabled() const { return enabled_; }
+  inline onnxruntime::profiling::Events& Events() { return events_; }
 
  private:
-  webgpu::WebGpuContext& webgpu_context_;
+  WebGpuContext& context_;
+  bool enabled_{false};
+  onnxruntime::profiling::Events events_; // cached GPU events
 };
 
-}  // namespace profiling
+}  // namespace webgpu
 }  // namespace onnxruntime

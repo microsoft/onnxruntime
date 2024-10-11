@@ -68,7 +68,7 @@ class WebGpuContext final {
 
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
-      if (query_type_ == TimestampQueryType::AtPasses) {
+      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses) {
         wgpu::ComputePassTimestampWrites timestampWrites = {
             query_set_, num_pending_dispatches_ * 2, num_pending_dispatches_ * 2 + 1};
         compute_pass_desc.timestampWrites = &timestampWrites;
@@ -86,7 +86,7 @@ class WebGpuContext final {
     }
   }
 
-  void Flush(bool is_on_end = false);
+  void Flush();
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
@@ -94,8 +94,9 @@ class WebGpuContext final {
     return validation_mode_;
   }
 
-  void StartProfiling(TimePoint);
-  void EndProfiling(TimePoint, profiling::Events&);
+  void StartProfiling();
+  void CollectProfilingData(profiling::Events& events);
+  void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
   Status Run(ComputeContext& context, const ProgramBase& program);
 
@@ -157,8 +158,8 @@ class WebGpuContext final {
   // info of queries pending appending to profiling events
   std::vector<PendingQueryInfo> pending_queries_;
 
-  std::vector<profiling::EventRecord> profiling_events_;
   uint64_t gpu_timestamp_offset_ = 0;
+  bool is_profiling_ = false;
 
   std::once_flag init_flag_;
 

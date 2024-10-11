@@ -19,6 +19,7 @@ KernelCreateInfo BuildKernelCreateInfo();
 
 class WebGpuContext;
 enum class BufferCacheMode;
+class WebGpuProfiler;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderInfo {
@@ -79,6 +80,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   DataLayout preferred_data_layout_;
   bool enable_graph_capture_ = false;
   bool is_graph_captured_ = false;
+  webgpu::WebGpuProfiler* profiler_ = nullptr;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 };
