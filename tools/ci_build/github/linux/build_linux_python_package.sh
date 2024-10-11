@@ -18,7 +18,7 @@ d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-e) ENABLE_CACHE=true
+e) ENABLE_CACHE=true;;
 *) echo "Usage: $0 -d <GPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
