@@ -47,12 +47,12 @@ jobs:
     clean: true
     submodules: none
 
-  - template: templates/get-docker-image-steps.yml
+  - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/Dockerfile
-      Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cpu
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuildpythonx86_64
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
+      Repository: onnxruntimecpubuildcentos8x64_packaging
 
   - task: Cache@2
     inputs:
@@ -82,8 +82,8 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache \
-          onnxruntimecpubuildpythonx86_64 \
-          /onnxruntime_src/tools/ci_build/github/linux/build_linux_python_package.sh -p /opt/python/cp312-cp312/bin/python3 -e -x "--enable_training"  -c Release -d CPU
+          onnxruntimecpubuildcentos8x64_packaging \
+          python3.9 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_training --skip_submodule_sync --parallel
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
