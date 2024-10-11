@@ -91,7 +91,11 @@ stages:
       publish_executables: '0'
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android-qnn'
-  #TODO: Add test job for QNN Android AAR
+
+  - template: android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      job_name_suffix: 'QNN'
 
 - stage: iOS_Full_xcframework
   dependsOn: []
