@@ -67,9 +67,6 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
 
   DecoderMaskedMultiHeadAttentionParams parameters;
 
-  parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(
-      attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
-
   bool is_unidirectional = false;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
@@ -211,7 +208,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
                           head_size, v_head_size, v_hidden_size, attention_bias, context, cross_qk,
-                          parameters.past_sequence_length, true /* use_dmmha */);
+                          parameters.past_sequence_length, true /* past_present_share_buffer */);
   }
 
   // Self-attention, has_beams
@@ -327,19 +324,19 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
   const int loop_len = batch_size * num_heads_;
   ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
-      const int batch_index = static_cast<int>(i) / num_heads_;
-      const int head_index = static_cast<int>(i) % num_heads_;
-      const int beam_batch_index = batch_index / beam_width;
+      const std::ptrdiff_t batch_index = i / num_heads_;
+      const std::ptrdiff_t head_index = i % num_heads_;
+      const std::ptrdiff_t beam_batch_index = batch_index / beam_width;
       const T* q_vec = Q + i * head_size;
-      const int attn_bias_base_offset = ((broadcast_attn_bias_dim_0 ? 0 : (beam_batch_index * num_heads_)) +
-                                         (broadcast_attn_bias_dim_1 ? 0 : head_index)) *
-                                        static_cast<int>(probs_matrix_size);
+      const std::ptrdiff_t attn_bias_base_offset = ((broadcast_attn_bias_dim_0 ? 0 : (beam_batch_index * num_heads_)) +
+                                                    (broadcast_attn_bias_dim_1 ? 0 : head_index)) *
+                                                   probs_matrix_size;
 
       {
         // Calculate the latest position of the attention_probs
         // (1, H) x (T, H)^T -> (1, T)
         // Decompose into T (1, H) x (1, H)^T -> (1, 1) operations
-        auto last_offset = past_sequence_length + i * static_cast<int>(probs_matrix_size);
+        auto last_offset = past_sequence_length + i * probs_matrix_size;
         T* attention_probs_ptr = reinterpret_cast<T*>(attention_probs) + last_offset;
         math::Dot<float, CPUMathUtil>(head_size, q_vec, K + i * head_size, attention_probs_ptr, nullptr);
 
@@ -425,9 +422,9 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeVxAttentionScoreWithBeams(
   ThreadPool::TryParallelFor(
       tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
-          const int batch_index = static_cast<int>(i / num_heads_);
-          const int head_index = static_cast<int>(i % num_heads_);
-          const int beam_batch_index = batch_index / beam_width;
+          const std::ptrdiff_t batch_index = i / num_heads_;
+          const std::ptrdiff_t head_index = i % num_heads_;
+          const std::ptrdiff_t beam_batch_index = batch_index / beam_width;
 
           // Compute the attention score
           // (1, T) x (T, H_v) -> (1, H_v)

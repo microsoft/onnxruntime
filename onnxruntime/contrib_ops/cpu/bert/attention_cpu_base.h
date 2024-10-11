@@ -39,7 +39,7 @@ class AttentionCPUBase : public AttentionBase {
                         OpKernelContext* context,
                         Tensor* scaled_qk = nullptr,   // output buffer for QK (if needed)
                         int past_sequence_length = 0,  // sequence length of past state
-                        bool use_dmmha = false) const {
+                        bool past_present_share_buffer = false) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -96,7 +96,7 @@ class AttentionCPUBase : public AttentionBase {
 
     // Used for DecoderMaskedMultiHeadAttention
     int max_sequence_length = 0;
-    if (use_dmmha) {
+    if (past_present_share_buffer) {
       ORT_ENFORCE(past_key != nullptr && past_value != nullptr);
       max_sequence_length = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
@@ -109,8 +109,8 @@ class AttentionCPUBase : public AttentionBase {
                              static_cast<T*>(mask_data),
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data, present_data,
-                             present_key_data, tp, scale, attn_bias_data, attn_bias_dims, scaled_qk_data, use_dmmha,
-                             max_sequence_length);
+                             present_key_data, tp, scale, attn_bias_data, attn_bias_dims, scaled_qk_data,
+                             past_present_share_buffer, max_sequence_length);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
@@ -119,8 +119,8 @@ class AttentionCPUBase : public AttentionBase {
 
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs),
                             V, batch_size, sequence_length, kv_sequence_length, past_sequence_length, v_head_size,
-                            v_hidden_size, past_data, past_value_data, present_data, present_value_data, tp, use_dmmha,
-                            max_sequence_length);
+                            v_hidden_size, past_data, past_value_data, present_data, present_value_data, tp,
+                            past_present_share_buffer, max_sequence_length);
 
     return Status::OK();
   }
@@ -149,9 +149,8 @@ class AttentionCPUBase : public AttentionBase {
                              const T* attn_bias_data,                  // attention bias
                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
                              T* scaled_qk_data = nullptr,              // scaled output QK buffer
-                             bool use_dmmha = false,                   // whether used in DecoderMaskedMultiHeadAttention
-                             int max_sequence_length = 0               // max sequence length of kv cache
-  ) const {
+                             bool past_present_share_buffer = false,
+                             int max_sequence_length = 0) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;    // P x H
     const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
@@ -182,7 +181,8 @@ class AttentionCPUBase : public AttentionBase {
       }
 
       if (present || present_key) {
-        double bytes_to_copy_key = static_cast<double>(sizeof(T) * (use_dmmha ? kv_input_chunk_length : present_chunk_length));
+        double bytes_to_copy_key = static_cast<double>(
+            sizeof(T) * (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length));
         unit_cost.bytes_loaded += bytes_to_copy_key;
         unit_cost.bytes_stored += bytes_to_copy_key;
       }
@@ -232,7 +232,7 @@ class AttentionCPUBase : public AttentionBase {
             // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
             k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
           } else if (nullptr != present_key) {
-            if (use_dmmha) {
+            if (past_present_share_buffer) {
               k = present_key + cache_chunk_length * i;
               memcpy(const_cast<T*>(k) + past_chunk_length, K + head_size * i, head_size * sizeof(T));
             } else {
@@ -287,7 +287,7 @@ class AttentionCPUBase : public AttentionBase {
                                T* present,                // present state
                                T* present_value,          // present value only (if not using present state)
                                ThreadPool* tp,
-                               bool use_dmmha = false,
+                               bool past_present_share_buffer = false,
                                int max_sequence_length = 0) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                   // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;    // P x H_v
@@ -313,7 +313,8 @@ class AttentionCPUBase : public AttentionBase {
     unit_cost.bytes_stored = static_cast<double>(sequence_length * v_head_size * sizeof(T));
 
     if (present || present_value) {
-      double bytes_to_copy_value = static_cast<double>((use_dmmha ? kv_input_chunk_length : present_chunk_length) * sizeof(T));
+      double bytes_to_copy_value = static_cast<double>(
+          (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) * sizeof(T));
       unit_cost.bytes_loaded += bytes_to_copy_value;
       unit_cost.bytes_stored += bytes_to_copy_value;
     }
@@ -331,7 +332,7 @@ class AttentionCPUBase : public AttentionBase {
               // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
               v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
             } else if (nullptr != present_value) {
-              if (use_dmmha) {
+              if (past_present_share_buffer) {
                 v = present_value + cache_chunk_length * i;
                 memcpy(const_cast<T*>(v) + past_chunk_length, V + v_head_size * i, v_head_size * sizeof(T));
               } else {
