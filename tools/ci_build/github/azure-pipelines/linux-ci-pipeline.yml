@@ -1,4 +1,4 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+0;10;1c##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 ### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
@@ -82,7 +82,7 @@ stages:
                     onnxruntimecpubuildcentos8x64 \
                     /bin/bash -c '
                       set -ex; \
-                      python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                      python3.12 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
@@ -91,7 +91,7 @@ stages:
                         --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
                         --update --build;
-                      LD_PRELOAD=/usr/lib64/libasan.so.6 python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                      LD_PRELOAD=/usr/lib64/libasan.so.8 python3.12 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
