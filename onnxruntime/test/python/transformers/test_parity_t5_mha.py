@@ -605,12 +605,12 @@ class T5Attention(nn.Module):
                 if self.use_decoder_masked_kernel:
                     reordered_past_key = (
                         self.reorder_key_cache(
-                        torch_past_key.flatten(),
-                        batch_size=batch_size,
-                        num_heads=self.num_heads,
-                        sequence_length=self.kv_sequence_length,
-                        head_size=self.head_size,
-                        max_sequence_length=self.kv_sequence_length,
+                            torch_past_key.flatten(),
+                            batch_size=batch_size,
+                            num_heads=self.num_heads,
+                            sequence_length=self.kv_sequence_length,
+                            head_size=self.head_size,
+                            max_sequence_length=self.kv_sequence_length,
                         )
                         if use_cuda
                         else torch_past_key
@@ -626,12 +626,12 @@ class T5Attention(nn.Module):
                 if self.use_decoder_masked_kernel:
                     reordered_past_key = (
                         self.reorder_key_cache(
-                        torch_past_key_padded.flatten(),
-                        batch_size=batch_size,
-                        num_heads=self.num_heads,
-                        sequence_length=self.kv_sequence_length,
-                        head_size=self.head_size,
-                        max_sequence_length=max_seq_len,
+                            torch_past_key_padded.flatten(),
+                            batch_size=batch_size,
+                            num_heads=self.num_heads,
+                            sequence_length=self.kv_sequence_length,
+                            head_size=self.head_size,
+                            max_sequence_length=max_seq_len,
                         )
                         if use_cuda
                         else torch_past_key_padded
@@ -775,8 +775,8 @@ def compare_t5_self_attention_decoder(
             return
     else:
         ref_output = T5CrossAttention.torch_forward(
-        hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
-    )
+            hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
+        )
     ort_output = T5CrossAttention.ort_forward(
         hidden_states,
         None,

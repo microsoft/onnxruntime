@@ -238,7 +238,8 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                                  V.GetMutable<Tensor>()->MutableData<T>(),
                                  mask_index, past_key, past_value, output, present_key, present_value,
                                  batch_size, parameters.past_sequence_length, parameters.max_sequence_length,
-                                 head_size, v_head_size, v_hidden_size, attention_bias, cache_indir, context,
+                                 head_size, v_head_size, attention_bias, parameters.broadcast_attn_bias_dim_0,
+                                 parameters.broadcast_attn_bias_dim_1, cache_indir, context,
                                  beam_width_value, cross_qk);
 }
 
@@ -258,8 +259,9 @@ Status DecoderMaskedMultiHeadAttention<T>::ApplyAttentionWithBeams(
     int max_sequence_length,
     int head_size,
     int v_head_size,
-    int v_hidden_size,
     const Tensor* attn_bias,
+    bool broadcast_attn_bias_dim_0,
+    bool broadcast_attn_bias_dim_1,
     const Tensor* cache_indir,
     OpKernelContext* context,
     int beam_width,
@@ -281,8 +283,8 @@ Status DecoderMaskedMultiHeadAttention<T>::ApplyAttentionWithBeams(
 
   ComputeAttentionProbsWithBeams(static_cast<T*>(attention_probs), Q, K, mask_index_data, batch_size,
                                  past_sequence_length, max_sequence_length, head_size, past_key->Data<T>(),
-                                 present_key->MutableData<T>(), tp, attn_bias_data,
-                                 cache_indir->Data<int32_t>(), beam_width, scaled_qk_data);
+                                 present_key->MutableData<T>(), tp, attn_bias_data, broadcast_attn_bias_dim_0,
+                                 broadcast_attn_bias_dim_1, cache_indir->Data<int32_t>(), beam_width, scaled_qk_data);
 
   // Compute the attentionScore * Value: out_tmp(B, N, 1, H_v) = attention_probs(B, N, 1, T) x V(B, N, T, H_v)
   auto out_tmp_data = allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * v_head_size * sizeof(T));
@@ -310,6 +312,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
     T* present_key_data,
     ThreadPool* tp,
     const T* attn_bias_data,
+    bool broadcast_attn_bias_dim_0,
+    bool broadcast_attn_bias_dim_1,
     const int32_t* cache_indir_data,
     int beam_width,
     T* scaled_qk_data) const {
@@ -345,6 +349,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
       const int head_index = static_cast<int>(i) % num_heads_;
       const int beam_batch_index = batch_index / beam_width;
       const T* q_vec = Q + i * head_size;
+      const int attn_bias_base_offset = ((broadcast_attn_bias_dim_0 ? 0 : (beam_batch_index * num_heads_)) +
+                                    (broadcast_attn_bias_dim_1 ? 0 : head_index)) * probs_matrix_size;
 
       {
         // Calculate the latest position of the attention_probs
@@ -356,7 +362,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
 
         // Apply the attention bias and mask
         if (attn_bias_data != nullptr) {
-          *attention_probs_ptr += attn_bias_data[last_offset];
+          *attention_probs_ptr += attn_bias_data[attn_bias_base_offset + past_sequence_length];
         }
         bool is_masked = (mask_index_data != nullptr) &&
                          (mask_index_data[(batch_index + 1) * total_sequence_length - 1] == 0);
@@ -371,20 +377,21 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
         for (int j = 0; j < past_sequence_length; ++j) {
           const int* beam_indices = &cache_indir_data[batch_index * max_sequence_length];
           const int beam_offset = beam_indices[j] * num_heads_ * max_sequence_length * head_size;
-          const int beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) * max_sequence_length * head_size;
+          const int beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) *
+                                        max_sequence_length * head_size;
           const T* past_k_vec = past_key_data + beam_batch_offset + beam_offset + j * head_size;
           T* output = reinterpret_cast<T*>(attention_probs) + j + i * probs_matrix_size;
           math::Dot<float, CPUMathUtil>(head_size, q_vec, past_k_vec, output, nullptr);
           // Apply the attention bias and mask
           if (attn_bias_data != nullptr) {
-            const int attn_bias_beam_offset = beam_indices[i] * num_heads_ * static_cast<int>(probs_matrix_size);
-            *output += attn_bias_data[j + attn_bias_beam_offset];
+            *output += attn_bias_data[attn_bias_base_offset + j];
           }
           bool is_masked = (mask_index_data != nullptr) &&
                            (mask_index_data[batch_index * total_sequence_length + j] == 0);
           if (is_masked) {
             *output += mask_filter_value_;
           }
+          *output *= scale;
         }
       }
       // Append current key to present key (past_present_share_buffer_ is true)
