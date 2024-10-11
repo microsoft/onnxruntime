@@ -6,7 +6,7 @@ set -e -x
 mkdir -p /build/dist
 
 EXTRA_ARG=""
-
+ENABLE_CACHE=false
 # Put 3.10 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this 
 # config to Azure DevOps Artifacts and download them to a Ubuntu 22.04 machine to run the tests.
 PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp313-cp313/bin/python3.13" "/opt/python/cp310-cp310/bin/python3.10")
@@ -18,6 +18,7 @@ d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
+e) ENABLE_CACHE=true
 *) echo "Usage: $0 -d <GPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
@@ -29,6 +30,9 @@ BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--buil
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
+fi
+if [ "$ENABLE_CACHE" = true ] ; then
+    BUILD_ARGS+=("--use_cache")
 fi
 
 ARCH=$(uname -m)

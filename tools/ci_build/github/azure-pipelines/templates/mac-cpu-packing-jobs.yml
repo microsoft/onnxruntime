@@ -77,9 +77,7 @@ jobs:
       export ONNX_ML=1
       export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
       python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-      displayName: 'Install dependencies'
-      env:
-        CCACHE_DIR: $(PROTO_CACHE_DIR)
+
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
     - template: mac-cpu-packaging-steps.yml
