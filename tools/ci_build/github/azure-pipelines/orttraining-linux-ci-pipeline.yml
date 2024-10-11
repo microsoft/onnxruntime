@@ -83,12 +83,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache \
           onnxruntimecpubuildpythonx86_64 \
-          /bin/bash -c "
-            set -ex; \
-            ccache -s; \
-            tools/ci_build/github/linux/build_linux_python_package.sh -p /opt/python/cp312-cp312/bin/python3 -e -x "--enable_training" \
-                ccache -sv; \
-                ccache -z"
+          tools/ci_build/github/linux/build_linux_python_package.sh -p /opt/python/cp312-cp312/bin/python3 -e -x "--enable_training" 
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
