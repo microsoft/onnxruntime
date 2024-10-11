@@ -694,6 +694,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 #ifdef USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -731,13 +734,14 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
                                          lines[i].find("hipLaunch") != string::npos;
 #endif
+#ifdef USE_WEBGPU
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos;
+#endif
     }
   }
 
-#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || defined(USE_WEBGPU)
   ASSERT_TRUE(has_api_info);
-#else
-  ASSERT_TRUE(has_api_info || true);
 #endif
 }
 

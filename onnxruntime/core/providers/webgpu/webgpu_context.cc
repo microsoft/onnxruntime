@@ -16,6 +16,7 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/string_macros.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -114,6 +115,15 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
 
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
+
+    // set query type
+    if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
+      query_type_ = TimestampQueryType::InsidePasses;
+    } else if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+      query_type_ = TimestampQueryType::AtPasses;
+    } else {
+      query_type_ = TimestampQueryType::None;
+    }
   });
 }
 
@@ -125,7 +135,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& program) {
+Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -207,6 +217,15 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   bool is_1d_dispatch = (y == 1 && z == 1);
 
   auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
+
+  if (is_profiling_) {
+    PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
+                                          program.Name(),
+                                          key,
+                                          inputs,
+                                          outputs);
+    pending_kernels_.emplace_back(std::move(pending_kernel_info));
+  }
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
@@ -333,7 +352,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
 
   const auto& compute_pass_encoder = GetComputePassEncoder();
 
-  // TODO: write timestamp query
+  WriteTimestamp(num_pending_dispatches_ * 2);
 
   uint32_t entry_index = 0;
   std::vector<wgpu::BindGroupEntry> bind_group_entries;
@@ -365,12 +384,14 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
     buffer_mgr_->Release(uniform_buffer);
   }
 
-  // TODO: write timestamp query
+  WriteTimestamp(num_pending_dispatches_ * 2 + 1);
 
   ++num_pending_dispatches_;
 
-  // if (querytype == at-passes) { EndComputePass(); }
-
+  if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+      (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+    EndComputePass();
+  }
   if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
     Flush();
     num_pending_dispatches_ = 0;
@@ -407,6 +428,7 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
       "lazy_clear_resource_on_first_use",
+      "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
@@ -443,6 +465,160 @@ wgpu::RequiredLimits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapt
   required_limits.limits.maxComputeWorkgroupSizeZ = adapter_limits.limits.maxComputeWorkgroupSizeZ;
 
   return required_limits;
+}
+
+void WebGpuContext::WriteTimestamp(uint32_t query_index) {
+  if (!is_profiling_ || query_type_ != TimestampQueryType::InsidePasses) {
+    return;
+  }
+
+  const auto& compute_pass_encoder = GetComputePassEncoder();
+  compute_pass_encoder.WriteTimestamp(query_set_, query_index);
+}
+
+void WebGpuContext::StartProfiling() {
+  if (query_type_ == TimestampQueryType::None) {
+    return;
+  }
+
+  is_profiling_ = true;
+
+  const uint32_t query_count = max_num_pending_dispatches_ * 2;
+
+  if (!query_set_) {
+    // Create query set
+    wgpu::QuerySetDescriptor querySetDescriptor;
+    querySetDescriptor.count = query_count;
+    querySetDescriptor.type = wgpu::QueryType::Timestamp;
+    query_set_ = device_.CreateQuerySet(&querySetDescriptor);
+  }
+
+  if (!query_resolve_buffer_) {
+    // Create resolve buffer
+    wgpu::BufferDescriptor bufferDescriptor;
+    bufferDescriptor.size = query_count * sizeof(uint64_t);
+    bufferDescriptor.usage = wgpu::BufferUsage::QueryResolve | wgpu::BufferUsage::CopySrc |
+                             wgpu::BufferUsage::CopyDst;
+    query_resolve_buffer_ = device_.CreateBuffer(&bufferDescriptor);
+  }
+}
+
+void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+  if (!pending_queries_.empty()) {
+    for (const auto& pending_query : pending_queries_) {
+      const auto& pending_kernels = pending_query.kernels;
+      const auto& query_read_buffer = pending_query.query_buffer;
+
+      ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read,
+                                                  0,
+                                                  query_read_buffer.GetSize(),
+                                                  wgpu::CallbackMode::WaitAnyOnly,
+                                                  [](wgpu::MapAsyncStatus status, const char* message) {
+                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", message);
+                                                  })) == Status::OK());
+      auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
+
+      for (size_t i = 0; i < pending_kernels.size(); i++) {
+        const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
+        const auto& inputs = pending_kernel_info.inputs;
+        const auto& outputs = pending_kernel_info.outputs;
+
+        SS(shapes, 128);
+        for (size_t s = 0; s < inputs.size(); s++) {
+          const auto& input = inputs[s];
+          shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
+        }
+        for (size_t s = 0; s < outputs.size(); s++) {
+          const auto& output = outputs[s];
+          shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
+        }
+
+        if (gpu_timestamp_offset_ == 0) {
+          gpu_timestamp_offset_ = mapped_data[i * 2];
+          // TODO: apply CPU-GPU time offset so that timestamps are aligned
+        }
+        uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
+        uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
+
+        const std::unordered_map<std::string, std::string>& event_args = {
+            {"shapes", SS_GET(shapes)},
+            {"cache_key", pending_kernel_info.cache_key},
+        };
+
+        profiling::EventRecord event(profiling::API_EVENT,
+                                     -1,
+                                     -1,
+                                     pending_kernel_info.name,
+                                     static_cast<int64_t>(std::round(start_time / 1000.0)),
+                                     static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
+                                     event_args);
+        events.emplace_back(std::move(event));
+      }
+
+      query_read_buffer.Unmap();
+      query_read_buffer.Destroy();
+    }
+
+    pending_queries_.clear();
+  }
+
+  is_profiling_ = false;
+}
+
+void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, profiling::Events& cached_events) {
+  // This function is called when no active inference is ongoing.
+  ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
+
+  // When profiling is disabled, should never run into this function.
+  ORT_ENFORCE(query_type_ != TimestampQueryType::None, "Timestamp query is not enabled.");
+
+  // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
+  ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
+
+  events.insert(events.end(),
+                std::make_move_iterator(cached_events.begin()),
+                std::make_move_iterator(cached_events.end()));
+
+  cached_events.clear();
+}
+
+void WebGpuContext::Flush() {
+  if (!current_command_encoder_) {
+    return;
+  }
+
+  EndComputePass();
+
+  if (is_profiling_ && num_pending_dispatches_ > 0) {
+    uint32_t query_count = num_pending_dispatches_ * 2;
+    current_command_encoder_.ResolveQuerySet(
+        query_set_,
+        0,
+        query_count,
+        query_resolve_buffer_,
+        0);
+
+    wgpu::BufferDescriptor bufferDescriptor;
+    bufferDescriptor.size = query_count * sizeof(uint64_t);
+    bufferDescriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+    wgpu::Buffer query_read_buffer = device_.CreateBuffer(&bufferDescriptor);
+
+    current_command_encoder_.CopyBufferToBuffer(
+        query_resolve_buffer_,
+        0,
+        query_read_buffer,
+        0,
+        query_count * sizeof(uint64_t));
+
+    pending_queries_.emplace_back(std::move(pending_kernels_), query_read_buffer);
+    pending_kernels_.clear();
+  }
+
+  auto command_buffer = current_command_encoder_.Finish();
+  Device().GetQueue().Submit(1, &command_buffer);
+  BufferManager().RefreshPendingBuffers();
+  current_command_encoder_ = nullptr;
+  num_pending_dispatches_ = 0;
 }
 
 std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> WebGpuContextFactory::contexts_;

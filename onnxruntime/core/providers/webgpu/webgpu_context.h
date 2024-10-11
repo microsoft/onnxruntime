@@ -68,7 +68,11 @@ class WebGpuContext final {
 
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
-      // TODO: add support for GPU Query
+      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses) {
+        wgpu::ComputePassTimestampWrites timestampWrites = {
+            query_set_, num_pending_dispatches_ * 2, num_pending_dispatches_ * 2 + 1};
+        compute_pass_desc.timestampWrites = &timestampWrites;
+      }
 
       current_compute_pass_encoder_ = command_encoder.BeginComputePass(&compute_pass_desc);
     }
@@ -82,20 +86,7 @@ class WebGpuContext final {
     }
   }
 
-  void Flush() {
-    if (!current_command_encoder_) {
-      return;
-    }
-
-    EndComputePass();
-
-    // TODO: add support for GPU Query
-
-    auto command_buffer = current_command_encoder_.Finish();
-    Device().GetQueue().Submit(1, &command_buffer);
-    BufferManager().RefreshPendingBuffers();
-    current_command_encoder_ = nullptr;
-  }
+  void Flush();
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
@@ -103,11 +94,21 @@ class WebGpuContext final {
     return validation_mode_;
   }
 
-  Status Run(const ComputeContext& context, const ProgramBase& program);
+  void StartProfiling();
+  void CollectProfilingData(profiling::Events& events);
+  void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
+
+  Status Run(ComputeContext& context, const ProgramBase& program);
 
  private:
+  enum class TimestampQueryType {
+    None = 0,
+    InsidePasses,
+    AtPasses
+  };
+
   WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode} {}
+      : query_type_{TimestampQueryType::None}, instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -115,6 +116,50 @@ class WebGpuContext final {
   std::vector<const char*> GetDisabledDeviceToggles() const;
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
+  void WriteTimestamp(uint32_t query_index);
+
+  TimestampQueryType query_type_;
+  uint64_t query_time_base_;
+  wgpu::QuerySet query_set_;
+  wgpu::Buffer query_resolve_buffer_;
+
+  struct PendingKernelInfo {
+    PendingKernelInfo(std::string_view kernel_name,
+                      std::string_view program_name,
+                      std::string_view cache_key,
+                      const std::vector<ProgramInput>& inputs,
+                      const std::vector<ProgramOutput>& outputs)
+        : name{absl::StrJoin({kernel_name, program_name}, "_")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
+
+    PendingKernelInfo(PendingKernelInfo&&) = default;
+    PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(PendingKernelInfo);
+
+    std::string name;
+    std::string cache_key;
+    std::vector<ProgramInput> inputs;
+    std::vector<ProgramOutput> outputs;
+  };
+
+  struct PendingQueryInfo {
+    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
+        : kernels{std::move(kernels)}, query_buffer{query_buffer} {}
+
+    PendingQueryInfo(PendingQueryInfo&&) = default;
+    PendingQueryInfo& operator=(PendingQueryInfo&&) = default;
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(PendingQueryInfo);
+
+    std::vector<PendingKernelInfo> kernels;
+    wgpu::Buffer query_buffer;
+  };
+
+  // info of kernels pending submission for a single batch
+  std::vector<PendingKernelInfo> pending_kernels_;
+  // info of queries pending appending to profiling events
+  std::vector<PendingQueryInfo> pending_queries_;
+
+  uint64_t gpu_timestamp_offset_ = 0;
+  bool is_profiling_ = false;
 
   std::once_flag init_flag_;
 
@@ -134,8 +179,8 @@ class WebGpuContext final {
   std::unique_ptr<ProgramManager> program_mgr_;
   friend class WebGpuContextFactory;
 
-  int num_pending_dispatches_ = 0;
-  const int max_num_pending_dispatches_ = 16;
+  uint32_t num_pending_dispatches_ = 0;
+  const uint32_t max_num_pending_dispatches_ = 16;
 };
 
 }  // namespace webgpu
