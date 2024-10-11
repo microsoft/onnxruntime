@@ -471,8 +471,8 @@ const createAttentionProbsProgramInfo = (
     let batchIdx = workgroup_id.z / uniforms.num_heads;
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
-   var sequence_length = ${seqLensInputVariable ? `u32(${seqLensInputVariable?.getByOffset('batchIdx')})` : 'uniforms.M'};
-   var total_sequence_length = ${totalSequenceLengthInputVariable ? `max(u32(${totalSequenceLengthInputVariable?.getByOffset('0')}), uniforms.N)` : 'uniforms.N'};
+    var sequence_length = ${seqLensInputVariable ? `u32(${seqLensInputVariable?.getByOffset('batchIdx')})` : 'uniforms.M'};
+    var total_sequence_length = ${totalSequenceLengthInputVariable ? `max(u32(${totalSequenceLengthInputVariable?.getByOffset('0')}), uniforms.N)` : 'uniforms.N'};
     let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx;
     let qOffset = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
     ${feedPastKey && presentKey ? 'let pastKeyOffset = absKvHeadIdx * uniforms.past_sequence_length * uniforms.K;' : ''};
@@ -507,7 +507,7 @@ const createAttentionProbsProgramInfo = (
       workgroupBarrier();
 
       for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
-          value += ${f32Type}(tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k]);
+        value += ${f32Type}(tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k]);
       }
 
       workgroupBarrier();
@@ -612,8 +612,8 @@ const createVxAttentionScoreProgramInfo = (
     const totalSequenceLengthInputVariable = totalSequenceLengthInput
       ? inputVariable('total_sequence_length_input', totalSequenceLengthInput.dataType, totalSequenceLengthInput.dims)
       : undefined;
-    if (totalSequenceLengthInput) {
-      inputVars.push(totalSequenceLengthInputVariable!);
+    if (totalSequenceLengthInputVariable) {
+      inputVars.push(totalSequenceLengthInputVariable);
     }
     const output = outputVariable('output', probs.dataType, outputShape);
     const outputVars = [output];
@@ -643,8 +643,8 @@ const createVxAttentionScoreProgramInfo = (
    let kv_num_heads = uniforms.num_heads / uniforms.n_reps;
    let m = global_id.y;
    let n = global_id.x;
-   var sequence_length = ${seqLensInputVariable ? `u32(${seqLensInputVariable?.getByOffset('batchIdx')})` : 'uniforms.M'};
-   var total_sequence_length = ${totalSequenceLengthInputVariable ? `max(u32(${totalSequenceLengthInputVariable?.getByOffset('0')}), uniforms.K)` : 'uniforms.K'};
+   var sequence_length = ${seqLensInputVariable ? `u32(${seqLensInputVariable.getByOffset('batchIdx')})` : 'uniforms.M'};
+   var total_sequence_length = ${totalSequenceLengthInputVariable ? `max(u32(${totalSequenceLengthInputVariable.getByOffset('0')}), uniforms.K)` : 'uniforms.K'};
    let offsetA = workgroup_id.z * sequence_length * total_sequence_length + m * total_sequence_length;
    let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx; // kvHeadIdx is relative to the batch
    ${feedPastValue && presentValue ? 'let pastValueOffset = absKvHeadIdx * uniforms.N * uniforms.past_sequence_length + n;' : ''};
@@ -662,7 +662,7 @@ const createVxAttentionScoreProgramInfo = (
             return `
         if (w + local_id.y < uniforms.past_sequence_length) {
           tileV[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
-        } else if (w + local_id.y -uniforms.past_sequence_length < uniforms.kv_sequence_length) {
+        } else if (w + local_id.y - uniforms.past_sequence_length < uniforms.kv_sequence_length) {
           tileV[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];
         }
       `;
@@ -723,6 +723,7 @@ export const applyAttention = (
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
   const attentionBias =
     attentionBiasInput && ShapeUtil.size(attentionBiasInput.dims) > 0 ? attentionBiasInput : undefined;
+  const useTotalSequenceLengthInput = false;
 
   const inputsK = [q, k];
   if (outputCount > 1 && pastKey && ShapeUtil.size(pastKey.dims) > 0) {
@@ -734,7 +735,7 @@ export const applyAttention = (
   if (seqLens) {
     inputsK.push(seqLens);
   }
-  if (totalSequenceLengthInput) {
+  if (useTotalSequenceLengthInput && totalSequenceLengthInput) {
     inputsK.push(totalSequenceLengthInput);
   }
   // Run AttentionProbs
@@ -749,7 +750,7 @@ export const applyAttention = (
       attributes,
       pastSequenceLength,
       seqLens,
-      totalSequenceLengthInput,
+      useTotalSequenceLengthInput ? totalSequenceLengthInput : undefined,
     ),
     { inputs: inputsK, outputs: outputCount > 1 ? [-1, 1] : [-1] },
   )[0];
