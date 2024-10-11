@@ -1,6 +1,6 @@
-$instruction = $args[0]
-$original_jar_file_directory = $args[1]
-$original_jar_file_name = $args[2]
+$instruction = $args[0] # extract or repack
+$original_jar_file_directory = $args[1] # The directory where the original jar file is located
+$original_jar_file_name = $args[2] # The name of the original jar file
 
 $original_jar_file_full_path = "$original_jar_file_directory\$original_jar_file_name"
 $extracted_file_directory = "$original_jar_file_directory\jar_extracted_full_files"
