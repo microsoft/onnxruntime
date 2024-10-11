@@ -45,14 +45,15 @@ if ! [ -x "$(command -v ccache)" ]; then
     mkdir build
     cd build
     cmake -DCMAKE_INSTALL_PREFIX=/build -DCMAKE_BUILD_TYPE=Release ..
-    make
+    make -j$(nproc)
     make install
+    export PATH=/build/bin:$PATH
     which ccache
     popd
     rm -f ccache_src.tar.gz
     rm -rf ccache_src
 fi
-export PATH=/build/bin:$PATH
+
 
 echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
