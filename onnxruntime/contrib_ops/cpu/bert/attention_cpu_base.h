@@ -39,8 +39,7 @@ class AttentionCPUBase : public AttentionBase {
                         OpKernelContext* context,
                         Tensor* scaled_qk = nullptr,   // output buffer for QK (if needed)
                         int past_sequence_length = 0,  // sequence length of past state
-                        bool use_dmmha = false         // whether used in DecoderMaskedMultiHeadAttention
-  ) const {
+                        bool use_dmmha = false) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -101,7 +100,6 @@ class AttentionCPUBase : public AttentionBase {
       ORT_ENFORCE(past_key != nullptr && past_value != nullptr);
       max_sequence_length = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
-    std::cout << "==== max_sequence_length: " << max_sequence_length << std::endl;
 
     // Compute the attention score.
     size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
