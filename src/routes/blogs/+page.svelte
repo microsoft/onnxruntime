@@ -367,6 +367,12 @@
 	];
 	let blogsCommunity = [
 		{
+			title:'Sentence Transformers 3.2.0: 2x-3x Faster Inference with ONNX Runtime',
+			date: 'October 10, 2024',
+			link: 'https://github.com/UKPLab/sentence-transformers/releases/tag/v3.2.0',
+			blurb: 'This update brings 2x-3x speedups with a new ONNX backends, plus static embeddings offering 50x-500x faster performance with a slight accuracy trade-off. Install with pip install sentence-transformers==3.2.0.'
+		},
+		{
 			title:'Running Phi-3 Mistral 7B LLMs on Raspberry Pi 5: A Step-by-Step Guide',
 			date: 'September 5, 2024',
 			link: 'https://medium.com/@vadikus/running-phi-3-mistral-7b-llms-on-raspberry-pi-5-a-step-by-step-guide-185e8102e35b',
