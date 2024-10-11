@@ -326,7 +326,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
 
   unit_cost.compute_cycles = static_cast<double>((SafeInt<ptrdiff_t>(2) * head_size - 1) * total_sequence_length);
   unit_cost.bytes_loaded = static_cast<double>(SafeInt<ptrdiff_t>(2) * head_size * total_sequence_length * sizeof(T));
-  unit_cost.bytes_stored = static_cast<double>(head_size * total_sequence_length * sizeof(T));
+  unit_cost.bytes_stored = static_cast<double>(SafeInt<ptrdiff_t>(head_size) * total_sequence_length * sizeof(T));
 
   if (attn_bias_data != nullptr) {
     unit_cost.bytes_loaded += probs_matrix_bytes * 2;
