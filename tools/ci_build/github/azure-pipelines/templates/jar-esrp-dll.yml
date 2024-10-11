@@ -9,7 +9,7 @@ parameters:
 
 steps:
   - task: PowerShell@2
-    displayName: 'Extracting onnxruntime jar file'
+    displayName: 'ESRP Jar - Extract Jar File'
     inputs:
       targetType: filePath
       filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_esrp_dll.ps1
@@ -19,10 +19,10 @@ steps:
   - template: win-esrp-dll.yml
     parameters:
       FolderPath: '${{ parameters.JarFileDirectory }}\jar_extracted_full_files'
-      DisplayName: 'ESRP - Sign C# dlls'
+      DisplayName: 'ESRP Jar - Sign Dlls'
 
   - task: PowerShell@2
-    displayName: 'Repacking onnxruntime jar file'
+    displayName: 'ESRP Jar - Repack Jar File'
     inputs:
       targetType: filePath
       filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_esrp_dll.ps1

@@ -6,7 +6,7 @@ $original_jar_file_full_path = "$original_jar_file_directory\$original_jar_file_
 $extracted_file_directory = "$original_jar_file_directory\jar_extracted_full_files"
 
 if ($instruction -eq "extract") {
-    Write-Host "Extracting the jar file..."
+    Write-Host "Extracting the jar file $original_jar_file_full_path..."
     & 7z x $original_jar_file_full_path -o"$extracted_file_directory"
     if ($lastExitCode -ne 0) {
         Write-Host -Object "7z extracting the jar file command failed. Exitcode: $exitCode"
@@ -24,13 +24,13 @@ elseif ($instruction -eq "repack") {
     Remove-Item -Path "$extracted_file_directory/CodeSignSummary*.*" -Force
     Write-Host "Removed ESRP's CodeSignSummary file."
 
-    Write-Host "Repacking the jar file..."
+    Write-Host "Repacking the jar file from directory $extracted_file_directory..."
     & 7z a "$original_jar_file_full_path" "$extracted_file_directory\*"
     if ($lastExitCode -ne 0) {
         Write-Host -Object "7z repacking the jar file command failed. Exitcode: $exitCode"
         exit $lastExitCode
     }
-    Write-Host "Repacked the jar file."
+    Write-Host "Repacked the jar file $original_jar_file_full_path."
 
     Write-Host "Removing the extracted files..."
     Remove-Item -Path "$extracted_file_directory" -Recurse -Force
