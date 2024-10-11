@@ -119,7 +119,6 @@ class WebGpuContext final {
   void WriteTimestamp(uint32_t query_index);
 
   TimestampQueryType query_type_;
-  uint64_t query_time_base_;
   wgpu::QuerySet query_set_;
   wgpu::Buffer query_resolve_buffer_;
 
