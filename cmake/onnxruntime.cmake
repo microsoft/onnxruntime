@@ -393,8 +393,14 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
 
       list(APPEND lib_and_dependencies ${cur_target})
 
-      get_target_property(link_libraries ${cur_target} LINK_LIBRARIES)
-      foreach(dependency ${link_libraries})
+      get_property(interface_link_libraries_set TARGET ${cur_target} PROPERTY INTERFACE_LINK_LIBRARIES SET)
+      if(interface_link_libraries_set)
+        get_target_property(interface_link_libraries ${cur_target} INTERFACE_LINK_LIBRARIES)
+      else()
+        set(interface_link_libraries)
+      endif()
+
+      foreach(dependency ${interface_link_libraries})
         if(TARGET ${dependency})
           process(${dependency})
         endif()
