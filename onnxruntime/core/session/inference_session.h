@@ -330,6 +330,9 @@ class InferenceSession {
    */
   [[nodiscard]] common::Status Initialize();
 
+  [[nodiscard]] common::Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                   gsl::span<const char* const> values);
+
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
                                    gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                                    std::vector<OrtValue>* p_fetches,
