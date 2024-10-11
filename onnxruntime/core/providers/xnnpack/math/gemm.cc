@@ -91,11 +91,9 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
   const NodeArg& X = *input_defs[0];
   auto input_dtype = X.TypeAsProto()->tensor_type().elem_type();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    op_type_ = OpComputeType::op_compute_type_fp32;
+    op_compute_type_ = OpComputeType::op_compute_type_fp32;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    op_type_ = OpComputeType::op_compute_type_fp16;
-  } else {
-    ORT_THROW("unsupported Gemm in XnnpackEP, we have FLOAT|FLOAT16, but got ", OpTypeToString(op_type_));
+    op_compute_type_ = OpComputeType::op_compute_type_fp16;
   }
 
   const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
@@ -138,13 +136,14 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   // flags - 1 - for no transpose - 0 for transpose
   uint32_t flags = trans_B_ == CblasTrans ? 0 : XNN_FLAG_TRANSPOSE_WEIGHTS;
-
+  auto code_cache = GetCodeCache();
+  auto weights_cache = GetWeightsCache();
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
-  if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    const float* bias_Data = nullptr;
+  if (op_compute_type_ == OpComputeType::op_compute_type_fp32) {
+    const float* bias_data = nullptr;
     if (C_matrix_exists_) {
-      bias_Data = tensor.Data<float>();
+      bias_data = tensor.Data<float>();
     }
     float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
     float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
@@ -157,12 +156,12 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         bias_Data,                                                   // const float* bias,
         output_min, output_max,
         flags,
-        GetCodeCache(), GetWeightsCache(),
+        code_cache, weights_cache,
         &p);
-  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
-    const MLFloat16* bias_Data = nullptr;
+  } else if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
+    const MLFloat16* bias_data = nullptr;
     if (C_matrix_exists_) {
-      bias_Data = tensor.Data<MLFloat16>();
+      bias_data = tensor.Data<MLFloat16>();
     }
     float output_min = clip_min_max_ ? clip_min_max_->first : -65504.0f;
     float output_max = clip_min_max_ ? clip_min_max_->second : 65504.0f;
@@ -175,14 +174,13 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         bias_Data,                                                   // const float* bias,
         output_min, output_max,
         flags,
-        GetCodeCache(), GetWeightsCache(),
+        code_cache, weights_cache, ,
         &p);
-  } else {
-    ORT_THROW("unsupported compute type in Gemm::PrePack function, we have FLOAT|FLOAT16, but got ", op_type_);
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_", OpTypeToString(op_type_), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_",
+                           OpTypeToString(op_compute_type_), " returned ", status);
   }
   op0_.reset(p);
 
@@ -200,7 +198,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
   }
 
   auto reshape_func = xnn_reshape_fully_connected_nc_f32;
-  if (op_type_ == OpComputeType::op_compute_type_fp16) {
+  if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
     reshape_func = xnn_reshape_fully_connected_nc_f16;
   }
   xnn_status status = reshape_func(op0_.get(),
@@ -209,20 +207,20 @@ Status Gemm::Compute(OpKernelContext* context) const {
                                    threadpool);
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_", OpTypeToString(op_type_), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_",
+                           OpTypeToString(op_compute_type_), " returned ", status);
   }
 
   status = xnn_status_invalid_state;
-  if (op_type_ == op_compute_type_fp32) {
+  if (op_compute_type_ == op_compute_type_fp32) {
     status = xnn_setup_fully_connected_nc_f32(op0_.get(), A->Data<float>(), Y->MutableData<float>());
-  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+  } else if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_setup_fully_connected_nc_f16(op0_.get(), A->Data<MLFloat16>(), Y->MutableData<MLFloat16>());
-  } else {
-    ORT_THROW("unsupported compute type ", op_type_, " in Gemm Compute");
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_", OpTypeToString(op_type_), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_",
+                           OpTypeToString(op_compute_type_), " returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);
