@@ -1,4 +1,4 @@
-0;10;1c##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 ### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
