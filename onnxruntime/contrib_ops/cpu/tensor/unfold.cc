@@ -40,22 +40,24 @@ Status LaunchUnfoldTensor(const T* input,
   int64_t stride_leading_src = tailing_dims_size * unfold_dim_size;
 
   static constexpr double cost = 1.0;
-  concurrency::ThreadPool::TryParallelFor(tp, N, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    for (std::ptrdiff_t i = begin; i != end; ++i) {
-      const int64_t idx = static_cast<int64_t>(i);
-      const int64_t idx_leading = idx / stride_leading_dst;
-      int64_t n = idx % stride_leading_dst;
-      const int64_t stride_fold_dim_dst = tailing_dims_size * unfold_size;
-      const int64_t idx_fold = n / stride_fold_dim_dst;
-      n %= stride_fold_dim_dst;
-      const int64_t idx_tailing = n / unfold_size;
-      const int64_t idx_append = n % unfold_size;
+  concurrency::ThreadPool::TryParallelFor(tp, static_cast<ptrdiff_t>(N), cost,
+                                          [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+                                            for (std::ptrdiff_t i = begin; i != end; ++i) {
+                                              const int64_t idx = static_cast<int64_t>(i);
+                                              const int64_t idx_leading = idx / stride_leading_dst;
+                                              int64_t n = idx % stride_leading_dst;
+                                              const int64_t stride_fold_dim_dst = tailing_dims_size * unfold_size;
+                                              const int64_t idx_fold = n / stride_fold_dim_dst;
+                                              n %= stride_fold_dim_dst;
+                                              const int64_t idx_tailing = n / unfold_size;
+                                              const int64_t idx_append = n % unfold_size;
 
-      int64_t idx_src = idx_leading * stride_leading_src + idx_fold * stride_fold_dim_src +
-                        idx_tailing + idx_append * tailing_dims_size;
-      output[idx] = input[idx_src];
-    }
-  });
+                                              int64_t idx_src = idx_leading * stride_leading_src +
+                                                                idx_fold * stride_fold_dim_src + idx_tailing +
+                                                                idx_append * tailing_dims_size;
+                                              output[idx] = input[idx_src];
+                                            }
+                                          });
 
   return Status::OK();
 }
