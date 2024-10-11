@@ -502,6 +502,8 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 // Test feature serialize prepack weight is only used in PC with CPU on inference,
 // disable this test for training, other device and eps
 #if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN) && !defined(__ANDROID__) && !defined(USE_COREML)
+// MLAS dispatcher used in matmul_nbits kernels here is 64 bit only
+#if defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)
 TEST(InferenceSessionTests, TestPrepackSerialization) {
   SessionOptions so;
   std::string model_name = "model_with_matmul_nbits";
@@ -605,6 +607,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
     ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
   }
 }
+#endif
 #endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
