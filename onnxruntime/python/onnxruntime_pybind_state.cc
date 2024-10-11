@@ -1219,8 +1219,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
         if (flags_str.find("COREML_FLAG_USE_CPU_ONLY") != std::string::npos) {
           coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_ONLY;
-        } else if (flags_str.find("COREML_FLAG_USE_CPUAndGPU") != std::string::npos) {
-          coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPUAndGPU;
+        } else if (flags_str.find("COREML_FLAG_USE_CPU_AND_GPU") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_AND_GPU;
         }
 
         if (flags_str.find("COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES") != std::string::npos) {

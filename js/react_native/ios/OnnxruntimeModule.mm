@@ -390,7 +390,7 @@ static NSDictionary* executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
           if ([[executionProvider objectForKey:@"useCPUOnly"] boolValue]) {
             coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
           } else if ([[executionProvider objectForKey:@"useCPUAndGPU"] boolValue]) {
-            coreml_flags |= COREML_FLAG_USE_CPUAndGPU;
+            coreml_flags |= COREML_FLAG_USE_CPU_AND_GPU;
           }
           if ([[executionProvider objectForKey:@"enableOnSubgraph"] boolValue]) {
             coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;

@@ -320,7 +320,7 @@ export declare namespace InferenceSession {
      * COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004
      * COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008
      * COREML_FLAG_CREATE_MLPROGRAM = 0x010
-     * COREML_FLAG_USE_CPUAndGPU = 0x020
+     * COREML_FLAG_USE_CPU_AND_GPU = 0x020
      * ```
      *
      * See include/onnxruntime/core/providers/coreml/coreml_provider_factory.h for more details.

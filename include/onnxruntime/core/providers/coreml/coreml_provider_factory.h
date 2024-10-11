@@ -32,10 +32,10 @@ enum COREMLFlags {
   COREML_FLAG_CREATE_MLPROGRAM = 0x010,
 
   // Exclude ANE as sometimes this decrease performance
-  COREML_FLAG_USE_CPUAndGPU = 0x020,
+  COREML_FLAG_USE_CPU_AND_GPU = 0x020,
   // Keep COREML_FLAG_LAST at the end of the enum definition
   // And assign the last COREMLFlag to it
-  COREML_FLAG_LAST = COREML_FLAG_USE_CPUAndGPU,
+  COREML_FLAG_LAST = COREML_FLAG_USE_CPU_AND_GPU,
 };
 
 #ifdef __cplusplus

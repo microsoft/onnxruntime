@@ -395,9 +395,19 @@ Status Execution::LoadModel() {
       compiled_model_path_ = [compileUrl path];
 
       MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
+      uint32_t device_flags = coreml_flags_ & (COREML_FLAG_USE_CPU_ONLY | COREML_FLAG_USE_CPU_AND_GPU);
+      // check if only one flag is set
+      if (device_flags & (device_flags - 1)) {
+        // multiple device options selected
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL,
+            "Multiple device options selected, "
+            "you should use one of the following options: COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU");
+      }
+
       if (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY) {
         config.computeUnits = MLComputeUnitsCPUOnly;
-      } else if (coreml_flags_ & COREML_FLAG_USE_CPUAndGPU) {
+      } else if (coreml_flags_ & COREML_FLAG_USE_CPU_AND_GPU) {
         config.computeUnits = MLComputeUnitsCPUAndGPU;
       } else {
         config.computeUnits = MLComputeUnitsAll;

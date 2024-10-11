@@ -429,9 +429,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       } else if (key == "COREML_FLAG_USE_CPU_ONLY") {
         coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
         std::cout << "CoreML enabled COREML_FLAG_USE_CPU_ONLY.\n";
-      } else if (key == "COREML_FLAG_USE_CPUAndGPU") {
-        coreml_flags |= COREML_FLAG_USE_CPUAndGPU;
-        std::cout << "CoreML enabled COREML_FLAG_USE_CPUAndGPU.\n";
+      } else if (key == "COREML_FLAG_USE_CPU_AND_GPU") {
+        coreml_flags |= COREML_FLAG_USE_CPU_AND_GPU;
+        std::cout << "CoreML enabled COREML_FLAG_USE_CPU_AND_GPU.\n";
       } else if (key.empty()) {
       } else {
         ORT_THROW(
