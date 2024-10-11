@@ -84,11 +84,11 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("typedef half MappedType", "typedef __half MappedType")
 
     # CUBLAS -> HIPBLAS
-    s = s.replace('CUBLAS', 'HIPBLAS')
-    s = s.replace('Cublas', 'Hipblas')
-    s = s.replace('cublas', 'hipblas')
+    s = s.replace("CUBLAS", "HIPBLAS")
+    s = s.replace("Cublas", "Hipblas")
+    s = s.replace("cublas", "hipblas")
     # deprecated cublas symbol doesn't exist in hipblas, map to new symbol
-    s = s.replace('HIPBLAS_GEMM_DEFAULT_TENSOR_OP', 'HIPBLAS_GEMM_DEFAULT')
+    s = s.replace("HIPBLAS_GEMM_DEFAULT_TENSOR_OP", "HIPBLAS_GEMM_DEFAULT")
 
     # Undefined ROCMRT constants -> std::numeric_limits
     s = s.replace("ROCMRT_INF_F", "std::numeric_limits<float>::infinity()")

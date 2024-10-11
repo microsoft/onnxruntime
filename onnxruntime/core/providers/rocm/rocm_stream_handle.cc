@@ -45,7 +45,7 @@ RocmStream::RocmStream(hipStream_t stream,
                        hipblasHandle_t external_hipblas_handle) : Stream(stream, device),
                                                                   own_stream_(own_flag),
                                                                   cpu_allocator_(cpu_allocator),
-                                                                 release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
+                                                                  release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
   if (own_flag) {
     HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
     HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
