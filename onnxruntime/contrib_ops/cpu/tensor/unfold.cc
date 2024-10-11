@@ -73,10 +73,10 @@ Status UnfoldTensor::Compute(OpKernelContext* ctx) const {
 
   int64_t leading_dims = std::accumulate(input_dims.begin(), input_dims.begin() + static_cast<size_t>(dim),
                                          1LL, std::multiplies<int64_t>());
-  int64_t tailing_dims = std::accumulate(input_dims.begin() + static_cast<size_t>(dim + 1),
+  int64_t tailing_dims = std::accumulate(input_dims.begin() + (static_cast<size_t>(dim) + 1),
                                          input_dims.end(), 1LL, std::multiplies<int64_t>());
 
-  std::vector<int64_t> output_dims(rank + 1, 0);
+  std::vector<int64_t> output_dims(static_cast<size_t>(rank) + 1, 0);
   std::copy(input_dims.begin(), input_dims.end(), output_dims.begin());
   output_dims[dim] = (input_dims[dim] - size_) / step_ + 1;
   output_dims.back() = size_;
