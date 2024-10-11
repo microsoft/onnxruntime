@@ -250,7 +250,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         except ImportError:
             print(
                 "Error: The 'torch' library is required but not installed. Please install it using 'pip install torch'.")
-            raise ImportError("torch is not installed. Exiting.")
+            raise ImportError("torch is not installed. Exiting.") from None
 
         # Import datasets
         try:
@@ -259,7 +259,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         except ImportError:
             print(
                 "Error: The 'datasets' library is required but not installed. Please install it using 'pip install datasets'.")
-            raise ImportError("datasets is not installed. Exiting.")
+            raise ImportError("datasets is not installed. Exiting.") from None
 
         # Import transformers
         try:
@@ -269,7 +269,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         except ImportError:
             print(
                 "Error: The 'transformers' library is required but not installed. Please install it using 'pip install transformers'.")
-            raise ImportError("transformers is not installed. Exiting.")
+            raise ImportError("transformers is not installed. Exiting.") from None
 
         super().__init__(
             algorithm="nvidia_awq",
@@ -358,14 +358,14 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def get_calib_inputs(self, dataset_name, model_name, cache_dir, calib_size, batch_size, block_size, device, use_fp16,
                         use_buffer_share, add_past_kv_inputs, max_calib_rows_to_load, add_position_ids):
         # Access transformers and datasets from the instance variables
-        AutoConfig = self.AutoConfig
-        AutoTokenizer = self.AutoTokenizer
+        auto_config = self.AutoConfig
+        auto_tokenizer = self.AutoTokenizer
         load_dataset = self.load_dataset
 
-        config = AutoConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir,
-                                           trust_remote_code=True)
-        tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir,
-                                                 trust_remote_code=True)
+        config = auto_config.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir,
+                                             trust_remote_code=True)
+        tokenizer = auto_tokenizer.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir,
+                                                   trust_remote_code=True)
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -374,7 +374,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         if "cnn" in dataset_name:
             dataset2 = load_dataset("cnn_dailymail", name="3.0.0", split="train").select(range(max_calib_rows_to_load))
             column = "article"
-        elif "pilevel" in dataset_name:
+        elif "pile" in dataset_name:
             dataset2 = load_dataset("mit-han-lab/pile-val-backup", split="validation")
             column = "text"
         else:
@@ -393,10 +393,10 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         batch_encoded_attention_mask = batch_encoded["attention_mask"]
 
         # Access DataLoader from the instance variable
-        DataLoader = self.DataLoader
+        data_loader = self.DataLoader
 
-        calib_dataloader_input_ids = DataLoader(batch_encoded_input_ids, batch_size=batch_size, shuffle=False)
-        calib_dataloader_attention_mask = DataLoader(batch_encoded_attention_mask, batch_size=batch_size, shuffle=False)
+        calib_dataloader_input_ids = data_loader(batch_encoded_input_ids, batch_size=batch_size, shuffle=False)
+        calib_dataloader_attention_mask = data_loader(batch_encoded_attention_mask, batch_size=batch_size, shuffle=False)
 
         assert len(calib_dataloader_input_ids.dataset) == len(calib_dataloader_attention_mask.dataset)
         assert len(calib_dataloader_input_ids) == len(calib_dataloader_attention_mask)
@@ -992,7 +992,7 @@ class NVAWQWeightOnlyQuantizer:
     ):
         self.config = config
 
-    def quantize(self, model: ModelProto| str) -> ModelProto:
+    def quantize_awq(self, model: ModelProto | str) -> ModelProto:
         """
         Perform nvidia_awq quantization using ModelOpt's int4 quantize function.
 
@@ -1002,12 +1002,11 @@ class NVAWQWeightOnlyQuantizer:
         Returns:
             ModelProto: The quantized ONNX model.
         """
-        from onnx import helper
         try:
             from modelopt.onnx.quantization.int4 import quantize as quantize_int4
         except ImportError:
-            print("Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt[all].")
-            raise ImportError("modelopt is not installed. Please install it using pip install nvidia_modelopt[all]. Exiting.")
+            print("Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt.")
+            raise ImportError("modelopt is not installed. Please install it using pip install nvidia_modelopt. Exiting.") from None
 
         logger.info("Starting nvidia_awq quantization...")
 
@@ -1221,7 +1220,7 @@ class MatMul4BitsQuantizer:
 
             # Handle nvidia_awq quantization
             logger.info("Processing nvidia_awq quantization...")
-            self.model = self.node_quantizer.quantize(
+            self.model = self.node_quantizer.quantize_awq(
                 self.model.model if self.model_path is None else self.model_path
             )
             logger.info("Completed nvidia_awq quantization.")
@@ -1337,27 +1336,28 @@ set of 4b integers with a scaling factor and an optional offset.
              "Specify the axis to quantize for an op. Default {MatMul:0, Gather:1}"
              "Example: --quant_axes MatMul:0 Gather:1",
     )
-    # Additional arguments specific to nvidia_awq
-    parser.add_argument(
+    # Group arguments specific to nvidia_awq
+    nv_awq_config = parser.add_argument_group("nvidia_awq", "Arguments specific to nvidia_awq quantization")
+    nv_awq_config.add_argument(
         "--calib_dataset_name",
         type=str,
         default="cnn",
         help="Name of the calibration dataset for nvidia_awq.",
     )
-    parser.add_argument(
+    nv_awq_config.add_argument(
         "--tokenizer_dir",
         type=str,
         required=False,
         help="Path of the tokenizer dir.",
     )
-    parser.add_argument(
+    nv_awq_config.add_argument(
         "--calibration_method",
         type=str,
         required=False,
         choices=["awq", "awq_clip"],
-        help="Path of the tokenizer dir.",
+        help="Support two options, awq implementation and weight clipping."
     )
-    parser.add_argument(
+    nv_awq_config.add_argument(
         "--cache_dir",
         type=str,
         default="./cache",
@@ -1436,3 +1436,4 @@ if __name__ == "__main__":
     )
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
+    
