@@ -234,38 +234,24 @@ Status Gemm::Compute(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 7, 8, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   Gemm);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 9, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   Gemm);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 11, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   Gemm);
 
 ONNX_OPERATOR_KERNEL_EX(Gemm, kOnnxDomain, 13, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                DataTypeImpl::GetTensorType<MLFloat16>()}),
                         Gemm);
-
-#ifdef XNNPACK_FP16_SUPPORTED
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 7, 8, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Gemm);
-
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 9, 10, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Gemm);
-
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 11, 12, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Gemm);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(Gemm, kOnnxDomain, 13, MLFloat16, kXnnpackExecutionProvider,
-                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                              Gemm);
-#endif
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

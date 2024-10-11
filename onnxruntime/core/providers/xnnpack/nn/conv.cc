@@ -148,21 +148,18 @@ Status Conv::Compute(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {
+                                                                             DataTypeImpl::GetTensorType<float>(),
+                                                                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                                                                         }),
                                   Conv);
 
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder().TypeConstraint("T", {
+                                                                   DataTypeImpl::GetTensorType<float>(),
+                                                                   DataTypeImpl::GetTensorType<MLFloat16>(),
+                                                               }),
                         Conv);
-#ifdef XNNPACK_FP16_SUPPORTED
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, MLFloat16, kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        Conv);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, MLFloat16, kXnnpackExecutionProvider,
-                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                              Conv);
-#endif
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv,
