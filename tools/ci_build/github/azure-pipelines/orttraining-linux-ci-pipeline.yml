@@ -83,7 +83,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache \
           onnxruntimecpubuildcentos8x64_packaging \
-          python3.9 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_training --skip_submodule_sync --parallel
+          /onnxruntime_src/tools/ci_build/github/linux/build_training_ci.sh
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
