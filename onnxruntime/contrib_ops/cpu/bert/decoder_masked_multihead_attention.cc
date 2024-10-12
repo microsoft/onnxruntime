@@ -125,7 +125,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
-  Tensor* cross_qk = nullptr;
+  Tensor* output_qk = nullptr;
 
   // Decoder cross-attention
   if (past_key == nullptr && present_key == nullptr) {
@@ -160,8 +160,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   if (output_qk_) {
     int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads, 1, parameters.total_sequence_length};
     TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
-    cross_qk = context->Output(kQKOutputIndex, qk_shape);
-    parameters.out_qk = cross_qk->MutableData<T>();
+    output_qk = context->Output(kQKOutputIndex, qk_shape);
   }
 
   // Beam width (in case we are using this op inside BeamSearch)
@@ -191,7 +190,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           value->Data<T>(),
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
-                          head_size, v_head_size, v_hidden_size, attention_bias, context, cross_qk);
+                          head_size, v_head_size, v_hidden_size, attention_bias, context, output_qk);
   }
 
   OrtValue K, V;
@@ -207,7 +206,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           V.GetMutable<Tensor>()->MutableData<T>(),
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
-                          head_size, v_head_size, v_hidden_size, attention_bias, context, cross_qk,
+                          head_size, v_head_size, v_hidden_size, attention_bias, context, output_qk,
                           parameters.past_sequence_length, true /* past_present_share_buffer */);
   }
 
@@ -219,7 +218,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                                  batch_size, parameters.past_sequence_length, parameters.max_sequence_length,
                                  head_size, v_head_size, attention_bias, parameters.broadcast_attn_bias_dim_0,
                                  parameters.broadcast_attn_bias_dim_1, cache_indir, context,
-                                 beam_width_value, cross_qk);
+                                 beam_width_value, output_qk);
 }
 
 template <typename T>
@@ -244,7 +243,7 @@ Status DecoderMaskedMultiHeadAttention<T>::ApplyAttentionWithBeams(
     const Tensor* cache_indir,
     OpKernelContext* context,
     int beam_width,
-    Tensor* scaled_qk) const {
+    Tensor* output_qk) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -255,7 +254,7 @@ Status DecoderMaskedMultiHeadAttention<T>::ApplyAttentionWithBeams(
   auto attention_probs = allocator->Alloc(bytes);
   BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
-  T* scaled_qk_data = (scaled_qk != nullptr) ? scaled_qk->MutableData<T>() : nullptr;
+  T* output_qk_data = (output_qk != nullptr) ? output_qk->MutableData<T>() : nullptr;
 
   const int32_t* mask_index_data = mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
   const T* attn_bias_data = attn_bias != nullptr ? attn_bias->Data<T>() : nullptr;
@@ -263,7 +262,7 @@ Status DecoderMaskedMultiHeadAttention<T>::ApplyAttentionWithBeams(
   ComputeAttentionProbsWithBeams(static_cast<T*>(attention_probs), Q, K, mask_index_data, batch_size,
                                  past_sequence_length, max_sequence_length, head_size, past_key->Data<T>(),
                                  present_key->MutableData<T>(), tp, attn_bias_data, broadcast_attn_bias_dim_0,
-                                 broadcast_attn_bias_dim_1, cache_indir->Data<int32_t>(), beam_width, scaled_qk_data);
+                                 broadcast_attn_bias_dim_1, cache_indir->Data<int32_t>(), beam_width, output_qk_data);
 
   // Compute the attentionScore * Value: out_tmp(B, N, 1, H_v) = attention_probs(B, N, 1, T) x V(B, N, T, H_v)
   auto out_tmp_data = allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * v_head_size * sizeof(T));
@@ -295,7 +294,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
     bool broadcast_attn_bias_dim_1,
     const int32_t* cache_indir_data,
     int beam_width,
-    T* scaled_qk_data) const {
+    T* output_qk_data) const {
   float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
   TensorOpCost unit_cost;
@@ -356,7 +355,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
         // Calculate the rest of the attention_probs
         for (std::ptrdiff_t j = 0; j < past_sequence_length; ++j) {
           const int* beam_indices = &cache_indir_data[batch_index * max_sequence_length];
-          const std::ptrdiff_t beam_offset = beam_indices[j] * num_heads_ * max_sequence_length * head_size;
+          const std::ptrdiff_t beam_offset = static_cast<std::ptrdiff_t>(beam_indices[j]) * num_heads_ *
+                                             max_sequence_length * head_size;
           const std::ptrdiff_t beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) *
                                                    max_sequence_length * head_size;
           const T* past_k_vec = past_key_data + beam_batch_offset + beam_offset + j * head_size;
@@ -379,9 +379,9 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
     }
   });
 
-  if (scaled_qk_data != nullptr) {
+  if (output_qk_data != nullptr) {
     // Output the scaled Q*K^T if needed.
-    memcpy(scaled_qk_data, attention_probs,
+    memcpy(output_qk_data, attention_probs,
            SafeInt<size_t>(batch_size) * num_heads_ * total_sequence_length * sizeof(T));
   }
 
@@ -440,7 +440,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeVxAttentionScoreWithBeams(
           {
             for (std::ptrdiff_t j = 0; j < past_sequence_length; ++j) {
               const int* beam_indices = &cache_indir_data[batch_index * max_sequence_length];
-              const std::ptrdiff_t beam_offset = beam_indices[j] * num_heads_ * max_sequence_length * v_head_size;
+              const std::ptrdiff_t beam_offset = static_cast<std::ptrdiff_t>(beam_indices[j]) * num_heads_ *
+                                                 max_sequence_length * v_head_size;
               const std::ptrdiff_t beam_batch_offset = (beam_batch_index * beam_width * num_heads_ + head_index) *
                                                        max_sequence_length * v_head_size;
               const T* past_value_vec = past_value_data + beam_offset + beam_batch_offset;
