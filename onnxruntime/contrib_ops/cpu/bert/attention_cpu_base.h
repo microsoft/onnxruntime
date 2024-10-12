@@ -181,8 +181,8 @@ class AttentionCPUBase : public AttentionBase {
       }
 
       if (present || present_key) {
-        double bytes_to_copy_key = static_cast<double>(
-            sizeof(T) * (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length));
+        double bytes_to_copy_key = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
+                                   static_cast<double>(sizeof(T));
         unit_cost.bytes_loaded += bytes_to_copy_key;
         unit_cost.bytes_stored += bytes_to_copy_key;
       }
@@ -313,8 +313,8 @@ class AttentionCPUBase : public AttentionBase {
     unit_cost.bytes_stored = static_cast<double>(sequence_length * v_head_size * sizeof(T));
 
     if (present || present_value) {
-      double bytes_to_copy_value = static_cast<double>(
-          (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) * sizeof(T));
+      double bytes_to_copy_value = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
+                                   static_cast<double>(sizeof(T));
       unit_cost.bytes_loaded += bytes_to_copy_value;
       unit_cost.bytes_stored += bytes_to_copy_value;
     }
