@@ -402,7 +402,7 @@ Status Execution::LoadModel() {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, FAIL,
             "Multiple device options selected, "
-            "you should use one of the following options: COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU");
+            "you should use at most one of the following options: COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU");
       }
 
       if (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY) {
