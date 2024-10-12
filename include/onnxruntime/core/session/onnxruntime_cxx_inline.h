@@ -1095,7 +1095,7 @@ inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* al
 
 template <typename T>
 inline void SessionImpl<T>::SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len) {
-  ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys, values, kv_len);
+  ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys, values, kv_len));
 }
 
 }  // namespace detail
