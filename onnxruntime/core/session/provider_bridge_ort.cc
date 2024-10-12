@@ -30,6 +30,7 @@
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/session/allocator_adapters.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -246,6 +247,10 @@ struct ProviderHostImpl : ProviderHost {
 
   Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
+#endif
+
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+  std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) override { return std::make_unique<IAllocatorImplWrappingOrtAllocator>(alloc); }
 #endif
 
 #ifdef USE_MIGRAPHX
