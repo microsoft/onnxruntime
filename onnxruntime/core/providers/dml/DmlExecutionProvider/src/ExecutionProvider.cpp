@@ -108,7 +108,10 @@ namespace Dml
 
         // Close the allocator before clearing the command queue to stop it from
         // appending resources to it in an attempt to keep them alive.
-        m_allocator->Close();
+        if (m_allocator)
+        {
+            m_allocator->Close();
+        }
 
         // Destroy the allocators. We are closing the execution provider, so from now on the
         // only thing it will be used for is doing copies via the DataTransfer, which doesn't
