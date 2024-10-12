@@ -2,7 +2,7 @@
 // Splitting the different head dimensions to different files to speed up compilation.
 // This file is auto-generated. See "generate_kernels.py"
 
-#if USE_FLASH_ATTENTION
+#if USE_LEAN_ATTENTION
 
 #include "contrib_ops/cuda/bert/lean_attention/lean_fwd_launch_template.h"
 
@@ -16,4 +16,3 @@ template void run_mha_fwd_lean_dispatch<cutlass::half_t, 64>(Flash_fwd_params &p
 }  // namespace flash
 }  // namespace onnxruntime
 #endif
-

@@ -32,6 +32,7 @@ class MultiHeadAttention final : public CudaKernel {
   bool enable_trt_flash_attention_;
   bool disable_fused_cross_attention_;
   bool disable_flash_attention_;
+  bool enable_lean_attention_;
   bool disable_memory_efficient_attention_;
   bool enable_cudnn_flash_attention_;
 

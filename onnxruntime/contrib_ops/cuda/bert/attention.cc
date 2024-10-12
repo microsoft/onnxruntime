@@ -118,9 +118,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     use_flash_attention = false;
   }
   // Allocate buffers
+  size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;
   size_t out_accum_bytes = 0;
   if (use_flash_attention) {
+    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, parameters.num_heads);
+
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
@@ -129,10 +132,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
@@ -247,6 +252,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
   constexpr bool use_cudnn_flash_attention = false;
+  constexpr bool use_lean_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -257,6 +263,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner,
                                                    use_flash_attention,
+                                                   use_lean_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
                                                    use_cudnn_flash_attention,
@@ -289,6 +296,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (softmax_lse_buffer != nullptr) {
+    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+  }
+
   if (softmax_lse_accum_buffer != nullptr) {
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
   }

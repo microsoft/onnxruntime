@@ -2,8 +2,7 @@
  * Copyright (c) 2024, Tri Dao.
  ******************************************************************************/
 
-// Include these 2 headers instead of torch/extension.h since we don't need all of the torch headers.
-#if USE_FLASH_ATTENTION
+#if USE_LEAN_ATTENTION
 
 #include "contrib_ops/cuda/bert/lean_attention/lean_api.h"
 #include <cutlass/numeric_types.h>
@@ -244,151 +243,10 @@ std::tuple<size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t> get_n
   }
 }
 
-Status mha_fwd(const cudaDeviceProp& dprops,
-               cudaStream_t stream,
-               void* q,            // batch_size x seqlen_q x num_heads x head_size
-               void* k,            // batch_size x seqlen_k x num_heads_k x head_size
-               void* v,            // batch_size x seqlen_k x num_heads_k x head_size
-               void* out,          // batch_size x seqlen_q x num_heads x head_size
-               void* softmax_lse,  // batch_size x num_heads x seqlen_q
-               int batch_size,
-               int num_heads,
-               int num_heads_k,
-               int head_size,
-               int seqlen_q,
-               int seqlen_k,
-               float softmax_scale,
-               bool is_causal,
-               bool is_bf16,
-               int num_splits,
-               void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
-               void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-               bool kv_bsnh,
-               int local_window_size) {
-  auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-  const int head_size_rounded = round_multiple(head_size, 32);
-  const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
-  const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
-
-  Flash_fwd_params params;
-  set_params_fprop(params,
-                   batch_size,
-                   seqlen_q, seqlen_k,
-                   seqlen_q_rounded, seqlen_k_rounded,
-                   num_heads, num_heads_k,
-                   head_size, head_size_rounded,
-                   q, k, v, out,
-                   /*cu_seqlens_q*/ nullptr,
-                   /*cu_seqlens_k*/ nullptr,
-                   /*seqused_k=*/nullptr,
-                   /*p_ptr=*/nullptr,
-                   softmax_lse,
-                   softmax_scale,
-                   is_causal,
-                   is_bf16,
-                   kv_bsnh,
-                   local_window_size,
-                   is_causal ? 0 : -1);
-  params.dprops = &dprops;
-  params.knew_ptr = nullptr;
-  params.vnew_ptr = nullptr;
-  params.knew_batch_stride = 0;
-  params.vnew_batch_stride = 0;
-  params.knew_row_stride = 0;
-  params.vnew_row_stride = 0;
-  params.knew_head_stride = 0;
-  params.vnew_head_stride = 0;
-
-  params.num_splits = num_splits;
-  if (params.num_splits > 1 && softmax_lse_accum != nullptr && out_accum != nullptr) {
-    params.softmax_lseaccum_ptr = softmax_lse_accum;
-    params.oaccum_ptr = out_accum;
-  } else {
-    params.softmax_lseaccum_ptr = nullptr;
-    params.oaccum_ptr = nullptr;
-  }
-
-  params.alibi_slopes_ptr = nullptr;
-
-  run_mha_fwd(params, stream);
-  return Status::OK();
-}
-
-Status mha_varlen_fwd(const cudaDeviceProp& dprops,
-                      cudaStream_t stream,
-                      void* q,            // half (total_q, num_heads, head_size)
-                      void* k,            // half (total_k, num_heads, head_size)
-                      void* v,            // half (total_k, num_heads, head_size)
-                      void* out,          // half (total_q, num_heads, head_size)
-                      int* cu_seqlens_q,  // int (batch_size + 1)
-                      int* cu_seqlens_k,  // int (batch_size + 1)
-                      void* seqused_k,    // batch_size; If given, use this many elements of each batch element's keys.
-                      int* block_table,   // batch_size x max_num_blocks_per_seq
-                      void* softmax_lse,  // float (batch_size, num_heads, max_seqlen_q)
-                      int batch_size,
-                      int num_heads,
-                      int num_heads_k,
-                      int head_size,
-                      int max_seqlen_q,
-                      int max_seqlen_k,
-                      float softmax_scale,
-                      bool is_causal,
-                      bool is_bf16,
-                      int max_num_blocks_per_seq,
-                      int page_block_size) {
-  auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-  const int head_size_rounded = round_multiple(head_size, 32);
-  const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
-  const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
-  const bool paged_KV = block_table != nullptr;
-
-  Flash_fwd_params params;
-  set_params_fprop(params,
-                   batch_size,
-                   max_seqlen_q, max_seqlen_k,
-                   seqlen_q_rounded, seqlen_k_rounded,
-                   num_heads, num_heads_k,
-                   head_size, head_size_rounded,
-                   q, k, v, out,
-                   cu_seqlens_q,
-                   cu_seqlens_k,
-                   seqused_k,
-                   /*p_ptr=*/nullptr,
-                   softmax_lse,
-                   softmax_scale,
-                   is_causal,
-                   is_bf16,
-                   true,
-                   -1,
-                   is_causal ? 0 : -1);
-  params.dprops = &dprops;
-  params.num_splits = 0;
-  params.softmax_lseaccum_ptr = nullptr;
-  params.oaccum_ptr = nullptr;
-  params.knew_ptr = nullptr;
-  params.vnew_ptr = nullptr;
-  params.alibi_slopes_ptr = nullptr;
-  if (paged_KV) {
-    params.block_table = block_table;  // TODO(aciddelgado): cast to int pointer
-    params.block_table_batch_stride = max_num_blocks_per_seq;
-    // params.num_blocks = num_blocks;
-    params.page_block_size = page_block_size;
-    params.k_batch_stride = page_block_size * num_heads_k * head_size;
-    params.v_batch_stride = page_block_size * num_heads_k * head_size;
-  } else {
-    params.block_table = nullptr;
-    params.block_table_batch_stride = 0;
-    // params.num_blocks = 0;
-    params.page_block_size = 1;
-  }
-  run_mha_fwd(params, stream);
-  return Status::OK();
-}
-
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k) {
   bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
   bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
-  return (is_sm8x || is_sm90) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
+  return (is_sm8x || is_sm90) && (head_size == 64 || head_size == 128) && (num_heads % num_heads_k == 0);
 }
 
 // This API is used when past key and value are present... since cached, these are assumed to have sequence length
@@ -396,8 +254,8 @@ bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_hea
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,
                        void* q,            // batch_size x seqlen_q x num_heads x head_size
-                       void* kcache,       // batch_size x seqlen_k_max x num_heads_k x head_size or batch_size x num_heads_k seqlen_k_max x head_size
-                       void* vcache,       // batch_size x seqlen_k_max x num_heads_k x head_size or batch_size x num_heads_k seqlen_k_max x head_size
+                       void* kcache,       // batch_size x seqlen_k_max x num_heads_k x head_size or batch_size x num_heads_k x seqlen_k_max x head_size
+                       void* vcache,       // batch_size x seqlen_k_max x num_heads_k x head_size or batch_size x num_heads_k x seqlen_k_max x head_size
                        void* k_new,        // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                        void* v_new,        // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                        void* out,          // batch_size x seqlen_q x num_heads x head_size
@@ -574,4 +432,4 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
 }  // namespace lean
 }  // namespace onnxruntime
 
-#endif  // USE_FLASH_ATTENTION
+#endif  // USE_LEAN_ATTENTION

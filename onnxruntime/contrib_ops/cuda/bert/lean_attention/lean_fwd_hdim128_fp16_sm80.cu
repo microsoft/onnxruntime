@@ -1,7 +1,7 @@
 // Copyright (c) 2023, Tri Dao.
 // Splitting the different head dimensions to different files to speed up compilation.
 // This file is auto-generated. See "generate_kernels.py"
-#if USE_FLASH_ATTENTION
+#if USE_LEAN_ATTENTION
 
 #include "contrib_ops/cuda/bert/lean_attention/lean_fwd_launch_template.h"
 
