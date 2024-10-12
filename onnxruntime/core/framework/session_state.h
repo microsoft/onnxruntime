@@ -396,8 +396,7 @@ class SessionState {
   Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
                                            bool save_prepacked_constant_initializers,
-                                           Graph::PrePackInitializers& pre_packed_initializers,
-                                           std::unordered_set<std::string>& pre_packed_initializers_name_set);
+                                           Graph::PrePackInitializers& pre_packed_initializers);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 

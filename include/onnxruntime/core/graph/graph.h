@@ -1154,7 +1154,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     // Since one constant initializer could be used by different kernels
     // and prepacked differently, use an unordered_map to store prepacked
     // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
+    InlinedHashMap<std::string, InlinedHashMap<std::string, Tensor>> pre_packed_initializers_name_map;
+
+    // This InlinedHashSet is used during model load with prepacked initializer saved in ONNX data file.
+    // ORT reads prepacked initializers and store them into this set so we could skip PrePack
+    // process later to save heap memory.
+    InlinedHashSet<std::string> pre_packed_initializers_name_set;
   };
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1530,7 +1535,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        int64_t& external_offset,
                                        std::ofstream& external_stream,
                                        const std::vector<uint8_t>& raw_data,
-                                       ONNX_NAMESPACE::TensorProto* output_proto,
+                                       ONNX_NAMESPACE::TensorProto& output_proto,
                                        const std::filesystem::path& external_file_path,
                                        const ONNX_NAMESPACE::TensorProto& initializer,
                                        bool is_prepacked);

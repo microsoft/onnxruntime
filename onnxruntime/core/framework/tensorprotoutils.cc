@@ -1000,7 +1000,7 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf,
                                  SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter,
-                                 std::unordered_set<std::string>& pre_packed_initializers_name_set, Tensor* buffered_tensor) {
+                                 InlinedHashSet<std::string>& pre_packed_initializers_name_set, Tensor* buffered_tensor) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -1123,7 +1123,7 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   SafeInt<size_t> raw_data_len = 0;
   AutoDelete deleter_for_file_data;
   OrtCallback& d = deleter_for_file_data.d;
-  std::unordered_set<std::string> pre_packed_initializers_name_set;
+  InlinedHashSet<std::string> pre_packed_initializers_name_set;
 
   if (utils::HasExternalData(tensor_proto)) {
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d, pre_packed_initializers_name_set));

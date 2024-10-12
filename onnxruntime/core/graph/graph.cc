@@ -4089,7 +4089,7 @@ void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_inf
                                      int64_t& external_offset,
                                      std::ofstream& external_stream,
                                      const std::vector<uint8_t>& raw_data,
-                                     onnx::TensorProto* output_proto,
+                                     onnx::TensorProto& output_proto,
                                      const std::filesystem::path& external_file_path,
                                      const onnx::TensorProto& initializer,
                                      bool is_prepacked) {
@@ -4118,29 +4118,29 @@ void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_inf
     external_stream << raw_data[index];
   }
 
-  output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
-  ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
+  output_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  ONNX_NAMESPACE::StringStringEntryProto* location = output_proto.add_external_data();
   location->set_key("location");
   location->set_value(ToUTF8String(external_file_path.native()));
-  ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
+  ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto.add_external_data();
   offset->set_key("offset");
   offset->set_value(std::to_string(external_offset));
-  ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
+  ONNX_NAMESPACE::StringStringEntryProto* length = output_proto.add_external_data();
   length->set_key("length");
   length->set_value(std::to_string(tensor_bytes_size));
 
   if (is_prepacked) {
-    ONNX_NAMESPACE::StringStringEntryProto* pre_packed = output_proto->add_external_data();
+    ONNX_NAMESPACE::StringStringEntryProto* pre_packed = output_proto.add_external_data();
     pre_packed->set_key("prepacked");
     pre_packed->set_value("1");
   }
 
-  output_proto->set_name(initializer.name());
-  output_proto->set_data_type(initializer.data_type());
+  output_proto.set_name(initializer.name());
+  output_proto.set_data_type(initializer.data_type());
   for (int i = 0; i != initializer.dims_size(); ++i) {
-    output_proto->add_dims(initializer.dims(i));
+    output_proto.add_dims(initializer.dims(i));
   }
-  output_proto->set_doc_string(initializer.doc_string());
+  output_proto.set_doc_string(initializer.doc_string());
 
   external_offset += tensor_bytes_size;
 }
@@ -4170,7 +4170,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
   for (const auto& initializer : graph_proto_->initializer()) {
     bool use_pre_packed_initializer = false;
-    std::vector<TensorProto> pre_packed_initializers_tensor_proto;
+    InlinedVector<TensorProto> pre_packed_initializers_tensor_proto;
     // If this initializer has been prepacked, saved prepacked external initializer instead of original one.
     // Since one initializer could be used by multiple kernels and been prepacked differently,
     // Save each prepacked initializers seperately, chagne the initializer name to [initializer_name]:[kernel_name]
@@ -4220,7 +4220,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
           }
 
           SetUpExternalInitializer(align_info, tensor_bytes_size, external_offset, external_stream,
-                                   raw_data, output_proto, external_file_path, pre_packed_initializer, true);
+                                   raw_data, *output_proto, external_file_path, pre_packed_initializer, true);
         }
       } else {
         // Dense tensors larger than the threshold are added to the external file.
@@ -4236,7 +4236,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
         }
 
         SetUpExternalInitializer(align_info, tensor_bytes_size, external_offset, external_stream,
-                                 raw_data, output_proto, external_file_path, initializer, false);
+                                 raw_data, *output_proto, external_file_path, initializer, false);
       }
 #if !defined(DISABLE_SPARSE_TENSORS)
     }

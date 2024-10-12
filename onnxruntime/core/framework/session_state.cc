@@ -400,11 +400,9 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                                        const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
                                                        bool save_prepacked_constant_initializers,
-                                                       Graph::PrePackInitializers& pre_packed_initializers,
-                                                       std::unordered_set<std::string>& pre_packed_initializers_name_set) {
+                                                       Graph::PrePackInitializers& pre_packed_initializers) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
-                                     save_prepacked_constant_initializers, &pre_packed_initializers,
-                                     &pre_packed_initializers_name_set](
+                                     save_prepacked_constant_initializers, &pre_packed_initializers](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     std::unordered_map<std::string, std::string> pre_packed_kernel_input_map;
     for (auto& node : GetGraphViewer().Nodes()) {
@@ -432,7 +430,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
 
                 // found pre-packed constant initializers from data file, no need to do pre-packing again
                 // apply pre-packed tensor to kernel so kernel can use it directly
-                if (pre_packed_initializers_name_set.find(input_name) != pre_packed_initializers_name_set.end()) {
+                if (pre_packed_initializers.pre_packed_initializers_name_set.find(input_name) != pre_packed_initializers.pre_packed_initializers_name_set.end()) {
                   is_packed = true;
 
                   // kernel like Matmul_nbits will call prepack multiple times with input_B and possibly scales/zero_points.
@@ -525,7 +523,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   ++number_of_prepacks_counter_;
 
                   // if constant_initialized_tensor is already pre-packed, don't need to remove it
-                  if (pre_packed_initializers_name_set.find(input_name) == pre_packed_initializers_name_set.end() &&
+                  if (pre_packed_initializers.pre_packed_initializers_name_set.find(input_name) == pre_packed_initializers.pre_packed_initializers_name_set.end() &&
                       constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                     // release the constant initialized tensor
                     st->initialized_tensors_.erase(ort_value_idx);
@@ -1533,7 +1531,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // This unorder set is used during model load with prepacked initializer saved in ONNX data file.
   // ORT reads prepacked initializers and store them into this set so we could skip PrePack
   // process later to save heap memory.
-  std::unordered_set<std::string> pre_packed_initializers_name_set;
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
@@ -1548,7 +1545,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return Status::OK();
           },
           logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-          memory_profile_func, name_to_buffered_tensor_, pre_packed_initializers_name_set));
+          memory_profile_func, name_to_buffered_tensor_, pre_packed_initializers));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
@@ -1571,8 +1568,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map,
                                                           save_prepacked_constant_initializers,
-                                                          pre_packed_initializers,
-                                                          pre_packed_initializers_name_set));
+                                                          pre_packed_initializers));
   }
 
   ORT_RETURN_IF_ERROR(
