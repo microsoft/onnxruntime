@@ -345,6 +345,9 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   // FUTURE: finding nodes to compile can be inserted here and added to the ComputeCapability instances returned.
   // GraphPartitioner can handle a mix of static and compiled kernels.
 
+  if (capabilities.empty()) {
+    LOGS_DEFAULT(WARNING) << "xnnpack has no capability to run the NodeUnit.";
+  }
   return capabilities;
 }
 
