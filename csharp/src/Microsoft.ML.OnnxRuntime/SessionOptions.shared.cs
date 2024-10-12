@@ -275,6 +275,19 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         }
 
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="dmlDevice">A IDMLDevice reference</param>
+        /// <param name="commandQueue">A ID3D12CommandQueue reference</param>
+        public void AppendExecutionProvider_DML1(IntPtr dmlDevice, IntPtr commandQueue)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The DML Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML1(handle, dmlDevice, commandQueue));
+#endif
+        }
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
