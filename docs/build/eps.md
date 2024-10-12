@@ -557,6 +557,8 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 
 `./build.sh --config Release --build --build_wheel --parallel --use_migraphx --migraphx_home /opt/rocm`
 
+Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```.
+
 ---
 
 ## AMD ROCm
@@ -583,6 +585,8 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 #### Build Phython Wheel
 
 `./build.sh --config Release --build --build_wheel --parallel --use_rocm --rocm_home /opt/rocm`
+
+Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```.
 
 ---
 
