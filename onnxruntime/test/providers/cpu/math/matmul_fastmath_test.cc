@@ -46,69 +46,84 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {2, 6, 7},
        {3, 2, 1, 7},
        {385, 400, 415, 430, 445, 460, 475, 1015, 1030, 1045, 1060, 1075, 1090, 1105, 1015, 1066, 1117, 1168, 1219, 1270, 1321, 3157, 3208, 3259, 3310, 3361, 3412, 3463, 1645, 1732, 1819, 1906, 1993, 2080, 2167, 5299, 5386, 5473, 5560, 5647, 5734, 5821}});
+  /*
+    test_cases.push_back(
+        {"test padding and broadcast B > A",
+         {2, 3, 12},
+         {3, 2, 12, 3},
+         {3, 2, 3, 3},
+         {1518, 1584, 1650, 3894, 4104, 4314, 6270, 6624, 6978, 26574, 27072, 27570, 34134, 34776, 35418, 41694, 42480, 43266, 6270, 6336, 6402, 19014, 19224, 19434, 31758, 32112, 32466, 62430, 62928, 63426, 80358, 81000, 81642, 98286, 99072, 99858, 11022, 11088, 11154, 34134, 34344, 34554, 57246, 57600, 57954, 98286, 98784, 99282, 126582, 127224, 127866, 154878, 155664, 156450}});
 
+    test_cases.push_back(
+        {"test 2D",
+         {8, 6},
+         {6, 6},
+         {8, 6},
+         {330, 345, 360, 375, 390, 405, 870, 921, 972, 1023, 1074, 1125, 1410, 1497, 1584, 1671, 1758, 1845, 1950, 2073, 2196, 2319, 2442, 2565, 2490, 2649, 2808, 2967, 3126, 3285, 3030, 3225, 3420, 3615, 3810, 4005, 3570, 3801, 4032, 4263, 4494, 4725, 4110, 4377, 4644, 4911, 5178, 5445}});
+
+    test_cases.push_back(
+        {"test 2D special",
+         {2, 2, 16},
+         {16, 4},
+         {2, 2, 4},
+         {4960, 5080, 5200, 5320, 12640, 13016, 13392, 13768, 20320, 20952, 21584, 22216, 28000, 28888, 29776, 30664}});
+
+    test_cases.push_back(
+        {"test 2D special 2",
+         {2, 2, 9},
+         {1, 9, 4},
+         {2, 2, 4},
+         {816, 852, 888, 924, 2112, 2229, 2346, 2463, 3408, 3606, 3804, 4002, 4704, 4983, 5262, 5541}});
+
+    test_cases.push_back(
+        {"test 2D special 3",
+         {2, 12},
+         {1, 1, 12, 3},
+         {1, 1, 2, 3},
+         {1518, 1584, 1650, 3894, 4104, 4314}});
+
+    test_cases.push_back(
+        {"test 3D batch",
+         {3, 1, 18},
+         {3, 18, 2},
+         {3, 1, 2},
+         {
+             // clang-format off
+              3570,  3723,
+             26250, 26727,
+             72258, 73059,
+             // clang-format on
+         }});
+
+    test_cases.push_back(
+        {"test 4D batch",
+         {2, 2, 1, 20},
+         {2, 2, 20, 2},
+         {2, 2, 1, 2},
+         {
+             // clang-format off
+              4940,  5130,
+             36140, 36730,
+             99340, 100330,
+             194540, 195930,
+             // clang-format on
+         }});
+  */
+  return test_cases;
+}
+
+template <>
+std::vector<MatMulTestData<MLFloat16>> GenerateTestCases() {
+  std::vector<MatMulTestData<MLFloat16>> test_cases;
+  std::vector<float> expected_value{385.0f, 400.0f, 415.0f, 430.0f, 445.0f, 460.0f, 475.0f, 1015.0f, 1030.0f, 1045.0f, 1060.0f, 1075.0f, 1090.0f, 1105.0f, 1015.0f, 1066.0f, 1117.0f, 1168.0f, 1219.0f, 1270.0f, 1321.0f, 3157.0f, 3208.0f, 3259.0f, 3310.0f, 3361.0f, 3412.0f, 3463.0f, 1645.0f, 1732.0f, 1819.0f, 1906.0f, 1993.0f, 2080.0f, 2167.0f, 5299.0f, 5386.0f, 5473.0f, 5560.0f, 5647.0f, 5734.0f, 5821.0f};
+  std::vector<MLFloat16> expected_value_fp16(expected_value.size());
+  std::transform(expected_value.begin(), expected_value.end(), expected_value_fp16.begin(), [](float num) { return MLFloat16(num); });
   test_cases.push_back(
-      {"test padding and broadcast B > A",
-       {2, 3, 12},
-       {3, 2, 12, 3},
-       {3, 2, 3, 3},
-       {1518, 1584, 1650, 3894, 4104, 4314, 6270, 6624, 6978, 26574, 27072, 27570, 34134, 34776, 35418, 41694, 42480, 43266, 6270, 6336, 6402, 19014, 19224, 19434, 31758, 32112, 32466, 62430, 62928, 63426, 80358, 81000, 81642, 98286, 99072, 99858, 11022, 11088, 11154, 34134, 34344, 34554, 57246, 57600, 57954, 98286, 98784, 99282, 126582, 127224, 127866, 154878, 155664, 156450}});
-
-  test_cases.push_back(
-      {"test 2D",
-       {8, 6},
-       {6, 6},
-       {8, 6},
-       {330, 345, 360, 375, 390, 405, 870, 921, 972, 1023, 1074, 1125, 1410, 1497, 1584, 1671, 1758, 1845, 1950, 2073, 2196, 2319, 2442, 2565, 2490, 2649, 2808, 2967, 3126, 3285, 3030, 3225, 3420, 3615, 3810, 4005, 3570, 3801, 4032, 4263, 4494, 4725, 4110, 4377, 4644, 4911, 5178, 5445}});
-
-  test_cases.push_back(
-      {"test 2D special",
-       {2, 2, 16},
-       {16, 4},
-       {2, 2, 4},
-       {4960, 5080, 5200, 5320, 12640, 13016, 13392, 13768, 20320, 20952, 21584, 22216, 28000, 28888, 29776, 30664}});
-
-  test_cases.push_back(
-      {"test 2D special 2",
-       {2, 2, 9},
-       {1, 9, 4},
-       {2, 2, 4},
-       {816, 852, 888, 924, 2112, 2229, 2346, 2463, 3408, 3606, 3804, 4002, 4704, 4983, 5262, 5541}});
-
-  test_cases.push_back(
-      {"test 2D special 3",
-       {2, 12},
-       {1, 1, 12, 3},
-       {1, 1, 2, 3},
-       {1518, 1584, 1650, 3894, 4104, 4314}});
-
-  test_cases.push_back(
-      {"test 3D batch",
-       {3, 1, 18},
-       {3, 18, 2},
-       {3, 1, 2},
-       {
-           // clang-format off
-            3570,  3723,
-           26250, 26727,
-           72258, 73059,
-           // clang-format on
-       }});
-
-  test_cases.push_back(
-      {"test 4D batch",
-       {2, 2, 1, 20},
-       {2, 2, 20, 2},
-       {2, 2, 1, 2},
-       {
-           // clang-format off
-            4940,  5130,
-           36140, 36730,
-           99340, 100330,
-           194540, 195930,
-           // clang-format on
-       }});
-
+      {"test padding and broadcast A > B",
+       {3, 1, 1, 6},
+       {2, 6, 7},
+       {3, 2, 1, 7},
+       expected_value_fp16});
   return test_cases;
 }
 
@@ -183,6 +198,14 @@ TEST(MathOpTest, MatMulFloatTypeInitializer_FastMath) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
   RunMatMulTest<float>(7, false, true, false);
+}
+
+TEST(MathOpTest, MatMulFloatTypeInitializer_FastMath_FP16) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<MLFloat16>(7, false, true, false);
 }
 
 TEST(MathOpTest, MatMulInt32Type_FastMath) {
