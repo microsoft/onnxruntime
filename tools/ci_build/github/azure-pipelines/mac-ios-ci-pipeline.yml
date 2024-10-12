@@ -39,6 +39,8 @@ jobs:
   timeoutInMinutes: 150
   steps:
     - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 15.2
 
     - template: templates/mac-build-step-with-cache.yml
       parameters:
