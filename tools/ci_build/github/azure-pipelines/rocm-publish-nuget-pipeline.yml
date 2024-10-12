@@ -9,11 +9,6 @@ resources:
         - rel-*
     branch: main
 
-parameters:
-  - name: isReleaseBuild
-    type: boolean
-    default: false
-
 # ROCm
 stages:
 - template: templates/publish-nuget-steps.yml
