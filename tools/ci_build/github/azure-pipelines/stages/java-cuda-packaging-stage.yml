@@ -58,6 +58,11 @@ stages:
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
+    - template: ../templates/jar-esrp-dll.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        JarFileName: 'onnxruntime_gpu-$(OnnxRuntimeVersion).jar'
+
     - template: ../templates/jar-maven-signing-win.yml
       parameters:
         JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'

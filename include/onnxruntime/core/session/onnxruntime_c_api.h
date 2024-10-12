@@ -3783,7 +3783,7 @@ struct OrtApi {
 
   /** \brief Release an OrtCANNProviderOptions
    *
-   * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+   * \param[in] input The pointer of OrtCANNProviderOptions which will been deleted
    *
    * \since Version 1.13.
    */
@@ -4685,6 +4685,8 @@ struct OrtApi {
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4701,6 +4703,8 @@ struct OrtApi {
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4720,6 +4724,8 @@ struct OrtApi {
    *
    * \param[in] options OrtRunOptions instance
    * \param[in] adapter OrtLoraAdapter instance
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
 
@@ -4732,12 +4738,12 @@ struct OrtApi {
    * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
    * Look for `kOrtEpDynamicOptions`
    *
-   * \param[in] session
-   * \param[in] list of keys represented by null-terminated strings
-   * \param[in] list of values represented by null-terminated strings
-   * \param[in] number of key-value pairs
+   * \param[in] sess OrtSession
+   * \param[in] keys Array of null terminated UTF8 encoded strings of EP dynamic option keys
+   * \param[in] values Array of null terminated UTF8 encoded string of EP dynamic option values
+   * \param[in] kv_len Number of elements in the keys and values arrays
    *
-   * \since Version 1.20
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
