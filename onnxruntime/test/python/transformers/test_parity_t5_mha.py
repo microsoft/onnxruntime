@@ -851,7 +851,7 @@ class TestT5MHAParity(unittest.TestCase):
     def test_t5_self_attention_decoder_masked_mha_with_beams(self):
         """
         Test DecoderMaskedMultiHeadAttention self-attention case with beam_width > 1.
-        Compare between resuts on CUDA and CPU EPs.
+        Compare the results on CUDA and CPU EPs.
         """
         batch_size = 4
         seq_len = 1
