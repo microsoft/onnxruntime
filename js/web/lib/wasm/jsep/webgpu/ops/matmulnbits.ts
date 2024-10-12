@@ -288,8 +288,8 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
   const components = 1;
   const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
 
-  const workgroupSize = 64;
-  const workgroupY = 4;
+  const workgroupSize = 128;
+  const workgroupY = 8;
   const workgroupX = workgroupSize / workgroupY;
   const tileSize = workgroupX * bComponents * 8; // each uint32 has 8 data.
   const aLengthPerTile = tileSize / aComponents;
