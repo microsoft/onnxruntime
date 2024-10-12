@@ -548,10 +548,18 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 #### Linux
 
 ```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
+./build.sh --config <Release|Debug|RelWithDebInfo> --parallel --use_migraphx --migraphx_home <path to MIGraphX home>
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#migraphx).
+
+#### Build Phython Wheel
+
+`./build.sh --config Release --build --build_wheel --parallel --use_migraphx --migraphx_home /opt/rocm`
+
+Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```.
+
+---
 
 ## AMD ROCm
 
@@ -569,10 +577,18 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 #### Linux
 
 ```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home>
+./build.sh --config <Release|Debug|RelWithDebInfo> --parallel --use_rocm --rocm_home <path to ROCm home>
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
+
+#### Build Phython Wheel
+
+`./build.sh --config Release --build --build_wheel --parallel --use_rocm --rocm_home /opt/rocm`
+
+Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```.
+
+---
 
 ## NNAPI
 
