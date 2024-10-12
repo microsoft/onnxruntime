@@ -141,7 +141,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
   float foutput_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-  float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;  
+  float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
   if (op_compute_type_ == OpComputeType::op_compute_type_fp32) {
     const float* bias_data = nullptr;
     if (C_matrix_exists_) {
