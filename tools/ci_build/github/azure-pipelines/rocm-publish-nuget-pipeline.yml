@@ -13,7 +13,7 @@ resources:
 stages:
 - template: templates/publish-nuget-steps.yml
   parameters:
-    stage_name: 'Publish_NuGet_Package_And_Report'
+    stage_name: 'Publish_ROCM_NuGet_Package'
     download_artifacts_steps:
       - download: build
         displayName: 'Download Pipeline Artifact - Signed NuGet Package'
