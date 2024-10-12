@@ -742,7 +742,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            num_heads,
            max_sequence_length,
            interleaved,
-           0,    // is_packed_batching
+           0,  // is_packed_batching
            true /*use_fp16*/);
 }
 
@@ -783,7 +783,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_B
            num_heads,
            max_sequence_length,
            interleaved,
-           1,    // is_packed_batching
+           1,  // is_packed_batching
            true /*use_fp16*/);
 }
 
