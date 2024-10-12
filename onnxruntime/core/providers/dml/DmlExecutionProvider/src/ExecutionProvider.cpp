@@ -43,6 +43,14 @@ namespace Dml
 {
     using namespace onnxruntime::common;
 
+    ExecutionProvider::~ExecutionProvider()
+    {
+        if (m_impl)
+        {
+            m_impl->Close();
+        }
+    }
+
     static void CreateDmlKernelRegistry(
         _Out_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
         _Out_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
@@ -93,7 +101,7 @@ namespace Dml
 #endif
     }
 
-    ExecutionProviderImpl::~ExecutionProviderImpl()
+    void ExecutionProviderImpl::Close()
     {
         // Release the cached command list references before closing the context
         m_capturedGraphs.clear();
