@@ -1,0 +1,27 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Nuget ROCM Packaging pipeline'
+    trigger:
+      branches:
+        include:
+        - main
+        - rel-*
+    branch: main
+
+parameters:
+  - name: isReleaseBuild
+    type: boolean
+    default: false
+
+# ROCm
+stages:
+- template: templates/publish-nuget-steps.yml
+  parameters:
+    stage_name: 'Publish_NuGet_Package_And_Report'
+    include_cpu_ep: true
+    download_artifacts_steps:
+      - download: build
+        displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+        artifact: 'drop-signed-nuget-ROCm'
+      - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
