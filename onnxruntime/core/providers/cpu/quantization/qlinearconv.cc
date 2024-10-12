@@ -316,7 +316,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<uint8_t>);
 
-// int8_t kernel only supports weight being int8_t
+// int8_t kernel supports weight being either uint8_t or int8_t
 #define REGISTER_QLINEARCONV_INT8_KERNEL(domain, version)                \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
       QLinearConv,                                                       \
@@ -326,7 +326,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
       kCpuExecutionProvider,                                             \
       KernelDefBuilder()                                                 \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())   \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})   \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())   \
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
       QLinearConv<int8_t>);

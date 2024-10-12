@@ -236,7 +236,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("TA", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("TB", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("TB", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
         .TypeConstraint("TC", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("TYZ", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("TY", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<int8_t>()}),
