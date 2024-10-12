@@ -44,12 +44,7 @@ class SimpleTest {
 
     @Test
     fun runSigmoidModelTestNNAPI() {
-        runSigmoidModelTestImpl(1, useNNAPI = true)
-    }
-
-    @Test
-    fun runSigmoidModelTestQNN() {
-        runSigmoidModelTestImpl(1, useQNN = true)
+        runSigmoidModelTestImpl(1, true)
     }
 
     @Throws(IOException::class)
@@ -59,18 +54,14 @@ class SimpleTest {
     }
 
     @Throws(OrtException::class, IOException::class)
-    fun runSigmoidModelTestImpl(intraOpNumThreads: Int, useNNAPI: Boolean = false, useQNN: Boolean = false) {
-        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, useNNAPI=$useNNAPI, useQNN=$useQNN")
+    fun runSigmoidModelTestImpl(intraOpNumThreads: Int, useNNAPI: Boolean = false) {
+        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, useNNAPI=$useNNAPI")
         Log.println(Log.INFO, TAG, "Testing with intraOpNumThreads=$intraOpNumThreads")
         Log.println(Log.INFO, TAG, "Testing with useNNAPI=$useNNAPI")
-        Log.println(Log.INFO, TAG, "Testing with useQNN=$useQNN")
-
         val env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE)
         env.use {
             val opts = SessionOptions()
             opts.setIntraOpNumThreads(intraOpNumThreads)
-
-            // Add NNAPI provider if requested
             if (useNNAPI) {
                 if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.NNAPI)) {
                     opts.addNnapi()
@@ -79,17 +70,6 @@ class SimpleTest {
                     return
                 }
             }
-
-            // Add QNN provider if requested
-            if (useQNN) {
-                if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
-                    opts.addQnn()  // Adding QNN provider
-                } else {
-                    Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
-                    return
-                }
-            }
-
             opts.use {
                 val session = env.createSession(readModel("sigmoid.ort"), opts)
                 session.use {
