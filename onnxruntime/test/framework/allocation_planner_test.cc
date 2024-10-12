@@ -1369,6 +1369,30 @@ TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
 }
 
 // Test execution plan for the graph:
+// stream 0: node3 (Transpose, CUDA EP)
+// stream 1: node2 (CPU EP)
+// stream 2: node1 (MemcpyToHost, CUDA EP)
+// node1's output, which is consumed by both node2 and node3, is in CPU. The kernel MemcpyToHost(node1) is in a seperate stream by default
+TEST_F(PlannerTest, MultiStreamMemcpyToHostInASeperateStream) {
+  MemcpyToHostInCuda_TransposeInCudaAndCpu();
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 3) << "3 logic streams";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 3) << "stream 0 has 5 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3, for TriggerDownstreamStep in stream 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "WaitOnEPStep"), nullptr) << "1st step: WaitOnEPStep for node 3, for ActivateNotificationStep in stream 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[2]).name(), "LaunchKernelStep"), nullptr) << "2nd step: LaunchKernelStep for node 3";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[1]->steps_.size(), 3) << "stream 1 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 2, for TriggerDownstreamStep in stream 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[1]).name(), "WaitOnEPStep"), nullptr) << "1st step: WaitOnEPStep for node 2, for ActivateNotificationStep in stream 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[2]).name(), "LaunchKernelStep"), nullptr) << "2nd step: LaunchKernelStep for node 2";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[2]->steps_.size(), 3) << "stream 2 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[1]).name(), "ActivateNotificationStep"), nullptr) << "1st step: ActivateNofiticationStep by node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 3";
+}
+
+// Test execution plan for the graph:
 // node1 has 2 outputs which are both consumed by node2, node1 and node2 are in different streams
 // Only 1 WaitOnEPStep is expected before launching node2
 // TODO(leca): there is a bug in the corresponding graph that node2 will be visited twice when traversing node1's output nodes
