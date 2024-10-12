@@ -289,8 +289,9 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
   const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
 
   const workgroupSize = 64;
-  const outputNumber = 8;
-  const tileSize = (workgroupSize / outputNumber) * bComponents * 8; // each uint32 has 8 data.
+  const workgroupY = 8;
+  const workgroupX = workgroupSize / workgroupY;
+  const tileSize = workgroupX * bComponents * 8; // each uint32 has 8 data.
   const aLengthPerTile = tileSize / aComponents;
   const blocksPerTile = tileSize / attributes.blockSize; // This requires tileSize must be larger than or equal to blockSize.
 
@@ -377,11 +378,11 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
     };
     return `
         var<workgroup> sub_a: array<${a.type.value}, ${aLengthPerTile}>;
-        var<workgroup> sub_b: array<array<${b.type.value}, 8>, 8>;
-        var<workgroup> inter_results: array<array<${output.type.value}, 8>, 8>;
+        var<workgroup> sub_b: array<array<${b.type.value}, ${workgroupX}>, ${workgroupY}>;
+        var<workgroup> inter_results: array<array<${output.type.value}, ${workgroupX}>, ${workgroupY}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
-        ${shaderHelper.mainStart([8, 8, 1])}
-          let col = workgroup_id.x * ${outputNumber} + local_id.x;
+        ${shaderHelper.mainStart([workgroupX, workgroupY, 1])}
+          let col = workgroup_id.x * ${workgroupY} + local_idx;
           let row = workgroup_id.y;
           let batch = workgroup_id.z;
           let n_blocks_per_col = uniforms.b_shape[1];
@@ -405,7 +406,7 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
               }
             }
             // load one tile B data into shared memory.
-            let b_row = workgroup_id.x * ${outputNumber} + local_id.y;
+            let b_row = workgroup_id.x * ${workgroupY} + local_id.y;
             let block = tile * ${blocksPerTile} + local_id.x;
             if (b_row < uniforms.b_shape[0] && block < uniforms.b_shape[1]) {
               sub_b[local_id.y][local_id.x] = ${b.getByIndices(`${b.type.indices}(b_row, block, 0)`)};
@@ -424,10 +425,10 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
             workgroupBarrier();
           }
 
-          if (local_id.x < ${outputNumber}) {
+          if (local_idx < ${workgroupY}) {
             var output_value: ${output.type.value} = ${output.type.value}(0);
-            for (var b: u32 = 0u; b < 8u; b++) {
-              output_value += inter_results[local_id.x][b];
+            for (var b = 0u; b < ${workgroupX}; b++) {
+              output_value += inter_results[local_idx][b];
             }
             if (col < uniforms.output_shape[2])
             {
@@ -444,7 +445,7 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
     },
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType }],
-      dispatchGroup: { x: Math.ceil(dimBOuter / components / outputNumber), y: dimAOuter, z: batchSize },
+      dispatchGroup: { x: Math.ceil(dimBOuter / components / workgroupY), y: dimAOuter, z: batchSize },
       programUniforms,
     }),
     getShaderSource,
