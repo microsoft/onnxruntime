@@ -1115,6 +1115,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #endif
 
+  // Data structure stores prepacked initializers in format of Tensor.
+  struct PrePackInitializers {
+    // Since one constant initializer could be used by different kernels
+    // and prepacked differently, use an unordered_map to store prepacked
+    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
+    InlinedHashMap<std::string, InlinedHashMap<std::string, Tensor>> pre_packed_initializers_name_map;
+
+    // This InlinedHashSet is used during model load with prepacked initializer saved in ONNX data file.
+    // ORT reads prepacked initializers and store them into this set so we could skip PrePack
+    // process later to save heap memory.
+    InlinedHashSet<std::string> pre_packed_initializers_name_set;
+  };
+
 #ifdef ENABLE_TRAINING
   /**
    * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
@@ -1148,19 +1161,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
-
-  // Data structure stores prepacked initializers in format of Tensor.
-  struct PrePackInitializers {
-    // Since one constant initializer could be used by different kernels
-    // and prepacked differently, use an unordered_map to store prepacked
-    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
-    InlinedHashMap<std::string, InlinedHashMap<std::string, Tensor>> pre_packed_initializers_name_map;
-
-    // This InlinedHashSet is used during model load with prepacked initializer saved in ONNX data file.
-    // ORT reads prepacked initializers and store them into this set so we could skip PrePack
-    // process later to save heap memory.
-    InlinedHashSet<std::string> pre_packed_initializers_name_set;
-  };
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the GraphProto representation of this Graph. */
