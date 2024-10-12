@@ -140,13 +140,13 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   auto weights_cache = GetWeightsCache();
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
+  float foutput_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
+  float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;  
   if (op_compute_type_ == OpComputeType::op_compute_type_fp32) {
     const float* bias_data = nullptr;
     if (C_matrix_exists_) {
       bias_data = tensor.Data<float>();
     }
-    float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-    float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
     status = xnn_create_fully_connected_nc_f32(
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
@@ -154,7 +154,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
         B_->Data<float>(),                                           // const float* kernel,
         bias_data,                                                   // const float* bias,
-        output_min, output_max,
+        foutput_min, foutput_max,
         flags,
         code_cache, weights_cache,
         &p);
@@ -163,16 +163,14 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
     if (C_matrix_exists_) {
       bias_data = tensor.Data<MLFloat16>();
     }
-    float output_min = clip_min_max_ ? clip_min_max_->first : -65504.0f;
-    float output_max = clip_min_max_ ? clip_min_max_->second : 65504.0f;
     status = xnn_create_fully_connected_nc_f16(
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
-        B_->Data<MLFloat16>(),                                       // const float* kernel,
+        B_->Data<MLFloat16>(),                                       // const MLFloat16* kernel,
         bias_data,                                                   // const float* bias,
-        output_min, output_max,
+        foutput_min, foutput_max,
         flags,
         code_cache, weights_cache,
         &p);

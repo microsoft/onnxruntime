@@ -200,14 +200,12 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               output_min, output_max, flags, &p);
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     maxpool_type_ = OpComputeType::op_compute_type_fp16;
-    const float output_min = clip_min_max_ ? clip_min_max_->first : -65504.0f;
-    const float output_max = clip_min_max_ ? clip_min_max_->first : 65504.0f;
     status = xnn_create_max_pooling2d_nhwc_f16(input_padding_top, input_padding_right,
                                                input_padding_bottom, input_padding_left,
                                                pooling_height, pooling_width,
                                                stride_height, stride_width,
                                                dilation_height, dilation_width,
-                                               output_min, output_max, flags, &p);
+                                               foutput_min, foutput_max, flags, &p);
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
     ORT_THROW("unsupported Conv in maxpool, we have FLOAT|UINT8|FLOAT16, but got ", stype);

@@ -74,8 +74,6 @@ MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info, /*enable_caches*/
     op_type_ = OpComputeType::op_compute_type_fp32;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     op_type_ = OpComputeType::op_compute_type_fp16;
-  } else {
-    ORT_THROW("unsupported MatMul in XnnpackEP, we have FLOAT|FLOAT16, but got ", op_type_str_);
   }
 }
 
@@ -111,9 +109,9 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   xnn_weights_cache_t weight_cache = nullptr;
 #endif
 
+  float foutput_min = -INFINITY;
+  float foutput_max = INFINITY;
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    float output_min = -INFINITY;
-    float output_max = INFINITY;
     status = xnn_create_fully_connected_nc_f32(
         shape_broadcast[0],    // size_t input_channels,
         shape_broadcast[1],    // size_t output_channels,
@@ -121,15 +119,13 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         shape_broadcast[1],    // size_t output_stride,
         tensor.Data<float>(),  // const float* kernel,
         nullptr,               // const float* bias,
-        output_min,
-        output_max,
+        foutput_min,
+        foutput_max,
         flags,
         code_cache,
         weight_cache,
         &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
-    float output_min = -65504.0f;
-    float output_max = 65504.0f;
     status = xnn_create_fully_connected_nc_f16(
         shape_broadcast[0],        // size_t input_channels,
         shape_broadcast[1],        // size_t output_channels,
@@ -137,8 +133,8 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         shape_broadcast[1],        // size_t output_stride,
         tensor.Data<MLFloat16>(),  // const MLFloat16* kernel,
         nullptr,                   // const MLFloat16* bias,
-        output_min,
-        output_max,
+        foutput_min,
+        foutput_max,
         flags,
         code_cache,
         weight_cache,
