@@ -80,7 +80,7 @@ struct OpenVINOExecutionProviderInfo {
   std::string device_type_{""};
   std::string precision_{""};
   size_t num_of_threads_{0};
-  std::string load_config_{""};
+  std::map<std::string, ov::AnyMap> load_config_{};
   std::string cache_dir_{""};
   std::string model_priority_{""};
   int num_streams_{1};
@@ -96,7 +96,8 @@ struct OpenVINOExecutionProviderInfo {
 
   explicit OpenVINOExecutionProviderInfo(const std::string& dev_type, const std::string& precision,
                                          size_t num_of_threads,
-                                         const std::string& load_config, const std::string& cache_dir,
+                                         const std::map<std::string, ov::AnyMap>& load_config,
+                                         const std::string& cache_dir,
                                          const std::string& model_priority, int num_streams,
                                          void* context, bool enable_opencl_throttling,
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob,

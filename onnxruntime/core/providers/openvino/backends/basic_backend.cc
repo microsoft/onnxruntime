@@ -182,8 +182,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 
   if (!global_context_.load_config.empty()) {
-    std::map<std::string, ov::AnyMap> target_config;
-    LoadConfig(global_context_.load_config, target_config);
+    const std::map<std::string, ov::AnyMap>& target_config = global_context_.load_config;
 
     // Parse device types like "AUTO:CPU,GPU" and extract individual devices
     auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {

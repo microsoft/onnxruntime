@@ -18,6 +18,10 @@
 #include "providers.h"
 #include "TestCase.h"
 
+#ifdef USE_OPENVINO
+#include "nlohmann/json.hpp"
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
@@ -825,7 +829,27 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_options[key] = value;
         }
       } else if (key == "load_config") {
-        ov_options[key] = value;
+        auto load_json = [&](std::string filename) -> std::string {
+          std::ifstream input_filestream(filename);
+          if (!input_filestream.is_open()) {
+            ORT_THROW("Passed an invalid JSON config file path \"" + filename + "\".");
+          }
+          nlohmann::json json_config;
+          try {
+            input_filestream >> json_config;
+          } catch (const OnnxRuntimeException& ex) {
+            ORT_THROW("Exception parsing config file \"" + filename + "\".\n" + ex.what());
+          } catch (const std::exception& ex) {
+            throw std::runtime_error("Standard exception for config file \"" + filename + "\".\n" + ex.what());
+          } catch (...) {
+            throw std::runtime_error("Unknown exception for config file \"" + filename + "\".\n");
+          }
+          if (json_config.empty()) {
+            ORT_THROW("Empty JSON content passed \"" + filename + "\".");
+          }
+          return json_config.dump();
+        };
+        ov_options[key] = load_json(value);
       } else if (key == "model_priority") {
         ov_options[key] = value;
       } else if (key == "cache_dir") {

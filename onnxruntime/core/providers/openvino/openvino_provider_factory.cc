@@ -1,16 +1,19 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <map>
+#include <utility>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
+#include "nlohmann/json.hpp"
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const std::string& device_type, const std::string& precision,
                           size_t num_of_threads,
-                          const std::string& load_config, const std::string& cache_dir,
+                          const std::map<std::string, ov::AnyMap>& load_config, const std::string& cache_dir,
                           const std::string& model_priority, int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool enable_qdq_optimizer, const ConfigOptions& config_options)
@@ -35,7 +38,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::string device_type_;
   std::string precision_;
   size_t num_of_threads_;
-  std::string load_config_;
+  const std::map<std::string, ov::AnyMap> load_config_;
   std::string cache_dir_;
   std::string model_priority_;
   int num_streams_;
@@ -96,28 +99,30 @@ struct OpenVINO_Provider : Provider {
     auto& provider_options_map = *buffer->first;
     const ConfigOptions& config_options = buffer->second;
 
-    std::string device_type = "";            // [device_type]: Overrides the accelerator hardware type and precision
-                                             //   with these values at runtime.
-    std::string precision = "";              // [precision]: Sets the inference precision for execution.
-                                             // Supported precision for devices are CPU=FP32, GPU=FP32,FP16, NPU=FP16.
-                                             // Not setting precision will execute with optimized precision for
-                                             // best inference latency. set Precision=ACCURACY for executing models
-                                             // with input precision for best accuracy.
-    int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
-                                             //  threads with this value at runtime.
-    std::string load_config = "";            // Path to JSON file to load custom OV parameters.
-    std::string cache_dir = "";              // [cache_dir]: specify the path to
-                                             // dump and load the blobs for the model caching/kernel caching (GPU)
-                                             // feature. If blob files are already present, it will be directly loaded.
-    std::string model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
-                                             // Defines what model should be provided with more performant
-                                             // bounded resource first
-    int num_streams = 1;                     // [num_streams]: Option that specifies the number of parallel inference
-                                             // requests to be processed on a given `device_type`. Overrides the
-                                             // accelerator default value of number of streams
-                                             // with this value at runtime.
-    bool enable_opencl_throttling = false;   // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
-                                             // device (Reduces CPU Utilization when using GPU)
+    std::string device_type = "";                   // [device_type]: Overrides the accelerator hardware type and
+                                                    // precision with these values at runtime.
+    std::string precision = "";                     // [precision]: Sets the inference precision for execution.
+                                                    // Supported precision for devices are
+                                                    // CPU=FP32, GPU=FP32,FP16, NPU=FP16.
+                                                    // Not setting precision will execute with optimized precision for
+                                                    // best inference latency. set Precision=ACCURACY for executing
+                                                    // models with input precision for best accuracy.
+    int num_of_threads = 0;                         // [num_of_threads]: Overrides the accelerator default value of
+                                                    // number of threads with this value at runtime.
+    std::map<std::string, ov::AnyMap> load_config;  // JSON config map to load custom OV parameters.
+    std::string cache_dir = "";                     // [cache_dir]: specify the path to
+                                                    // dump and load the blobs for the model caching/kernel caching
+                                                    // (GPU) feature. If blob files are already present,
+                                                    // it will be directly loaded.
+    std::string model_priority = "DEFAULT";         // High-level OpenVINO model priority hint
+                                                    // Defines what model should be provided with more performant
+                                                    // bounded resource first
+    int num_streams = 1;                            // [num_streams]: Option that specifies the number of parallel
+                                                    // inference requests to be processed on a given `device_type`.
+                                                    // Overrides the accelerator default value of number of streams
+                                                    // with this value at runtime.
+    bool enable_opencl_throttling = false;          // [enable_opencl_throttling]: Enables OpenCL queue throttling for
+                                                    // GPU device (Reduces CPU Utilization when using GPU)
 
     bool enable_qdq_optimizer = false;  // Enables QDQ pruning for efficient inference latency with NPU
 
@@ -198,27 +203,65 @@ struct OpenVINO_Provider : Provider {
     }
 
     if (provider_options_map.find("load_config") != provider_options_map.end()) {
-      load_config = provider_options_map.at("load_config");
-
-      // Enforce that the input path is absolute, reject if not
-      if (!std::filesystem::path(load_config).is_absolute()) {
-        throw std::invalid_argument("The config file path must be an absolute path: " + load_config);
-      }
-
-      auto resolve_path = [&](const std::string& path) -> std::string {
-        std::filesystem::path fs_path = path;
-        // Canonicalize the path to resolve symbolic links and remove '..' or '.'
-        try {
-          fs_path = std::filesystem::canonical(fs_path);
-        } catch (const std::filesystem::filesystem_error& e) {
-          throw std::runtime_error("Error resolving config file path: " + std::string(e.what()));
+      auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
+        // If the config string is empty, return an empty map and skip processing
+        if (config_str.empty()) {
+          LOGS_DEFAULT(WARNING) << "Empty OV Config Map passed. Skipping load_config option parsing.\n";
+          return {};
         }
-        return fs_path.string();
+
+        std::stringstream input_str_stream(config_str);
+        std::map<std::string, ov::AnyMap> target_map;
+
+        try {
+          nlohmann::json json_config = nlohmann::json::parse(input_str_stream);
+
+          if (!json_config.is_object()) {
+            ORT_THROW("Invalid JSON structure: Expected an object at the root.");
+          }
+
+          for (auto& [key, value] : json_config.items()) {
+            ov::AnyMap inner_map;
+
+            // Ensure the key is one of "CPU", "GPU", or "NPU"
+            if (key != "CPU" && key != "GPU" && key != "NPU") {
+              LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
+              continue;
+            }
+
+            // Ensure that the value for each device is an object (PROPERTY -> VALUE)
+            if (!value.is_object()) {
+              ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
+            }
+
+            for (auto& [inner_key, inner_value] : value.items()) {
+              if (inner_value.is_string()) {
+                inner_map[inner_key] = inner_value.get<std::string>();
+              } else if (inner_value.is_number_integer()) {
+                inner_map[inner_key] = inner_value.get<int64_t>();
+              } else if (inner_value.is_number_float()) {
+                inner_map[inner_key] = inner_value.get<double>();
+              } else if (inner_value.is_boolean()) {
+                inner_map[inner_key] = inner_value.get<bool>();
+              } else {
+                LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
+              }
+            }
+            target_map[key] = inner_map;
+          }
+        } catch (const nlohmann::json::parse_error& e) {
+          // Handle syntax errors in JSON
+          ORT_THROW("JSON parsing error: " + std::string(e.what()));
+        } catch (const nlohmann::json::type_error& e) {
+          // Handle invalid type accesses
+          ORT_THROW("JSON type error: " + std::string(e.what()));
+        } catch (const std::exception& e) {
+          ORT_THROW("Error parsing load_config Map: " + std::string(e.what()));
+        }
+        return target_map;
       };
 
-      // Expand and resolve the filename to its canonical form
-      std::string resolved_filename = resolve_path(load_config);
-      load_config = resolved_filename;
+      load_config = parse_config(provider_options_map.at("load_config"));
     }
 
     if (provider_options_map.find("context") != provider_options_map.end()) {
