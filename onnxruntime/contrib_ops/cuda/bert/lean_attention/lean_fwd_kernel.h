@@ -541,8 +541,6 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
 
       cute::copy(smem_tiled_copy_Oaccum, taccOrOaccum, taccOsOaccum);
 
-      const index_t row_offset_o = cur_bidb * params.o_batch_stride +
-                                   +cur_m_block * kBlockM * params.o_row_stride + cur_bidh * params.o_head_stride;
       const index_t row_offset_oaccum = (((index_t)(n_split_idx * params.b + cur_bidb) * params.h + cur_bidh) * params.seqlen_q + cur_m_block * kBlockM) * params.d_rounded;
       const index_t row_offset_lseaccum = ((n_split_idx * params.b + cur_bidb) * params.h + cur_bidh) * params.seqlen_q + cur_m_block * kBlockM;
 

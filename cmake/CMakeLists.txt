@@ -768,7 +768,7 @@ if (onnxruntime_USE_CUDA)
     endif()
 
     if (onnxruntime_USE_LEAN_ATTENTION)
-      message( STATUS "Enable flash attention for CUDA EP")
+      message( STATUS "Enable lean attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_LEAN_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_LEAN_ATTENTION=1)
     endif()
