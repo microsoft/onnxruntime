@@ -1085,7 +1085,17 @@ def run_torch_test(
             except RuntimeError:
                 continue
 
-            speed = tflops_per_second(flops(batch_size, sequence_length, head_size, num_heads, causal), torch_latency)
+            speed = tflops_per_second(
+                flops(
+                    batch_size,
+                    sequence_length,
+                    sequence_length + past_sequence_length,
+                    head_size,
+                    num_heads,
+                    causal,
+                ),
+                torch_latency,
+            )
             input_format = "Q,K,V"
             print(
                 f"{input_format}\t{causal}\t{False}\t{batch_size}\t"
