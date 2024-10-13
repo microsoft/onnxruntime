@@ -1093,6 +1093,11 @@ inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* al
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
+template <typename T>
+inline void SessionImpl<T>::SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len) {
+  ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys, values, kv_len));
+}
+
 }  // namespace detail
 
 inline SessionOptions::SessionOptions() {

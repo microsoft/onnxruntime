@@ -467,6 +467,10 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   }
 }
 
+MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type) {
+  return DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)->GetElementType();
+}
+
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of
 // python array objects and use the underlying memory directly and
 // properly deallocated them when they are done.

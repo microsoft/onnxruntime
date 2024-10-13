@@ -340,14 +340,3 @@ stages:
     SpecificArtifact: ${{ parameters.specificArtifact }}
     CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
     BuildId: ${{ parameters.BuildId }}
-
-- template: templates/publish-nuget-steps.yml
-  parameters:
-    download_artifacts_steps:
-      - template: templates/flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
-          ArtifactName: 'drop-signed-nuget-ROCm'
-          targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-          SpecificArtifact: ${{ parameters.specificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
