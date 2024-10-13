@@ -3,16 +3,9 @@
 
 #pragma once
 
-#include "core/providers/xnnpack/xnnpack_init.h"
-
 #include "test/providers/checkers.h"
 #include "test/providers/op_tester.h"
 #include "test/providers/model_tester.h"
-
-// XNNPACK_FP16_SUPPORTED scope is too big, so add USE_XNNPACK to avoid the FP16 tests enabled for other EPs
-#if defined(USE_XNNPACK) && defined(XNNPACK_FP16_SUPPORTED)
-#define ENABLE_XNNPACK_FP16_TESTS
-#endif
 
 namespace onnxruntime {
 namespace test {
