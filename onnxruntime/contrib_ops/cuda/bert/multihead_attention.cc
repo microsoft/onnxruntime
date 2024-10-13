@@ -243,6 +243,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_flash_attention = false;
 #endif
 
+#if USE_LEAN_ATTENTION || USE_FLASH_ATTENTION
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
@@ -251,6 +252,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
+#endif
 
   bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
                                   parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
