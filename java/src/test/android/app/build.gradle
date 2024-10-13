@@ -4,6 +4,7 @@ plugins {
 }
 
 def minSdkVer = System.properties.get("minSdkVer")?:24
+def isQnnBuild = System.properties.get("qnnBuild")?.toBoolean() ?: false
 
 android {
 	compileSdkVersion 32
@@ -31,11 +32,15 @@ android {
 	kotlinOptions {
 		jvmTarget = '1.8'
 	}
-	packaging {
-        jniLibs {
-            useLegacyPackaging = true
-        }
-    }
+	// Conditional packagingOptions for QNN builds only
+	if (isQnnBuild)	{
+		packagingOptions  {
+			jniLibs {
+				useLegacyPackaging = true
+			}
+			exclude 'lib/arm64-v8a/libQnnGpu.so'
+		}
+	}
 	namespace 'ai.onnxruntime.example.javavalidator'
 }
 
@@ -54,6 +59,10 @@ dependencies {
 	androidTestImplementation 'androidx.test:runner:1.4.0'
 	androidTestImplementation 'androidx.test:rules:1.4.0'
 	androidTestImplementation 'com.microsoft.appcenter:espresso-test-extension:1.4'
+
+	// QNN only dependencies
+	if (isQnnBuild) {
 	implementation 'com.qualcomm.qti:qnn-runtime:2.26.0'
+	}
 
 }

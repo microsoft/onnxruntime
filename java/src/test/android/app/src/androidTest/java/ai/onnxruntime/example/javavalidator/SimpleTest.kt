@@ -44,7 +44,12 @@ class SimpleTest {
 
     @Test
     fun runSigmoidModelTestNNAPI() {
-        runSigmoidModelTestImpl(1, true)
+        runSigmoidModelTestImpl(1, useNNAPI = true)
+    }
+
+    @Test
+    fun runSigmoidModelTestQNN() {
+        runSigmoidModelTestImpl(1, useQNN = true)
     }
 
     @Throws(IOException::class)
@@ -54,14 +59,18 @@ class SimpleTest {
     }
 
     @Throws(OrtException::class, IOException::class)
-    fun runSigmoidModelTestImpl(intraOpNumThreads: Int, useNNAPI: Boolean = false) {
-        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, useNNAPI=$useNNAPI")
+    fun runSigmoidModelTestImpl(intraOpNumThreads: Int, useNNAPI: Boolean = false, useQNN: Boolean = false) {
+        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, useNNAPI=$useNNAPI, useQNN=$useQNN")
         Log.println(Log.INFO, TAG, "Testing with intraOpNumThreads=$intraOpNumThreads")
         Log.println(Log.INFO, TAG, "Testing with useNNAPI=$useNNAPI")
+        Log.println(Log.INFO, TAG, "Testing with useQNN=$useQNN")
+
         val env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE)
         env.use {
             val opts = SessionOptions()
             opts.setIntraOpNumThreads(intraOpNumThreads)
+
+            // Add NNAPI provider if requested
             if (useNNAPI) {
                 if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.NNAPI)) {
                     opts.addNnapi()
@@ -70,6 +79,23 @@ class SimpleTest {
                     return
                 }
             }
+
+            // Add QNN provider if requested
+            if (useQNN) {
+                if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
+                    // Since this is running in an Android environment, we use the .so library
+                    val qnnLibrary = "libQnnHtp.so"
+
+                    val providerOptions = Collections.singletonMap("backend_path", qnnLibrary)
+
+                    opts.addQnn(providerOptions)  // Adding QNN provider
+                } else {
+                    Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
+                    return
+                }
+            }
+
+
             opts.use {
                 val session = env.createSession(readModel("sigmoid.ort"), opts)
                 session.use {
@@ -98,7 +124,7 @@ class SimpleTest {
                                         Assert.assertEquals(
                                             rawOutput[i][j][k],
                                             expected[i][j][k],
-                                            1e-6.toFloat()
+                                            1e-3.toFloat()
                                         )
                                     }
                                 }

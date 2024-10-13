@@ -45,17 +45,22 @@ jobs:
 
   - template: use-android-ndk.yml
 
-  - ${{ if contains(parameters.packageName, 'qnn') }}:
+  - script: |
+        set -e -x
+        mkdir -p android_test/android/app/libs
+        cd android_test/android
+        cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
+        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
+    displayName: Copy Android test files and AAR to android_test directory
+    workingDirectory: $(Build.BinariesDirectory)
+
+  # skip emulator tests for qnn package as there are no arm64-v8a emulators
+  - ${{ if not(contains(parameters.packageName, 'qnn')) }}:
     - template: use-android-emulator.yml
 
     - script: |
         set -e -x
-        mkdir android_test
-        cd android_test
-        cp -av $(Build.SourcesDirectory)/java/src/test/android ./
-        cd ./android
-        mkdir -p app/libs
-        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
+        cd android_test/android
         $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
       displayName: Run E2E test using Emulator
       workingDirectory: $(Build.BinariesDirectory)
@@ -67,14 +72,24 @@ jobs:
   # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
   - script: |
       set -e -x
+      cd android_test/android
+      # build apks for qnn package as they are not built in the emulator test step
+      if [[ ${{ parameters.packageName }} == *qnn* ]]; then
+          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnBuild=true --stacktrace
+      fi
+
       pip install requests
+      cd app/build/outputs/apk
+
       python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
         --test_platform espresso \
         --app_apk_path "debug/app-debug.apk" \
         --test_apk_path "androidTest/debug/app-debug-androidTest.apk" \
-        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
+        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0" \
+        --build_tag "${{ parameters.packageName }}"
+
     displayName: Run E2E tests using Browserstack
-    workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
+    workingDirectory: $(Build.BinariesDirectory)
     timeoutInMinutes: 15
     env:
       BROWSERSTACK_ID: $(browserstack_username)
