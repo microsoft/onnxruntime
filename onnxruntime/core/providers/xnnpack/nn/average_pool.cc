@@ -42,6 +42,12 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
                                                    foutput_min, foutput_max, flags, &p);
+  } else if (avgpool_type == OpComputeType::op_compute_type_fp16) {
+    status = xnn_create_average_pooling2d_nhwc_f16(input_padding_top, input_padding_right,
+                                                   input_padding_bottom, input_padding_left,
+                                                   pooling_height, pooling_width,
+                                                   stride_height, stride_width,
+                                                   foutput_min, foutput_max, flags, &p);
   } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
     const float output_scale = quant_param[1].first[0];
     const uint8_t output_zero_point = quant_param[1].second;
@@ -110,7 +116,7 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
     if (x_type == nullptr ||
-        IsComputeTypeSupported(x_type->tensor_type().elem_type(), compute_type_set)) {
+        !IsComputeTypeSupported(x_type->tensor_type().elem_type(), compute_type_set)) {
       break;
     }
 
@@ -201,8 +207,7 @@ AveragePool::AveragePool(const OpKernelInfo& info)
   const auto& input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     avgpool_type_ = OpComputeType::op_compute_type_fp32;
-  }
-  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     avgpool_type_ = OpComputeType::op_compute_type_fp16;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
