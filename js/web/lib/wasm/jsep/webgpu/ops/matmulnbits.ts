@@ -436,7 +436,11 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  if (attributes.blockSize === 32 && context.adapterInfo.isVendor('intel')) {
+  if (
+    attributes.blockSize === 32 &&
+    context.adapterInfo.isVendor('intel') &&
+    context.adapterInfo.isArchitecture('gen-12lp')
+  ) {
     context.compute(createMatMulNBitsBlockSize32ProgramInfo(context.inputs, attributes));
   } else {
     context.compute(createMatMulNBitsProgramInfo(context.inputs, attributes));
