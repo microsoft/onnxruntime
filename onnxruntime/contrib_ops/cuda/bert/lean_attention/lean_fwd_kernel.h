@@ -27,21 +27,23 @@ using namespace cute;
 // Specialized for Prefill
 template <typename Kernel_traits, bool Is_causal, bool Is_even_MN, bool Is_even_K, int kMaxSplits, bool Append_KV, typename Params>
 inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const int cta_id, int start_tile_gid, int start_tile_hid, int num_tiles, const int num_tiles_per_head) {
+#if defined(DEBUG_LEAN_ATTENTION)
   // Timing
-  // auto kernel_start = clock64();
-  // long long int comp1_duration = 0;
-  // long long int comp2_duration = 0;
-  // long long int epilogue_duration = 0;
-  // long long int prologue_duration = 0;
-  // long long int epil1_duration = 0;
-  // long long int epil2_duration = 0;
-  // long long int epil3_duration = 0;
+  auto kernel_start = clock64();
+  long long int comp1_duration = 0;
+  long long int comp2_duration = 0;
+  long long int epilogue_duration = 0;
+  long long int prologue_duration = 0;
+  long long int epil1_duration = 0;
+  long long int epil2_duration = 0;
+  long long int epil3_duration = 0;
+
+  const int tracing_block = 0;
+#endif
 
   using Element = typename Kernel_traits::Element;
   using ElementAccum = typename Kernel_traits::ElementAccum;
   using index_t = typename Kernel_traits::index_t;
-
-  // const int tracing_block = 0;
 
   // Shared memory.
   extern __shared__ char smem_[];
@@ -72,34 +74,36 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
 
   int num_tiles_left = num_tiles;
 
-  // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-  //     printf("Debugging block = %d\n", tracing_block);
-  //     printf("kBlockM = %d\n", kBlockM);
-  //     printf("kBlockN = %d\n", kBlockN);
-  //     printf("kHeadDim = %d\n", kHeadDim);
-  //     printf("kNWarps = %d\n", kNWarps);
-  //     printf("IsEvenMN = %d\n", Is_even_MN);
-  //     printf("block_scale = %f\n", block_scale);
-  //     printf("seq_len_q -change = %d\n", params.seqlen_q);
-  //     printf("seq_len_k = %d\n", params.seqlen_k);
-  //     printf("q_batch_stride = %ld\n", params.q_batch_stride);
-  //     printf("q_head_stride = %ld\n", params.q_head_stride);
-  //     printf("q_row_stride = %ld\n", params.q_row_stride);
-  //     printf("k_batch_stride = %ld\n", params.k_batch_stride);
-  //     printf("k_head_stride = %ld\n", params.k_head_stride);
-  //     printf("k_row_stride = %ld\n", params.k_row_stride);
-  //     printf("v_row_stride = %ld\n", params.v_row_stride);
-  //     printf("o_row_stride = %ld\n", params.o_row_stride);
-  //     printf("start_m_block = %d\n", cur_m_block);
-  //     printf("start_tile_gid = %d\n", start_tile_gid);
-  //     printf("start_tile_hid = %d\n", start_tile_hid);
-  //     printf("cur_bidb = %d/%d\n", cur_bidb, params.b);
-  //     printf("cur_bidh = %d/%d\n", cur_bidh, params.h);
-  //     printf("num_m_blocks_per_head = %d\n", num_m_blocks_per_head);
-  //     printf("cur_m_block = %d\n", cur_m_block);
-  //     printf("num_tiles_in_block = %d\n", num_tiles_in_block);
-  //     printf("Total tiles = %d\n", num_tiles);
-  // }
+#if defined(DEBUG_LEAN_ATTENTION)
+  if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+    printf("Debugging block = %d\n", tracing_block);
+    printf("kBlockM = %d\n", kBlockM);
+    printf("kBlockN = %d\n", kBlockN);
+    printf("kHeadDim = %d\n", kHeadDim);
+    printf("kNWarps = %d\n", kNWarps);
+    printf("IsEvenMN = %d\n", Is_even_MN);
+    printf("block_scale = %f\n", block_scale);
+    printf("seq_len_q -change = %d\n", params.seqlen_q);
+    printf("seq_len_k = %d\n", params.seqlen_k);
+    printf("q_batch_stride = %ld\n", params.q_batch_stride);
+    printf("q_head_stride = %ld\n", params.q_head_stride);
+    printf("q_row_stride = %ld\n", params.q_row_stride);
+    printf("k_batch_stride = %ld\n", params.k_batch_stride);
+    printf("k_head_stride = %ld\n", params.k_head_stride);
+    printf("k_row_stride = %ld\n", params.k_row_stride);
+    printf("v_row_stride = %ld\n", params.v_row_stride);
+    printf("o_row_stride = %ld\n", params.o_row_stride);
+    printf("start_m_block = %d\n", cur_m_block);
+    printf("start_tile_gid = %d\n", start_tile_gid);
+    printf("start_tile_hid = %d\n", start_tile_hid);
+    printf("cur_bidb = %d/%d\n", cur_bidb, params.b);
+    printf("cur_bidh = %d/%d\n", cur_bidh, params.h);
+    printf("num_m_blocks_per_head = %d\n", num_m_blocks_per_head);
+    printf("cur_m_block = %d\n", cur_m_block);
+    printf("num_tiles_in_block = %d\n", num_tiles_in_block);
+    printf("Total tiles = %d\n", num_tiles);
+  }
+#endif
 
   // Prologue
   int n_tile_min = kBlockM > kBlockN ? start_tile_hid - (block_scale * cur_m_block * (cur_m_block + 1) / 2)
@@ -203,18 +207,24 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
   auto smem_thr_copy_V = smem_tiled_copy_V.get_thread_slice(tidx);
   Tensor tOsVt = smem_thr_copy_V.partition_S(sVt);
 
-  // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-  //     printf("n_tile_min = %d\n", n_tile_min);
-  //     printf("n_tile = %d\n", n_tile);
-  //     printf("row_offset_q = %" PRId64 "\n", row_offset_q);
-  //     printf("row_offset_k = %" PRId64 "\n", row_offset_k);
-  //     printf("row_offset_v = %" PRId64 "\n", row_offset_v);
-  // }
+#if defined(DEBUG_LEAN_ATTENTION)
+  if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+    printf("n_tile_min = %d\n", n_tile_min);
+    printf("n_tile = %d\n", n_tile);
+    printf("row_offset_q = %" PRId64 "\n", row_offset_q);
+    printf("row_offset_k = %" PRId64 "\n", row_offset_k);
+    printf("row_offset_v = %" PRId64 "\n", row_offset_v);
+  }
 
-  // int num_blocks = 0;
+  int num_blocks = 0;
+#endif
+
   for (; num_tiles_left > 0;) {
-    // num_blocks += 1;
-    // auto prologue_start = clock64();
+#if defined(DEBUG_LEAN_ATTENTION)
+    num_blocks += 1;
+    auto prologue_start = clock64();
+#endif
+
     cur_bidb = start_tile_gid / (num_tiles_per_head * params.h);
     cur_bidh = (start_tile_gid - (cur_bidb * num_tiles_per_head * params.h)) / num_tiles_per_head;
     // Scheduling Policy - below
@@ -275,7 +285,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
         Tensor gKnew = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.knew_ptr) + row_offset_knew - binfo.seqlen_k_cache * params.knew_row_stride),
                                    Shape<Int<kBlockN>, Int<kHeadDim>>{},
                                    make_stride(params.knew_row_stride, _1{}));
-        // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) { printf("knew_ptr = %p, row_offset_knew = %d, gKnew_ptr = %p\n", params.knew_ptr, row_offset_knew, gKnew.data()); }
+#if defined(DEBUG_LEAN_ATTENTION)
+        if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+          printf("knew_ptr = %p, row_offset_knew = %d, gKnew_ptr = %p\n", params.knew_ptr, row_offset_knew, gKnew.data());
+        }
+#endif
         Tensor gVnew = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.vnew_ptr) + row_offset_vnew - binfo.seqlen_k_cache * params.vnew_row_stride),
                                    Shape<Int<kBlockN>, Int<kHeadDim>>{},
                                    make_stride(params.vnew_row_stride, _1{}));
@@ -285,9 +299,12 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
         const int n_block_copy_min = std::max(n_tile_min, binfo.seqlen_k_cache / kBlockN);
         auto tKgK_data = tKgK.data();
         auto tVgV_data = tVgV.data();
-        // if (threadIdx.x == 0 && (blockIdx.z == tracing_block || blockIdx.z == tracing_block + 1)) {
-        //     printf("Block %d n_tile_min %d n_tile %d n_block_copy_min %d\n", blockIdx.z, n_tile_min, n_tile, n_block_copy_min);
-        // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+        if (threadIdx.x == 0 && (blockIdx.z == tracing_block || blockIdx.z == tracing_block + 1)) {
+          printf("Block %d n_tile_min %d n_tile %d n_block_copy_min %d\n", blockIdx.z, n_tile_min, n_tile, n_block_copy_min);
+        }
+#endif
         for (int n_block = n_tile; n_block >= n_block_copy_min; n_block--) {
           lean::copy_w_min_idx<Is_even_K>(
               tVgVnew, tVgV, tKVcKV, tKVpKV, binfo.actual_seqlen_k - n_block * kBlockN, binfo.seqlen_k_cache - n_block * kBlockN);
@@ -311,27 +328,29 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
                                       binfo.actual_seqlen_k - n_tile * kBlockN);
     cute::cp_async_fence();
 
-    // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-    //     printf("##### CTA : %d\n", blockIdx.z);
-    //     printf("cur_bidb = %d/%d\n", cur_bidb, params.b);
-    //     printf("cur_bidh = %d/%d\n", cur_bidh, params.h);
-    //     printf("cur_m_block = %d\n", cur_m_block);
-    //     printf("seqlen_k_cache = %d\n", binfo.seqlen_k_cache);
-    //     printf("actual_seqlen_q = %d\n", binfo.actual_seqlen_q);
-    //     printf("actual_seqlen_k = %d\n", binfo.actual_seqlen_k);
-    //     printf("num_tiles_in_block = %d\n", num_tiles_in_block);
-    //     printf("n_tile(new) = %d\n", n_tile);
-    //     printf("n_tile_min = %d\n", n_tile_min);
-    //     printf("host_cta = %d\n", host_cta);
-    //     printf("end_cta = %d\n", end_cta);
-    //     printf("n_split_idx = %d\n", n_split_idx);
-    //     printf("total_splits = %d\n", total_splits);
-    //     printf("\n#### For next block:\n");
-    //     printf("start_tile_gid = %d\n", start_tile_gid);
-    //     printf("start_tile_hid = %d\n", start_tile_hid);
-    //     printf("num_tiles_left = %d\n", num_tiles_left);
-    //     printf("\n");
-    // }
+#if defined(DEBUG_LEAN_ATTENTION)
+    if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+      printf("##### CTA : %d\n", blockIdx.z);
+      printf("cur_bidb = %d/%d\n", cur_bidb, params.b);
+      printf("cur_bidh = %d/%d\n", cur_bidh, params.h);
+      printf("cur_m_block = %d\n", cur_m_block);
+      printf("seqlen_k_cache = %d\n", binfo.seqlen_k_cache);
+      printf("actual_seqlen_q = %d\n", binfo.actual_seqlen_q);
+      printf("actual_seqlen_k = %d\n", binfo.actual_seqlen_k);
+      printf("num_tiles_in_block = %d\n", num_tiles_in_block);
+      printf("n_tile(new) = %d\n", n_tile);
+      printf("n_tile_min = %d\n", n_tile_min);
+      printf("host_cta = %d\n", host_cta);
+      printf("end_cta = %d\n", end_cta);
+      printf("n_split_idx = %d\n", n_split_idx);
+      printf("total_splits = %d\n", total_splits);
+      printf("\n#### For next block:\n");
+      printf("start_tile_gid = %d\n", start_tile_gid);
+      printf("start_tile_hid = %d\n", start_tile_hid);
+      printf("num_tiles_left = %d\n", num_tiles_left);
+      printf("\n");
+    }
+#endif
 
     // All scheduling policy decisions should be made above this line
     clear(acc_o);
@@ -353,8 +372,10 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
     lean::cp_async_wait<0>();
     __syncthreads();
 
-    // prologue_duration += clock64() - prologue_start;
-    // auto compute_start = clock64();
+#if defined(DEBUG_LEAN_ATTENTION)
+    prologue_duration += clock64() - prologue_start;
+    auto compute_start = clock64();
+#endif
 
     // Clear the smem tiles to account for predicated off loads
     lean::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/true>(
@@ -364,16 +385,25 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
     lean::gemm(
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
-    // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-    //     printf("Tile 0 - Svalue: acc_s[0] = %f\n", acc_s(0));
-    // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+    if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+      printf("Tile 0 - Svalue: acc_s[0] = %f\n", acc_s(0));
+    }
+#endif
+
     mask.template apply_mask<Is_causal, Is_even_MN>(
         acc_s, n_tile * kBlockN, cur_m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
 
     lean::cp_async_wait<0>();
     __syncthreads();
-    // if (tidx == 0 && blockIdx.y == 0 && blockIdx.z == 0) { print(tVsV); }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+    if (tidx == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+      print(tVsV);
+    }
     // __syncthreads();
+#endif
 
     if (n_tile > n_tile_min) {
       // Advance gK
@@ -386,11 +416,13 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
 
     // We have key_padding_mask so we'll need to Check_inf
     softmax.template softmax_rescale_o</*Is_first=*/true, /*Check_inf=*/Is_causal || !Is_even_MN>(acc_s, acc_o, params.scale_softmax_log2);
-    // if (cute::thread0()) { print(scores_max); print(scores_sum); print(scores); }
 
-    // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-    //     printf("Tile 0 - PValue[0] = %f\n", acc_s(0));
-    // }
+#if defined(DEBUG_LEAN_ATTENTION)
+    if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+      printf("Tile 0 - PValue[0] = %f\n", acc_s(0));
+    }
+#endif
+
     // Convert acc_s from fp32 to fp16/bf16
     Tensor rP = lean::convert_type<Element>(acc_s);
     // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
@@ -398,12 +430,19 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
     Tensor tOrP = make_tensor(rP.data(), lean::convert_layout_acc_Aregs<Kernel_traits::TiledMma>(rP.layout()));
 
     lean::gemm_rs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_tiled_copy_V, smem_thr_copy_V);
-    // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-    //     printf("Tile 0 - AfterPV[0] = %f\n", acc_o(0));
-    // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+    if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+      printf("Tile 0 - AfterPV[0] = %f\n", acc_o(0));
+    }
+#endif
+
     n_tile -= 1;
-    // comp1_duration += clock64() - compute_start;
-    // compute_start = clock64();
+
+#if defined(DEBUG_LEAN_ATTENTION)
+    comp1_duration += clock64() - compute_start;
+    compute_start = clock64();
+#endif
 
     // These are the iterations where we don't need masking on S
     for (; n_tile >= n_tile_min; --n_tile) {
@@ -421,10 +460,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       lean::gemm(
           acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
           smem_thr_copy_Q, smem_thr_copy_K);
-
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("ntile %d Svalue: acc_s[0] = %f\n", n_tile, acc_s(0));
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("ntile %d Svalue: acc_s[0] = %f\n", n_tile, acc_s(0));
+      }
+#endif
 
       lean::cp_async_wait<0>();
       __syncthreads();
@@ -441,9 +481,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
           acc_s, n_tile * kBlockN, cur_m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
       softmax.template softmax_rescale_o</*Is_first=*/false, false>(acc_s, acc_o, params.scale_softmax_log2);
 
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("ntile %d Pvalue: acc_s[0] = %f\n", n_tile, acc_s(0));
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("ntile %d Pvalue: acc_s[0] = %f\n", n_tile, acc_s(0));
+      }
+#endif
       Tensor rP = lean::convert_type<Element>(acc_s);
 
       // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
@@ -451,24 +493,34 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       Tensor tOrP = make_tensor(rP.data(), lean::convert_layout_acc_Aregs<Kernel_traits::TiledMma>(rP.layout()));
 
       lean::gemm_rs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_tiled_copy_V, smem_thr_copy_V);
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("ntile %d AfterPV[0] = %f\n", n_tile, acc_o(0));
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("ntile %d AfterPV[0] = %f\n", n_tile, acc_o(0));
+      }
+#endif
     }
 
+#if defined(DEBUG_LEAN_ATTENTION)
     // Epilogue
-    // comp2_duration += clock64() - compute_start;
-    // auto epilogue_start = clock64();
+    comp2_duration += clock64() - compute_start;
+    auto epilogue_start = clock64();
+#endif
 
     if (host_cta && end_cta) {
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("acc_o[0] = %f\n", acc_o(0));
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("acc_o[0] = %f\n", acc_o(0));
+      }
+#endif
+
       Tensor lse = softmax.template normalize_softmax_lse<false>(acc_o, params.scale_softmax, params.rp_dropout);
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("lse[0] = %f\n", lse(0));
-      //     printf("acc_o[0] = %f\n", acc_o(0));
-      // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("lse[0] = %f\n", lse(0));
+        printf("acc_o[0] = %f\n", acc_o(0));
+      }
+#endif
 
       // Convert acc_o from fp32 to fp16/bf16
       Tensor rO = lean::convert_type<Element>(acc_o);
@@ -488,7 +540,7 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       cute::copy(smem_tiled_copy_O, taccOrO, taccOsO);
 
       const index_t row_offset_o = cur_bidb * params.o_batch_stride +
-                                   +cur_m_block * kBlockM * params.o_row_stride + cur_bidh * params.o_head_stride;
+                                   cur_m_block * kBlockM * params.o_row_stride + cur_bidh * params.o_head_stride;
 
       Tensor gO = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr) + row_offset_o),
                               Shape<Int<kBlockM>, Int<kHeadDim>>{},
@@ -515,10 +567,12 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
           tOpO(k) = get<1>(tOcO(0, 0, k)) < params.d;
         }
       }
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("tOpO[0] = %d\n", tOpO(0));
-      //     printf("tOrO[0] = %f\n", tOrO(0));
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("tOpO[0] = %d\n", tOpO(0));
+        printf("tOrO[0] = %f\n", tOrO(0));
+      }
+#endif
       // Clear_OOB_K must be false since we don't want to write zeros to gmem
       lean::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/false, /*Clear_OOB_K=*/false>(
           gmem_tiled_copy_O, tOrO, tOgO, tOcO, tOpO, params.seqlen_q - cur_m_block * kBlockM);
@@ -544,12 +598,14 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       const index_t row_offset_oaccum = (((index_t)(n_split_idx * params.b + cur_bidb) * params.h + cur_bidh) * params.seqlen_q + cur_m_block * kBlockM) * params.d_rounded;
       const index_t row_offset_lseaccum = ((n_split_idx * params.b + cur_bidb) * params.h + cur_bidh) * params.seqlen_q + cur_m_block * kBlockM;
 
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("n_split_idx = %d\n", n_split_idx);
-      //     printf("row_offset_o = %" PRId64 "\n", row_offset_o);
-      //     printf("row_offset_oaccum = %" PRId64 "\n", row_offset_oaccum);
-      //     printf("row_offset_lseaccum = %" PRId64 "\n", row_offset_lseaccum);
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("n_split_idx = %d\n", n_split_idx);
+        // printf("row_offset_o = %" PRId64 "\n", row_offset_o);
+        printf("row_offset_oaccum = %" PRId64 "\n", row_offset_oaccum);
+        printf("row_offset_lseaccum = %" PRId64 "\n", row_offset_lseaccum);
+      }
+#endif
 
       Tensor gOaccum = make_tensor(make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.oaccum_ptr) + (row_offset_oaccum)),
                                    Shape<Int<kBlockM>, Int<kHeadDim>>{},
@@ -602,11 +658,17 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
 
       __threadfence();
 
-      // if (threadIdx.x == 0 && (blockIdx.z == tracing_block || blockIdx.z == tracing_block + 1)) {
-      //     printf("Block %d Writing Flag %d\n", blockIdx.z, (cur_bidb * params.h * num_m_blocks_per_head) + (cur_bidh * num_m_blocks_per_head) + cur_m_block);
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && (blockIdx.z == tracing_block || blockIdx.z == tracing_block + 1)) {
+        printf("Block %d Writing Flag %d\n", blockIdx.z, (cur_bidb * params.h * num_m_blocks_per_head) + (cur_bidh * num_m_blocks_per_head) + cur_m_block);
+      }
+#endif
+
       atomicAdd(reinterpret_cast<int32_t*>(params.sync_flag) + (cur_bidb * params.h * num_m_blocks_per_head) + (cur_bidh * num_m_blocks_per_head) + cur_m_block, 1);
-      // epil2_duration += clock64() - epilogue_start;
+
+#if defined(DEBUG_LEAN_ATTENTION)
+      epil2_duration += clock64() - epilogue_start;
+#endif
     } else {
       constexpr int kNThreads = Kernel_traits::kNThreads;
 
@@ -614,14 +676,20 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       static_assert(kNThreads == 128, "We assume that each block has 128 threads");
 
       ////////////////////////////////////////////////////////////////////////////////
-      // if(threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("Before LSE acc_o[0] = %f\n", acc_o(0));
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("Before LSE acc_o[0] = %f\n", acc_o(0));
+      }
+#endif
+
       Tensor lse = softmax.template normalize_softmax_lse<false, true>(acc_o, params.scale_softmax);
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("After LSE acc_o[0] = %f\n", acc_o(0));
-      //     printf("lse[0] = %f\n", lse(0));
-      // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("After LSE acc_o[0] = %f\n", acc_o(0));
+        printf("lse[0] = %f\n", lse(0));
+      }
+#endif
 
       Tensor sOaccum = make_tensor(make_smem_ptr(reinterpret_cast<ElementAccum*>(smem_)), typename Kernel_traits::SmemLayoutO{});  // (SMEM_M,SMEM_N)
       // Partition sO to match the accumulator partitioning
@@ -650,10 +718,12 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       Tensor gLSEaccum = make_tensor(make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.softmax_lseaccum_ptr) + row_offset_lseaccum),
                                      Shape<Int<kBlockM>>{}, Stride<_1>{});
 
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("Block %d row_offset_oaccum = %" PRId64 "\n", blockIdx.z, row_offset_oaccum);
-      //     printf("Block %d row_offset_lseaccum = %" PRId64 "\n", blockIdx.z, row_offset_lseaccum);
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("Block %d row_offset_oaccum = %" PRId64 "\n", blockIdx.z, row_offset_oaccum);
+        printf("Block %d row_offset_lseaccum = %" PRId64 "\n", blockIdx.z, row_offset_lseaccum);
+      }
+#endif
 
       // GmemTiledCopyOaccum gmem_tiled_copy_Oaccum;
       // auto gmem_thr_copy_Oaccum = gmem_tiled_copy_Oaccum.get_thread_slice(tidx);
@@ -673,9 +743,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       Tensor tOgOaccumReg = gmem_thr_copy_Oaccum.partition_D(gOaccum);
       Tensor tOrOaccum = make_tensor<ElementAccum>(shape(tOgOaccumReg));
 
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("First split t0g0accum.data() %p\n", tOgOaccum.data());
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("First split t0g0accum.data() %p\n", tOgOaccum.data());
+      }
+#endif
 
       __syncthreads();
 
@@ -704,9 +776,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
           const int col = get<0>(taccOcO_row(mi));
           if (col < params.seqlen_q - cur_m_block * kBlockM) {
             sLSE(0, col) = lse(mi);
-            // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-            //     printf("threadIdx.x %d col %d mi%d slSE %f\n", threadIdx.x, col, mi, lse(mi));
-            // }
+#if defined(DEBUG_LEAN_ATTENTION)
+            if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+              printf("threadIdx.x %d col %d mi%d slSE %f\n", threadIdx.x, col, mi, lse(mi));
+            }
+#endif
           }
         }
       }
@@ -719,20 +793,25 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
                            (cur_bidh * num_m_blocks_per_head) + cur_m_block,
                        0) < (total_splits - 1) * kNThreads) {
         __threadfence();
-        // if (threadIdx.x%32 == 0 && blockIdx.z == tracing_block) {
-        //     printf("Waiting Block: %d target-value: %d\n", blockIdx.z, (total_splits - 1) * kNThreads);
-        // }
+#if defined(DEBUG_LEAN_ATTENTION)
+        if (threadIdx.x % 32 == 0 && blockIdx.z == tracing_block) {
+          printf("Waiting Block: %d target-value: %d\n", blockIdx.z, (total_splits - 1) * kNThreads);
+        }
+#endif
       }
 
+#if defined(DEBUG_LEAN_ATTENTION)
       // Print sync flag value
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     int32_t sync_flag = atomicAdd(reinterpret_cast<int32_t *>(params.sync_flag) +
-      //           (cur_bidb * params.h * num_m_blocks_per_head) +
-      //           (cur_bidh * num_m_blocks_per_head) + cur_m_block, 0);
-      //     if (threadIdx.x%32 == 0 && blockIdx.z == tracing_block) {
-      //         printf("Sync flag value: %d\n", sync_flag);
-      //     }
-      // }
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        int32_t sync_flag = atomicAdd(reinterpret_cast<int32_t*>(params.sync_flag) +
+                                          (cur_bidb * params.h * num_m_blocks_per_head) +
+                                          (cur_bidh * num_m_blocks_per_head) + cur_m_block,
+                                      0);
+        if (threadIdx.x % 32 == 0 && blockIdx.z == tracing_block) {
+          printf("Sync flag value: %d\n", sync_flag);
+        }
+      }
+#endif
 
       Tensor gLSEaccumRead = make_tensor(make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.softmax_lseaccum_ptr) + row_offset_lseaccum),
                                          Shape<Int<kMaxSplits>, Int<kBlockM>>{},
@@ -749,17 +828,24 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
         ElementAccum lse = (row > 0 && row < total_splits && col < params.b * params.h * (index_t)params.seqlen_q - row_offset_lseaccum) ? gLSEaccumRead(row, col) : -INFINITY;
         if (row > 0 && row < kMaxSplits) {
           sLSE(row, col) = lse;
-          // if (threadIdx.x % 32 == 0 && blockIdx.z == tracing_block) {
-          //     printf("ThreadIdx %d l %d row %d col %d lse %f\n", threadIdx.x, l, row, col, lse);
-          // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+          if (threadIdx.x % 32 == 0 && blockIdx.z == tracing_block) {
+            printf("ThreadIdx %d l %d row %d col %d lse %f\n", threadIdx.x, l, row, col, lse);
+          }
+#endif
         }
       }
       __syncthreads();  // For all LSEs to reach shared memory
       Tensor lse_accum = make_tensor<ElementAccum>(Shape<Int<kNLsePerThread>>{});
       constexpr int kRowsPerLoadTranspose = std::min(kRowsPerLoadLSE, kMaxSplits);
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("kNLsePerThread %d kRowsPerLoadLSE %d kRowsPerLoadTranspose %d\n", kNLsePerThread, kRowsPerLoadLSE, kRowsPerLoadTranspose);
-      // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("kNLsePerThread %d kRowsPerLoadLSE %d kRowsPerLoadTranspose %d\n", kNLsePerThread, kRowsPerLoadLSE, kRowsPerLoadTranspose);
+      }
+#endif
+
       // To make sure that kMaxSplits is within 1 warp: we decide how many elements within kMaxSplits
       // each thread should hold. If kMaxSplits = 16, then each thread holds 2 elements (128 threads,
       // kBlockM rows, so each time we load we can load 128 / kBlockM rows).
@@ -772,9 +858,12 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
         const int row = l * kRowsPerLoadTranspose + tidx % kRowsPerLoadTranspose;
         const int col = tidx / kRowsPerLoadTranspose;
         lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE(row, col) : -INFINITY;
-        // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-        //     printf("ThreadIdx %d l %d row %d col %d lse_accum %f\n", threadIdx.x, l, row, col, lse_accum(l));
-        // }
+
+#if defined(DEBUG_LEAN_ATTENTION)
+        if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+          printf("ThreadIdx %d l %d row %d col %d lse_accum %f\n", threadIdx.x, l, row, col, lse_accum(l));
+        }
+#endif
       }
 
       // Compute the logsumexp of the LSE along the split dimension.
@@ -805,9 +894,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
         if (row < total_splits && col < kBlockM) {
           sLSE(row, col) = expf(lse_accum(l) - lse_logsum);
           ElementAccum lse_scale = sLSE(row, col);
-          // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-          //     printf("ThreadIdx %d l %d row %d col %d lse_accum %f lse_logsum %f sLSE %f\n", threadIdx.x, l, row, col, lse_accum(l), lse_logsum, lse_scale);
-          // }
+#if defined(DEBUG_LEAN_ATTENTION)
+          if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+            printf("ThreadIdx %d l %d row %d col %d lse_accum %f lse_logsum %f sLSE %f\n", threadIdx.x, l, row, col, lse_accum(l), lse_logsum, lse_scale);
+          }
+#endif
         }
       }
 
@@ -838,18 +929,22 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
 #pragma unroll
           for (int i = 0; i < size<0>(tOrOaccum); ++i) {
             tOrO(i, m, k) += lse_scale * tOrOaccum(i, m, k);
-            // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-            //     printf("ThreadIdx %d Split %d m %d Row %d k %d i %d LSE %f Oaccum %f O %f\n", threadIdx.x, 0, m, row, k, i, lse_scale, tOrOaccum(i, m, k), tOrO(i, m, k));
-            // }
+#if defined(DEBUG_LEAN_ATTENTION)
+            if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+              printf("ThreadIdx %d Split %d m %d Row %d k %d i %d LSE %f Oaccum %f O %f\n", threadIdx.x, 0, m, row, k, i, lse_scale, tOrOaccum(i, m, k), tOrO(i, m, k));
+            }
+#endif
           }
         }
       }
 
       tOgOaccum.data() = tOgOaccum.data() + params.b * params.h * (index_t)params.seqlen_q * params.d_rounded;
 
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("After First Split t0g0accum.data() %p\n", tOgOaccum.data());
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("After First Split t0g0accum.data() %p\n", tOgOaccum.data());
+      }
+#endif
       // Load Oaccum in then scale and accumulate to O
       // Here m is each row of 0accum along token dimension
       // k is
@@ -865,9 +960,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
 #pragma unroll
             for (int i = 0; i < size<0>(tOrOaccum); ++i) {
               tOrO(i, m, k) += lse_scale * tOrOaccum(i, m, k);
-              // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-              //     printf("ThreadIdx %d Split %d m %d Row %d k %d i %d LSE %f Oaccum %f O %f\n", threadIdx.x, split, m, row, k, i, lse_scale, tOrOaccum(i, m, k), tOrO(i, m, k));
-              // }
+#if defined(DEBUG_LEAN_ATTENTION)
+              if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+                printf("ThreadIdx %d Split %d m %d Row %d k %d i %d LSE %f Oaccum %f O %f\n", threadIdx.x, split, m, row, k, i, lse_scale, tOrOaccum(i, m, k), tOrO(i, m, k));
+              }
+#endif
             }
           }
         }
@@ -895,8 +992,11 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
           }
         }
       }
-      // epil3_duration += clock64() - epilogue_start;
+#if defined(DEBUG_LEAN_ATTENTION)
+      epil3_duration += clock64() - epilogue_start;
+#endif
     }
+
     if (num_tiles_left) {
       // We can probably do better than this
       // We first decrement the pointers back to starting.
@@ -923,23 +1023,32 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       tKgK.data() = tKgK.data() + row_offset_k;
       tVgV.data() = tVgV.data() + row_offset_v;
 
-      // if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
-      //     printf("#### Ready for next block:\n");
-      //     printf("next_block %d\n", cur_m_block);
-      //     printf("n_tile %d\n", n_tile);
-      //     printf("row_offset_q = %" PRId64 "\n", row_offset_q);
-      //     printf("row_offset_k = %" PRId64 "\n", row_offset_k);
-      //     printf("row_offset_v = %" PRId64 "\n", row_offset_v);
-      // }
+#if defined(DEBUG_LEAN_ATTENTION)
+      if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
+        printf("#### Ready for next block:\n");
+        printf("next_block %d\n", cur_m_block);
+        printf("n_tile %d\n", n_tile);
+        printf("row_offset_q = %" PRId64 "\n", row_offset_q);
+        printf("row_offset_k = %" PRId64 "\n", row_offset_k);
+        printf("row_offset_v = %" PRId64 "\n", row_offset_v);
+      }
+#endif
     }
-    // epilogue_duration += clock64() - epilogue_start;
+
+#if defined(DEBUG_LEAN_ATTENTION)
+    epilogue_duration += clock64() - epilogue_start;
+#endif
   }
 
-  // if (threadIdx.x == 0) {
-  //     uint smid;
-  //     asm("mov.u32 %0, %smid;" : "=r"(smid));
-  //     printf("%d %d %d %d %lld %lld %lld %lld %lld %lld %lld %lld\n", blockIdx.z, num_blocks, smid, cta_id, clock64() - kernel_start, prologue_duration, comp1_duration, comp2_duration, epilogue_duration, epil1_duration, epil2_duration, epil3_duration);
-  // }
+#if defined(DEBUG_LEAN_ATTENTION)
+  if (threadIdx.x == 0) {
+    uint smid;
+    asm("mov.u32 %0, %smid;" : "=r"(smid));
+    printf("%d %d %d %d %lld %lld %lld %lld %lld %lld %lld %lld\n",
+           blockIdx.z, num_blocks, smid, cta_id, clock64() - kernel_start, prologue_duration, comp1_duration,
+           comp2_duration, epilogue_duration, epil1_duration, epil2_duration, epil3_duration);
+  }
+#endif
 }
 
 template <typename Kernel_traits, bool Is_causal, bool Is_even_MN, bool Is_even_K, int kMaxSplits, bool Append_KV, typename Params>

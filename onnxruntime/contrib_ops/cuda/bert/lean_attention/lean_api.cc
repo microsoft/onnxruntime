@@ -178,15 +178,18 @@ std::tuple<size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t> get_n
   }
 
   max_seqlen_q = max_seqlen_q * num_heads / num_heads_k;
-  // printf("block_n: %d\n", block_n);
-  // printf("block_m: %d\n", block_m);
-  // printf("num_m_blocks: %d\n", num_m_blocks);
-  // printf("num_n_blocks: %d\n", num_n_blocks);
-  // printf("max_seqlen_q: %lu\n", max_seqlen_q);
-  // printf("max_seqlen_k: %lu\n", max_seqlen_k);
-  // printf("is_causal: %d\n", is_causal);
-  // printf("num_heads: %lu\n", num_heads);
-  // printf("num_heads_k: %lu\n", num_heads_k);
+
+#if defined(DEBUG_LEAN_ATTENTION)
+  printf("block_n: %d\n", block_n);
+  printf("block_m: %d\n", block_m);
+  printf("num_m_blocks: %d\n", num_m_blocks);
+  printf("num_n_blocks: %d\n", num_n_blocks);
+  printf("max_seqlen_q: %lu\n", max_seqlen_q);
+  printf("max_seqlen_k: %lu\n", max_seqlen_k);
+  printf("is_causal: %d\n", is_causal);
+  printf("num_heads: %lu\n", num_heads);
+  printf("num_heads_k: %lu\n", num_heads_k);
+#endif
 
   size_t tiles_per_head = 0;
   if (is_causal) {
@@ -225,12 +228,15 @@ std::tuple<size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t> get_n
   }
   size_t high_load_tbs = total_tiles - ((max_tiles_per_tb - 1) * lean_griddimz);
 
-  // printf("Causal: %d params.tiles_per_head : %lu\n", is_causal, tiles_per_head);
-  // printf("num_splits = %lu\n", num_splits);
-  // printf("total_tiles = %lu\n", total_tiles);
-  // printf("lean_griddimz = %lu\n", lean_griddimz);
-  // printf("max_tiles_per_tb = %lu\n", max_tiles_per_tb);
-  // printf("high_load_tbs = %lu\n", high_load_tbs);
+#if defined(DEBUG_LEAN_ATTENTION)
+  printf("Causal: %d params.tiles_per_head : %lu\n", is_causal, tiles_per_head);
+  printf("num_splits = %lu\n", num_splits);
+  printf("total_tiles = %lu\n", total_tiles);
+  printf("lean_griddimz = %lu\n", lean_griddimz);
+  printf("max_tiles_per_tb = %lu\n", max_tiles_per_tb);
+  printf("high_load_tbs = %lu\n", high_load_tbs);
+#endif
+
   if (num_splits > 1) {
     size_t softmax_lse_accum_bytes = get_softmax_lse_accum_size(num_splits, batch_size, num_heads_k, max_seqlen_q);
     auto round_multiple = [](size_t x, size_t m) { return (x + m - 1) / m * m; };
@@ -295,8 +301,17 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
   const bool paged_KV = block_table != nullptr;
 
-  // printf("batch_size: %d num_heads %d num_heads_k %d head_size %d seqlen_q %d seqlen_k %d seqlen_k_new %d softmax_scale %f is_causal %d is_bf16 %d past_bsnh %d num_splits %d grid_dimz %d max_tiles_per_tb %d high_load_tbs %d tiles_per_head %d local_window_size %d is_rotary_interleaved %d is_packed_qkv %d max_num_blocks_per_seq %d page_block_size %d\n",
-  //        batch_size, num_heads, num_heads_k, head_size, seqlen_q, seqlen_k, seqlen_k_new, softmax_scale, is_causal, is_bf16, past_bsnh, num_splits, grid_dimz, max_tiles_per_tb, high_load_tbs, tiles_per_head, local_window_size, is_rotary_interleaved, is_packed_qkv, max_num_blocks_per_seq, page_block_size);
+#if defined(DEBUG_LEAN_ATTENTION)
+  printf(
+      "batch_size: %d num_heads %d num_heads_k %d head_size %d seqlen_q %d seqlen_k %d seqlen_k_new %d "
+      "softmax_scale %f is_causal %d is_bf16 %d past_bsnh %d num_splits %d grid_dimz %d max_tiles_per_tb %d "
+      "high_load_tbs %d tiles_per_head %d local_window_size %d is_rotary_interleaved %d is_packed_qkv %d "
+      "max_num_blocks_per_seq %d page_block_size %d\n",
+      batch_size, num_heads, num_heads_k, head_size, seqlen_q, seqlen_k, seqlen_k_new,
+      softmax_scale, is_causal, is_bf16, past_bsnh, num_splits, grid_dimz, max_tiles_per_tb,
+      high_load_tbs, tiles_per_head, local_window_size, is_rotary_interleaved, is_packed_qkv,
+      max_num_blocks_per_seq, page_block_size);
+#endif
 
   // Lean attention treats decode as non-causal
   if (seqlen_q == 1) {
@@ -308,7 +323,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     const int ngroups = num_heads / num_heads_k;
     seqlen_q = ngroups;
     num_heads = num_heads_k;
-    // printf("new Qheads: %d\n", num_heads);
   }
 
   // In kv-cache case, seqlen_k_max as kv sequence length
