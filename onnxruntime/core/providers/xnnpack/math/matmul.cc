@@ -152,18 +152,18 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
 Status MatMul::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
-  pthreadpool_t threadpool = GetThreadPool();
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
-
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  auto* y_data = y->MutableData<float>();
+  xnn_status status = xnn_status_success;
 
-  xnn_status status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
-  if (op_type_ == OpComputeType::op_compute_type_fp16) {
+  pthreadpool_t threadpool = GetThreadPool();
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_reshape_fully_connected_nc_f16(op0_.get(), a->Shape()[0], threadpool);
   }
 
@@ -171,10 +171,14 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_", op_type_str_, " returned ", status);
   }
 
-  status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
-  if (op_type_ == OpComputeType::op_compute_type_fp16) {
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+    auto* y_data = y->MutableData<float>();
+    status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    auto* y_data = y->MutableData<MLFloat16>();
     status = xnn_setup_fully_connected_nc_f16(op0_.get(), a->Data<MLFloat16>(), y_data);
   }
+
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_", op_type_str_, " returned ", status);
   }

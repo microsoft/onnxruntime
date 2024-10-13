@@ -115,32 +115,24 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {3, 0},
        {}});
 
-  test_cases.push_back(
-      {"test 3D batch",
-       {3, 1, 3},
-       {3, 3, 2},
-       {3, 1, 2},
-       {
-           // clang-format off
-            10,  13,
-           100, 112,
-           298, 319,
-           // clang-format on
-       }});
+  return test_cases;
+}
 
+template <>
+std::vector<MatMulTestData<MLFloat16>> GenerateTestCases() {
+  std::vector<MatMulTestData<MLFloat16>> test_cases;
+
+  // test 2D expected_vals
+  std::vector<int64_t> expected_vals = {42, 48, 54, 114, 136, 158, 186, 224, 262};
+  std::vector<MLFloat16> expected_vals_fp16(expected_vals.size());
+  std::transform(expected_vals.begin(), expected_vals.end(), expected_vals_fp16.begin(),
+                 [](int64_t num) { return MLFloat16(float(num)); });
   test_cases.push_back(
-      {"test 4D batch",
-       {2, 2, 1, 3},
-       {2, 2, 3, 2},
-       {2, 2, 1, 2},
-       {
-           // clang-format off
-            10,  13,
-           100, 112,
-           298, 319,
-           604, 634,
-           // clang-format on
-       }});
+      {"test 2D MLfloat16",
+       {3, 4},
+       {4, 3},
+       {3, 3},
+       expected_vals_fp16});
 
   return test_cases;
 }
@@ -191,6 +183,32 @@ TEST(MathOpTest, MatMulFloatType) {
   }
   RunMatMulTest<float>(7, false, false);
 }
+
+// To Test XNNPACK, Matrix B must be constant
+TEST(MathOpTest, MatMulFloatType_ConstantB) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<float>(7, false, true);
+}
+
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(ENABLE_XNNPACK_FP16_TESTS)
+TEST(MathOpTest, MatMulFloat16_ConstantB) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<MLFloat16>(7, false, true);
+}
+#endif
 
 TEST(MathOpTest, MatMulDoubleType) {
   RunMatMulTest<double>(7);
