@@ -1,6 +1,10 @@
 /******************************************************************************
- * Copyright (c) 2024, Tri Dao.
+ * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+
+// Modifications: support lean attention.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #if USE_LEAN_ATTENTION
 

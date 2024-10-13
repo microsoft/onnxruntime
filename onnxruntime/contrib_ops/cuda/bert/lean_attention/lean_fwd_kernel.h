@@ -1,4 +1,5 @@
-// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 
@@ -15,7 +16,6 @@
 #include "contrib_ops/cuda/bert/lean_attention/utils.h"
 #include "contrib_ops/cuda/bert/lean_attention/softmax.h"
 #include "contrib_ops/cuda/bert/lean_attention/mask.h"
-#include "contrib_ops/cuda/bert/lean_attention/rotary.h"
 
 namespace onnxruntime {
 namespace lean {
