@@ -1793,7 +1793,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if args.android:
             env["ANDROID_SDK_ROOT"] = args.android_sdk_path
             env["ANDROID_NDK_HOME"] = args.android_ndk_path
-        # cmd_args += ['--verbose']
+        #cmd_args += ['--verbose']
         print(cmd_args)
         print(env)
         run_subprocess(cmd_args, env=env)
