@@ -48,30 +48,32 @@ jobs:
       - name: create directory to store the library
         run: mkdir -p $HOME/onnxlibrary/macabi_release_v20230327_2320
 
-      - name: create release build
-        run: |
-          # Since Python 3.12, distutils is removed
-          # pip3 install setuptools
-          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
-          cd ${{ github.workspace }}/tools/python
-          ls ${{ github.workspace }}/tools/python
-          # pip install -r ${{ github.workspace }}/requirements-dev.txt
-          # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
-          #Deal with lSystem
-          export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
-          export LIBRARY_PATH="$LIBRARY_PATH:$SDKROOT/usr/lib"
-          #Build command
-          python ${{ github.workspace }}/tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
-            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
-
-      # - name: create releae build
+      # - name: create release build
       #   run: |
+      #     # Since Python 3.12, distutils is removed
+      #     # pip3 install setuptools
+      #     export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+      #     cd ${{ github.workspace }}/tools/python
+      #     ls ${{ github.workspace }}/tools/python
       #     # pip install -r ${{ github.workspace }}/requirements-dev.txt
       #     # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
-      #     # python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dirr=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
-      #     #   --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-      #     #   --path_to_protoc_exe=/usr/local/bin/protoc ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
+      #     #Deal with lSystem
+      #     export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+      #     export LIBRARY_PATH="$LIBRARY_PATH:$SDKROOT/usr/lib"
+      #     #Build command
+      #     python tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dir /Users/goodnotesci/onnxlibrary/ios_release_v20240405_onnx116 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+
+      #     python ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
+      #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+      #       --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
+
+      - name: create releae build
+        run: |
+          # pip install -r ${{ github.workspace }}/requirements-dev.txt
+          # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
+          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dirr=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
+            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+            --path_to_protoc_exe=/usr/local/bin/protoc ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
 
       #     python ./tools/ci_build/build.py \
       #       --build_dir $HOME/onnxlibrary/macabi_release_v20230327_2320 \
