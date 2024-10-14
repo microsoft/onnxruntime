@@ -237,6 +237,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Sub", "sub"},
     {"Tan", "tan"},
     {"Tanh", "tanh"},
+    {"Tile", "tile"},
     {"Transpose", "transpose"},
     {"Trilu", "triangular"},
     {"Unsqueeze", "reshape"},

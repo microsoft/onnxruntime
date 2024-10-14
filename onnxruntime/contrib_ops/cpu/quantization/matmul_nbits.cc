@@ -16,10 +16,6 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
 
-#ifdef ORT_NEURAL_SPEED
-#include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
-#endif
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -41,16 +37,6 @@ int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level
                                          static_cast<int64_t>(CompMostAccurate),
                                          static_cast<int64_t>(CompLeastAccurate));
 
-#if defined(ORT_NEURAL_SPEED)
-
-  ORT_UNUSED_PARAMETER(nbits);
-  ORT_UNUSED_PARAMETER(block_size);
-
-  // Neural Speed APIs already expect a minimum accuracy level so just use the given value.
-  return accuracy_level;
-
-#else  // defined(ORT_NEURAL_SPEED)
-
   // Find a supported accuracy level that is not less accurate than the one given.
   // CompMostAccurate is always supported with the fallback implementation.
   // Note: A higher numeric accuracy level value means lower accuracy, so the comparison order is reversed.
@@ -63,8 +49,6 @@ int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level
   }
 
   return effective_accuracy_level;
-
-#endif  // defined(ORT_NEURAL_SPEED)
 }
 }  // namespace
 
@@ -109,15 +93,6 @@ class MatMulNBits final : public OpKernel {
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
-#ifdef ORT_NEURAL_SPEED
-    const Tensor* tensor_B = nullptr;
-    const Tensor* tensor_scale = nullptr;
-    bool B_constant = info.TryGetConstantInput(InputIndex::B, &tensor_B);
-    bool scale_constant = info.TryGetConstantInput(InputIndex::scales, &tensor_scale);
-    is_asym_ = zero_point_arg != nullptr;
-    all_constant_ = B_constant && scale_constant;
-    all_constant_ = is_asym_ ? all_constant_ && has_zp_input_ : all_constant_;
-#endif
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -146,12 +121,6 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<float> bias_fp32_{};
 
   bool has_zp_input_{false};
-#if defined(ORT_NEURAL_SPEED)
-
-  bool is_asym_{false};
-  bool all_constant_{false};
-
-#endif  // defined(ORT_NEURAL_SPEED)
 
   // dequantize B first and then compute float gemm
   Status ComputeBUnpacked(const Tensor* a,
@@ -178,71 +147,6 @@ class MatMulNBits final : public OpKernel {
     ORT_THROW("ComputeBPacked is not supported for T1 type.");
   }
 };
-
-#if defined(ORT_NEURAL_SPEED)
-template <typename T1>
-Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                                /*out*/ bool& is_packed,
-                                /*out*/ PrePackedWeights* prepacked_weights) {
-  is_packed = false;
-  if (has_g_idx_ || has_unquantized_zero_point_) {
-    return Status::OK();
-  }
-
-  if (!all_constant_) {
-    return Status::OK();
-  }
-
-  if (has_bias_) {  // adding bias is not supported
-    return Status::OK();
-  }
-
-  if (nbits_ != 4) {
-    return Status::OK();
-  }
-
-  MLAS_THREADPOOL* pool = nullptr;
-
-  auto nbits = static_cast<int>(nbits_);
-  if (input_idx == InputIndex::B) {
-    packed_b_size_ = NSNBitsGemmPackBSize(N_, K_, block_size_, nbits, is_asym_, compute_type_);
-    if (packed_b_size_ == 0) return Status::OK();
-    auto qptr = tensor.Data<uint8_t>();
-    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-    std::memset(packed_b_.get(), 0, packed_b_size_);
-    NSNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, false,
-                     compute_type_, pool);
-    if (prepacked_weights) {
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-    }
-    is_packed = true;
-  }
-  if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
-    auto sptr = tensor.Data<float>();
-    NSNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, !is_asym_,
-                     compute_type_, pool);
-    if (prepacked_weights) {
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-    }
-    is_packed = true;
-  }
-  if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
-    auto zptr = tensor.Data<uint8_t>();
-    NSNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits, is_asym_, is_asym_,
-                     compute_type_, pool);
-    if (prepacked_weights) {
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-    }
-    is_packed = true;
-  }
-
-  return Status::OK();
-}
-
-#else  // defined(ORT_NEURAL_SPEED)
 
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
@@ -338,37 +242,15 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
   return Status::OK();
 }
 
-#endif  // !defined(ORT_NEURAL_SPEED)
-
 template <typename T1>
 Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                                   /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
-#if defined(ORT_NEURAL_SPEED)
-
-  // Pack three tensors into one buffer
   if (input_idx == 1) {
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
-  if (input_idx == 2) {
-    used_shared_buffers = true;
-    packed_b_ = std::move(prepacked_buffers[0]);
-  }
-  if (input_idx == 3) {
-    used_shared_buffers = true;
-    packed_b_ = std::move(prepacked_buffers[0]);
-  }
-
-#else  // defined(ORT_NEURAL_SPEED)
-
-  if (input_idx == 1) {
-    used_shared_buffers = true;
-    packed_b_ = std::move(prepacked_buffers[0]);
-  }
-
-#endif  // defined(ORT_NEURAL_SPEED)
 
   return Status::OK();
 }
@@ -776,32 +658,9 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // If this changes, i.e., if MlasIsSQNBitGemmAvailable() can return true while
                     // MlasSQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasSQNBitGemmBatch()
                     // with B directly too.
-#if defined(ORT_NEURAL_SPEED)
-    const auto* a_data = a->Data<T1>();
-    auto* y_data = y->MutableData<T1>();
-    const size_t batch_count = helper.OutputOffsets().size();
-    const size_t M = static_cast<size_t>(helper.M());
-    const size_t N = static_cast<size_t>(helper.N());
-    const size_t K = static_cast<size_t>(helper.K());
-    const size_t lda = helper.Lda(false);
-    InlinedVector<NS_SQNBITS_GEMM_DATA_PACKED_PARAMS> gemm_params(batch_count);
-    for (size_t i = 0; i < batch_count; i++) {
-      gemm_params[i].A = a_data + helper.LeftOffsets()[i];
-      gemm_params[i].lda = lda;
-      gemm_params[i].B = packed_b_.get();
-      gemm_params[i].C = y_data + helper.OutputOffsets()[i];
-      gemm_params[i].ldc = N;
-    }
-    auto ws_size = NSSQNBitsGemmBatchWorkspaceSize(M, N, K, batch_count, gemm_params.data());
-    // workspace for activation process(dynamic quantization and others)
-    auto ws_ptr = IAllocator::MakeUniquePtr<int8_t>(allocator, ws_size);
-    NSSQNBitsGemmBatchPackedB(M, N, K, batch_count, gemm_params.data(), ws_ptr.get(), thread_pool);
-    return Status::OK();
-#else   // defined(ORT_NEURAL_SPEED)
     if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
       return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
-#endif  // !defined(ORT_NEURAL_SPEED)
   }
 
   // If B is prepacked, B would have been removed from the context

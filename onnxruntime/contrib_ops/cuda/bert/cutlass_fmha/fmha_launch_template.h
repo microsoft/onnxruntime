@@ -10,7 +10,7 @@
 #endif
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "41_fused_multi_head_attention/kernel_forward.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -38,7 +38,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory 
+    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
     if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
       file(GLOB _provider_headers CONFIGURE_DEPENDS
@@ -89,10 +89,22 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # create Info.plist for the framework and podspec for CocoaPods (optional)
   set(MACOSX_FRAMEWORK_NAME "onnxruntime")
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
-  # Need to include CoreML as a weaklink for CocoaPods package if the EP is enabled
+
+  # Setup weak frameworks for macOS/iOS. 'weak' as the CoreML or WebGPU EPs are optionally enabled.
   if(onnxruntime_USE_COREML)
-    set(APPLE_WEAK_FRAMEWORK "\\\"CoreML\\\"")
+    list(APPEND _weak_frameworks "\\\"CoreML\\\"")
   endif()
+
+  if(onnxruntime_USE_WEBGPU)
+    list(APPEND _weak_frameworks "\\\"QuartzCore\\\"")
+    list(APPEND _weak_frameworks "\\\"IOSurface\\\"")
+    list(APPEND _weak_frameworks "\\\"Metal\\\"")
+  endif()
+
+  if (_weak_frameworks)
+    string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
+  endif()
+
   set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
   configure_file(
@@ -200,6 +212,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
+  ${PROVIDERS_WEBGPU}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
@@ -364,16 +377,58 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
     endif()
   endforeach()
 
+  # helper function that recurses to also handle static library dependencies of the ORT external libraries
+  set(_processed_libs)  # keep track of processed libraries to skip any duplicate dependencies
+  function(add_symlink_for_static_lib_and_dependencies lib)
+    function(process cur_target)
+      # de-alias if applicable so a consistent target name is used
+      get_target_property(alias ${cur_target} ALIASED_TARGET)
+      if(TARGET ${alias})
+        set(cur_target ${alias})
+      endif()
+
+      if(${cur_target} IN_LIST _processed_libs OR ${cur_target} IN_LIST lib_and_dependencies)
+        return()
+      endif()
+
+      list(APPEND lib_and_dependencies ${cur_target})
+
+      get_target_property(link_libraries ${cur_target} LINK_LIBRARIES)
+      foreach(dependency ${link_libraries})
+        if(TARGET ${dependency})
+          process(${dependency})
+        endif()
+      endforeach()
+
+      set(lib_and_dependencies ${lib_and_dependencies} PARENT_SCOPE)
+    endfunction()
+
+    set(lib_and_dependencies)
+    process(${lib})
+
+    foreach(_target ${lib_and_dependencies})
+      get_target_property(type ${_target} TYPE)
+      if(${type} STREQUAL "STATIC_LIBRARY")
+        # message(STATUS "Adding symlink for ${_target}")
+        add_custom_command(TARGET onnxruntime POST_BUILD
+                           COMMAND ${CMAKE_COMMAND} -E create_symlink
+                             $<TARGET_FILE:${_target}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_target}>)
+      endif()
+    endforeach()
+
+    list(APPEND _processed_libs ${lib_and_dependencies})
+    set(_processed_libs ${_processed_libs} PARENT_SCOPE)
+  endfunction()
+
   # for external libraries we create a symlink to the .a file
   foreach(_LIB ${onnxruntime_EXTERNAL_LIBRARIES})
-    if(NOT TARGET ${_LIB}) # if we didn't build from source. it may not a target
+    if(NOT TARGET ${_LIB}) # if we didn't build from source it may not be a target
       continue()
     endif()
+
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
-      add_custom_command(TARGET onnxruntime POST_BUILD
-                         COMMAND ${CMAKE_COMMAND} -E create_symlink
-                           $<TARGET_FILE:${_LIB}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_LIB}>)
+      add_symlink_for_static_lib_and_dependencies(${_LIB})
     endif()
   endforeach()
 

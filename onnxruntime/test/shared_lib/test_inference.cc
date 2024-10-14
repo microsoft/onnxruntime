@@ -4457,7 +4457,7 @@ static Ort::LoraAdapter CreateAdapterFromArray() {
 
   EXPECT_TRUE(adapter_file.is_open());
   adapter_file.seekg(0, std::ios::end);
-  const size_t adapter_size = adapter_file.tellg();
+  const size_t adapter_size = onnxruntime::narrow<size_t>(adapter_file.tellg());
 
   std::vector<uint8_t> buffer(adapter_size);
   adapter_file.seekg(0, std::ios::beg);

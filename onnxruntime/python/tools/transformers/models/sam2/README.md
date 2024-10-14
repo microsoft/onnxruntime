@@ -89,14 +89,34 @@ It is able to run demo on optimized model as well. For example,
 python3 convert_to_onnx.py  --sam2_dir $sam2_dir --optimize --dtype fp16 --use_gpu --demo
 ```
 
-## Benchmark
-To prepare an environment for benchmark, follow [Setup Environment](#setup-environment) and [Download Checkpoints](#download-checkpoints).
+## Benchmark and Profiling
 
-Run the benchmark like the following:
+We can create a conda environment then run GPU benchmark like the following:
 ```bash
-sh benchmark_sam2.sh
+conda create -n sam2_gpu python=3.11 -y
+conda activate sam2_gpu
+install_dir=$HOME
+profiling=true
+bash benchmark_sam2.sh $install_dir gpu $profiling
 ```
-The result is in sam2.csv, which can be loaded into Excel.
+
+or create a new conda environment for CPU benchmark:
+```bash
+conda create -n sam2_cpu python=3.11 -y
+conda activate sam2_cpu
+bash benchmark_sam2.sh $HOME cpu
+```
+
+The first parameter is a directory to clone git repositories or install CUDA/cuDNN for benchmark.
+The second parameter can be either "gpu" or "cpu", which indicates the device to run benchmark.
+The third parameter is optional. Value "true" will enable profiling after running benchmarking on GPU.
+
+The script will automatically install required packages in current conda environment, download checkpoints, export onnx,
+and run demo, benchmark and optionally run profiling.
+
+* The performance test result is in sam2_gpu.csv or sam2_cpu.csv, which can be loaded into Excel.
+* The demo output is sam2_demo_fp16_gpu.png or sam2_demo_fp32_cpu.png.
+* The profiling results are in *.nsys-rep or *.json files in current directory. Use Nvidia NSight System to view the *.nsys-rep file.
 
 ## Limitations
 - The exported image_decoder model does not support batch mode for now.

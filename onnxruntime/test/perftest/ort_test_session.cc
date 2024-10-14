@@ -18,6 +18,10 @@
 #include "providers.h"
 #include "TestCase.h"
 
+#ifdef USE_OPENVINO
+#include "nlohmann/json.hpp"
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
@@ -589,6 +593,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kWebGpuExecutionProvider) {
+#ifdef USE_WEBGPU
+    session_options.AppendExecutionProvider(
+        "WebGPU", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
+#else
+    ORT_THROW("WebGPU is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
 #ifdef _MSC_VER
@@ -825,7 +836,27 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_options[key] = value;
         }
       } else if (key == "load_config") {
-        ov_options[key] = value;
+        auto load_json = [&](std::string filename) -> std::string {
+          std::ifstream input_filestream(filename);
+          if (!input_filestream.is_open()) {
+            ORT_THROW("Passed an invalid JSON config file path \"" + filename + "\".");
+          }
+          nlohmann::json json_config;
+          try {
+            input_filestream >> json_config;
+          } catch (const OnnxRuntimeException& ex) {
+            ORT_THROW("Exception parsing config file \"" + filename + "\".\n" + ex.what());
+          } catch (const std::exception& ex) {
+            throw std::runtime_error("Standard exception for config file \"" + filename + "\".\n" + ex.what());
+          } catch (...) {
+            throw std::runtime_error("Unknown exception for config file \"" + filename + "\".\n");
+          }
+          if (json_config.empty()) {
+            ORT_THROW("Empty JSON content passed \"" + filename + "\".");
+          }
+          return json_config.dump();
+        };
+        ov_options[key] = load_json(value);
       } else if (key == "model_priority") {
         ov_options[key] = value;
       } else if (key == "cache_dir") {
@@ -888,25 +919,30 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
 
   auto transform_fcn = std::function<int64_t(int64_t)>();
+  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
   if (device_memory_name_.empty()) {
     transform_fcn = [](int64_t input) { return input; };
+    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
+      return Ort::Value(nullptr);
+    };
   } else {
     Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     custom_allocator_ = std::make_unique<Ort::Allocator>(session_, memory_info);
     allocator_ = *custom_allocator_;
+
+    // free dimensions are treated as 1 if not overridden
     transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
+      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+    };
   }
 
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
     Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-
-    // free dimensions are treated as 1 if not overridden
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
-
-    outputs_.push_back(Ort::Value::CreateTensor(allocator_, output_shape.data(),
-                                                output_shape.size(), tensor_info.GetElementType()));
+    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
   }
 }
 

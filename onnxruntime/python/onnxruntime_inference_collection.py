@@ -602,7 +602,7 @@ class IOBinding:
         :param name: input name
         :param device_type: e.g. cpu, cuda, cann
         :param device_id: device id, e.g. 0
-        :param element_type: input element type
+        :param element_type: input element type. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16)
         :param shape: input shape
         :param buffer_ptr: memory pointer to input data
         """
@@ -641,7 +641,7 @@ class IOBinding:
         :param name: output name
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
-        :param element_type: output element type
+        :param element_type: output element type. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16)
         :param shape: output shape
         :param buffer_ptr: memory pointer to output data
         """
@@ -758,31 +758,43 @@ class OrtValue:
         )
 
     @staticmethod
-    def ortvalue_from_numpy_with_onnxtype(data: Sequence[int], onnx_element_type: int):
+    def ortvalue_from_numpy_with_onnx_type(data, onnx_element_type: int):
         """
-        This method creates an instance of OrtValue on top of the numpy array
+        This method creates an instance of OrtValue on top of the numpy array.
         No data copy is made and the lifespan of the resulting OrtValue should never
         exceed the lifespan of bytes object. The API attempts to reinterpret
         the data type which is expected to be the same size. This is useful
         when we want to use an ONNX data type that is not supported by numpy.
 
-        :param data: numpy array.
+        :param data: numpy.ndarray.
         :param onnx_elemenet_type: a valid onnx TensorProto::DataType enum value
         """
-        return OrtValue(C.OrtValue.ortvalue_from_numpy_with_onnxtype(data, onnx_element_type), data)
+        return OrtValue(C.OrtValue.ortvalue_from_numpy_with_onnx_type(data, onnx_element_type), data)
 
     @staticmethod
-    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):
+    def ortvalue_from_shape_and_type(shape, element_type, device_type: str = "cpu", device_id: int = 0):
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
 
         :param shape: List of integers indicating the shape of the OrtValue
-        :param element_type: The data type of the elements in the OrtValue (numpy type)
+        :param element_type: The data type of the elements. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16).
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
-        if shape is None or element_type is None:
-            raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+        # Integer for onnx element type (see https://onnx.ai/onnx/api/mapping.html).
+        # This is helpful for some data type (like TensorProto.BFLOAT16) that is not available in numpy.
+        if isinstance(element_type, int):
+            return OrtValue(
+                C.OrtValue.ortvalue_from_shape_and_onnx_type(
+                    shape,
+                    element_type,
+                    C.OrtDevice(
+                        get_ort_device_type(device_type, device_id),
+                        C.OrtDevice.default_memory(),
+                        device_id,
+                    ),
+                )
+            )
 
         return OrtValue(
             C.OrtValue.ortvalue_from_shape_and_type(

@@ -302,6 +302,29 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseROCMProviderOptions;
         public IntPtr CreateAndRegisterAllocatorV2;
         public IntPtr RunAsync;
+        public IntPtr UpdateTensorRTProviderOptionsWithValue;
+        public IntPtr GetTensorRTProviderOptionsByName;
+        public IntPtr UpdateCUDAProviderOptionsWithValue;
+        public IntPtr GetCUDAProviderOptionsByName;
+        public IntPtr KernelContext_GetResource;
+        public IntPtr SetUserLoggingFunction;
+        public IntPtr ShapeInferContext_GetInputCount;
+        public IntPtr ShapeInferContext_GetInputTypeShape;
+        public IntPtr ShapeInferContext_GetAttribute;
+        public IntPtr ShapeInferContext_SetOutputTypeShape;
+        public IntPtr SetSymbolicDimensions;
+        public IntPtr ReadOpAttr;
+        public IntPtr SetDeterministicCompute;
+        public IntPtr KernelContext_ParallelFor;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO_V2;
+        public IntPtr SessionOptionsAppendExecutionProvider_VitisAI;
+        public IntPtr KernelContext_GetScratchBuffer;
+        public IntPtr KernelInfoGetAllocator;
+        public IntPtr AddExternalInitializersFromFilesInMemory;
+        public IntPtr CreateLoraAdapter;
+        public IntPtr CreateLoraAdapterFromArray;
+        public IntPtr ReleaseLoraAdapter;
+        public IntPtr RunOptionsAddActiveLoraAdapter;
     }
 
     internal static class NativeMethods
@@ -540,6 +563,13 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
             OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
+            CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
+                typeof(DCreateLoraAdapter));
+            CreateLoraAdapterFromArray = (DCreateLoraAdapterFromArray)Marshal.GetDelegateForFunctionPointer (api_.CreateLoraAdapterFromArray, typeof(DCreateLoraAdapterFromArray));
+            ReleaseLoraAdapter = (DReleaseLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.ReleaseLoraAdapter,
+                typeof(DReleaseLoraAdapter));
+            OrtRunOptionsAddActiveLoraAdapter = (DOrtRunOptionsAddActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
+                api_.RunOptionsAddActiveLoraAdapter, typeof(DOrtRunOptionsAddActiveLoraAdapter));
         }
 
         internal class NativeLib
@@ -1263,7 +1293,49 @@ namespace Microsoft.ML.OnnxRuntime
 
 #endregion
 
-#region RunOptions API
+#region LoraAdapter API
+        /// <summary>
+        /// Memory maps the adapter file, wraps it into the adapter object
+        /// and returns it.
+        /// </summary>
+        /// <param name="adapter_path">absolute path to the adapter file</param>
+        /// <param name="allocator">optional device allocator or null</param>
+        /// <param name="lora_adapter">New LoraAdapter object</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapter(
+                byte[] adapter_path, // This takes const ORTCHAR_T* use GetPlatformSerializedString
+                IntPtr /* OrtAllocator */ allocator, // optional
+                out IntPtr lora_adapter
+            );
+        public static DCreateLoraAdapter CreateLoraAdapter;
+
+        /// <summary>
+        /// Creates LoraAdapter instance from a byte array that must
+        /// represents a valid LoraAdapter formst.
+        /// </summary>
+        /// <param name="bytes">bytes</param>
+        /// <param name="size">size in bytes</param>
+        /// <param name="allocator">optional device allocator</param>
+        /// <param name="lora_adapter">resuling LoraAdapter instance</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapterFromArray(
+                byte[] bytes,
+                UIntPtr size,
+                IntPtr /* OrtAllocator */ allocator, // optional
+                out IntPtr lora_adapter
+            );
+        public static DCreateLoraAdapterFromArray CreateLoraAdapterFromArray;
+
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DReleaseLoraAdapter(IntPtr /* OrtLoraAdapter* */ lora_adapter);
+        public static DReleaseLoraAdapter ReleaseLoraAdapter;
+
+#endregion
+
+    #region RunOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRunOptions(out IntPtr /* OrtRunOptions** */ runOptions);
@@ -1307,6 +1379,12 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsUnsetTerminate(IntPtr /* OrtRunOptions* */ options);
         public static DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsAddActiveLoraAdapter(
+            IntPtr /* OrtRunOptions* */ options,
+            IntPtr /* OrtLoraAdapter* */ lora_adapter);
+        public static DOrtRunOptionsAddActiveLoraAdapter OrtRunOptionsAddActiveLoraAdapter;
 
         /// <summary>
         /// Add run config entry

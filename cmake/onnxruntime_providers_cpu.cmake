@@ -40,6 +40,11 @@ file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"
 )
 
+file(GLOB_RECURSE onnxruntime_webgpu_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -59,15 +64,6 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op.cc"
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
-  endif()
-  set(onnxruntime_cpu_neural_speed_srcs 
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.h"
-  )
-  if(NOT USE_NEURAL_SPEED)
-    list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs ${onnxruntime_cpu_neural_speed_srcs})
   endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
@@ -151,12 +147,6 @@ endif()
 
 if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
   target_compile_options(onnxruntime_providers PRIVATE "-Wno-bitwise-instead-of-logical")
-endif()
-
-if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-  if(USE_NEURAL_SPEED)
-    onnxruntime_add_include_to_target(onnxruntime_providers neural_speed::bestla)
-  endif()
 endif()
 
 if (MSVC)

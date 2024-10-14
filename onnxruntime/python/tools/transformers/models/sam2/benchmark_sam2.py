@@ -12,7 +12,7 @@ import csv
 import statistics
 import time
 from datetime import datetime
-from typing import List, Mapping
+from typing import List, Mapping, Optional
 
 import torch
 from image_decoder import SAM2ImageDecoder
@@ -45,6 +45,8 @@ class TestConfig:
         dtype=torch.float32,
         prefer_nhwc: bool = False,
         warm_up: int = 5,
+        enable_nvtx_profile: bool = False,
+        enable_torch_profile: bool = False,
         repeats: int = 1000,
         verbose: bool = False,
     ):
@@ -70,7 +72,9 @@ class TestConfig:
         self.enable_cuda_graph = enable_cuda_graph
         self.dtype = dtype
         self.prefer_nhwc = prefer_nhwc
-        self.warm_up = 5
+        self.warm_up = warm_up
+        self.enable_nvtx_profile = enable_nvtx_profile
+        self.enable_torch_profile = enable_torch_profile
         self.repeats = repeats
         self.verbose = verbose
 
@@ -86,26 +90,23 @@ class TestConfig:
         else:
             return decoder_shape_dict(self.height, self.width, self.num_labels, self.num_points, self.num_masks)
 
-    def random_inputs(self):
+    def random_inputs(self) -> Mapping[str, torch.Tensor]:
+        dtype = self.dtype
         if self.component == "image_encoder":
-            return {
-                "image": torch.randn(
-                    self.batch_size, 3, self.height, self.width, dtype=torch.float32, device=self.device
-                )
-            }
+            return {"image": torch.randn(self.batch_size, 3, self.height, self.width, dtype=dtype, device=self.device)}
         else:
             return {
-                "image_features_0": torch.rand(1, 32, 256, 256, dtype=torch.float32, device=self.device),
-                "image_features_1": torch.rand(1, 64, 128, 128, dtype=torch.float32, device=self.device),
-                "image_embeddings": torch.rand(1, 256, 64, 64, dtype=torch.float32, device=self.device),
+                "image_features_0": torch.rand(1, 32, 256, 256, dtype=dtype, device=self.device),
+                "image_features_1": torch.rand(1, 64, 128, 128, dtype=dtype, device=self.device),
+                "image_embeddings": torch.rand(1, 256, 64, 64, dtype=dtype, device=self.device),
                 "point_coords": torch.randint(
-                    0, 1024, (self.num_labels, self.num_points, 2), dtype=torch.float32, device=self.device
+                    0, 1024, (self.num_labels, self.num_points, 2), dtype=dtype, device=self.device
                 ),
                 "point_labels": torch.randint(
                     0, 1, (self.num_labels, self.num_points), dtype=torch.int32, device=self.device
                 ),
-                "input_masks": torch.zeros(self.num_labels, 1, 256, 256, dtype=torch.float32, device=self.device),
-                "has_input_masks": torch.ones(self.num_labels, dtype=torch.float32, device=self.device),
+                "input_masks": torch.zeros(self.num_labels, 1, 256, 256, dtype=dtype, device=self.device),
+                "has_input_masks": torch.ones(self.num_labels, dtype=dtype, device=self.device),
                 "original_image_size": torch.tensor([self.height, self.width], dtype=torch.int32, device=self.device),
             }
 
@@ -168,7 +169,7 @@ def run_torch(config: TestConfig):
     with torch.inference_mode(), torch.autocast(device_type=device_type, dtype=config.dtype, enabled=enabled_auto_cast):
         sam2_model = load_sam2_model(config.sam2_dir, config.model_type, device=config.device)
         if config.component == "image_encoder":
-            if is_cuda:
+            if is_cuda and config.torch_compile_mode != "none":
                 sam2_model.image_encoder.forward = torch.compile(
                     sam2_model.image_encoder.forward,
                     mode=config.torch_compile_mode,  # "reduce-overhead" if you want to reduce latency of first run.
@@ -180,10 +181,35 @@ def run_torch(config: TestConfig):
             img = torch.randn(image_shape).to(device=config.device, dtype=config.dtype)
             sam2_encoder = SAM2ImageEncoder(sam2_model)
 
-            if is_cuda:
+            if is_cuda and config.torch_compile_mode != "none":
                 print(f"Running warm up. It will take a while since torch compile mode is {config.torch_compile_mode}.")
+
             for _ in range(config.warm_up):
                 _image_features_0, _image_features_1, _image_embeddings = sam2_encoder(img)
+
+            if is_cuda and config.enable_nvtx_profile:
+                import nvtx
+                from cuda import cudart
+
+                cudart.cudaProfilerStart()
+                print("Start nvtx profiling on encoder ...")
+                with nvtx.annotate("one_run"):
+                    sam2_encoder(img, enable_nvtx_profile=True)
+                cudart.cudaProfilerStop()
+
+            if is_cuda and config.enable_torch_profile:
+                with torch.profiler.profile(
+                    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                    record_shapes=True,
+                ) as prof:
+                    print("Start torch profiling on encoder ...")
+                    with torch.profiler.record_function("encoder"):
+                        sam2_encoder(img)
+                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+                prof.export_chrome_trace("torch_image_encoder.json")
+
+            if config.repeats == 0:
+                return
 
             print(f"Start {config.repeats} runs of performance tests...")
             start = time.time()
@@ -203,11 +229,46 @@ def run_torch(config: TestConfig):
                 ort_inputs["original_image_size"],
             )
 
-            sam2_decoder = SAM2ImageDecoder(sam2_model, multimask_output=config.multi_mask_output)
+            sam2_decoder = SAM2ImageDecoder(
+                sam2_model,
+                multimask_output=config.multi_mask_output,
+            )
+
+            if is_cuda and config.torch_compile_mode != "none":
+                sam2_decoder.forward = torch.compile(
+                    sam2_decoder.forward,
+                    mode=config.torch_compile_mode,
+                    fullgraph=True,
+                    dynamic=False,
+                )
 
             # warm up
-            for _ in range(3):
+            for _ in range(config.warm_up):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
+
+            if is_cuda and config.enable_nvtx_profile:
+                import nvtx
+                from cuda import cudart
+
+                cudart.cudaProfilerStart()
+                print("Start nvtx profiling on decoder...")
+                with nvtx.annotate("one_run"):
+                    sam2_decoder(*torch_inputs, enable_nvtx_profile=True)
+                cudart.cudaProfilerStop()
+
+            if is_cuda and config.enable_torch_profile:
+                with torch.profiler.profile(
+                    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                    record_shapes=True,
+                ) as prof:
+                    print("Start torch profiling on decoder ...")
+                    with torch.profiler.record_function("decoder"):
+                        sam2_decoder(*torch_inputs)
+                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+                prof.export_chrome_trace("torch_image_decoder.json")
+
+            if config.repeats == 0:
+                return
 
             print(f"Start {config.repeats} runs of performance tests...")
             start = time.time()
@@ -215,13 +276,14 @@ def run_torch(config: TestConfig):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
                 if is_cuda:
                     torch.cuda.synchronize()
+
         end = time.time()
         return (end - start) / config.repeats
 
 
 def run_test(
-    csv_writer: csv.DictWriter,
     args: argparse.Namespace,
+    csv_writer: Optional[csv.DictWriter] = None,
 ):
     use_gpu: bool = args.use_gpu
     enable_cuda_graph: bool = args.use_cuda_graph
@@ -249,17 +311,24 @@ def run_test(
         width=args.width,
         device=device,
         use_tf32=True,
-        enable_cuda_graph=False,
+        enable_cuda_graph=enable_cuda_graph,
         dtype=dtypes[args.dtype],
         prefer_nhwc=args.prefer_nhwc,
         repeats=args.repeats,
         warm_up=args.warm_up,
+        enable_nvtx_profile=args.enable_nvtx_profile,
+        enable_torch_profile=args.enable_torch_profile,
+        torch_compile_mode=args.torch_compile_mode,
         verbose=False,
     )
 
     if args.engine == "ort":
         sess_options = SessionOptions()
         sess_options.intra_op_num_threads = args.intra_op_num_threads
+        if config.enable_nvtx_profile:
+            sess_options.enable_profiling = True
+            sess_options.log_severity_level = 4
+            sess_options.log_verbosity_level = 0
 
         session = create_session(config, sess_options)
         input_dict = config.random_inputs()
@@ -270,6 +339,19 @@ def run_test(
                 _ = measure_latency(session, input_dict)
         except Exception as e:
             print(f"Failed to run {config=}. Exception: {e}")
+            return
+
+        if config.enable_nvtx_profile:
+            import nvtx
+            from cuda import cudart
+
+            cudart.cudaProfilerStart()
+            with nvtx.annotate("one_run"):
+                _ = session.infer(input_dict)
+            cudart.cudaProfilerStop()
+            session.ort_session.end_profiling()
+
+        if repeats == 0:
             return
 
         latency_list = []
@@ -286,6 +368,9 @@ def run_test(
             except Exception as e:
                 print(f"Failed to run {config=}. Exception: {e}")
                 return
+
+        if repeats == 0:
+            return
 
     engine = args.engine + ":" + ("cuda" if use_gpu else "cpu")
     row = {
@@ -304,18 +389,22 @@ def run_test(
         "num_points": config.num_points,
         "num_masks": config.num_masks,
         "intra_op_num_threads": args.intra_op_num_threads,
-        "engine": engine,
         "warm_up": config.warm_up,
         "repeats": repeats,
+        "enable_nvtx_profile": args.enable_nvtx_profile,
+        "torch_compile_mode": args.torch_compile_mode,
+        "engine": engine,
         "average_latency": average_latency,
     }
-    csv_writer.writerow(row)
+
+    if csv_writer is not None:
+        csv_writer.writerow(row)
 
     print(f"{vars(config)}")
     print(f"{row}")
 
 
-def run_tests(args):
+def run_perf_test(args):
     features = "gpu" if args.use_gpu else "cpu"
     csv_filename = "benchmark_sam_{}_{}_{}.csv".format(
         features,
@@ -339,15 +428,17 @@ def run_tests(args):
             "num_points",
             "num_masks",
             "intra_op_num_threads",
-            "engine",
             "warm_up",
             "repeats",
+            "enable_nvtx_profile",
+            "torch_compile_mode",
+            "engine",
             "average_latency",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
 
-        run_test(csv_writer, args)
+        run_test(args, csv_writer)
 
 
 def _parse_arguments():
@@ -456,6 +547,22 @@ def _parse_arguments():
     )
 
     parser.add_argument(
+        "--enable_nvtx_profile",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Enable nvtx profiling. It will add an extra run for profiling before performance test.",
+    )
+
+    parser.add_argument(
+        "--enable_torch_profile",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Enable PyTorch profiling. It will add an extra run for profiling before performance test.",
+    )
+
+    parser.add_argument(
         "--model_type",
         required=False,
         type=str,
@@ -480,6 +587,15 @@ def _parse_arguments():
         help="path of onnx model",
     )
 
+    parser.add_argument(
+        "--torch_compile_mode",
+        required=False,
+        type=str,
+        default=None,
+        choices=["reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs", "none"],
+        help="torch compile mode. none will disable torch compile.",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -489,9 +605,21 @@ if __name__ == "__main__":
     args = _parse_arguments()
     print(f"arguments:{args}")
 
+    if args.torch_compile_mode is None:
+        # image decoder will fail with compile modes other than "none".
+        args.torch_compile_mode = "max-autotune" if args.component == "image_encoder" else "none"
+
     if args.use_gpu:
         assert torch.cuda.is_available()
         if args.engine == "ort":
             assert "CUDAExecutionProvider" in get_available_providers()
+            args.enable_torch_profile = False
+    else:
+        # Only support cuda profiling for now.
+        assert not args.enable_nvtx_profile
+        assert not args.enable_torch_profile
 
-    run_tests(args)
+    if args.enable_nvtx_profile or args.enable_torch_profile:
+        run_test(args)
+    else:
+        run_perf_test(args)
