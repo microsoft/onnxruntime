@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <hip/hip_runtime.h>
-#include <hipblas/hipblas.h>
 #include "core/providers/rocm/shared_inc/integer_gemm.h"
 
 #include "core/common/safeint.h"
@@ -60,7 +58,7 @@ Status GemmInt8(int m, int n, int k,
       lda_aligned == lda ? a : a_padded.get(), HIP_R_8I, lda_aligned,
       &beta,
       c, HIP_R_32I, ldc,
-      HIPBLAS_COMPUTE_32F,
+      HIPBLAS_COMPUTE_32I,
       HIPBLAS_GEMM_DEFAULT));
   return Status::OK();
 }
