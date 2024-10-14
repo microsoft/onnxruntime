@@ -29,8 +29,8 @@ constexpr const char* kValidationMode = "validationMode";
 constexpr const char* kPreferredLayout_NCHW = "NCHW";
 constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
-constexpr const char* kkEnableGraphCapture_ON = "1";
-constexpr const char* kkEnableGraphCapture_OFF = "0";
+constexpr const char* kEnableGraphCapture_ON = "1";
+constexpr const char* kEnableGraphCapture_OFF = "0";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

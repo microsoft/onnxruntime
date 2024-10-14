@@ -57,9 +57,9 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
   std::string enable_graph_capture_str;
   if (config_options.TryGetConfigEntry(kEnableGraphCapture, enable_graph_capture_str)) {
-    if (enable_graph_capture_str == kkEnableGraphCapture_ON) {
+    if (enable_graph_capture_str == kEnableGraphCapture_ON) {
       webgpu_ep_info.enable_graph_capture = true;
-    } else if (enable_graph_capture_str == kkEnableGraphCapture_OFF) {
+    } else if (enable_graph_capture_str == kEnableGraphCapture_OFF) {
       webgpu_ep_info.enable_graph_capture = false;
     } else {
       ORT_THROW("Invalid enable graph capture: ", enable_graph_capture_str);
