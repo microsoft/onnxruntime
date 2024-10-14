@@ -31,6 +31,11 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 
+#ifdef USE_TENSORRT
+#include <vector>
+#include "core/session/onnxruntime_c_api_ep.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace {
@@ -90,6 +95,21 @@ void usage() {
       "\n"
       "onnxruntime version: %s\n",
       version_string.c_str());
+}
+
+inline void THROW_ON_ERROR(OrtStatus* status) {
+  if (status != nullptr) {
+    std::cout << "ErrorMessage:" << g_ort->GetErrorMessage(status) << "\n";
+    abort();
+  }
+}
+
+void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so, int device_id) {
+  THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+  std::vector<const char*> keys{"device_id", "str_property"};
+  std::string device_id_str = std::to_string(device_id);
+  std::vector<const char*> values{device_id_str.c_str(), "strvalue"};
+  THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 }
 
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
@@ -181,6 +201,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_migraphx = false;
   bool enable_xnnpack = false;
   bool override_tolerance = false;
+  bool use_trt_as_plugin = true;
   double atol = 1e-5;
   double rtol = 1e-5;
   int device_id = 0;
@@ -196,9 +217,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool disable_ep_context_embed_mode = false;
 
   bool pause = false;
+  const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pzfb"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pzfbu"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -337,6 +360,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           break;
         case '?':
         case 'h':
+        case 'u':
+          use_trt_as_plugin = true;
+          break;
         default:
           usage();
           return -1;
@@ -411,7 +437,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      if (use_trt_as_plugin) {
+        fprintf(stdout, "Switching to TRT EP as Plugin");
+        TestTensorRTEp(g_ort, &env, &sf, device_id);
+      }
+      else {
+        Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      }
 #ifdef USE_CUDA
       OrtCUDAProviderOptionsV2 cuda_options;
       cuda_options.device_id = device_id;
