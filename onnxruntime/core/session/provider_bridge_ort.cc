@@ -1810,6 +1810,9 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["disable_dynamic_shapes"] = "true";
   }
 
+  if (legacy_ov_options->enable_npu_fast_compile) {
+    LOGS_DEFAULT(WARNING) << "enable_npu_fast_compile option is deprecated. Skipping this option";
+  }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
   ov_options_converted_map["load_config"] = "";
