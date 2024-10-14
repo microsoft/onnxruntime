@@ -25,8 +25,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_ = std::make_unique<openvino_ep::GlobalContext>();
   global_context_->device_type = info.device_type_;
   global_context_->precision_str = info.precision_;
-  global_context_->enable_npu_fast_compile = info.enable_npu_fast_compile_;
   global_context_->cache_dir = info.cache_dir_;
+  global_context_->load_config = info.load_config_;
   global_context_->model_priority = info.model_priority_;
   global_context_->num_streams = info.num_streams_;
   global_context_->context = info.context_;
@@ -124,6 +124,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
+  global_context_->has_external_weights = obj.HasExternalWeights();
 
   return result;
 }
