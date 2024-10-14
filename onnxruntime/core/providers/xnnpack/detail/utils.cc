@@ -3,15 +3,18 @@
 
 #include "utils.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 #include "onnx/defs/attr_proto_util.h"
 
@@ -109,6 +112,10 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad) {
   return auto_pad == AutoPadType::NOTSET ||
          auto_pad == AutoPadType::VALID ||
          auto_pad == AutoPadType::SAME_UPPER;
+}
+
+bool IsComputeTypeSupported(int32_t compute_type, const ComputeTypeSet& compute_type_set) {
+  return std::find(compute_type_set.begin(), compute_type_set.end(), compute_type) != compute_type_set.end();
 }
 
 typedef std::string ONNXOpType;

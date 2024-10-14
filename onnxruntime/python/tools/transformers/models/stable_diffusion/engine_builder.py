@@ -117,7 +117,7 @@ class EngineBuilder:
             model_name = model_name + "_" + "_".join(self.pipeline_info.controlnet)
 
         if hash_source:
-            model_name += "_" + hashlib.md5("\t".join(hash_source).encode("utf-8")).hexdigest()[:8]
+            model_name += "_" + hashlib.sha256("\t".join(hash_source).encode("utf-8")).hexdigest()[:8]
 
         # TODO: When we support original VAE, we shall save custom VAE to another directory.
 

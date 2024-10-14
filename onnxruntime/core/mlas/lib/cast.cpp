@@ -15,11 +15,6 @@ Abstract:
 --*/
 #include "mlasi.h"
 
-union fp32_bits {
-    uint32_t u;
-    float f;
-};
-
 void
 MLASCALL
 MlasConvertHalfToFloatBuffer(

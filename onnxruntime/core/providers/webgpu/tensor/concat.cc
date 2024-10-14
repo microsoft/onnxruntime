@@ -99,7 +99,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   }
 
   Prepare prepare;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(&context.GetKernelContext(), input_tensors, prepare));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(&context.KernelContext(), input_tensors, prepare));
   if (prepare.output_num_elements == 0) {
     return Status::OK();
   }

@@ -72,11 +72,26 @@ stages:
       job_name_suffix: 'Full'
       publish_executables: '1'
       enable_code_sign: ${{ parameters.DoEsrp }}
+      packageName: 'onnxruntime-android'
 
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
+
+- stage: Android_Java_API_AAR_Packaging_QNN
+  dependsOn: []
+  jobs:
+  - template: android-java-api-aar.yml
+    parameters:
+      buildConfig: 'Release'
+      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
+      artifactName: 'onnxruntime-android-qnn-aar'
+      job_name_suffix: 'QNN'
+      publish_executables: '0'
+      enable_code_sign: ${{ parameters.DoEsrp }}
+      packageName: 'onnxruntime-android-qnn'
+  #TODO: Add test job for QNN Android AAR
 
 - stage: iOS_Full_xcframework
   dependsOn: []

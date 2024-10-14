@@ -26,6 +26,7 @@
 
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 
 namespace onnxruntime {
 
@@ -812,7 +813,17 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 }
 
+std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
+  auto profiler = std::make_unique<WebGpuProfiler>(context_);
+  profiler_ = profiler.get();
+  return profiler;
+}
+
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+  if (profiler_->Enabled()) {
+    context_.StartProfiling();
+  }
+
   if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
     ORT_NOT_IMPLEMENTED("graph capture not implemented");
   }
@@ -827,8 +838,12 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
     }
-  } else {
-    context_.Flush();
+  }
+
+  context_.Flush();
+
+  if (profiler_->Enabled()) {
+    context_.CollectProfilingData(profiler_->Events());
   }
 
   return Status::OK();

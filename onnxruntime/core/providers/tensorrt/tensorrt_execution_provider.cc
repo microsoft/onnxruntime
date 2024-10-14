@@ -2938,14 +2938,28 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Check platform availability for low precision
   if (fp16_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     if (!trt_builder->platformHasFastFp16()) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       fp16_enable_ = false;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
     }
   }
 
   if (int8_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     if (!trt_builder->platformHasFastInt8()) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       int8_enable_ = false;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
     }
@@ -3161,12 +3175,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                  "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
         }
       } else {
-        // Set INT8 per tensor dynamic range
-        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
+        // Set INT8 per tensor dynamic range
+        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
           trt_config->setInt8Calibrator(nullptr);
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -3573,13 +3587,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
-
-      // Set INT8 Per Tensor Dynamic range
-      if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
+      // Set INT8 Per Tensor Dynamic range
+      if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
         trt_config->setInt8Calibrator(nullptr);
 #if defined(_MSC_VER)
 #pragma warning(pop)

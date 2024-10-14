@@ -78,6 +78,9 @@ jobs:
 
   - template: use-android-ndk.yml
 
+  - ${{ if contains(parameters.packageName, 'qnn') }}:
+    - template: jobs/download_linux_qnn_sdk.yml
+
   - task: CmdLine@2
     displayName: Build Android AAR Packages
     inputs:
@@ -88,6 +91,15 @@ jobs:
         cp ${{parameters.buildSettings}} $(Build.BinariesDirectory)/.build_settings/build_settings.json
         [ -f "${{parameters.includedOpsConfig}}" ] && \
           cp ${{parameters.includedOpsConfig}} $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
+
+         # Mount qnn volume if building qnn android package
+        if [[ ${{ parameters.packageName }} == *qnn* ]]; then
+          QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
+          USE_QNN="1"
+        else
+          QNN_VOLUME=""
+          USE_QNN="0"
+        fi
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -95,6 +107,7 @@ jobs:
           --volume $NDK_HOME:/ndk_home \
           --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
+          $QNN_VOLUME \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e BUILD_CONFIG=${{parameters.buildConfig}} \
@@ -102,7 +115,7 @@ jobs:
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
           onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 
 

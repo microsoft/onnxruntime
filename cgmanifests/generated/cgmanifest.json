@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f46495ea96f68fc3f6c394f099b2992743f6ff7f",
+          "commitHash": "4447c7562e3bc702ade25105912dce503f0c4010",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
