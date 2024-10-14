@@ -401,43 +401,42 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                             yield config
 
 
-def lean_attention_test_cases(provider: str):
+def lean_attention_test_cases(provider: str, comprehensive: bool):
     if provider == "CUDAExecutionProvider" and get_compute_capability() < 80:
         return
         yield
 
-    batch_sizes = [1, 2, 3]
-    sequence_lengths = [1, 15, 16, 255, 256, 512]
-    heads = [1, 3, 4, 16]
+    batch_sizes = [1, 2, 3] if comprehensive else [1, 2]
+    sequence_lengths = [2, 15, 16, 255, 256, 512, 1024, 2048, 4096, 8192] if comprehensive else [2, 255, 512]
+    heads = [1, 4, 16] if comprehensive else [1, 4]
     head_sizes = [64, 128]
     device, dtype, formats = get_provider_support_info(provider, True)
     mask_formats = [AttentionMaskFormat.Mask_None]
 
     sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
     for batch_size in batch_sizes:
-        for past_sequence_length in sequence_lengths:
+        for total_seq_len in sequence_lengths:
             for num_heads in heads:
                 for head_size in head_sizes:
                     for format in formats:
                         for causal in get_causal_support(format):
-                            for has_past_input in [True]:
+                            for is_prompt in [False]:
                                 for mask_format in mask_formats:
-                                    sequence_length = 1 if has_past_input else past_sequence_length
-                                    past_seq_len = past_sequence_length if has_past_input else 0
+                                    sequence_length = total_seq_len if is_prompt else 1
                                     config = MultiHeadAttentionConfig(
                                         batch_size=batch_size,
                                         sequence_length=sequence_length,
                                         num_heads=num_heads,
                                         head_size=head_size,
                                         causal=causal,
-                                        past_sequence_length=past_seq_len,
+                                        past_sequence_length=total_seq_len - sequence_length,
                                         kv_sequence_length=sequence_length,
                                         max_cache_sequence_length=None,
                                         provider=provider,
                                         device=device,
                                         dtype=dtype,
                                         use_kv_cache=True,
-                                        has_past_input=has_past_input,
+                                        has_past_input=True,
                                         share_past_present_buffer=False,
                                         input_format=format,
                                         mask_format=mask_format,
@@ -834,8 +833,8 @@ class TestMultiHeadAttention(unittest.TestCase):
 
     def run_lean_attention(self):
         os.environ["ORT_ENABLE_LEAN_ATTENTION"] = "1"
-        for config in lean_attention_test_cases("CUDAExecutionProvider"):
-            parity_check_mha(config, rtol=5e-3, atol=5e-3 if config.total_sequence_length <= 1024 else 5e-2)
+        for config in lean_attention_test_cases("CUDAExecutionProvider", comprehensive_mode):
+            parity_check_mha(config, rtol=5e-3, atol=5e-3 if config.total_sequence_length <= 512 else 5e-2)
         os.environ.pop("ORT_ENABLE_LEAN_ATTENTION", None)
 
     def run_mha_cpu(self):

@@ -314,7 +314,7 @@ Status FlashAttention(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.softmax_lse),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
       parameters.sequence_length, parameters.total_sequence_length, scale, 0.0, parameters.is_unidirectional, is_bf16,
-      false, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+      false, data.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
 
   return Status::OK();
@@ -361,7 +361,7 @@ Status LeanAttention(
     nullptr,  // new_v (we have appended new_v to k_cache)
     data.output,
     reinterpret_cast<void*>(data.softmax_lse),
-    nullptr,
+    nullptr, // seqlens_k
     nullptr, // cos_cache
     nullptr, // sin_cache
     nullptr, // block_table
@@ -377,7 +377,7 @@ Status LeanAttention(
     parameters.is_unidirectional,
     is_bf16,
     false, // past_bsnh
-    parameters.num_splits,
+    data.num_splits,
     data.grid_dim_z,
     data.max_tiles_per_tb,
     data.high_load_tbs,

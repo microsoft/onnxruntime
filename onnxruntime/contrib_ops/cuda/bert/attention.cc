@@ -102,6 +102,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const int sm = device_prop.major * 10 + device_prop.minor;
   const bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  AttentionData<CudaT> data;
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
                              (nullptr == attention_bias) &&
@@ -128,7 +131,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = static_cast<int>(num_splits);
+    data.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
@@ -270,8 +273,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    false);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   if (nullptr != bias) {
     data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());

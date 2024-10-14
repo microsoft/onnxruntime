@@ -164,12 +164,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
 #if USE_LEAN_ATTENTION
+  // Lean attention only supports token-generation phase with sequence_length == 1.
   bool use_lean_attention = enable_lean_attention_ &&
+                            parameters.sequence_length == 1 &&
+                            parameters.past_sequence_length > 0 &&
                             nullptr == attention_bias &&
                             nullptr == key_padding_mask &&
                             parameters.head_size == parameters.v_head_size &&
-                            nullptr != past_key &&
-                            nullptr != present_key &&
                             onnxruntime::lean::is_supported(device_prop,
                                                             parameters.head_size,
                                                             parameters.num_heads,
@@ -191,7 +192,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
         device_prop.multiProcessorCount,
         parameters.is_unidirectional);
 
-    parameters.num_splits = static_cast<int>(num_splits);
+    data.num_splits = static_cast<int>(num_splits);
     data.grid_dim_z = static_cast<int>(griddimz);
     data.max_tiles_per_tb = static_cast<int>(max_tiles_tb);
     data.high_load_tbs = static_cast<int>(hload_tbs);
@@ -234,7 +235,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = static_cast<int>(num_splits);
+    data.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
     kernel_type = AttentionKernelType::AttentionKernel_FlashAttention;

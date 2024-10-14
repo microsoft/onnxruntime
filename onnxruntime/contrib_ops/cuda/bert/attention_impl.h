@@ -103,6 +103,9 @@ struct AttentionData {
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
 
+  // Flash Atttention and Lean Attention
+  int num_splits;
+
   // Lean Attention
   bool use_lean_attention = false;
 #if USE_LEAN_ATTENTION
