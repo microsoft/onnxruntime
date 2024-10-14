@@ -115,6 +115,33 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {3, 0},
        {}});
 
+  test_cases.push_back(
+      {"test 3D batch",
+       {3, 1, 3},
+       {3, 3, 2},
+       {3, 1, 2},
+       {
+           // clang-format off
+            10,  13,
+           100, 112,
+           298, 319,
+           // clang-format on
+       }});
+
+  test_cases.push_back(
+      {"test 4D batch",
+       {2, 2, 1, 3},
+       {2, 2, 3, 2},
+       {2, 2, 1, 2},
+       {
+           // clang-format off
+            10,  13,
+           100, 112,
+           298, 319,
+           604, 634,
+           // clang-format on
+       }});
+
   return test_cases;
 }
 
