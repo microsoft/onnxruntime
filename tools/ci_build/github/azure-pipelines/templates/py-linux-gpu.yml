@@ -45,7 +45,7 @@ stages:
           value: -x ${{ parameters.extra_build_arg }}
         ${{ if eq(parameters.extra_build_arg, '') }}:
           value: ''
-      - template: templates/common-variables.yml
+      - template: common-variables.yml
       - name: trt_version
         ${{ if eq(parameters.cuda_version, '11.8') }}:
           value: ${{ variables.linux_trt_version_cuda11 }}
