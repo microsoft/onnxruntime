@@ -40,7 +40,12 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
     Napi::Value epValue = epList[i];
     std::string name;
     int deviceId = 0;
+#ifdef USE_COREML
     int coreMlFlags = 0;
+#endif
+#ifdef USE_WEBGPU
+    std::unordered_map<std::string, std::string> webgpu_options;
+#endif
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
     } else if (!epValue.IsObject() || epValue.IsNull() || !epValue.As<Napi::Object>().Has("name") ||
@@ -53,9 +58,23 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       if (obj.Has("deviceId")) {
         deviceId = obj.Get("deviceId").As<Napi::Number>();
       }
+#ifdef USE_COREML
       if (obj.Has("coreMlFlags")) {
         coreMlFlags = obj.Get("coreMlFlags").As<Napi::Number>();
       }
+#endif
+#ifdef USE_WEBGPU
+      for (auto& nameIter : obj.GetPropertyNames()) {
+        Napi::Value nameVar = nameIter.second;
+        std::string name = nameVar.As<Napi::String>().Utf8Value();
+        if (name != "name") {
+          Napi::Value valueVar = obj.Get(nameVar);
+          ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
+          std::string value = valueVar.As<Napi::String>().Utf8Value();
+          webgpu_options[name] = value;
+        }
+      }
+#endif
     }
 
     // CPU execution provider
@@ -83,7 +102,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_WEBGPU
     } else if (name == "webgpu") {
-      Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(sessionOptions, "WebGPU", nullptr, nullptr, 0));
+      sessionOptions.AppendExecutionProvider("WebGPU", webgpu_options);
 #endif
 #ifdef USE_COREML
     } else if (name == "coreml") {
