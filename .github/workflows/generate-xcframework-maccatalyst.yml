@@ -55,8 +55,8 @@ jobs:
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
           cd ${{ github.workspace }}/tools/python
           ls ${{ github.workspace }}/tools/python
-          pip install -r ${{ github.workspace }}/requirements-dev.txt
-          pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
+          # pip install -r ${{ github.workspace }}/requirements-dev.txt
+          # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
           #Deal with lSystem
           export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
           export LIBRARY_PATH="$LIBRARY_PATH:$SDKROOT/usr/lib"
