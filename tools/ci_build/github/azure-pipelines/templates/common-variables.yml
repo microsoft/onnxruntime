@@ -2,7 +2,7 @@ variables:
   common_trt_version: '10.4.0.26'
   linux_trt_version_cuda11: ${{ variables.common_trt_version }}-1.cuda11.8
   linux_trt_version_cuda12: ${{ variables.common_trt_version }}-1.cuda12.6
-  common_linux_trt_version: ${{ variables.linux_trt_version_cuda11 }}
+  common_linux_trt_version: ${{ variables.linux_trt_version_cuda12 }}
   win_trt_folder_cuda11: TensorRT-${{ variables.common_trt_version }}.Windows10.x86_64.cuda-11.8
   win_trt_folder_cuda12: TensorRT-${{ variables.common_trt_version }}.Windows10.x86_64.cuda-12.6
-  common_win_trt_folder: ${{ variables.win_trt_folder_cuda11 }}
+  common_win_trt_folder: ${{ variables.win_trt_folder_cuda12 }}
