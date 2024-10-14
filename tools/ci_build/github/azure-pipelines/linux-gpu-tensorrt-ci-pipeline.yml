@@ -45,9 +45,9 @@ variables:
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241008.1
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: linux_trt_version_cuda11
+      value: ${{ variables.linux_trt_version_cuda11 }}
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: linux_trt_version_cuda12
+      value: ${{ variables.linux_trt_version_cuda12 }}
 
 jobs:
 - job: Linux_Build

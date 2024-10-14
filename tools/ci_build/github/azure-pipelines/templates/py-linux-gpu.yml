@@ -31,9 +31,9 @@ variables:
   - template: templates/common-variables.yml
   - name: trt_version
     ${{ if eq(parameters.cuda_version, '11.8') }}:
-      value: linux_trt_version_cuda11
+      value: ${{ variables.linux_trt_version_cuda11 }}
     ${{ if eq(parameters.cuda_version, '12.2') }}:
-      value: linux_trt_version_cuda12
+      value: ${{ variables.linux_trt_version_cuda12 }}
 
 stages:
 - stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
