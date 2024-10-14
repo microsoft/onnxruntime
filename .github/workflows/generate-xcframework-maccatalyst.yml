@@ -71,7 +71,7 @@ jobs:
         run: |
           # pip install -r ${{ github.workspace }}/requirements-dev.txt
           # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
-          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dirr=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
+          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
             --path_to_protoc_exe=/usr/local/bin/protoc ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
 
