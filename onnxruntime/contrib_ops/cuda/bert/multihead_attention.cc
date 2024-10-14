@@ -55,7 +55,9 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 
+#if USE_LEAN_ATTENTION
   enable_lean_attention_ = sizeof(T) == 2 && kernel_options_->UseLeanAttention();
+#endif
 
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
