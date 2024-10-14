@@ -66,13 +66,17 @@ export interface AttentionParameters {
   broadcastResPosBias: boolean;
   passPastInKv: boolean;
   qkvFormat: AttentionQkvFormat;
+  softcap?: number;
+  doRotary?: number;
+  rotaryInterLeaved?: number;
+  sommoothSoftmax?: number;
+  localWindowsSize?: number;
 }
 
 export interface AttentionAttrs {
   numHeads: number;
-  kvNumHeads?: number;
-  isUnidirectional?: number;
-  maskFilterValue?: number;
+  isUnidirectional: number;
+  maskFilterValue: number;
   scale: number;
   doRotary: number;
   qkvHiddenSizes: number[];
@@ -387,7 +391,6 @@ const createAttentionProbsProgramInfo = (
   pastKey: TensorView | undefined,
   attentionBias: TensorView | undefined,
   parameters: AttentionParameters,
-  attributes: AttentionAttrs,
   pastSequenceLength: number,
   seqLens: TensorView | undefined,
   totalSequenceLengthInput: TensorView | undefined,
@@ -402,7 +405,7 @@ const createAttentionProbsProgramInfo = (
 
   // TODO: handle mask
 
-  const alpha = attributes.scale === 0 ? 1.0 / Math.sqrt(parameters.headSize) : attributes.scale;
+  const alpha = parameters.scale === 0 ? 1.0 / Math.sqrt(parameters.headSize) : parameters.scale;
   const components = getMaxComponents(parameters.headSize);
   const vectorizedHeadSize = parameters.headSize / components;
   const TILE_SIZE = 12;
@@ -729,7 +732,6 @@ export const applyAttention = (
   pastValue: TensorView | undefined,
   attentionBiasInput: TensorView | undefined,
   parameters: AttentionParameters,
-  attributes: AttentionAttrs,
   seqLens: TensorView | undefined = undefined,
   totalSequenceLengthInput: TensorView | undefined = undefined,
 ) => {
@@ -762,7 +764,6 @@ export const applyAttention = (
       pastKey,
       attentionBias,
       parameters,
-      attributes,
       pastSequenceLength,
       seqLens,
       totalSequenceLengthInput,
@@ -942,6 +943,5 @@ export const attention = (context: ComputeContext, attributes: AttentionAttrs): 
     undefined,
     context.inputs[5],
     params,
-    attributes,
   );
 };

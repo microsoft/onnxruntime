@@ -408,7 +408,6 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
       pastValue,
       attentionBias,
       params,
-      attributes,
     );
   }
   if (!key || !value) {
@@ -436,5 +435,5 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
     2 * params.hiddenSize,
   );
 
-  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params, attributes);
+  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params);
 };

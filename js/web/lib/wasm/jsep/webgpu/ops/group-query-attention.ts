@@ -5,24 +5,44 @@ import { TensorView } from '../../tensor-view';
 import { createAttributeWithCacheKey } from '../attribute-with-cache-key';
 import { ComputeContext } from '../types';
 
-import {
-  applyAttention,
-  AttentionAttrs,
-  AttentionMaskType,
-  AttentionParameters,
-  AttentionQkvFormat,
-} from './attention';
+import { applyAttention, AttentionMaskType, AttentionParameters, AttentionQkvFormat } from './attention';
 import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
 import { createSplitProgramInfo, SplitAttributes } from './split';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
-
-export const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
+export interface GroupQueryAttentionAttrs {
+  numHeads: number;
+  kvNumHeads: number;
+  scale: number;
+  softcap: number;
+  doRotary: number;
+  rotaryInterleaved: number;
+  smoothSoftmax: boolean;
+  localWindowSize: number;
+}
+export const validateInputs = (
+  inputs: readonly TensorView[],
+  attributes: GroupQueryAttentionAttrs,
+): AttentionParameters => {
   const query = inputs[0];
   const key = inputs[1];
   const value = inputs[2];
   const pastKey = inputs[3];
   const pastValue = inputs[4];
-
+  if (attributes.localWindowSize !== -1) {
+    throw new Error('Local attention is not supported');
+  }
+  if (attributes.softcap !== 0) {
+    throw new Error('Softcap is not supported');
+  }
+  if (attributes.doRotary !== 0) {
+    throw new Error('Rotary is not supported');
+  }
+  if (attributes.rotaryInterleaved !== 0) {
+    throw new Error('Rotary interleaved is not supported');
+  }
+  if (attributes.smoothSoftmax) {
+    throw new Error('Smooth softmax is not supported');
+  }
   // Abbreviation and Meanings:
   //   B:    batch_size
   //   S:    sequence_length (input sequence length of query)
@@ -67,7 +87,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   const packedQKV = !key || key.dims.length === 0;
   const headSize = !packedQKV
     ? Math.floor(hiddenSize / attributes.numHeads)
-    : Math.floor(hiddenSize / (attributes.numHeads + 2 * attributes.kvNumHeads!));
+    : Math.floor(hiddenSize / (attributes.numHeads + 2 * attributes.kvNumHeads));
   if (packedQKV) {
     hiddenSize = headSize * attributes.numHeads;
   }
@@ -185,10 +205,10 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     hiddenSize,
     vHiddenSize,
     headSize,
-    vHeadSize: Math.floor(vHiddenSize / attributes.kvNumHeads!),
+    vHeadSize: Math.floor(vHiddenSize / attributes.kvNumHeads),
     numHeads: attributes.numHeads,
     kvNumHeads: attributes.kvNumHeads,
-    nReps: attributes.numHeads / attributes.kvNumHeads!,
+    nReps: attributes.numHeads / attributes.kvNumHeads,
     pastPresentShareBuffer: false,
     maskType,
     scale: attributes.scale,
@@ -198,7 +218,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   };
 };
 
-export const parseGroupQueryAttentionAttributes = (attributes: AttentionAttrs): AttentionAttrs =>
+export const parseGroupQueryAttentionAttributes = (attributes: GroupQueryAttentionAttrs): GroupQueryAttentionAttrs =>
   createAttributeWithCacheKey({ ...attributes });
 
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({ perm: [0, 2, 1, 3] });
@@ -217,7 +237,7 @@ const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params
   return reshapedInput;
 };
 
-export const groupQueryAttention = (context: ComputeContext, attributes: AttentionAttrs): void => {
+export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttrs): void => {
   const params = validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 5) {
     throw new Error('Packed QKV is not implemented');
@@ -269,7 +289,6 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
     pastValue,
     undefined,
     params,
-    attributes,
     seqLens,
     totalSequenceLengthInput,
   );
