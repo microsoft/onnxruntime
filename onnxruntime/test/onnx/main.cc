@@ -203,7 +203,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_migraphx = false;
   bool enable_xnnpack = false;
   bool override_tolerance = false;
-  bool use_trt_as_plugin = true;
+  bool use_trt_as_plugin = false;
   double atol = 1e-5;
   double rtol = 1e-5;
   int device_id = 0;
