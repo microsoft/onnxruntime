@@ -83,10 +83,6 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_fp16) {
     const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
-    // 65504 is the max value of float16
-    // https://en.wikipedia.org/wiki/Half-precision_floating-point_format
-    const float output_min = clip_min_max ? clip_min_max->first : -65504.0f;
-    const float output_max = clip_min_max ? clip_min_max->second : 65504.0f;
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f16
                                     : xnn_create_convolution2d_nhwc_f16;
     status = create_func(
@@ -99,7 +95,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_output_channels,
         C, M,                              // input channel stride, output channel stride
         Weight.Data<MLFloat16>(), B_data,  // kernel, bias
-        output_min, output_max,
+        foutput_min, foutput_max,
         flags,
         code_cache, weights_cache,
         &p);
