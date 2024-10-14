@@ -1870,6 +1870,10 @@ def setup_rocm_build(args):
 
 
 def run_android_tests(args, source_dir, build_dir, config, cwd):
+    if args.android_abi != "x86_64":
+        log.info(f"--android_abi ({args.android_abi}) is not x86_64, skipping running of Android tests on emulator.")
+        return
+
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = "/data/local/tmp"
 
@@ -1891,72 +1895,85 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             adb_shell(f"cd {device_dir} && {cmd}")
 
-    if args.android_abi == "x86_64":
-        with contextlib.ExitStack() as context_stack:
-            if args.android_run_emulator:
-                avd_name = "ort_android"
-                system_image = f"system-images;android-{args.android_api};default;{args.android_abi}"
+    with contextlib.ExitStack() as context_stack:
+        if args.android_run_emulator:
+            avd_name = "ort_android"
+            system_image = f"system-images;android-{args.android_api};default;{args.android_abi}"
 
-                android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
-                emulator_proc = context_stack.enter_context(
-                    android.start_emulator(
-                        sdk_tool_paths=sdk_tool_paths,
-                        avd_name=avd_name,
-                        extra_args=["-partition-size", "2047", "-wipe-data"],
-                    )
+            android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
+            emulator_proc = context_stack.enter_context(
+                android.start_emulator(
+                    sdk_tool_paths=sdk_tool_paths,
+                    avd_name=avd_name,
+                    extra_args=["-partition-size", "2047", "-wipe-data"],
                 )
-                context_stack.callback(android.stop_emulator, emulator_proc)
-
-            adb_push("testdata", device_dir, cwd=cwd)
-            adb_push(
-                os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd
             )
-            adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
-            adb_push("onnx_test_runner", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
-            run_adb_shell(f"{device_dir}/onnxruntime_test_all")
+            context_stack.callback(android.stop_emulator, emulator_proc)
 
-            # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
-            # when we try to copy the java app to the device.
-            adb_shell(f"rm {device_dir}/onnxruntime_test_all")
+        adb_push("testdata", device_dir, cwd=cwd)
+        adb_push(os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd)
+        adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
+        adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
+        adb_push("onnx_test_runner", device_dir, cwd=cwd)
+        adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
+        run_adb_shell(f"{device_dir}/onnxruntime_test_all")
 
-            if args.build_java:
-                # use the gradle wrapper under <repo root>/java
-                gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
-                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
-                run_subprocess(
-                    [
-                        gradle_executable,
-                        "--no-daemon",
-                        f"-DminSdkVer={args.android_api}",
-                        "clean",
-                        "connectedDebugAndroidTest",
-                    ],
-                    cwd=android_test_path,
-                )
+        # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
+        # when we try to copy the java app to the device.
+        adb_shell(f"rm {device_dir}/onnxruntime_test_all")
 
-            if args.use_nnapi:
-                run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
-            else:
-                run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
+        if args.build_java:
+            # use the gradle wrapper under <repo root>/java
+            gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
+            android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+            run_subprocess(
+                [
+                    gradle_executable,
+                    "--no-daemon",
+                    f"-DminSdkVer={args.android_api}",
+                    "clean",
+                    "connectedDebugAndroidTest",
+                ],
+                cwd=android_test_path,
+            )
 
-            # run shared_lib_test if necessary
-            if args.build_shared_lib:
-                adb_push("libonnxruntime.so", device_dir, cwd=cwd)
-                adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-                adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
-                adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
-                adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-                adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
-                adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
-                run_adb_shell(
-                    f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
-                )
+        if args.use_nnapi:
+            run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
+        else:
+            run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
+
+        # run shared_lib_test if necessary
+        if args.build_shared_lib:
+            adb_push("libonnxruntime.so", device_dir, cwd=cwd)
+            adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
+            adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
+            adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
+            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
+            adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
+            adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
+            run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
+            run_adb_shell(
+                f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
+            )
 
 
 def run_ios_tests(args, source_dir, config, cwd):
+    is_targeting_iphone_simulator = "iphonesimulator" in args.apple_sysroot.lower()
+    if not is_targeting_iphone_simulator:
+        log.info(
+            f"Could not detect iphonesimulator target from --apple_sysroot ({args.apple_sysroot}), "
+            "skipping running of iOS tests on simulator."
+        )
+        return
+
+    host_arch = platform.machine()
+    if host_arch != args.osx_arch:
+        log.info(
+            f"Host arch ({host_arch}) and --osx_arch ({args.osx_arch}) mismatch, "
+            "skipping running of iOS tests on simulator."
+        )
+        return
+
     simulator_device_info = subprocess.check_output(
         [
             sys.executable,
