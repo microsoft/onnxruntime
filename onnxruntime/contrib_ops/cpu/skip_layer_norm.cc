@@ -56,11 +56,14 @@ void ComputeJob(
     float epsilon,
     bool simplified,
     T* output_data,
-    T* skip_input_bias_add_output_data) {
+    T* skip_input_bias_add_output_data,
+    AllocatorPtr alloc) {
   ORT_UNUSED_PARAMETER(skip_fp32);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(gamma_fp32);  // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(beta_fp32);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(bias_fp32);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(alloc);
+
   auto offset = task_idx * hidden_size;
   const T* p_input = input_data + offset;
   const T* p_skip = skip_data + (offset % skip_size);
@@ -120,7 +123,8 @@ void ComputeJob(
     float epsilon,
     bool simplified,
     MLFloat16* output_data,
-    MLFloat16* skip_input_bias_add_output_data) {
+    MLFloat16* skip_input_bias_add_output_data,
+    AllocatorPtr alloc) {
   auto offset = task_idx * hidden_size;
   const MLFloat16* p_input = input_data + offset;
   const MLFloat16* p_skip = skip_data + (offset % skip_size);
@@ -131,12 +135,12 @@ void ComputeJob(
   float mean_square(0.0f);
   const size_t num_elems = static_cast<size_t>(hidden_size);
 
-  float* float_input = new float[num_elems];
+  float* float_input = (float*)alloc->Alloc(num_elems * sizeof(float));
   MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
 
   float* float_skip = skip_fp32.get();
   if (nullptr == float_skip) {
-    float_skip = new float[num_elems];
+    float_skip = (float*)alloc->Alloc(num_elems * sizeof(float));
     MlasConvertHalfToFloatBuffer(p_skip, float_skip, num_elems);
   }
 
@@ -145,12 +149,12 @@ void ComputeJob(
     if (nullptr != bias_fp32) {
       float_bias = bias_fp32.get();
     } else {
-      float_bias = new float[num_elems];
+      float_bias = (float*)alloc->Alloc(num_elems * sizeof(float));
       MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
     }
   }
 
-  float* float_output = new float[num_elems];
+  float* float_output = (float*)alloc->Alloc(num_elems * sizeof(float));
 
   for (size_t h = 0; h < num_elems; h++) {
     float val = float_input[h] + float_skip[h];
@@ -190,7 +194,7 @@ void ComputeJob(
     if (nullptr != beta_fp32) {
       float_beta = beta_fp32.get();
     } else {
-      float_beta = new float[num_elems];
+      float_beta = (float*)alloc->Alloc(num_elems * sizeof(float));
       MlasConvertHalfToFloatBuffer(beta_data, float_beta, num_elems);
     }
   }
@@ -204,16 +208,17 @@ void ComputeJob(
       float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h] + float_beta[h];
     }
   }
-  delete[] float_input;  // also takes care of float_gamma if reused
+
+  alloc->Free(float_input); // also takes care of float_gamma if reused
   if (float_skip && (nullptr == skip_fp32)) {
-    delete[] float_skip;
+    alloc->Free(float_skip);
   }
   if (beta_data && (nullptr == beta_fp32)) {
-    delete[] float_beta;
+    alloc->Free(float_beta);
   }
 
   MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
-  delete[] float_output;
+  alloc->Free(float_output);
 }
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
@@ -275,12 +280,15 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
   const int64_t& skip_size = skip->Shape().Size();
 
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
+
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
         ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, skip_fp32_, gamma_fp32_, beta_fp32_,
                    bias_fp32_, task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
-                   skip_input_bias_add_output_data);
+                   skip_input_bias_add_output_data, alloc);
       },
       0);
 

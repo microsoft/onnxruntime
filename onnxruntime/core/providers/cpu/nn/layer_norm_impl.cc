@@ -30,9 +30,11 @@ void ComputeJob(
     bool simplified,
     T* Y_data,
     U* mean_data,
-    U* inv_std_dev_data) {
+    U* inv_std_dev_data,
+    AllocatorPtr alloc) {
   ORT_UNUSED_PARAMETER(scale_fp32);  // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(bias_fp32);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(alloc);
 
   const T* p_input = X_data + task_idx * norm_size;
   T* p_output = Y_data + task_idx * norm_size;
@@ -86,7 +88,8 @@ void ComputeJob(
     bool simplified,
     MLFloat16* Y_data,
     U* mean_data,
-    U* inv_std_dev_data) {
+    U* inv_std_dev_data,
+    AllocatorPtr alloc) {
   const MLFloat16* p_input = X_data + task_idx * norm_size;
   MLFloat16* p_output = Y_data + task_idx * norm_size;
 
@@ -94,10 +97,10 @@ void ComputeJob(
   float mean_square(0.0f);
 
   const size_t num_elems = static_cast<size_t>(norm_size);
-  float* float_input = new float[num_elems];
+  float* float_input = (float*)alloc->Alloc(num_elems * sizeof(float));
   MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
 
-  float* float_output = new float[num_elems];
+  float* float_output = (float*)alloc->Alloc(num_elems * sizeof(float));
 
   for (size_t h = 0; h < num_elems; h++) {
     float_output[h] = float_input[h];
@@ -123,7 +126,7 @@ void ComputeJob(
     if (nullptr != bias_fp32) {
       float_bias = bias_fp32.get();
     } else {
-      float_bias = new float[num_elems];
+      float_bias = (float*)alloc->Alloc(num_elems * sizeof(float));
       MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
     }
   }
@@ -138,14 +141,13 @@ void ComputeJob(
     }
   }
 
-  delete[] float_input;  // also takes care of float_scale if reused
+  alloc->Free(float_input);  // also takes care of float_scale if reused
   if (float_bias && (nullptr == bias_fp32)) {
-    delete[] float_bias;
+    alloc->Free(float_bias);
   }
 
   MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
-
-  delete[] float_output;
+  alloc->Free(float_output);
 
   if (mean_data != nullptr) {
     // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
@@ -222,8 +224,10 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
 
   onnxruntime::concurrency::ThreadPool* thread_pool = p_ctx->GetOperatorThreadPool();
 
-  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape,
-                                     Y_data, mean_data, inv_std_dev_data, thread_pool, axis, epsilon, simplified);
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
+  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape, Y_data, mean_data,
+                                     inv_std_dev_data, thread_pool, axis, epsilon, simplified, alloc);
 }
 
 Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
@@ -263,7 +267,8 @@ Status LayerNormImpl::ComputeWithoutContext(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     int64_t axis,
     float epsilon,
-    bool simplified) const {
+    bool simplified,
+    AllocatorPtr alloc) const {
   int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
   int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
@@ -280,7 +285,7 @@ Status LayerNormImpl::ComputeWithoutContext(
       thread_pool, static_cast<int32_t>(norm_count),
       [&](ptrdiff_t task_idx) {
         ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_, bias_fp32_,
-                   epsilon, simplified, Y_data, mean_data, inv_std_dev_data);
+                   epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
       },
       0);
 

@@ -108,11 +108,12 @@ static void BM_LayerNormalization(benchmark::State& state) {
   std::unique_ptr<concurrency::ThreadPool> thread_pool = concurrency::CreateThreadPool(
       &Env::Default(), tp_params, concurrency::ThreadPoolType::INTRA_OP);
 
+  OrtMemoryInfo memory_info(onnxruntime::CPU, OrtAllocatorType::OrtArenaAllocator);
+  AllocatorPtr alloc = std::make_shared<CPUAllocator>(memory_info);
   for (auto _ : state) {
     auto status = layer_norm_impl.ComputeWithoutContext(x_data, x_shape, scale_data, scale_shape, bias_data, bias_shape,
                                                         Y_data, mean_data, inv_std_dev_data, thread_pool.get(), axis,
-                                                        epsilon, simplified);
-
+                                                        epsilon, simplified, alloc);
     if (!status.IsOK()) {
       std::cout << "ComputeWithoutContext status not OK: " << status.ErrorMessage() << std::endl;
       break;

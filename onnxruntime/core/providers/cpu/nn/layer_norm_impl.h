@@ -33,7 +33,8 @@ class LayerNormImpl : public OpKernel {
       onnxruntime::concurrency::ThreadPool* thread_pool,
       int64_t axis,
       float epsilon,
-      bool simplified) const;
+      bool simplified,
+      AllocatorPtr alloc) const;
 
  private:
   template <typename T, typename U>
