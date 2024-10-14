@@ -439,7 +439,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_TENSORRT
       if (use_trt_as_plugin) {
         fprintf(stdout, "Switching to TRT EP as Plugin");
-        TestTensorRTEp(g_ort, &env, &sf, device_id);
+        TestTensorRTEp(g_ort, env, sf, device_id);
       }
       else {
         Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
