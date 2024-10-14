@@ -69,6 +69,7 @@ jobs:
 
       - name: create releae build
         run: |
+          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
           # pip install -r ${{ github.workspace }}/requirements-dev.txt
           # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
           python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
