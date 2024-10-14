@@ -15,6 +15,7 @@ parameters:
     default: '11.8'
 
 steps:
+  - template: ../common-variables.yml
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.PrimaryCUDAVersion }}" $(Agent.TempDirectory)
@@ -34,5 +35,6 @@ steps:
     displayName: 'setup env'
     inputs:
       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+      arguments: ''
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
