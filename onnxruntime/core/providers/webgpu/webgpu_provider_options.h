@@ -9,20 +9,20 @@ namespace options {
 
 // The following are the options that can be set in the WebGPU provider options.
 
-constexpr const char* kPreferredLayout = "preferredLayout";
-constexpr const char* kEnableGraphCapture = "enableGraphCapture";
+constexpr const char* kPreferredLayout = "WebGPU:preferredLayout";
+constexpr const char* kEnableGraphCapture = "WebGPU:enableGraphCapture";
 
-constexpr const char* kDeviceId = "deviceId";
-constexpr const char* kWebGpuInstance = "webgpuInstance";
-constexpr const char* kWebGpuAdapter = "webgpuAdapter";
-constexpr const char* kWebGpuDevice = "webgpuDevice";
+constexpr const char* kDeviceId = "WebGPU:deviceId";
+constexpr const char* kWebGpuInstance = "WebGPU:webgpuInstance";
+constexpr const char* kWebGpuAdapter = "WebGPU:webgpuAdapter";
+constexpr const char* kWebGpuDevice = "WebGPU:webgpuDevice";
 
-constexpr const char* kStorageBufferCacheMode = "storageBufferCacheMode";
-constexpr const char* kUniformBufferCacheMode = "uniformBufferCacheMode";
-constexpr const char* kQueryResolveBufferCacheMode = "queryResolveBufferCacheMode";
-constexpr const char* kDefaultBufferCacheMode = "defaultBufferCacheMode";
+constexpr const char* kStorageBufferCacheMode = "WebGPU:storageBufferCacheMode";
+constexpr const char* kUniformBufferCacheMode = "WebGPU:uniformBufferCacheMode";
+constexpr const char* kQueryResolveBufferCacheMode = "WebGPU:queryResolveBufferCacheMode";
+constexpr const char* kDefaultBufferCacheMode = "WebGPU:defaultBufferCacheMode";
 
-constexpr const char* kValidationMode = "validationMode";
+constexpr const char* kValidationMode = "WebGPU:validationMode";
 
 // The following are the possible values for the provider options.
 
