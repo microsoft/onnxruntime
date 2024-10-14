@@ -17,6 +17,7 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/provider_factory_adapter.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -29,6 +30,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_c_api_ep.h"
 #include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_ATEN
@@ -1187,6 +1189,19 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         ->CreateProvider();
 #endif
   } else {
+    OrtExecutionProviderFactory* plugin_ep_factory = GetEnv()->GetOrtExecutionProviderFactory(type);
+    if (plugin_ep_factory != nullptr) {
+      std::vector<const char*> keys, values;
+      const auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        for (const auto& [k, v] : it->second) {
+          keys.push_back(k.c_str());
+          values.push_back(v.c_str());
+        }
+      }
+      onnxruntime::ExecutionProviderFactoryAdapter ep_factory_adapter(plugin_ep_factory, keys.data(), values.data(), keys.size());
+      return ep_factory_adapter.CreateProvider();
+    }
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
@@ -1217,8 +1232,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
  */
 static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
                                        const ProviderOptionsMap& provider_options_map) {
-  ORT_UNUSED_PARAMETER(provider_options_map);
-
   for (const std::string& type : provider_types) {
     auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
     if (ep)
@@ -1316,6 +1329,11 @@ static void LogDeprecationWarning(
   LOGS_DEFAULT_IF(alternative.has_value(), WARNING) << "As an alternative, use: " << *alternative;
 }
 #endif
+
+// TODO(leca): when will this variable be unset? It is saved in Environment thus should be cross-session, which means
+// once the session ends, the plugin ep should still be left in the Environment
+// Should implement Environment::RemovePluginEp() which will be invoked in ~EnvInitializer(), and also clear plugin_execution_providers there
+static std::unordered_set<std::string> plugin_execution_providers;
 
 void addGlobalMethods(py::module& m) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
@@ -1465,6 +1483,18 @@ void addGlobalMethods(py::module& m) {
           contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
         });
 #endif
+  m.def("register_plugin_execution_provider_library", [](const char* provider_type, const char* library_path) -> void {
+    void* handle = nullptr;
+    OrtPybindThrowIfError(Env::Default().LoadDynamicLibrary(ToPathString(library_path), false, &handle));
+    if (handle) {
+      OrtExecutionProviderFactory* (*symbol)();
+      OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, "RegisterCustomEp", (void**)&symbol));
+      auto env = GetEnv();
+      env->InsertCustomEp(provider_type, symbol());
+      plugin_execution_providers.insert(std::string(provider_type));
+    }
+  });
+  m.def("get_available_plugin_providers", []() -> std::unordered_set<std::string> { return plugin_execution_providers; });
 }
 
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
