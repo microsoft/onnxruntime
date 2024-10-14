@@ -407,13 +407,12 @@ def lean_attention_test_cases(provider: str, comprehensive: bool):
         yield
 
     batch_sizes = [1, 2, 3] if comprehensive else [1, 2]
-    sequence_lengths = [2, 15, 16, 255, 256, 512, 1024, 2048, 4096, 8192] if comprehensive else [2, 255, 512]
+    sequence_lengths = [2, 15, 16, 255, 256, 512, 1024, 2048, 4096, 8192] if comprehensive else [2, 255, 512, 2048]
     heads = [1, 4, 16] if comprehensive else [1, 4]
     head_sizes = [64, 128]
     device, dtype, formats = get_provider_support_info(provider, True)
     mask_formats = [AttentionMaskFormat.Mask_None]
 
-    sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
     for batch_size in batch_sizes:
         for total_seq_len in sequence_lengths:
             for num_heads in heads:

@@ -211,6 +211,23 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_lean_attention = false;
 #endif
 
+  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  bool use_cudnn_sdpa = kernel_type == AttentionKernelType::AttentionKernel_Default &&
+                        enable_cudnn_flash_attention_ &&
+                        is_mask_none_or_1d_k_len &&
+                        onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                                              parameters.num_heads,              // num_heads_q
+                                                              parameters.num_heads,              // num_heads_kv
+                                                              parameters.head_size,              // head_size_qk
+                                                              parameters.v_head_size,            // head_size_v
+                                                              parameters.sequence_length,        // seq_len_q
+                                                              parameters.total_sequence_length,  // seq_len_kv
+                                                              is_unidirectional_);
+  if (use_cudnn_sdpa) {
+    kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
+  }
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = kernel_type == AttentionKernelType::AttentionKernel_Default &&
                              !disable_flash_attention_ &&
@@ -256,23 +273,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
 #endif
-
-  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
-                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  bool use_cudnn_sdpa = kernel_type == AttentionKernelType::AttentionKernel_Default &&
-                        enable_cudnn_flash_attention_ &&
-                        is_mask_none_or_1d_k_len &&
-                        onnxruntime::cudnn_sdpa::is_supported(device_prop,
-                                                              parameters.num_heads,              // num_heads_q
-                                                              parameters.num_heads,              // num_heads_kv
-                                                              parameters.head_size,              // head_size_qk
-                                                              parameters.v_head_size,            // head_size_v
-                                                              parameters.sequence_length,        // seq_len_q
-                                                              parameters.total_sequence_length,  // seq_len_kv
-                                                              is_unidirectional_);
-  if (use_cudnn_sdpa) {
-    kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
-  }
 
   bool use_fused_cross_attention =
       kernel_type == AttentionKernelType::AttentionKernel_Default &&

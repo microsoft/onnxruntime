@@ -107,9 +107,9 @@ bool is_supported(const cudaDeviceProp& dprops,
          (head_size_v % 8 == 0) && (head_size_v <= 256) &&
          (num_heads_q % num_heads_kv == 0) &&
          // Bottom right causal mask is only supported with s_q multiple of 64 and s_kv multiple of 64.
-         (!is_causal || (sequence_length_q != sequence_length_kv &&
-                         sequence_length_q % 64 == 0 &&
-                         sequence_length_kv % 64 == 0));
+         (!is_causal ||
+          sequence_length_q == sequence_length_kv ||
+          (sequence_length_q % 64 == 0 && sequence_length_kv % 64 == 0)));
 }
 
 // A helper function to set stride for q, k, v or output tensor.
