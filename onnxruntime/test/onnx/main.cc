@@ -97,6 +97,8 @@ void usage() {
       version_string.c_str());
 }
 
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
 inline void THROW_ON_ERROR(OrtStatus* status) {
   if (status != nullptr) {
     std::cout << "ErrorMessage:" << g_ort->GetErrorMessage(status) << "\n";
@@ -217,8 +219,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool disable_ep_context_embed_mode = false;
 
   bool pause = false;
-  const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
   {
     int ch;
     while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pzfbu"))) != -1) {
