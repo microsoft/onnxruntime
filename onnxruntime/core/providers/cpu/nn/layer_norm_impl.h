@@ -63,8 +63,8 @@ class LayerNormImpl : public OpKernel {
   float epsilon_;
   const bool simplified_;
   const bool contrib_op_;
-  IAllocatorUniquePtr<float> scale_fp32_;
-  IAllocatorUniquePtr<float> bias_fp32_;
+  mutable IAllocatorUniquePtr<float> scale_fp32_;
+  mutable IAllocatorUniquePtr<float> bias_fp32_;
 };
 
 }  // namespace onnxruntime

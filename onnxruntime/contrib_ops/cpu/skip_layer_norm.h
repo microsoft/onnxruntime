@@ -21,10 +21,10 @@ class SkipLayerNorm final : public OpKernel {
 
  private:
   float epsilon_;
-  IAllocatorUniquePtr<float> skip_fp32_;
-  IAllocatorUniquePtr<float> gamma_fp32_;
-  IAllocatorUniquePtr<float> beta_fp32_;
-  IAllocatorUniquePtr<float> bias_fp32_;
+  mutable IAllocatorUniquePtr<float> skip_fp32_;
+  mutable IAllocatorUniquePtr<float> gamma_fp32_;
+  mutable IAllocatorUniquePtr<float> beta_fp32_;
+  mutable IAllocatorUniquePtr<float> bias_fp32_;
 };
 
 }  // namespace contrib

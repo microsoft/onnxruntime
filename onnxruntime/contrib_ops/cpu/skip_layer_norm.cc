@@ -46,10 +46,10 @@ void ComputeJob(
     const T* gamma_data,
     const T* beta_data,
     const T* bias_data,
-    const IAllocatorUniquePtr<float>& skip_fp32,
-    const IAllocatorUniquePtr<float>& gamma_fp32,
-    const IAllocatorUniquePtr<float>& beta_fp32,
-    const IAllocatorUniquePtr<float>& bias_fp32,
+    IAllocatorUniquePtr<float>& skip_float_uptr,
+    IAllocatorUniquePtr<float>& gamma_float_uptr,
+    IAllocatorUniquePtr<float>& beta_float_uptr,
+    IAllocatorUniquePtr<float>& bias_float_uptr,
     ptrdiff_t task_idx,
     int hidden_size,
     int64_t skip_size,
@@ -58,10 +58,10 @@ void ComputeJob(
     T* output_data,
     T* skip_input_bias_add_output_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(skip_fp32);   // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(gamma_fp32);  // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(beta_fp32);   // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(bias_fp32);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(skip_float_uptr);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(gamma_float_uptr);  // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(beta_float_uptr);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(bias_float_uptr);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(alloc);
 
   auto offset = task_idx * hidden_size;
@@ -113,10 +113,10 @@ void ComputeJob(
     const MLFloat16* gamma_data,
     const MLFloat16* beta_data,
     const MLFloat16* bias_data,
-    const IAllocatorUniquePtr<float>& skip_fp32,
-    const IAllocatorUniquePtr<float>& gamma_fp32,
-    const IAllocatorUniquePtr<float>& beta_fp32,
-    const IAllocatorUniquePtr<float>& bias_fp32,
+    IAllocatorUniquePtr<float>& skip_float_uptr,
+    IAllocatorUniquePtr<float>& gamma_float_uptr,
+    IAllocatorUniquePtr<float>& beta_float_uptr,
+    IAllocatorUniquePtr<float>& bias_float_uptr,
     ptrdiff_t task_idx,
     int hidden_size,
     int64_t skip_size,
@@ -135,45 +135,39 @@ void ComputeJob(
   float mean_square(0.0f);
   const size_t num_elems = static_cast<size_t>(hidden_size);
 
-  float* float_input = (float*)alloc->Alloc(num_elems * sizeof(float));
-  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
+  IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
 
-  float* float_skip = skip_fp32.get();
-  if (nullptr == float_skip) {
-    float_skip = (float*)alloc->Alloc(num_elems * sizeof(float));
-    MlasConvertHalfToFloatBuffer(p_skip, float_skip, num_elems);
+  if (!skip_float_uptr) {
+    skip_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+    MlasConvertHalfToFloatBuffer(p_skip, skip_float_uptr.get(), num_elems);
   }
 
-  float* float_bias = nullptr;
-  if (bias_data) {
-    if (nullptr != bias_fp32) {
-      float_bias = bias_fp32.get();
-    } else {
-      float_bias = (float*)alloc->Alloc(num_elems * sizeof(float));
-      MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
-    }
+  if (bias_data && !bias_float_uptr) {
+    bias_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+    MlasConvertHalfToFloatBuffer(bias_data, bias_float_uptr.get(), num_elems);
   }
 
-  float* float_output = (float*)alloc->Alloc(num_elems * sizeof(float));
+  IAllocatorUniquePtr<float> output_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+  float* output_float_ptr = output_float_uptr.get();
 
+  const float* input_float_ptr = input_float_uptr.get();
+  const float* skip_float_ptr = skip_float_uptr.get();
+  const float* bias_float_ptr = bias_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
-    float val = float_input[h] + float_skip[h];
+    float val = input_float_ptr[h] + skip_float_ptr[h];
 
-    if (nullptr != float_bias) {
-      val += float_bias[h];
+    if (bias_float_uptr) {
+      val += bias_float_ptr[h];
     }
 
-    float_output[h] = val;
+    output_float_ptr[h] = val;
     mean += val;
     mean_square += val * val;
   }
 
-  if (float_bias && (nullptr == bias_fp32)) {
-    delete[] float_bias;
-  }
-
   if (nullptr != p_skip_input_bias_add_output) {
-    MlasConvertFloatToHalfBuffer(float_output, p_skip_input_bias_add_output, num_elems);
+    MlasConvertFloatToHalfBuffer(output_float_ptr, p_skip_input_bias_add_output, num_elems);
   }
 
   mean = mean / hidden_size;
@@ -183,42 +177,29 @@ void ComputeJob(
     mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
   }
 
-  float* float_gamma = gamma_fp32.get();
-  if (nullptr == float_gamma) {
-    float_gamma = float_input;  // overwrite float_input with gamma values, since they have the same size
-    MlasConvertHalfToFloatBuffer(gamma_data, float_gamma, num_elems);
+  if (!gamma_float_uptr) {
+    gamma_float_uptr = std::move(input_float_uptr);  // overwrite input with gamma values, since they have the same size
+    MlasConvertHalfToFloatBuffer(gamma_data, gamma_float_uptr.get(), num_elems);
   }
 
-  float* float_beta = nullptr;
-  if (beta_data) {
-    if (nullptr != beta_fp32) {
-      float_beta = beta_fp32.get();
-    } else {
-      float_beta = (float*)alloc->Alloc(num_elems * sizeof(float));
-      MlasConvertHalfToFloatBuffer(beta_data, float_beta, num_elems);
-    }
+  if (beta_data && !beta_float_uptr) {
+    beta_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+    MlasConvertHalfToFloatBuffer(beta_data, beta_float_uptr.get(), num_elems);
   }
 
+  const float* gamma_float_ptr = gamma_float_uptr.get();
+  const float* beta_float_ptr = beta_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
-      float_output[h] = float_output[h] / mean_square * float_gamma[h];
-    } else if (nullptr == float_beta) {
-      float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h];
+      output_float_ptr[h] = output_float_ptr[h] / mean_square * gamma_float_ptr[h];
+    } else if (nullptr == beta_float_uptr) {
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * gamma_float_ptr[h];
     } else {
-      float_output[h] = (float_output[h] - mean) / mean_square * float_gamma[h] + float_beta[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * gamma_float_ptr[h] + beta_float_ptr[h];
     }
   }
 
-  alloc->Free(float_input);  // also takes care of float_gamma if reused
-  if (float_skip && (nullptr == skip_fp32)) {
-    alloc->Free(float_skip);
-  }
-  if (beta_data && (nullptr == beta_fp32)) {
-    alloc->Free(float_beta);
-  }
-
-  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
-  alloc->Free(float_output);
+  MlasConvertFloatToHalfBuffer(output_float_ptr, p_output, num_elems);
 }
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {

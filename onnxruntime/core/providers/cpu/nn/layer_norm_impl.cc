@@ -24,16 +24,16 @@ void ComputeJob(
     const T* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
-    const IAllocatorUniquePtr<float>& scale_fp32,
-    const IAllocatorUniquePtr<float>& bias_fp32,
+    IAllocatorUniquePtr<float>& scale_float_uptr,
+    IAllocatorUniquePtr<float>& bias_float_uptr,
     float epsilon,
     bool simplified,
     T* Y_data,
     U* mean_data,
     U* inv_std_dev_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(scale_fp32);  // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(bias_fp32);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(scale_float_uptr);  // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(bias_float_uptr);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(alloc);
 
   const T* p_input = X_data + task_idx * norm_size;
@@ -82,8 +82,8 @@ void ComputeJob(
     const MLFloat16* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
-    const IAllocatorUniquePtr<float>& scale_fp32,
-    const IAllocatorUniquePtr<float>& bias_fp32,
+    IAllocatorUniquePtr<float>& scale_float_uptr,
+    IAllocatorUniquePtr<float>& bias_float_uptr,
     float epsilon,
     bool simplified,
     MLFloat16* Y_data,
@@ -97,15 +97,17 @@ void ComputeJob(
   float mean_square(0.0f);
 
   const size_t num_elems = static_cast<size_t>(norm_size);
-  float* float_input = (float*)alloc->Alloc(num_elems * sizeof(float));
-  MlasConvertHalfToFloatBuffer(p_input, float_input, num_elems);
+  IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
 
-  float* float_output = (float*)alloc->Alloc(num_elems * sizeof(float));
+  IAllocatorUniquePtr<float> output_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+  float* output_float_ptr = output_float_uptr.get();
 
+  const float* input_float_ptr = input_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
-    float_output[h] = float_input[h];
-    mean += float_input[h];
-    mean_square += float_input[h] * float_input[h];
+    output_float_ptr[h] = input_float_ptr[h];
+    mean += input_float_ptr[h];
+    mean_square += input_float_ptr[h] * input_float_ptr[h];
   }
 
   mean = mean / norm_size;
@@ -115,39 +117,29 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  float* float_scale = scale_fp32.get();
-  if (nullptr == float_scale) {
-    float_scale = float_input;  // overwrite float_input with scale values, since they have the same size
-    MlasConvertHalfToFloatBuffer(scale_data, float_scale, num_elems);
+  if (!scale_float_uptr) {
+    scale_float_uptr = std::move(input_float_uptr);  // overwrite input with scale values, since they have the same size
+    MlasConvertHalfToFloatBuffer(scale_data, scale_float_uptr.get(), num_elems);
   }
 
-  float* float_bias = nullptr;
-  if (bias_data) {
-    if (nullptr != bias_fp32) {
-      float_bias = bias_fp32.get();
-    } else {
-      float_bias = (float*)alloc->Alloc(num_elems * sizeof(float));
-      MlasConvertHalfToFloatBuffer(bias_data, float_bias, num_elems);
-    }
+  if (bias_data && !bias_float_uptr) {
+    bias_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+    MlasConvertHalfToFloatBuffer(bias_data, bias_float_uptr.get(), num_elems);
   }
 
+  const float* scale_float_ptr = scale_float_uptr.get();
+  const float* bias_float_ptr = bias_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
-      float_output[h] = float_output[h] / mean_square * float_scale[h];
+      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[h];
     } else if (nullptr == bias_data) {
-      float_output[h] = (float_output[h] - mean) / mean_square * float_scale[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h];
     } else {
-      float_output[h] = (float_output[h] - mean) / mean_square * float_scale[h] + float_bias[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h] + bias_float_ptr[h];
     }
   }
 
-  alloc->Free(float_input);  // also takes care of float_scale if reused
-  if (float_bias && (nullptr == bias_fp32)) {
-    alloc->Free(float_bias);
-  }
-
-  MlasConvertFloatToHalfBuffer(float_output, p_output, num_elems);
-  alloc->Free(float_output);
+  MlasConvertFloatToHalfBuffer(output_float_ptr, p_output, num_elems);
 
   if (mean_data != nullptr) {
     // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
