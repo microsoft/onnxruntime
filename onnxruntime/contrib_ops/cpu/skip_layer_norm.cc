@@ -209,7 +209,7 @@ void ComputeJob(
     }
   }
 
-  alloc->Free(float_input); // also takes care of float_gamma if reused
+  alloc->Free(float_input);  // also takes care of float_gamma if reused
   if (float_skip && (nullptr == skip_fp32)) {
     alloc->Free(float_skip);
   }
