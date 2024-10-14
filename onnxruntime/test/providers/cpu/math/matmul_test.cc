@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -144,6 +145,25 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
   return test_cases;
 }
 
+template <>
+std::vector<MatMulTestData<MLFloat16>> GenerateTestCases() {
+  std::vector<MatMulTestData<MLFloat16>> test_cases;
+
+  // test 2D expected_vals
+  std::vector<int64_t> expected_vals = {42, 48, 54, 114, 136, 158, 186, 224, 262};
+  std::vector<MLFloat16> expected_vals_fp16(expected_vals.size());
+  std::transform(expected_vals.begin(), expected_vals.end(), expected_vals_fp16.begin(),
+                 [](int64_t num) { return MLFloat16(float(num)); });
+  test_cases.push_back(
+      {"test 2D MLfloat16",
+       {3, 4},
+       {4, 3},
+       {3, 3},
+       expected_vals_fp16});
+
+  return test_cases;
+}
+
 template <typename T>
 void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant) {
   for (auto t : GenerateTestCases<T>()) {
@@ -190,6 +210,32 @@ TEST(MathOpTest, MatMulFloatType) {
   }
   RunMatMulTest<float>(7, false, false);
 }
+
+// To Test XNNPACK, Matrix B must be constant
+TEST(MathOpTest, MatMulFloatType_ConstantB) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<float>(7, false, true);
+}
+
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+TEST(MathOpTest, MatMulFloat16_ConstantB) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<MLFloat16>(7, false, true);
+}
+#endif
 
 TEST(MathOpTest, MatMulDoubleType) {
   RunMatMulTest<double>(7);
@@ -246,7 +292,7 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
   RunMatMulZeroKTest<int32_t>();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -255,8 +301,6 @@ TEST(MathOpTest, MatMul_Float16) {
     return;
   }
 #endif
-  OpTester test("MatMul", 14);
-
   std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
                        -1.0f, -2.0f, -3.0f, -4.0f};
   std::vector<float> B(12, 1.0f);
@@ -270,12 +314,17 @@ TEST(MathOpTest, MatMul_Float16) {
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
   ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
-  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
-  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
-  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
+  for (int i = 0; i < 2; i++) {
+    // it needs Matrix B as constant to test XNNPack
+    bool b_is_constant = i == 0 ? false : true;
+    OpTester test("MatMul", 14);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, b_is_constant);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
 }
 #endif
 

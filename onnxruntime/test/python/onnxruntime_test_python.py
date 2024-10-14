@@ -1391,7 +1391,9 @@ class TestInferenceSession(unittest.TestCase):
 
         # test ort_value creation on top of the bytes
         float_tensor_data_type = 1  # TensorProto_DataType_FLOAT
-        ort_value_with_type = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(numpy_arr_input, float_tensor_data_type)
+        ort_value_with_type = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(
+            numpy_arr_input, float_tensor_data_type
+        )
         self.assertTrue(ort_value_with_type.is_tensor())
         self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
         self.assertEqual([3, 2], ort_value_with_type.shape())
@@ -1843,8 +1845,8 @@ class TestInferenceSession(unittest.TestCase):
         param_1 = np.array(val).astype(np.float32).reshape(5, 2)
         param_2 = np.array(val).astype(np.int64).reshape(2, 5)
 
-        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(param_1, float_data_type)
-        ort_val_2 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnxtype(param_2, int64_data_type)
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_1, float_data_type)
+        ort_val_2 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_2, int64_data_type)
 
         params = {"param_1": ort_val_1, "param_2": ort_val_2}
 
