@@ -18,6 +18,10 @@
 #include "providers.h"
 #include "TestCase.h"
 
+#ifdef USE_OPENVINO
+#include "nlohmann/json.hpp"
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
@@ -39,13 +43,8 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
 
-  if (!use_device_mem) {
-    auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                      output_names_raw_ptr.data(), output_names_raw_ptr.size());
-  } else {
-    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                 output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
-  }
+  session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+               output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
@@ -807,13 +806,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
           }
         }
-      } else if (key == "enable_npu_fast_compile") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_npu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
-        }
       } else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -843,6 +835,28 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ov_options[key] = value;
         }
+      } else if (key == "load_config") {
+        auto load_json = [&](std::string filename) -> std::string {
+          std::ifstream input_filestream(filename);
+          if (!input_filestream.is_open()) {
+            ORT_THROW("Passed an invalid JSON config file path \"" + filename + "\".");
+          }
+          nlohmann::json json_config;
+          try {
+            input_filestream >> json_config;
+          } catch (const OnnxRuntimeException& ex) {
+            ORT_THROW("Exception parsing config file \"" + filename + "\".\n" + ex.what());
+          } catch (const std::exception& ex) {
+            throw std::runtime_error("Standard exception for config file \"" + filename + "\".\n" + ex.what());
+          } catch (...) {
+            throw std::runtime_error("Unknown exception for config file \"" + filename + "\".\n");
+          }
+          if (json_config.empty()) {
+            ORT_THROW("Empty JSON content passed \"" + filename + "\".");
+          }
+          return json_config.dump();
+        };
+        ov_options[key] = load_json(value);
       } else if (key == "model_priority") {
         ov_options[key] = value;
       } else if (key == "cache_dir") {
@@ -855,21 +869,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ov_options[key] = value;
         }
-      } else if (key == "export_ep_ctx_blob") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
-              "should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "use_device_mem") {
-        if (value == "true" || value == "True") {
-          use_device_mem = true;
-        }
+      } else if (key == "device_memory_name") {
+        device_memory_name_ = std::move(value);
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
+        ORT_THROW(
+            "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
+            " ['device_type', 'device_id', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', "
+            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer', 'model_priority'] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
@@ -912,25 +918,31 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  if (use_device_mem) {
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo("OpenVINO_RT_NPU", OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+  auto transform_fcn = std::function<int64_t(int64_t)>();
+  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
+  if (device_memory_name_.empty()) {
+    transform_fcn = [](int64_t input) { return input; };
+    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
+      return Ort::Value(nullptr);
+    };
+  } else {
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     custom_allocator_ = std::make_unique<Ort::Allocator>(session_, memory_info);
-    for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
-      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    allocator_ = *custom_allocator_;
 
-      std::vector<int64_t> output_shape = tensor_info.GetShape();
+    // free dimensions are treated as 1 if not overridden
+    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
+      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+    };
+  }
 
-      // free dimensions are treated as 1 if not overridden
-      for (int64_t& dim : output_shape) {
-        if (dim == -1) {
-          dim = 1;
-        }
-      }
-
-      outputs_.push_back(Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)output_shape.data(),
-                                                  output_shape.size(), tensor_info.GetElementType()));
-    }
+  for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
+    Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
+    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
   }
 }
 
@@ -1020,29 +1032,16 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      if (!use_device_mem) {
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-      }
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
       // free dimensions are treated as 1 if not overridden
-      for (int64_t& dim : input_node_dim) {
-        if (dim == -1) {
-          dim = 1;
-        }
-      }
-      if (use_device_mem) {
-        Ort::Value input_tensor = Ort::Value::CreateTensor(*custom_allocator_, (const int64_t*)input_node_dim.data(),
-                                                           input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, input_tensor);
-        PreLoadTestData(0, i, std::move(input_tensor));
-      } else {
-        auto allocator = Ort::AllocatorWithDefaultOptions();
-        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                           input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, input_tensor);
-        PreLoadTestData(0, i, std::move(input_tensor));
-      }
+      auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+      std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
+
+      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
+                                                         input_node_dim.size(), tensor_info.GetElementType());
+      InitializeTensorWithSeed(seed, input_tensor);
+      PreLoadTestData(0, i, std::move(input_tensor));
     }
   }
   return true;
