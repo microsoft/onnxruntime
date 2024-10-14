@@ -105,6 +105,7 @@ std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const P
   return OpenVINOProviderFactoryCreator::Create(params, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }
