@@ -4,7 +4,7 @@ plugins {
 }
 
 def minSdkVer = System.properties.get("minSdkVer")?:24
-def isQnnBuild = System.properties.get("qnnBuild")?.toBoolean() ?: false
+def qnnVersion = System.properties['qnnVersion']
 
 android {
 	compileSdkVersion 32
@@ -33,7 +33,7 @@ android {
 		jvmTarget = '1.8'
 	}
 	// Conditional packagingOptions for QNN builds only
-	if (isQnnBuild)	{
+	if (qnnVersion != null)	{
 		packagingOptions  {
 			jniLibs {
 				useLegacyPackaging = true
@@ -61,8 +61,8 @@ dependencies {
 	androidTestImplementation 'com.microsoft.appcenter:espresso-test-extension:1.4'
 
 	// QNN only dependencies
-	if (isQnnBuild) {
-	implementation 'com.qualcomm.qti:qnn-runtime:2.26.0'
+	if (qnnVersion != null) {
+	implementation "com.qualcomm.qti:qnn-runtime:$qnnVersion"
 	}
 
 }

@@ -70,7 +70,6 @@ class SimpleTest {
             val opts = SessionOptions()
             opts.setIntraOpNumThreads(intraOpNumThreads)
 
-            // Add NNAPI provider if requested
             if (useNNAPI) {
                 if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.NNAPI)) {
                     opts.addNnapi()
@@ -80,15 +79,13 @@ class SimpleTest {
                 }
             }
 
-            // Add QNN provider if requested
             if (useQNN) {
                 if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
                     // Since this is running in an Android environment, we use the .so library
                     val qnnLibrary = "libQnnHtp.so"
-
                     val providerOptions = Collections.singletonMap("backend_path", qnnLibrary)
 
-                    opts.addQnn(providerOptions)  // Adding QNN provider
+                    opts.addQnn(providerOptions)
                 } else {
                     Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
                     return
@@ -124,7 +121,7 @@ class SimpleTest {
                                         Assert.assertEquals(
                                             rawOutput[i][j][k],
                                             expected[i][j][k],
-                                            1e-3.toFloat()
+                                            1e-6.toFloat()
                                         )
                                     }
                                 }

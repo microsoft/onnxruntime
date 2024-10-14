@@ -864,7 +864,6 @@ def run_subprocess(
     my_env.update(env)
 
     log.info(" ".join(args))
-    print(args)
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
@@ -1904,7 +1903,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                     )
                 )
                 context_stack.callback(android.stop_emulator, emulator_proc)
-            """
+
             adb_push("testdata", device_dir, cwd=cwd)
             adb_push(
                 os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd
@@ -1918,7 +1917,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
             # when we try to copy the java app to the device.
             adb_shell(f"rm {device_dir}/onnxruntime_test_all")
-            """
+
             if args.build_java:
                 # use the gradle wrapper under <repo root>/java
                 gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
