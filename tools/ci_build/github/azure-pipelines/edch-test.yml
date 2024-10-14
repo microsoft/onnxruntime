@@ -1,7 +1,7 @@
 jobs:
 - job: j
   pool:
-    vmImage: macos-latest-internal
+    vmImage: macos-14
   
   steps:
   - checkout: none
