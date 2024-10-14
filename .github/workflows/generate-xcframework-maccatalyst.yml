@@ -27,11 +27,11 @@ jobs:
           python --version
           which python3
 
-      - name: Use Xcode ${{ env.xcode_version }}
-        shell: bash
-        run: |
-          XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
-          sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+      # - name: Use Xcode ${{ env.xcode_version }}
+      #   shell: bash
+      #   run: |
+      #     XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
+      #     sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
       - name: checkout repository
         uses: actions/checkout@v4
