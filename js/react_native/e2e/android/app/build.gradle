@@ -216,10 +216,10 @@ dependencies {
     androidTestImplementation 'androidx.test:rules:1.4.0'
 
     implementation project(':onnxruntime-react-native')
-    version = rootProject.file('../../../../VERSION_NUMBER').text.trim()
 
     // specify ORT dependency here so it can be found in libs flatDir repository
-    implementation ("com.microsoft.onnxruntime:onnxruntime-android:" + version + "@aar")
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+
 }
 
 // Run this once to be able to run the application with BUCK
