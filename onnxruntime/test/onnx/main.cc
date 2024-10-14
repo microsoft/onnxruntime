@@ -36,6 +36,8 @@
 #include "core/session/onnxruntime_c_api_ep.h"
 #endif
 
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
 using namespace onnxruntime;
 
 namespace {
@@ -96,8 +98,6 @@ void usage() {
       "onnxruntime version: %s\n",
       version_string.c_str());
 }
-
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 inline void THROW_ON_ERROR(OrtStatus* status) {
   if (status != nullptr) {
@@ -438,7 +438,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
       if (use_trt_as_plugin) {
-        fprintf(stdout, "Switching to TRT EP as Plugin");
+        fprintf(stdout, "Switching to TRT EP as Plugin\n");
         TestTensorRTEp(g_ort, env, sf, device_id);
       }
       else {

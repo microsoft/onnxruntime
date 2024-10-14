@@ -24,7 +24,7 @@ target_include_directories(TensorRTEp PUBLIC "${ORT_HOME}/include/onnxruntime"
                                              "${ORT_HOME}/build/Linux/Debug/_deps/protobuf-src/src")
 
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
-target_link_libraries(TensorRTEp PUBLIC #"${ORT_HOME}/build/Linux/Debug/libonnxruntime.so"
+target_link_libraries(TensorRTEp PUBLIC "${ORT_HOME}/build/Linux/Debug/libonnxruntime.so"
                                      ${TENSORRT_HOME}/lib/libnvinfer.so
                                      ${TENSORRT_HOME}/lib/libnvinfer_plugin.so
                                      ${TENSORRT_HOME}/lib/libnvonnxparser.so
