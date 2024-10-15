@@ -30,9 +30,9 @@ using TunableOp = TunableOp<ParamsT, Timer>;
 // As a convenience for authoring TunableOp in contrib namespace
 namespace contrib {
 namespace rocm {
-using onnxruntime::rocm::tunable::RocmTuningContext;
 using onnxruntime::rocm::tunable::Op;
 using onnxruntime::rocm::tunable::OpParams;
+using onnxruntime::rocm::tunable::RocmTuningContext;
 using onnxruntime::rocm::tunable::TunableOp;
 }  // namespace rocm
 }  // namespace contrib
