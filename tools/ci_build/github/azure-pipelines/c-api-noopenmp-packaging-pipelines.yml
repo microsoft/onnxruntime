@@ -64,6 +64,11 @@ parameters:
   type: string
   default: 2.26.0.240828
 
+- name: runBrowserStackTests
+  displayName: Run BrowserStack tests? (will run App Center tests if disabled)
+  type: boolean
+  default: false
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -111,6 +116,7 @@ stages:
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    runBrowserStackTests: ${{ parameters.runBrowserStackTests }}
 
 - template: stages/java-cuda-packaging-stage.yml
   parameters:

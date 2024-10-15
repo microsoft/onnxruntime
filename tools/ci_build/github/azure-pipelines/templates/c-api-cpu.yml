@@ -48,6 +48,11 @@ parameters:
   type: string
   default: '0'
 
+- name: runBrowserStackTests
+  displayName: Run BrowserStack tests? (will run App Center tests if disabled)
+  type: boolean
+  default: false
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -82,6 +87,7 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+      runBrowserStackTests: ${{ parameters.runBrowserStackTests }}
 
 - stage: Android_Java_API_AAR_Packaging_QNN
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
