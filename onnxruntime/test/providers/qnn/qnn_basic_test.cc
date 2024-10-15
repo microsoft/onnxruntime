@@ -1025,7 +1025,8 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
 TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
-  // Builds local function that checks that the Q/DQ ops at the graph IO boundary are assigned to the CPU EP.
+  // Returns a function that checks that the Q/DQ ops at the graph IO boundary are offloaded to CPU
+  // if the corresponding provider option is enabled.
   auto graph_checker_builder = [](bool offload_graph_input_quantization,
                                   bool offload_graph_output_dequantization) -> std::function<void(const Graph&)> {
     return [offload_graph_input_quantization, offload_graph_output_dequantization](const Graph& graph) {
@@ -1081,6 +1082,8 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
         provider_options["offload_graph_input_quantization"] = offload_input_quant ? "1" : "0";
         provider_options["offload_graph_output_dequantization"] = offload_output_dequant ? "1" : "0";
         auto graph_checker = graph_checker_builder(offload_input_quant, offload_output_dequant);
+        auto expected_ep_assignment = (offload_input_quant || offload_output_dequant) ? ExpectedEPNodeAssignment::Some
+                                                                                      : ExpectedEPNodeAssignment::All;
 
         float min_val = (op_type == "Sqrt") ? 0.0f : -10.0f;
         TestInputDef<float> input_def({1, 2, 2, 2}, false, GetFloatDataInRange(min_val, 10.0f, 8));
@@ -1090,7 +1093,7 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
                                       qdq_model_build_fn,
                                       provider_options,
                                       /*opset*/ 21,
-                                      ExpectedEPNodeAssignment::Some,
+                                      expected_ep_assignment,
                                       /*abs_err*/ QDQTolerance(),
                                       logging::Severity::kERROR,
                                       /*qnn_ctx_model_path*/ "",
