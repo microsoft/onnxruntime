@@ -116,6 +116,7 @@ def _test_apple_packages(args):
         # set env to skip macos test targets accordingly
         env = os.environ.copy()
         env["SKIP_MACOS_TEST"] = "true" if args.skip_macos_test else "false"
+        print(target_proj_path)
         subprocess.run(["pod", "install"], shell=False, check=True, cwd=target_proj_path, env=env)
 
         # run the tests

@@ -19,6 +19,11 @@ parameters:
   type: string
   default: ''
 
+- name: runBrowserStackTests
+  displayName: Run BrowserStack tests? (will run App Center tests if disabled)
+  type: boolean
+  default: false
+
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
   workspace:
@@ -81,11 +86,27 @@ jobs:
         --test_apk_path "androidTest/debug/app-debug-androidTest.apk" \
         --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
     displayName: Run E2E tests using Browserstack
+    condition: eq(parameters.runBrowserStackTests, true)
     workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
     timeoutInMinutes: 15
     env:
       BROWSERSTACK_ID: $(browserstack_username)
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
+
+  - script: |
+      set -e -x
+      cd android_test/android
+      appcenter test run espresso \
+        --app "AI-Frameworks/ORT-Mobile-Android" \
+        --devices $(app_center_android_test_devices) \
+        --app-path ./app/build/outputs/apk/debug/app-debug.apk \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir ./app/build/outputs/apk/androidTest/debug \
+        --token $(app_center_api_token)
+    displayName: Run E2E tests using App Center
+    condition: eq(parameters.runBrowserStackTests, false)
+    workingDirectory: $(Build.BinariesDirectory)
 
   - template: component-governance-component-detection-steps.yml
     parameters :

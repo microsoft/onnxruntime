@@ -22,5 +22,6 @@
         "-build/include_subdir",
         "-runtime/references"
     ],
-    "C_Cpp.autoAddFileAssociations": false
+    "C_Cpp.autoAddFileAssociations": false,
+    "cmake.sourceDirectory": "C:/Users/carolinezhu/Documents/cowboy-coding/onnxruntime/cmake"
 }
