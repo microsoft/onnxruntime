@@ -122,6 +122,22 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
   }
 }
 
+void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort::SessionOptions& sessionOptions) {
+  for (const auto& kvp : obj) {
+    auto key = kvp.first.As<Napi::String>().Utf8Value();
+    Napi::Value value = kvp.second;
+    if (value.IsObject()) {
+      IterateExtraOptions(prefix + key + ".", value.As<Napi::Object>(), sessionOptions);
+    } else {
+      ORT_NAPI_THROW_TYPEERROR_IF(!value.IsString(), obj.Env(),
+                                  "Invalid argument: sessionOptions.extra value must be a string in Node.js binding.");
+      std::string entry = prefix + key;
+      auto val = value.As<Napi::String>().Utf8Value();
+      sessionOptions.AddConfigEntry(entry.c_str(), val.c_str());
+    }
+  }
+}
+
 void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions) {
   // Execution provider
   if (options.Has("executionProviders")) {
@@ -187,6 +203,28 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
     } else {
       sessionOptions.DisableMemPattern();
     }
+  }
+
+  // optimizedModelFilePath
+  if (options.Has("optimizedModelFilePath")) {
+    auto optimizedModelFilePathValue = options.Get("optimizedModelFilePath");
+    ORT_NAPI_THROW_TYPEERROR_IF(!optimizedModelFilePathValue.IsString(), options.Env(),
+                                "Invalid argument: sessionOptions.optimizedModelFilePath must be a string.");
+#ifdef _WIN32
+    auto str = optimizedModelFilePathValue.As<Napi::String>().Utf16Value();
+    std::basic_string<ORTCHAR_T> optimizedModelFilePath = std::wstring{str.begin(), str.end()};
+#else
+    std::basic_string<ORTCHAR_T> optimizedModelFilePath = optimizedModelFilePathValue.As<Napi::String>().Utf8Value();
+#endif
+    sessionOptions.SetOptimizedModelFilePath(optimizedModelFilePath.c_str());
+  }
+
+  // extra
+  if (options.Has("extra")) {
+    auto extraValue = options.Get("extra");
+    ORT_NAPI_THROW_TYPEERROR_IF(!extraValue.IsObject(), options.Env(),
+                                "Invalid argument: sessionOptions.extra must be an object.");
+    IterateExtraOptions("", extraValue.As<Napi::Object>(), sessionOptions);
   }
 
   // execution mode
