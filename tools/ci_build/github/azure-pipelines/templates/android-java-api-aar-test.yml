@@ -86,7 +86,7 @@ jobs:
         --test_apk_path "androidTest/debug/app-debug-androidTest.apk" \
         --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
     displayName: Run E2E tests using Browserstack
-    condition: eq(parameters.runBrowserStackTests, true)
+    condition: eq('${{ parameters.runBrowserStackTests }}', 'true')
     workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
     timeoutInMinutes: 15
     env:
@@ -105,7 +105,7 @@ jobs:
         --build-dir ./app/build/outputs/apk/androidTest/debug \
         --token $(app_center_api_token)
     displayName: Run E2E tests using App Center
-    condition: eq(parameters.runBrowserStackTests, false)
+    condition: eq('${{ parameters.runBrowserStackTests }}', 'false')
     workingDirectory: $(Build.BinariesDirectory)
 
   - template: component-governance-component-detection-steps.yml
