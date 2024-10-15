@@ -158,7 +158,7 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter,
-                                         InlinedHashSet<std::string>& pre_packed_initializers_name_set,
+                                         std::unordered_set<std::string>& pre_packed_initializers_name_set,
                                          Tensor* buffered_tensor = nullptr);
 
 // Given a tensor proto with external data obtain a tensor using the specified custom external data loader.

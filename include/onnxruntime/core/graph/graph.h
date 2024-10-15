@@ -1138,12 +1138,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     // Since one constant initializer could be used by different kernels
     // and prepacked differently, use an unordered_map to store prepacked
     // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
-    InlinedHashMap<std::string, InlinedHashMap<std::string, Tensor>> pre_packed_initializers_name_map;
+    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
 
     // This InlinedHashSet is used during model load with prepacked initializer saved in ONNX data file.
     // ORT reads prepacked initializers and store them into this set so we could skip PrePack
     // process later to save heap memory.
-    InlinedHashSet<std::string> pre_packed_initializers_name_set;
+    std::unordered_set<std::string> pre_packed_initializers_name_set;
   };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
