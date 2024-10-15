@@ -94,6 +94,7 @@ jobs:
 
          # Mount qnn volume if building qnn android package
         if [[ ${{ parameters.packageName }} == *qnn* ]]; then
+          echo $(QnnSDKVersionYaml)
           QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
           USE_QNN="1"
         else

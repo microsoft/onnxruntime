@@ -17,7 +17,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK version
   type: string
-  default: '2.26.0'
+  default: '2.26.0.240828'
 
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
@@ -83,7 +83,9 @@ jobs:
       cd android_test/android
       # build apks for qnn package as they are not built in the emulator test step
       if [[ ${{ parameters.packageName }} == *qnn* ]]; then
-          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=${{parameters.QnnSDKVersion}} --stacktrace
+          # qnn-runtime package is expected to be of the form qnn-runtime <major>.<minor>.<patch>
+          qnn_version=$(echo "${{ parameters.QnnSDKVersion }}" | cut -d'.' -f1-3)
+          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$qnn_version --stacktrace
       fi
 
       pip install requests

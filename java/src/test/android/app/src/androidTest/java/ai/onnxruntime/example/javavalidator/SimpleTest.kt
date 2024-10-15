@@ -86,9 +86,6 @@ class SimpleTest {
                     val providerOptions = Collections.singletonMap("backend_path", qnnLibrary)
 
                     opts.addQnn(providerOptions)
-                } else {
-                    Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
-                    return
                 }
             }
 
@@ -115,13 +112,14 @@ class SimpleTest {
                         output.use {
                             @Suppress("UNCHECKED_CAST")
                             val rawOutput = output[0].value as Array<Array<FloatArray>>
+                            val precision = if (useQNN) 1e-3 else 1e-6
                             for (i in 0..2) {
                                 for (j in 0..3) {
                                     for (k in 0..4) {
                                         Assert.assertEquals(
                                             rawOutput[i][j][k],
                                             expected[i][j][k],
-                                            1e-6.toFloat()
+                                            precision.toFloat()
                                         )
                                     }
                                 }

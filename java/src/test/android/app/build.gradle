@@ -17,6 +17,14 @@ android {
 		versionName "1.0"
 
 		testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+		 // Add BuildConfig field for qnnVersion
+		if (qnnVersion != null) {
+			buildConfigField "boolean", "IS_QNN_BUILD", "true"
+		}
+		else {
+			buildConfigField "boolean", "IS_QNN_BUILD", "false"
+		}
 	}
 
 	buildTypes {
@@ -41,6 +49,13 @@ android {
 			exclude 'lib/arm64-v8a/libQnnGpu.so'
 		}
 	}
+	sourceSets {
+        main {
+            if (System.properties['qnnVersion'] != null) {
+                manifest.srcFile 'src/main/AndroidManifestQnn.xml'  // Use QNN manifest
+            }
+        }
+    }
 	namespace 'ai.onnxruntime.example.javavalidator'
 }
 

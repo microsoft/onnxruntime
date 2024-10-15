@@ -23,11 +23,15 @@ This android application is mainly aimed for testing:
 - The [Gradle](https://gradle.org/) build system is required for building the APKs used to run [android instrumentation tests](https://source.android.com/compatibility/tests/development/instrumentation). Version 7.5 or newer is required.
   The Gradle wrapper at `java/gradlew[.bat]` may be used.
 
+
 ### Building
 
 Use the android's [build instructions](https://onnxruntime.ai/docs/build/android.html) with `--build_java` and `--android_run_emulator` option.
 
 Please note that you may need to set the `--android_abi=x86_64` (the default option is `arm64-v8a`). This is because android instrumentation test is run on an android emulator which requires an abi of `x86_64`.
+
+#### QNN Builds
+For QNN builds, it isnecessary to set the `ADSP_LIBRARY_PATH` environment variable to the [native library directory](https://developer.android.com/reference/android/content/pm/ApplicationInfo#nativeLibraryDir) depending on the device. This ensures that any native libraries downloaded as dependencies such as QNN libraries are found by the application.
 
 #### Build Output
 
@@ -37,3 +41,5 @@ The build will generate two apks which is required to run the test application i
 * `debug/app-debug.apk`
 
 After running the build script, the two apks will be installed on `ort_android` emulator and it will automatically run the test application in an adb shell.
+
+#### Manual Testing on QDC
