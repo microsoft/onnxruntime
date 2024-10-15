@@ -173,10 +173,6 @@ class RocmKernel : public OpKernel {
     return provider_->PerThreadDefaultHipblasHandle();
   }
 
-  inline hipblasLtHandle_t HipblasLtHandle() const {
-    return provider_->PerThreadHipblasLtHandle();
-  }
-
   inline miopenHandle_t DefaultMiopenHandle() const {
     return provider_->PerThreadDefaultMiopenHandle();
   }

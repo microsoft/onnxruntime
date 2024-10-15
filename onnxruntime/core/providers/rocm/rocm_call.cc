@@ -65,7 +65,6 @@ const char* RocmErrString<hipblasStatus_t>(hipblasStatus_t e) {
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_EXECUTION_FAILED);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_INTERNAL_ERROR);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_SUPPORTED);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_LICENSE_ERROR);
     default:
       return "(look for HIPBLAS_STATUS_xxx in hipblas_api.h)";
   }

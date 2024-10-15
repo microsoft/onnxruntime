@@ -10,6 +10,7 @@
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_profiler.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
@@ -166,7 +167,6 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   HIP_CALL_THROW(hipSetDevice(device_id));
 
   HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
-  HIPBLAS_CALL_THROW(hipblasLtCreate(&hipblas_lt_handle_));
   HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
 
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
@@ -177,12 +177,11 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   ORT_IGNORE_RETURN_VALUE(HIPBLAS_CALL(hipblasDestroy(hipblas_handle_)));
-  ORT_IGNORE_RETURN_VALUE(HIPBLAS_CALL(hipblasLtDestroy(hipblas_lt_handle_)));
   ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(miopen_handle_)));
 }
 
 bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(
-    HipGraphAnnotation_t hip_graph_annotation_id) const {
+    RocmGraphAnnotation_t hip_graph_annotation_id) const {
   if (!IsGraphCaptureAllowedOnRun(hip_graph_annotation_id)) {
     return false;
   }
@@ -193,16 +192,16 @@ bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(
 }
 
 bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptureAllowedOnRun(
-    HipGraphAnnotation_t hip_graph_annotation_id) const {
+    RocmGraphAnnotation_t hip_graph_annotation_id) const {
   return hip_graph_.IsGraphCaptureAllowedOnRun(hip_graph_annotation_id);
 }
 
-HipGraphAnnotation_t ROCMExecutionProvider::PerThreadContext::GetHipGraphAnnotationId(
+RocmGraphAnnotation_t ROCMExecutionProvider::PerThreadContext::GetRocmGraphAnnotationId(
     const onnxruntime::RunOptions& run_options) const {
   auto graph_annotation_str =
-      run_options.GetConfigOptions().GetConfigEntry(kOrtRunOptionsConfigHipGraphAnnotation);
+      run_options.GetConfigOptions().GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
   // If graph annotation is not provided, fall back to the one hip graph per session behavior
-  HipGraphAnnotation_t hip_graph_annotation_id = 0;
+  RocmGraphAnnotation_t hip_graph_annotation_id = 0;
   if (graph_annotation_str.has_value()) {
     ORT_ENFORCE(TryParseStringWithClassicLocale<int>(*graph_annotation_str, hip_graph_annotation_id),
                 "Failed to parse the hip graph annotation id: ",
@@ -212,24 +211,24 @@ HipGraphAnnotation_t ROCMExecutionProvider::PerThreadContext::GetHipGraphAnnotat
   return hip_graph_annotation_id;
 }
 
-void ROCMExecutionProvider::PerThreadContext::CaptureBegin(HipGraphAnnotation_t hip_graph_annotation_id) {
+void ROCMExecutionProvider::PerThreadContext::CaptureBegin(RocmGraphAnnotation_t hip_graph_annotation_id) {
   hip_graph_.CaptureBegin(hip_graph_annotation_id);
 }
 
-void ROCMExecutionProvider::PerThreadContext::CaptureEnd(HipGraphAnnotation_t hip_graph_annotation_id) {
+void ROCMExecutionProvider::PerThreadContext::CaptureEnd(RocmGraphAnnotation_t hip_graph_annotation_id) {
   hip_graph_.CaptureEnd(hip_graph_annotation_id);
 }
 
-bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured(HipGraphAnnotation_t graph_annotation_id) const {
+bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured(RocmGraphAnnotation_t graph_annotation_id) const {
   return hip_graph_.IsGraphCaptured(graph_annotation_id);
 }
 
-Status ROCMExecutionProvider::PerThreadContext::ReplayGraph(HipGraphAnnotation_t graph_annotation_id) {
+Status ROCMExecutionProvider::PerThreadContext::ReplayGraph(RocmGraphAnnotation_t graph_annotation_id) {
   return hip_graph_.Replay(graph_annotation_id);
 }
 
 void ROCMExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture(
-    HipGraphAnnotation_t hip_graph_annotation_id) {
+    RocmGraphAnnotation_t hip_graph_annotation_id) {
   if (graph_id_to_run_count_.find(hip_graph_annotation_id) == graph_id_to_run_count_.end()) {
     graph_id_to_run_count_[hip_graph_annotation_id] = 1;
     return;
@@ -384,10 +383,10 @@ Status ROCMExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-Status ROCMExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status ROCMExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   // always set ROCM device when session::Run() in case it runs in a worker thread
   HIP_RETURN_IF_ERROR(hipSetDevice(GetDeviceId()));
-  HipGraphAnnotation_t hip_graph_annotation_id = GetPerThreadContext().GetHipGraphAnnotationId(run_options);
+  RocmGraphAnnotation_t hip_graph_annotation_id = GetPerThreadContext().GetRocmGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(hip_graph_annotation_id) &&
       GetPerThreadContext().IsGraphCaptureAllowed(hip_graph_annotation_id)) {
     LOGS(*GetLogger(), INFO) << "Capturing the hip graph for this model";
@@ -396,8 +395,8 @@ Status ROCMExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_op
   return Status::OK();
 }
 
-Status ROCMExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
-  HipGraphAnnotation_t hip_graph_annotation_id = GetPerThreadContext().GetHipGraphAnnotationId(run_options);
+Status ROCMExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  RocmGraphAnnotation_t hip_graph_annotation_id = GetPerThreadContext().GetRocmGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(hip_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(hip_graph_annotation_id)) {
       GetPerThreadContext().CaptureEnd(hip_graph_annotation_id);
@@ -2219,18 +2218,18 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
 
       // Opset 18
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, Split)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, float, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, double, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, MLFloat16, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, int32_t, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, int8_t, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, uint8_t, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, int64_t, ReduceMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, float, ReduceMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, double, ReduceMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, MLFloat16, ReduceMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, int32_t, ReduceMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmaExecutionProvider, kOnnxDomain, 18, int64_t, ReduceMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, float, ReduceMin)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, double, ReduceMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, MLFloat16, ReduceMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, int32_t, ReduceMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, int8_t, ReduceMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, uint8_t, ReduceMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, int64_t, ReduceMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, float, ReduceMax)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, double, ReduceMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, MLFloat16, ReduceMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, int32_t, ReduceMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, int64_t, ReduceMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, ScatterElements)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, ScatterND)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, float, Pad)>,
@@ -2469,7 +2468,8 @@ void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
                             stream_,
                             use_ep_level_unified_stream_,
                             GetPerThreadContext().MiopenHandle(),
-                            GetPerThreadContext().HipblasHandle());
+                            GetPerThreadContext().HipblasHandle(),
+                            info_);
 }
 
 OrtDevice ROCMExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
