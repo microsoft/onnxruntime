@@ -19,11 +19,10 @@ endif()
 
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
-#TODO: Paco: need to find out onnxruntime_ENABLE_BITCODE turns ON even it is set to OFF
-#if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
-#  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
-#  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
-#endif()
+if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
+ string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+ string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1 -s DEFAULT_TO_CXX=1")
