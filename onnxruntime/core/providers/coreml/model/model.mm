@@ -23,6 +23,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
@@ -33,13 +34,6 @@ using namespace onnxruntime;
 using namespace onnxruntime::coreml;
 
 namespace {
-// Converts a UTF8 const char* to an NSString. Throws on failure.
-NSString* _Nonnull Utf8StringToNSString(const char* utf8_str) {
-  NSString* result = [NSString stringWithUTF8String:utf8_str];
-  ORT_ENFORCE(result != nil, "NSString conversion failed.");
-  return result;
-}
-
 /**
  * Computes the static output shape used to allocate the output tensor.
  * `inferred_shape` is the inferred shape known at model compile time. It may contain dynamic dimensions (-1).
@@ -165,7 +159,7 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
                   (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
     MLFeatureValue* feature_value = [MLFeatureValue featureValueWithMultiArray:multi_array];
-    NSString* feature_name = Utf8StringToNSString(name.c_str());
+    NSString* feature_name = util::Utf8StringToNSString(name.c_str());
     feature_dictionary[feature_name] = feature_value;
   }
 
@@ -270,7 +264,7 @@ NS_ASSUME_NONNULL_BEGIN
                       logger:(const logging::Logger&)logger
                 coreml_flags:(uint32_t)coreml_flags {
   if (self = [super init]) {
-    coreml_model_path_ = [NSString stringWithUTF8String:path.c_str()];
+    coreml_model_path_ = util::Utf8StringToNSString(path.c_str());
     logger_ = &logger;
     coreml_flags_ = coreml_flags;
   }
@@ -371,7 +365,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (const auto& [output_name, output_tensor_info] : outputs) {
       MLFeatureValue* output_value =
-          [output_features featureValueForName:Utf8StringToNSString(output_name.c_str())];
+          [output_features featureValueForName:util::Utf8StringToNSString(output_name.c_str())];
 
       if (output_value == nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);

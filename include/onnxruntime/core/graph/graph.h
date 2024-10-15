@@ -10,28 +10,19 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
-
-#ifdef _WIN32
-#pragma warning(push)
-// disable some warnings from protobuf to pass Windows build
-#pragma warning(disable : 4244)
-#endif
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
+#include <filesystem>
 
 #include "core/common/flatbuffers.h"
 
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/inlined_containers.h"
 #endif
 #include "core/common/inlined_containers_fwd.h"
-#include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -147,7 +138,7 @@ class Node {
   const std::string& Domain() const noexcept { return domain_; }
 
   /** Gets the path of the owning model if any. */
-  const Path& ModelPath() const noexcept;
+  const std::filesystem::path& ModelPath() const noexcept;
 
   /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
@@ -621,6 +612,22 @@ class Node {
 
   // Reference to the function template defined in the model.
   const FunctionTemplate* func_template_ = nullptr;
+
+  // set/clear NodeProto that the Node was created from.
+  // Set by Graph ctor when loading a model from file.
+  // Cleared after first call to onnx::check_node in VerifyNodeAndOpMatch when the first Graph::Resolve runs.
+  void SetOriginalNodeProto(const ONNX_NAMESPACE::NodeProto* node_proto) {
+    original_node_proto_ = node_proto;
+  }
+
+  const ONNX_NAMESPACE::NodeProto* GetOriginalNodeProto() const {
+    return original_node_proto_;
+  }
+
+  // NodeProto that the Node was created from. We temporarily set this as a performance optimization to avoid calling
+  // Node::ToProto when running onnx::check_node in the first Graph::Resolve. At that point we know all the nodes are
+  // unchanged from the original model.
+  const ONNX_NAMESPACE::NodeProto* original_node_proto_ = nullptr;
 #endif
 
   // Execution priority, lower value for higher priority
@@ -677,7 +684,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const std::string& Description() const noexcept;
 
   /** Gets the path of the owning model, if any. */
-  const Path& ModelPath() const;
+  const std::filesystem::path& ModelPath() const;
 
   /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
@@ -711,6 +718,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    *    and replaces graph initializers with its content.
    */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
+
+  /** This function takes externally provided files in memory for initializers with external
+   *    data and replaces graph initializers with its content.
+   */
+  common::Status InjectExternalInitializersFromFilesInMemory(
+      const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1087,6 +1100,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #endif
 
+#ifdef ENABLE_TRAINING
+  /**
+   * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
+   *  This is a specialized version for training where need memory efficient topological sort.
+   * @param yield_op The YieldOp used in ORTModule training.
+   * @param shape_size_parents The shape size parents nodes.
+   * @param node_orders The output node orders.
+   */
+  void MemoryEfficientTopologicalSort(const Node* yield_op,
+                                      const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                      std::vector<NodeIndex>& node_orders) const;
+#endif
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
@@ -1114,13 +1140,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
-  @params external_file_name name of the binary file to use for initializers
+  @param external_file_path File path of the binary file to use for initializers.
+  @param model_file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
   @returns GraphProto serialization of the graph.
   */
-  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                  const PathString& file_path,
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                  const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */

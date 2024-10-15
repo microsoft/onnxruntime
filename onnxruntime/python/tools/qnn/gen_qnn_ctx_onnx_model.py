@@ -14,7 +14,15 @@ class QnnTensorStruct:
     def __init__(self):
         self.name = ""
         self.onnx_data_type = TensorProto.FLOAT
+        self.is_quantized = False
+        self.scale = 0.0
+        self.offset = 0
         self.dim = []
+
+
+def is_quantized_data_type(qnn_data_type):
+    # QNN_DATATYPE_UFIXED_POINT_8 QNN_DATATYPE_UFIXED_POINT_16 QNN_DATATYPE_FIXED_POINT_8 QNN_DATATYPE_FIXED_POINT_16
+    return qnn_data_type == 0x0408 or qnn_data_type == 0x0416 or qnn_data_type == 0x0308 or qnn_data_type == 0x0316
 
 
 def qnn_data_type_to_onnx_data_type(qnn_data_type):
@@ -73,7 +81,14 @@ def parse_qnn_json_file(qnn_json_file_path, qnn_input_tensor_dic, qnn_output_ten
                 qnn_tensor = QnnTensorStruct()
                 qnn_tensor.name = qnn_tensor_name
                 qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"])
+                qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"])
                 qnn_tensor.dim = qnn_tensor_attribute["dims"]
+                if (
+                    qnn_tensor_attribute["quant_params"]["definition"] == 1
+                    and qnn_tensor_attribute["quant_params"]["encoding"] == 0
+                ):
+                    qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
+                    qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
                 qnn_input_tensor_dic[qnn_tensor_name] = qnn_tensor
 
             # Get all graph outputs
@@ -81,7 +96,14 @@ def parse_qnn_json_file(qnn_json_file_path, qnn_input_tensor_dic, qnn_output_ten
                 qnn_tensor = QnnTensorStruct()
                 qnn_tensor.name = qnn_tensor_name
                 qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"])
+                qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"])
                 qnn_tensor.dim = qnn_tensor_attribute["dims"]
+                if (
+                    qnn_tensor_attribute["quant_params"]["definition"] == 1
+                    and qnn_tensor_attribute["quant_params"]["encoding"] == 0
+                ):
+                    qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
+                    qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
                 qnn_output_tensor_dic[qnn_tensor_name] = qnn_tensor
 
     assert (
@@ -120,13 +142,33 @@ def main():
             ep_cache_context_content = file.read()
         ctx_embed_mode = 1
 
-    qnn_inputs = []
-    for qnn_input in qnn_input_tensor_dic.values():
-        qnn_inputs.append(helper.make_tensor_value_info(qnn_input.name, qnn_input.onnx_data_type, qnn_input.dim))
+    graph_nodes = []
+    ini_list = []
+    value_infos = []
 
-    qnn_outputs = []
-    for qnn_output in qnn_output_tensor_dic.values():
-        qnn_outputs.append(helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim))
+    model_inputs = []
+    for qnn_input in qnn_input_tensor_dic.values():
+        if qnn_input.is_quantized:
+            q_scale_input_name = qnn_input.name + "_scale"
+            q_offset_input_name = qnn_input.name + "_zp"
+            q_scale = helper.make_tensor(q_scale_input_name, TensorProto.FLOAT, [], [qnn_input.scale])
+            ini_list.append(q_scale)
+            q_offset = helper.make_tensor(q_offset_input_name, qnn_input.onnx_data_type, [], [qnn_input.offset])
+            ini_list.append(q_offset)
+            input_name = qnn_input.name + "_dq"
+
+            q_node = helper.make_node(
+                "QuantizeLinear",
+                name=qnn_input.name,
+                inputs=[input_name, q_scale_input_name, q_offset_input_name],
+                outputs=[qnn_input.name],
+            )
+
+            graph_nodes.append(q_node)
+            model_inputs.append(helper.make_tensor_value_info(input_name, TensorProto.FLOAT, qnn_input.dim))
+            value_infos.append(helper.make_tensor_value_info(qnn_input.name, qnn_input.onnx_data_type, qnn_input.dim))
+        else:
+            model_inputs.append(helper.make_tensor_value_info(qnn_input.name, qnn_input.onnx_data_type, qnn_input.dim))
 
     qnn_ep_context_node = helper.make_node(
         "EPContext",
@@ -138,8 +180,37 @@ def main():
         source="Qnn",
         domain="com.microsoft",
     )
+    graph_nodes.append(qnn_ep_context_node)
 
-    graph_def = helper.make_graph([qnn_ep_context_node], "qnn-onnx-model", qnn_inputs, qnn_outputs)
+    model_outputs = []
+    for qnn_output in qnn_output_tensor_dic.values():
+        if qnn_output.is_quantized:
+            dq_scale_input_name = qnn_output.name + "_scale"
+            dq_offset_input_name = qnn_output.name + "_zp"
+            dq_scale = helper.make_tensor(dq_scale_input_name, TensorProto.FLOAT, [], [qnn_output.scale])
+            ini_list.append(dq_scale)
+            dq_offset = helper.make_tensor(dq_offset_input_name, qnn_output.onnx_data_type, [], [qnn_output.offset])
+            ini_list.append(dq_offset)
+            output_name = qnn_output.name + "_dq"
+
+            dq_node = helper.make_node(
+                "DequantizeLinear",
+                name=output_name,
+                inputs=[qnn_output.name, dq_scale_input_name, dq_offset_input_name],
+                outputs=[output_name],
+            )
+
+            graph_nodes.append(dq_node)
+            model_outputs.append(helper.make_tensor_value_info(output_name, TensorProto.FLOAT, qnn_output.dim))
+            value_infos.append(
+                helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim)
+            )
+        else:
+            model_outputs.append(
+                helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim)
+            )
+
+    graph_def = helper.make_graph(graph_nodes, "qnn-onnx-model", model_inputs, model_outputs, ini_list, "", value_infos)
 
     model_def = helper.make_model(graph_def, producer_name="MS")
 

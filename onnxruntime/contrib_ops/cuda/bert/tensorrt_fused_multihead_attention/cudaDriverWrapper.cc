@@ -59,6 +59,8 @@ CUDADriverWrapper::CUDADriverWrapper() {
   *reinterpret_cast<void**>(&_cuLinkAddData) = load_sym(handle, "cuLinkAddData_v2");
   *reinterpret_cast<void**>(&_cuLaunchCooperativeKernel) = load_sym(handle, "cuLaunchCooperativeKernel");
   *reinterpret_cast<void**>(&_cuLaunchKernel) = load_sym(handle, "cuLaunchKernel");
+  *reinterpret_cast<void**>(&_cuDeviceGetAttribute) = load_sym(handle, "cuDeviceGetAttribute");
+  *reinterpret_cast<void**>(&_cuFuncSetCacheConfig) = load_sym(handle, "cuFuncSetCacheConfig");
 }
 
 CUDADriverWrapper::~CUDADriverWrapper() {
@@ -71,6 +73,14 @@ CUresult CUDADriverWrapper::cuGetErrorName(CUresult error, const char** pStr) co
 
 CUresult CUDADriverWrapper::cuFuncSetAttribute(CUfunction hfunc, CUfunction_attribute attrib, int value) const {
   return (*_cuFuncSetAttribute)(hfunc, attrib, value);
+}
+
+CUresult CUDADriverWrapper::cuDeviceGetAttribute(int* pi, CUdevice_attribute attrib, CUdevice dev) const {
+  return (*_cuDeviceGetAttribute)(pi, attrib, dev);
+}
+
+CUresult CUDADriverWrapper::cuFuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const {
+  return (*_cuFuncSetCacheConfig)(hfunc, config);
 }
 
 CUresult CUDADriverWrapper::cuLinkComplete(CUlinkState state, void** cubinOut, size_t* sizeOut) const {
@@ -124,6 +134,13 @@ CUresult CUDADriverWrapper::cuLaunchKernel(
     void** kernelParams, void** extra) const {
   return (*_cuLaunchKernel)(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra);
+}
+
+// Initialize the singleton instance
+CUDADriverWrapper CUDADriverWrapper::instance;
+
+const CUDADriverWrapper* CUDADriverWrapper::GetInstance() {
+  return &instance;
 }
 
 }  // namespace cuda

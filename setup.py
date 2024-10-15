@@ -198,6 +198,7 @@ try:
                     "libcudart.so.11.0",
                     "libcudart.so.12",
                     "libcudnn.so.8",
+                    "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
@@ -230,7 +231,7 @@ try:
                     "libmigraphx_tf.so.2",
                 ]
 
-                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
+                tensorrt_dependencies = ["libnvinfer.so.10", "libnvinfer_plugin.so.10", "libnvonnxparser.so.10"]
 
                 cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
@@ -296,11 +297,13 @@ if platform.system() == "Linux":
         "libmklml_gnu.so",
         "libiomp5.so",
         "mimalloc.so",
+        "libonnxruntime.so*",
     ]
     dl_libs = ["libonnxruntime_providers_shared.so"]
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
+    dl_libs.append("libonnxruntime.so*")
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
@@ -312,7 +315,12 @@ if platform.system() == "Linux":
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
-    libs = ["onnxruntime_pybind11_state.so", "libdnnl.2.dylib", "mimalloc.so"]  # TODO add libmklml and libiomp5 later.
+    libs = [
+        "onnxruntime_pybind11_state.so",
+        "libdnnl.2.dylib",
+        "mimalloc.so",
+        "libonnxruntime.dylib*",
+    ]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.dylib"])
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
@@ -322,7 +330,13 @@ elif platform.system() == "Darwin":
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
-    libs = ["onnxruntime_pybind11_state.pyd", "dnnl.dll", "mklml.dll", "libiomp5md.dll"]
+    libs = [
+        "onnxruntime_pybind11_state.pyd",
+        "dnnl.dll",
+        "mklml.dll",
+        "libiomp5md.dll",
+        "onnxruntime.dll",
+    ]
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
@@ -332,6 +346,20 @@ else:
     libs.extend(["onnxruntime_providers_vitisai.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
+    # QNN V68/V73 dependencies
+    qnn_deps = [
+        "QnnCpu.dll",
+        "QnnHtp.dll",
+        "QnnSaver.dll",
+        "QnnSystem.dll",
+        "QnnHtpPrepare.dll",
+        "QnnHtpV73Stub.dll",
+        "libQnnHtpV73Skel.so",
+        "libqnnhtpv73.cat",
+        "QnnHtpV68Stub.dll",
+        "libQnnHtpV68Skel.so",
+    ]
+    libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
 
@@ -361,7 +389,7 @@ if is_manylinux:
         dl_libs.append("plugins.xml")
         dl_libs.append("usb-ma2x8x.mvcmd")
     data = ["capi/libonnxruntime_pywrapper.so"] if nightly_build else []
-    data += [path.join("capi", x) for x in dl_libs if path.isfile(path.join("onnxruntime", "capi", x))]
+    data += [path.join("capi", x) for x in dl_libs if glob(path.join("onnxruntime", "capi", x))]
     ext_modules = [
         Extension(
             "onnxruntime.capi.onnxruntime_pybind11_state",
@@ -369,15 +397,15 @@ if is_manylinux:
         ),
     ]
 else:
-    data = [path.join("capi", x) for x in libs if path.isfile(path.join("onnxruntime", "capi", x))]
+    data = [path.join("capi", x) for x in libs if glob(path.join("onnxruntime", "capi", x))]
     ext_modules = []
 
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
@@ -486,6 +514,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
                 "onnxruntime.training.ortmodule.graph_optimizers",
+                "onnxruntime.training.ortmodule.experimental.pipe",
                 "onnxruntime.training.ort_triton",
                 "onnxruntime.training.ort_triton.kernel",
                 "onnxruntime.training.utils",

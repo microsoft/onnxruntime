@@ -46,6 +46,10 @@
 #include "core/providers/nnapi/nnapi_provider_factory_creator.h"
 #endif
 
+#if defined(USE_VSINPU)
+#include "core/providers/vsinpu/vsinpu_provider_factory_creator.h"
+#endif
+
 #if defined(USE_JSEP)
 #include "core/providers/js/js_provider_factory_creator.h"
 #endif

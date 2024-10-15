@@ -188,6 +188,8 @@ export interface ComputeContext {
 
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
+  getMaxComputeWorkgroupSizes(): [number, number, number];
+  getMaxComputeWorkgroupStoragesize(): number;
 }
 
 export type TimestampQuery = 'none'|'inside-passes'|'at-passes';

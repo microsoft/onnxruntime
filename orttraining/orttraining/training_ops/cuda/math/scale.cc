@@ -21,6 +21,7 @@ namespace cuda {
           .TypeConstraint("ScaleT", {DataTypeImpl::GetTensorType<float>(),     \
                                      DataTypeImpl::GetTensorType<double>(),    \
                                      DataTypeImpl::GetTensorType<MLFloat16>(), \
+                                     DataTypeImpl::GetTensorType<BFloat16>(),  \
                                      DataTypeImpl::GetTensorType<int64_t>(),   \
                                      DataTypeImpl::GetTensorType<int32_t>()})  \
           .InputMemoryType(OrtMemTypeCPUInput, 1),                             \
@@ -47,7 +48,7 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   float scale_value;
   auto scale_tensor = context->Input<Tensor>(1);
-  utils::MLTypeCallDispatcher<float, double, MLFloat16, int64_t, int32_t> t_disp(scale_tensor->GetElementType());
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, BFloat16, int64_t, int32_t> t_disp(scale_tensor->GetElementType());
   t_disp.Invoke<GetScaleValueImpl>(scale_tensor, scale_value);
 
   if (scale_down_) {
@@ -69,10 +70,12 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
 REGISTER_SCALE_KERNEL_TYPED(MLFloat16)
 REGISTER_SCALE_KERNEL_TYPED(float)
 REGISTER_SCALE_KERNEL_TYPED(double)
+REGISTER_SCALE_KERNEL_TYPED(BFloat16)
 
 template Status Scale<MLFloat16>::ComputeInternal(OpKernelContext* context) const;
 template Status Scale<float>::ComputeInternal(OpKernelContext* context) const;
 template Status Scale<double>::ComputeInternal(OpKernelContext* context) const;
+template Status Scale<BFloat16>::ComputeInternal(OpKernelContext* context) const;
 
 }  // namespace cuda
 }  // namespace onnxruntime

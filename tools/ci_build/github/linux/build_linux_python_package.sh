@@ -23,7 +23,13 @@ c) BUILD_CONFIG=${OPTARG};;
 esac
 done
 
+
+
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel")
+if [[ "$EXTRA_ARG" == *"training"* ]]; then
+   echo "Skip building unit tests because the container is a manylinux docker"
+   BUILD_ARGS+=("--cmake_extra_defines" "onnxruntime_BUILD_UNIT_TESTS=OFF")
+fi
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")

@@ -27,14 +27,6 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-resources:
-  repositories:
-  - repository: manylinux # The name used to reference this repository in the checkout step
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 180
@@ -61,9 +53,9 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
-      Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cpu
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpythonx86_64
 
   - task: Cache@2
@@ -80,6 +72,7 @@ jobs:
     displayName: 'build'
     inputs:
       script: |
+        set -e -x
         mkdir -p $HOME/.onnx
         mkdir -p $(Pipeline.Workspace)/ccache
         docker run --rm \

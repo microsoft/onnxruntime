@@ -1,6 +1,6 @@
 [
   {
-    "name": "SkipLayerNormalization",
+    "name": "SkipLayerNormalization - no output[3]",
     "operator": "SkipLayerNormalization",
     "opset": { "domain": "com.microsoft", "version": 1 },
     "attributes": [
@@ -49,21 +49,36 @@
             ],
             "dims": [1, 2, 4],
             "type": "float32"
-          },
-          {
-            "data": null,
-            "type": "float32"
-          },
-          {
-            "data": null,
-            "type": "float32"
-          },
-          {
-            "data": null,
-            "type": "float32"
           }
+          // {
+          //   "data": null,
+          //   "type": "float32"
+          // },
+          // {
+          //   "data": null,
+          //   "type": "float32"
+          // },
+          // {
+          //   "data": null,
+          //   "type": "float32"
+          // }
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "SkipLayerNormalization - has output[3]",
+    "operator": "SkipLayerNormalization",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      {
+        "name": "epsilon",
+        "data": 1e-5,
+        "type": "float"
+      }
+    ],
+    "inputShapeDefinitions": [[1, 2, 4], [1, 2, 4], [4], [4], [4]],
+    "cases": [
       {
         "name": "default",
         "inputs": [

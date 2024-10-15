@@ -121,16 +121,6 @@ def _test_apple_packages(args):
         if not args.prepare_test_project_only:
             simulator_device_info = subprocess.check_output(
                 [
-                    # "xcrun",
-                    # "xcodebuild",
-                    # "test",
-                    # "-workspace",
-                    # "./ios_package_test.xcworkspace",
-                    # "-scheme",
-                    # "ios_package_test",
-                    # "-destination",
-                    # "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-                    # "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
                     sys.executable,
                     str(REPO_DIR / "tools" / "ci_build" / "github" / "apple" / "get_simulator_device_info.py"),
                 ],
@@ -205,7 +195,7 @@ def _test_apple_packages(args):
                     cwd=target_proj_path,
                 )
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
+            if not args.skip_macos_test:
                 subprocess.run(
                     [
                         "xcrun",

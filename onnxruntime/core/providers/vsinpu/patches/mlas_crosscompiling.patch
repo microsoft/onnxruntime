@@ -1,0 +1,34 @@
+diff --git a/cmake/onnxruntime_mlas.cmake b/cmake/onnxruntime_mlas.cmake
+index e0ccc504d7..6c5aa6ea53 100644
+--- a/cmake/onnxruntime_mlas.cmake
++++ b/cmake/onnxruntime_mlas.cmake
+@@ -335,7 +335,7 @@ else()
+           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+         )
+-        if (NOT APPLE)
++        if (NOT APPLE AND NOT onnxruntime_USE_VSINPU)
+           set(mlas_platform_srcs
+             ${mlas_platform_srcs}
+             ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
+diff --git a/onnxruntime/core/mlas/inc/mlas.h b/onnxruntime/core/mlas/inc/mlas.h
+index fd6b3df934..f81f1c42b6 100644
+--- a/onnxruntime/core/mlas/inc/mlas.h
++++ b/onnxruntime/core/mlas/inc/mlas.h
+@@ -79,6 +79,7 @@ Abstract:
+
+ #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
+ #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
++#if !defined(USE_VSINPU)
+ #if !defined(__APPLE__)
+ // Had to temporary disable fp16 under APPLE ARM64, as compiling
+ // the source files require a hardware specific compilation flag.
+@@ -87,7 +88,8 @@ Abstract:
+
+ #define MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+-#endif //
++#endif
++#endif //
+ #endif // ARM64
+ #endif // Visual Studio 16 or earlier does not support fp16 intrinsic

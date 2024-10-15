@@ -17,7 +17,8 @@ namespace onnxruntime {
 namespace {
 template <typename T>
 struct ExtractScalarAsFloatDispatchTarget {
-  Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path, float& scalar_float) {
+  Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path,
+                    float& scalar_float) {
     T scalar;
     ORT_RETURN_IF_ERROR(utils::UnpackTensor(tensor_proto, model_path, &scalar, 1));
     scalar_float = static_cast<float>(scalar);

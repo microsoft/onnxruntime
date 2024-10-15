@@ -76,10 +76,57 @@ interface StorageCacheValue {
   originalSize: number;
 }
 
+const bucketFreelist: Map<number, number> = new Map([
+  [64, 250],
+  [128, 200],
+  [256, 200],
+  [512, 200],
+  [2048, 230],
+  [4096, 200],
+  [8192, 50],
+  [16384, 50],
+  [32768, 50],
+  [65536, 50],
+  [131072, 50],
+  [262144, 50],
+  [524288, 50],
+  [1048576, 50],
+  [2097152, 30],
+  [4194304, 20],
+  [8388608, 10],
+  [12582912, 10],
+  [16777216, 10],
+  [26214400, 15],
+  [33554432, 22],
+  [44236800, 2],
+  [58982400, 6],
+  // we don't want to cache the bucket sizes below but not caching them
+  // results in some major performance hits for models like sd-turbo.
+  [67108864, 6],
+  [134217728, 6],
+  [167772160, 6],
+]);
+
+const bucketArr: number[] = [];
+
 /**
  * normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
  */
 const calcNormalizedBufferSize = (size: number) => Math.ceil(size / 16) * 16;
+
+/**
+ * calculate the buffer size so that it fits into buckets.
+ */
+const calcBucketBufferSize = (size: number) => {
+  for (let idx = 0; idx < bucketArr.length; idx++) {
+    const sizeForBucket = bucketArr[idx];
+    if (size <= sizeForBucket) {
+      return sizeForBucket;
+    }
+  }
+  // not in bucket list -> caller will not cache, round up to 16.
+  return Math.ceil(size / 16) * 16;
+};
 
 let guid = 1;
 const createNewGpuDataId = () => guid++;
@@ -157,6 +204,12 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.buffersPending = [];
     this.externalBuffers = new Map();
     this.capturedPendingBuffers = new Map();
+
+    for (const [key, ] of bucketFreelist) {
+      bucketArr.push(key);
+      this.freeBuffers.set(key, []);
+      this.freeUniformBuffers.set(key, []);
+    }
   }
 
   upload(id: GpuDataId, data: Uint8Array): void {
@@ -209,6 +262,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (sourceGpuDataCache.originalSize !== destinationGpuDataCache.originalSize) {
       throw new Error('inconsistent source and destination gpu data size');
     }
+
     const size = calcNormalizedBufferSize(sourceGpuDataCache.originalSize);
 
     // GPU copy
@@ -259,7 +313,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   // eslint-disable-next-line no-bitwise
   create(size: number, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST): GpuData {
-    const bufferSize = calcNormalizedBufferSize(size);
+    const bufferSize = calcBucketBufferSize(size);
 
     let gpuBuffer;
     // Currently, only storage buffers are reused.
@@ -269,16 +323,18 @@ class GpuDataManagerImpl implements GpuDataManager {
     const isUniform = (usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM;
     if (isStorage || isUniform) {
       const freeBuffers = isStorage ? this.freeBuffers : this.freeUniformBuffers;
-      let buffers = freeBuffers.get(bufferSize);
+      const buffers = freeBuffers.get(bufferSize);
       if (!buffers) {
-        buffers = [];
-        freeBuffers.set(bufferSize, buffers);
-      }
-      if (buffers.length > 0) {
-        gpuBuffer = buffers.pop() as GPUBuffer;
-      } else {
-        // create gpu buffer
+        // no such bucket/freelist - create gpu buffer
         gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+      } else {
+        if (buffers.length > 0) {
+          // in freelist, use it
+          gpuBuffer = buffers.pop() as GPUBuffer;
+        } else {
+          // bucket empty, create gpu buffer
+          gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+        }
       }
     } else {
       // create gpu buffer
@@ -316,7 +372,6 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (!cachedData) {
       throw new Error('data does not exist');
     }
-
     await downloadGpuData(this.backend, cachedData.gpuData.buffer, cachedData.originalSize, getTargetBuffer);
   }
 
@@ -333,14 +388,26 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     if (this.backend.sessionStatus === 'default') {
       for (const buffer of this.buffersPending) {
+        const maxInFreeList = bucketFreelist.get(buffer.size);
+
         // eslint-disable-next-line no-bitwise
         if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
           // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
-          this.freeBuffers.get(buffer.size)!.push(buffer);
+          const freelist = this.freeBuffers.get(buffer.size) || [];
+          if (maxInFreeList === undefined || freelist.length >= maxInFreeList) {
+            buffer.destroy();
+          } else {
+            freelist.push(buffer);
+          }
           // eslint-disable-next-line no-bitwise
         } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
           // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
-          this.freeUniformBuffers.get(buffer.size)!.push(buffer);
+          const freelist = this.freeUniformBuffers.get(buffer.size) || [];
+          if (maxInFreeList === undefined || freelist.length >= maxInFreeList) {
+            buffer.destroy();
+          } else {
+            freelist.push(buffer);
+          }
         } else {
           buffer.destroy();
         }

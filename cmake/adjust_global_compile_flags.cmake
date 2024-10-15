@@ -19,11 +19,10 @@ endif()
 
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
-#TODO: Paco: need to find out onnxruntime_ENABLE_BITCODE turns ON even it is set to OFF
-#if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
-#  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
-#  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
-#endif()
+if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
+ string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+ string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1 -s DEFAULT_TO_CXX=1")
@@ -205,9 +204,9 @@ if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
   endif()
 endif()
 
-# Mark symbols to be invisible, for macOS/iOS target only
+# Mark symbols to be invisible, for macOS/iOS/visionOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
     string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
   endforeach()
@@ -322,7 +321,7 @@ else()
     string(APPEND CMAKE_CXX_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
     string(APPEND CMAKE_C_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
   endif()
-  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_GCOV_COVERAGE)
     string(APPEND CMAKE_CXX_FLAGS " -g -O0 --coverage ")
     string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
   endif()

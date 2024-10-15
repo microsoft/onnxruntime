@@ -1,13 +1,5 @@
 trigger: none
 
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 parameters:
   - name: SpecificArtifact
     displayName: Use Specific Artifact
@@ -33,3 +25,4 @@ stages:
     debug_build: false
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    build_pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'

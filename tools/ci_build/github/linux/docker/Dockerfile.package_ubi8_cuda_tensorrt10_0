@@ -1,0 +1,54 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+# Dockerfile to Test ONNX Runtime on UBI8 with TensorRT 10.0 and CUDA 11.8 by default
+
+# Build base image with required system packages
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+ARG TRT_VERSION=10.0.1.6-1.cuda11.8
+FROM $BASEIMAGE AS base
+ARG TRT_VERSION
+ENV PATH /opt/python/cp38-cp38/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
+
+RUN dnf install -y bash wget &&\
+    dnf clean dbcache
+
+RUN pip3 install --upgrade pip
+RUN pip3 install setuptools>=68.2.2
+
+#Install TensorRT only if TRT_VERSION is not empty
+RUN if [ -n "$TRT_VERSION" ]; then  \
+    echo "TRT_VERSION is $TRT_VERSION" && \
+    dnf -y install  \
+    libnvinfer10-${TRT_VERSION}  \
+    libnvinfer-headers-devel-${TRT_VERSION}  \
+    libnvinfer-devel-${TRT_VERSION}  \
+    libnvinfer-lean10-${TRT_VERSION}  \
+    libnvonnxparsers10-${TRT_VERSION}  \
+    libnvonnxparsers-devel-${TRT_VERSION}  \
+    libnvinfer-dispatch10-${TRT_VERSION}  \
+    libnvinfer-plugin10-${TRT_VERSION}  \
+    libnvinfer-vc-plugin10-${TRT_VERSION}  \
+    libnvinfer-bin-${TRT_VERSION}  \
+    libnvinfer-plugin10-${TRT_VERSION}  \
+    libnvinfer-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-lean-devel-${TRT_VERSION}  \
+    libnvinfer-dispatch-devel-${TRT_VERSION}  \
+    libnvinfer-headers-plugin-devel-${TRT_VERSION} && \
+    dnf clean dbcache ; \
+else \
+    echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
+fi
+
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && /tmp/scripts/install_java.sh && rm -rf /tmp/scripts
+
+# Build final image from base.
+FROM base as final
+ARG BUILD_USER=onnxruntimedev
+ARG BUILD_UID=1000
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

@@ -1415,10 +1415,12 @@ def test_pythonop_training_mode():
         ## make sure the ort's PythonOp's training_mode is correct
         if is_eval_mode:
             onnx_nodes = (
-                model._torch_module._execution_manager._inference_manager._onnx_models.exported_model.graph.node
+                model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
             )
         else:
-            onnx_nodes = model._torch_module._execution_manager._training_manager._onnx_models.exported_model.graph.node
+            onnx_nodes = (
+                model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
+            )
 
         found_pythonop = False
         for node in onnx_nodes:
@@ -1800,3 +1802,64 @@ def test_python_op_return_persistent_param_as_value():
                 assert_values_are_close(param.grad, pt_params[name].grad, rtol=1e-04, atol=1e-3)
             else:
                 assert pt_params[name].grad is None
+
+
+def test_determistic_pythonop_export():
+
+    class TestFunction(torch.autograd.Function):
+        @staticmethod
+        # bias is an optional argument
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            x = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            return ff * grad_output
+
+    class TestModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.custom_fn = TestFunction.apply
+            self.bias = Parameter(torch.empty(output_size, dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            # model_input did not require_grad
+            out = self.custom_fn(model_input)
+            return out + self.bias
+
+    output_size = 1024
+
+    ortmodule = ORTModule(TestModel(output_size)).train()
+    _ = ortmodule(torch.randn(output_size, dtype=torch.float))
+
+    onnx_nodes = (
+        ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
+    )
+
+    found_pythonop = False
+    for node in onnx_nodes:
+        if node.op_type == "PythonOp":
+            cconv = None
+            for attr in node.attribute:
+                if attr.name == "func_name":
+                    func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                    if (
+                        func_name
+                        == "orttraining_test_ortmodule_autograd.test_determistic_pythonop_export.<locals>.TestFunction"
+                    ):
+                        found_pythonop = True
+
+                if attr.name == "input_convention":
+                    cconv = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+
+            if found_pythonop:
+                assert cconv == "cccd", f"Expected cconv to be ccdd, but actually got {cconv}"
+
+    assert found_pythonop, "PythonOp should be found in the exported model"

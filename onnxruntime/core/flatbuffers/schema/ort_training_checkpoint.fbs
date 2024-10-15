@@ -12,6 +12,8 @@ table ModuleState {
   // are empty. i.e. The tensors are treated as named entities
   // without any meaningful data.
   is_nominal_state:bool;
+  // Tensors use external data file
+  has_external_data:bool;
 }
 
 table ParameterOptimizerState {

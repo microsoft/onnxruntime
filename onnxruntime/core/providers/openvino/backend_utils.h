@@ -12,8 +12,8 @@
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "contexts.h"
-#include "ov_interface.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ov_interface.h"
 #ifdef _WIN32
 #include <direct.h>
 #define GetCurrentDir _getcwd
@@ -29,9 +29,7 @@ namespace openvino_ep {
 namespace backend_utils {
 const std::string log_tag = "[OpenVINO-EP] ";
 
-#ifndef NDEBUG
 bool IsDebugEnabled();
-#endif
 
 // Internal diagnostic function.
 bool IsCILogEnabled();

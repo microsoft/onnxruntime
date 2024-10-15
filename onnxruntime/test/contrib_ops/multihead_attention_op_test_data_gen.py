@@ -346,6 +346,19 @@ def run_self_attention(
         )
 
 
+def run_cross_batch1_headsize_8():
+    hidden_dim = 16
+    q_head_size = 8
+    v_head_size = 8
+    num_heads = 2
+    batch_size = 1
+    sequence_length = 2
+    kv_sequence_length = 3
+    run_cross_attention(
+        hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length
+    )
+
+
 def run_cross_batch2_headsize_40():
     hidden_dim = 80
     q_head_size = 40
@@ -517,6 +530,9 @@ def create_test_data():
     """
     Create test data used in attention_op_test_helper.cc and multihead_attention_op_test.cc
     """
+    print("CrossAttention_Batch1_HeadSize8")
+    run_cross_batch1_headsize_8()
+
     print("CrossAttention_Batch2_HeadSize40")
     run_cross_batch2_headsize_40()
 

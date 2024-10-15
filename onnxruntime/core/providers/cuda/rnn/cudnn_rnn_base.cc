@@ -153,7 +153,8 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
                                          cudnn_direction_mode_,
                                          rnn_mode_,
                                          has_bias,
-                                         CudnnTensor::GetDataType<CudaT>()));
+                                         CudnnTensor::GetDataType<CudaT>(),
+                                         UseTF32()));
     if (get_B) {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B,
                                             w_data_cache_size_in_bytes_, w_data_cache_, w_desc_cache_,
@@ -296,7 +297,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                    cudnn_direction_mode_,
                                    rnn_mode_,
                                    has_bias,
-                                   CudnnTensor::GetDataType<CudaT>()));
+                                   CudnnTensor::GetDataType<CudaT>(),
+                                   UseTF32()));
 
   // Prepare the weight data
   size_t w_data_size_in_bytes = 0;

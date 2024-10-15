@@ -5,7 +5,6 @@
 
 
 import os
-import sys
 from dataclasses import dataclass
 from itertools import product
 
@@ -432,6 +431,7 @@ class GemmSoftmaxGemmPermuteMetric(ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_softmax_gemm_permute_func(
     f, dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, causal, qkv_format
 ):
@@ -519,10 +519,21 @@ def profile_gemm_softmax_gemm_permute_func(
         )
 
 
+@ke.dispatchable
 def profile_with_args(
-    dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, causal, mask_dim, scale, qkv_format, *, sort=False
+    dtype,
+    batch,
+    seqlen,
+    total_seqlen,
+    num_heads,
+    head_size,
+    biased,
+    causal,
+    mask_dim,
+    scale,
+    qkv_format,
 ):
-    with ke.benchmark(sort):
+    with ke.benchmark():
         args = (dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, causal, qkv_format)
         if qkv_format == ke.qkv_format.Q_K_V_BNSH:
             profile_gemm_softmax_gemm_permute_func(
@@ -551,21 +562,17 @@ def profile():
             mask_dim=0,
             qkv_format=getattr(ke.qkv_format, qkv_format_name),
             scale=0.125,
-            sort=True,
         )
         print()
 
     for args in product(dtypes, batches, seqlens, total_seqlens, num_heads, head_sizes, biaseds, causals, mask_dims):
-        profile_with_args(*args, qkv_format=ke.qkv_format.Q_K_V_BNSH, scale=0.125, sort=True)
+        profile_with_args(*args, qkv_format=ke.qkv_format.Q_K_V_BNSH, scale=0.125)
         print()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
-    group.add_argument("--sort", action="store_true")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("batch", type=int)
     group.add_argument("seqlen", type=int)
@@ -587,12 +594,11 @@ if __name__ == "__main__":
         ],
     )
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        print(args)
-        profile_with_args(
+        args.dispatch(
             args.dtype,
             args.batch,
             args.seqlen,
@@ -604,5 +610,4 @@ if __name__ == "__main__":
             args.mask_dim,
             args.scale,
             getattr(ke.qkv_format, args.qkv_format),
-            sort=args.sort,
         )

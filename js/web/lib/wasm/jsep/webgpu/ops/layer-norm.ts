@@ -9,6 +9,7 @@ import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUn
 import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType, UniformsArrayType,} from './common';
 
 interface LayerNormAttributes {
+  simplified: boolean;
   axis: number;
   epsilon: number;
 }
@@ -21,9 +22,11 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
 const createLayerNormProgramInfo =
     (inputs: readonly TensorView[], attributes: LayerNormAttributes, outputCount: number): ProgramInfo => {
+      const simplified = attributes.simplified;
+
       const xShape = inputs[0].dims;
       const scale = inputs[1];
-      const bias = inputs[2];
+      const bias = !simplified && inputs[2];
 
       const outputShape = xShape;
       const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
@@ -94,13 +97,13 @@ const createLayerNormProgramInfo =
       mean_square_vector += value * value;
     }
     let mean = ${sumVector('mean_vector', components)} / uniforms.norm_size;
-    let inv_std_dev = inverseSqrt(${
-            sumVector('mean_square_vector', components)} / uniforms.norm_size - mean * mean + uniforms.epsilon);
+    let inv_std_dev = inverseSqrt(${sumVector('mean_square_vector', components)} / uniforms.norm_size ${
+            simplified ? '' : '- mean * mean'} + uniforms.epsilon);
 
     for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {
       let f32input = ${castToF32(dataType, components, 'x[j + offset]')};
       let f32scale = ${castToF32(dataType, components, 'scale[j]')};
-      output[j + offset] = ${variables[0].type.value}((f32input - mean) * inv_std_dev * f32scale
+      output[j + offset] = ${variables[0].type.value}((f32input ${simplified ? '' : '- mean'}) * inv_std_dev * f32scale
         ${bias ? `+ ${castToF32(dataType, components, 'bias[j]')}` : ''}
       );
     }
@@ -119,7 +122,7 @@ const createLayerNormProgramInfo =
 
       return {
         name: 'LayerNormalization',
-        shaderCache: {hint: `${components};${outputCount}`, inputDependencies},
+        shaderCache: {hint: `${components};${outputCount};${simplified}`, inputDependencies},
         getRunData: () =>
             ({outputs, dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}, programUniforms}),
         getShaderSource,

@@ -7,8 +7,7 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
-
+#include "python/numpy_helper.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -166,66 +165,96 @@ static py::object AddNonTensor(const OrtValue& val,
   return py::cast(val.Get<T>());
 }
 
+// This function is used to return strings from a string tensor to python
+// as a numpy array of strings
+// Strings are always on CPU and must always be copied to python memory
+py::array StringTensorToNumpyArray(const Tensor& tensor) {
+  // Create the result and allocate memory with the right size
+  py::array result(py::dtype(NPY_OBJECT), tensor.Shape().GetDims());
+  const auto span = tensor.DataAsSpan<std::string>();
+  auto* mutable_data = reinterpret_cast<py::object*>(result.mutable_data());
+  for (size_t i = 0, lim = span.size(); i < lim; ++i) {
+    mutable_data[i] = py::cast(span[i]);
+  }
+  return result;
+}
+
+pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  // The capsule destructor must be stateless
+  // We create a copy of OrtValue on the heap.
+  auto memory_release = [](void* data) {
+    auto* ort_value = reinterpret_cast<OrtValue*>(data);
+    delete ort_value;
+  };
+
+  const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
+  auto ort_value_ptr = std::make_unique<OrtValue>(ort_value);
+  pybind11::capsule caps(ort_value_ptr.get(), memory_release);
+  ort_value_ptr.release();
+
+  // Not using array_t<T> because it may not handle MLFloat16 properly
+  pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims(),
+                         tensor.DataRaw(),
+                         caps);
+  return result;
+}
+
+pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, const DataTransferAlternative& dtm) {
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
+  pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims());
+  void* data = result.mutable_data();
+
+  if (std::holds_alternative<const DataTransferManager*>(dtm)) {
+    const DataTransferManager* data_transfer = std::get<const DataTransferManager*>(dtm);
+    static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+    const auto span = gsl::make_span<char>(reinterpret_cast<char*>(data), tensor.SizeInBytes());
+    ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(*data_transfer, tensor, cpu_alloc_info, span));
+  } else {
+    std::get<MemCpyFunc>(dtm)(data, tensor.DataRaw(), tensor.SizeInBytes());
+  }
+  return result;
+}
+
 // In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
-                        const DataTransferManager* data_transfer_manager,
-                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
-  std::vector<npy_intp> npy_dims;
-  const TensorShape& shape = rtensor.Shape();
+py::object GetPyObjFromTensor(const OrtValue& ort_value,
+                              const DataTransferManager* data_transfer_manager,
+                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+  ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
-  for (size_t n = 0; n < shape.NumDimensions(); ++n) {
-    npy_dims.push_back(shape[n]);
+  const auto& tensor = ort_value.Get<Tensor>();
+  if (tensor.IsDataTypeString()) {
+    ORT_ENFORCE(tensor.Location().device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
+    // Create a numpy array of strings (python objects) by copy/converting them
+    py::array result = StringTensorToNumpyArray(tensor);
+    return py::cast<py::object>(result);
   }
 
-  MLDataType dtype = rtensor.DataType();
-  const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
-  obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      narrow<int>(shape.NumDimensions()), npy_dims.data(), numpy_type));
+  const auto device_type = tensor.Location().device.Type();
+  // Create an numpy array on top of the OrtValue memory, no copy
+  if (device_type == OrtDevice::CPU) {
+    py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
+    return py::cast<py::object>(result);
+  }
 
-  void* out_ptr = static_cast<void*>(
-      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
+  if (!data_transfer_manager && !mem_cpy_to_host_functions) {
+    throw std::runtime_error(
+        "GetPyObjFromTensor: Either data transfer manager or a "
+        "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+  }
 
-  if (numpy_type != NPY_OBJECT) {
-    // if it is not cpu tensor, need to copy to host
-    auto device_type = rtensor.Location().device.Type();
-    if (device_type != OrtDevice::CPU) {
-      if (!data_transfer_manager && !mem_cpy_to_host_functions)
-        throw std::runtime_error(
-            "GetPyObjFromTensor: Either data transfer manager or a "
-            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
-      static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-
-      // Prefer DataTransferManager if available
-      if (data_transfer_manager) {
-        auto span = gsl::make_span<char>(reinterpret_cast<char*>(out_ptr), dtype->Size() * shape.Size());
-        ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
-            *data_transfer_manager, rtensor, cpu_alloc_info, span));
-      } else {
-        auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
-
-        ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
-                    "Unable to locate a function that can copy data to the host from the device");
-
-        ORT_ENFORCE(mem_cpy_to_host->second != 0,
-                    "No function that can copy data to the host from the device provided");
-
-        mem_cpy_to_host->second(out_ptr, rtensor.DataRaw(), dtype->Size() * shape.Size());
-      }
-
-    } else
-      memcpy(out_ptr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+  py::array result;
+  if (data_transfer_manager != nullptr) {
+    result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager);
   } else {
-    // Handle string type.
-    // Copying strings to cpu from device is currently not supported
-    ORT_ENFORCE(rtensor.Location().device.Type() == OrtDevice::CPU,
-                "Copying string tensors located on another device to the host is currently not supported");
-    py::object* outObj = static_cast<py::object*>(out_ptr);
-    const std::string* src = rtensor.Data<std::string>();
-    for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
-      outObj[i] = py::cast(*src);
-    }
+    auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
+    ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
+                "Unable to locate a function that can copy data to the host from the device");
+    result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
   }
+  return py::cast<py::object>(result);
 }
 
 const char* GetDeviceName(const OrtDevice& device) {
@@ -292,10 +321,9 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
-  for (const auto& rtensor : seq_tensors) {
-    py::object obj;
-    GetPyObjFromTensor(rtensor.Get<Tensor>(), obj, data_transfer_manager, mem_cpy_to_host_functions);
-    py_list.append(obj);
+  for (const auto& ort_value : seq_tensors) {
+    py::object obj = GetPyObjFromTensor(ort_value, data_transfer_manager, mem_cpy_to_host_functions);
+    py_list.append(std::move(obj));
   }
   // XToolChain kills the build
   // local variable 'py_list' will be copied despite being returned by name [-Werror,-Wreturn-std-move]
@@ -347,10 +375,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
-  const Tensor& rtensor = val.Get<Tensor>();
-  py::object obj;
-  GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
-  return obj;
+  return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
 static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
@@ -475,7 +500,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path;
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
+          trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
+          onnx_model_folder_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -485,6 +512,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.device_id = std::stoi(option.second);
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "user_compute_stream") {
+            if (!option.second.empty()) {
+              auto stream = std::stoull(option.second, nullptr, 0);
+              params.user_compute_stream = reinterpret_cast<void*>(stream);
+              params.has_user_compute_stream = true;
+            } else {
+              params.has_user_compute_stream = false;
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
             }
           } else if (option.first == "trt_max_partition_iterations") {
             if (!option.second.empty()) {
@@ -578,6 +614,21 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_engine_cache_prefix = cache_prefix.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to customize engine cache prefix i.e. 'FRCNN' or 'yolov4'.\n");
+            }
+          } else if (option.first == "trt_weight_stripped_engine_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_weight_stripped_engine_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_weight_stripped_engine_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_weight_stripped_engine_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_onnx_model_folder_path") {
+            if (!option.second.empty()) {
+              onnx_model_folder_path = option.second;
+              params.trt_onnx_model_folder_path = onnx_model_folder_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_onnx_model_folder_path' should be a path string i.e. 'engine_cache'.\n");
             }
           } else if (option.first == "trt_engine_decryption_enable") {
             if (option.second == "True" || option.second == "true") {
@@ -741,6 +792,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
             }
+          } else if (option.first == "trt_engine_hw_compatible") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_engine_hw_compatible = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_engine_hw_compatible = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_hw_compatible' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
@@ -763,6 +822,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     std::string calibration_table;
+    std::string save_model_path;
+    std::string load_model_path;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       OrtMIGraphXProviderOptions params{
@@ -770,7 +831,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           0,
           0,
           0,
-          nullptr};
+          nullptr,
+          1,
+          "./compiled_model.mxr",
+          1,
+          "./compiled_model.mxr"};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -816,6 +881,44 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW(
                 "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_save_compiled_model") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_save_compiled_model' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_save_model_path") {
+          if (!option.second.empty()) {
+            save_model_path = option.second;
+            params.migraphx_save_model_path = save_model_path.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_save_model_name' should be a "
+                "file name i.e. 'compiled_model.mxr'.\n");
+          }
+        } else if (option.first == "migraphx_load_compiled_model") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_load_compiled_model' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_load_model_path") {
+          if (!option.second.empty()) {
+            load_model_path = option.second;
+            params.migraphx_load_model_path = load_model_path.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
+                "file name i.e. 'compiled_model.mxr'.\n");
           }
         } else {
           ORT_THROW("Invalid MIGraphX EP option: ", option.first);
@@ -919,6 +1022,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "precision") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "enable_npu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
@@ -951,10 +1057,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             value = "true";
           }
           OV_provider_options_map["disable_dynamic_shapes"] = value;
-        } else if (option.first == "device_id") {
+        } else if (option.first == "num_of_threads") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "num_of_threads") {
+        } else if (option.first == "model_priority") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "num_streams") {
@@ -966,13 +1072,19 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "context") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "export_ep_ctx_blob") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "enable_qdq_optimizer") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
     }
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
-            &OV_provider_options_map)) {
+            &OV_provider_options_map, &session_options)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
@@ -997,13 +1109,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
+    ProviderOptions info{};
     const auto it = provider_options_map.find(type);
-    if (it == provider_options_map.end()) {
-      LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
+    if (it != provider_options_map.end()) {
+      info = it->second;
     }
-    const auto& vitis_option_map = it->second;
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
-        ->CreateProvider();
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
@@ -1021,7 +1132,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
     return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true)
         ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
@@ -1366,7 +1477,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::enum_<ExecutionOrder>(m, "ExecutionOrder")
       .value("DEFAULT", ExecutionOrder::DEFAULT)
-      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
+      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
+      .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)
@@ -1847,11 +1959,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
-           [](PyInferenceSession* sess, std::vector<std::string> output_names,
-              std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
-               -> std::vector<py::object> {
+           [](PyInferenceSession* sess, const std::vector<std::string>& output_names,
+              const std::map<std::string, const py::object>& pyfeeds, RunOptions* run_options = nullptr)
+               -> py::list {
              NameMLValMap feeds;
-             for (auto feed : pyfeeds) {
+             feeds.reserve(pyfeeds.size());
+             for (const auto& feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
@@ -1869,6 +1982,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              }
 
              std::vector<OrtValue> fetches;
+             fetches.reserve(output_names.size());
              common::Status status;
 
              {
@@ -1881,29 +1995,28 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                }
              }
 
-             std::vector<py::object> rfetch;
-             rfetch.reserve(fetches.size());
+             py::list result;
              size_t pos = 0;
-             for (auto fet : fetches) {
+             for (const auto& fet : fetches) {
                if (fet.IsAllocated()) {
                  if (fet.IsTensor()) {
-                   rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+                   result.append(AddTensorAsPyObj(fet, nullptr, nullptr));
                  } else if (fet.IsSparseTensor()) {
-                   rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+                   result.append(GetPyObjectFromSparseTensor(pos, fet, nullptr));
                  } else {
-                   rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+                   result.append(AddNonTensorAsPyObj(fet, nullptr, nullptr));
                  }
                } else {  // Send back None because the corresponding OrtValue was empty
-                 rfetch.push_back(py::none());
+                 result.append(py::none());
                }
                ++pos;
              }
-             return rfetch;
+             return result;
            })
       .def("run_async",
            [](PyInferenceSession* sess,
-              std::vector<std::string> output_names,
-              std::map<std::string, py::object> pyfeeds,
+              const std::vector<std::string>& output_names,
+              const std::map<std::string, py::object>& pyfeeds,
               PyCallback callback, py::object user_data = {},
               RunOptions* run_options = nullptr)
                -> void {
@@ -1912,7 +2025,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              async_resource->user_data = user_data;
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
-             for (auto feed : pyfeeds) {
+             for (const auto& feed : pyfeeds) {
                if (!feed.second.is(py::none())) {
                  OrtValue ml_value;
                  auto px = sess->GetSessionHandle()->GetModelInputs();
@@ -1929,7 +2042,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              }
              // prepare fetches
              async_resource->ReserveFetches(output_names.size());
-             for (auto& output_name : output_names) {
+             for (const auto& output_name : output_names) {
                async_resource->fetch_names.push_back(output_name);
                async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
                async_resource->fetches_raw.push_back({});
@@ -1952,15 +2065,17 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       /// a Tensor, SparseTensor or a TensorSequence.
       .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
         NameMLValMap ort_feeds;
+        ort_feeds.reserve(feeds.size());
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks
-        for (const auto item : feeds) {
+        for (const auto& item : feeds) {
           auto name = item.first.cast<std::string>();
           const OrtValue* ort_value = item.second.cast<const OrtValue*>();
           ort_feeds.emplace(name, *ort_value);
         }
 
         std::vector<OrtValue> fetches;
+        fetches.reserve(output_names.size());
         {
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
@@ -2041,8 +2156,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_tuning_results", [](PyInferenceSession* sess) -> py::list {
 #if !defined(ORT_MINIMAL_BUILD)
+        auto results = sess->GetSessionHandle()->GetTuningResults();
         py::list ret;
-        for (const auto& trs : sess->GetSessionHandle()->GetTuningResults()) {
+        for (const auto& trs : results) {
           py::dict py_trs;
           py_trs["ep"] = trs.ep;
           py_trs["results"] = trs.results;

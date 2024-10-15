@@ -313,7 +313,7 @@ export const castToF32 = (dataType: string, components: number, value: string) =
     return `f32(${value})`;
   }
 
-  return `vec${components}f(${value})`;
+  return `vec${components}<f32>(${value})`;
 };
 
 /**

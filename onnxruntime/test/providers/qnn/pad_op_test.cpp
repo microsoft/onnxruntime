@@ -98,18 +98,33 @@ static void RunPadOpTest(const TestInputDef<float>& data_def,
                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                          ExpectedEPNodeAssignment expected_ep_assignment,
                          bool has_constant_value = true,
-                         int opset = 18) {
+                         int opset = 18,
+                         bool use_htp = false,
+                         bool enable_fp16_precision = false,
+                         float f32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
+  if (use_htp) {
 #if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
+    provider_options["backend_path"] = "QnnHtp.dll";
 #else
-  provider_options["backend_path"] = "libQnnCpu.so";
+    provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  } else {
+#if defined(_WIN32)
+    provider_options["backend_path"] = "QnnCpu.dll";
+#else
+    provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+  }
+
+  if (enable_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  }
 
   RunQnnModelTest(BuildPadTestCase(data_def, pads_def, constant_value_def, attrs, has_constant_value),
                   provider_options,
                   opset,
-                  expected_ep_assignment);
+                  expected_ep_assignment, f32_abs_err);
 }
 
 // Runs a QDQ Pad model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -229,6 +244,60 @@ TEST_F(QnnCPUBackendTests, Pad6d) {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
+TEST_F(QnnHTPBackendTests, PadNoConstantValue_fp16_test) {
+  bool has_constant_value_input = false;
+  bool use_htp = true;
+  bool enable_fp16_precision = true;
+  RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
+               TestInputDef<int64_t>({4}, true, {0, 2, 0, 0}),
+               TestInputDef<float>({1}, true, {0.0f}),
+               {utils::MakeAttribute("mode", "constant")},
+               ExpectedEPNodeAssignment::All,
+               has_constant_value_input,
+               18,  // opset
+               use_htp,
+               enable_fp16_precision,
+               2e-3f);
+}
+
+TEST_F(QnnHTPBackendTests, PadReflectMode_fp16) {
+  bool has_constant_value_input = false;
+  bool use_htp = true;
+  bool enable_fp16_precision = true;
+  RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
+               TestInputDef<int64_t>({4}, true, {0, 1, 0, 0}),
+               TestInputDef<float>({1}, true, {0.0f}),
+               {utils::MakeAttribute("mode", "reflect")},
+               ExpectedEPNodeAssignment::All,
+               has_constant_value_input,
+               18,  // opset
+               use_htp,
+               enable_fp16_precision,
+               2e-3f);
+}
+
+// HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::flat_from_vtcm
+// HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1238:ERROR:Op 0x104100000011 preparation failed with err:-1
+// Completed stage: Graph Transformations and Optimizations (13372 us)
+// QnnDsp <E> "node" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+TEST_F(QnnHTPBackendTests, DISABLED_PadReflectMode_FP16_big_data) {
+  bool has_constant_value_input = false;
+  bool use_htp = true;
+  bool enable_fp16_precision = true;
+  RunPadOpTest(TestInputDef<float>({1, 4, 512, 512}, false, GetFloatDataInRange(1.0f, 10.0f, 4 * 512 * 512)),
+               TestInputDef<int64_t>({8}, true, {0, 0, 3, 3, 0, 0, 3, 3}),
+               TestInputDef<float>({1}, true, {0.0f}),
+               {utils::MakeAttribute("mode", "reflect")},
+               ExpectedEPNodeAssignment::All,
+               has_constant_value_input,
+               18,  // opset
+               use_htp,
+               enable_fp16_precision,
+               2e-3f);
+}
+
 //
 // QDQ Pad
 TEST_F(QnnHTPBackendTests, PadNoConstantValue) {

@@ -32,10 +32,9 @@ using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t
 // A threshold is defined here to restrict the graph transformation only applied to small tensors.
 // Be note: having a bigger threshold means more overhead when we do the graph transformations.
 // `8` is chosen to cover common constant use cases in some Reshape/Gather/Concat's inputs.
-// TODO(pengwa): we can gradually increase this threshold if we see more benefits (memory saving
+// TODO(pengwa): we can gradually increase this threshold if we see more benefits (memory-saving
 // or more CSE optimizations triggered). Should be careful to cover test cases that assume initializer
 // name did not change after transformation then.
-static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
 
 bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
                       int64_t& num_elements) {
@@ -78,7 +77,7 @@ bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_
     }
 
     // Iterate all input defs to replace those that are equal to origin_initializer_node_arg,
-    // Then it would be safe to remove the consumer node afterwards.
+    // Then it would be safe to remove the consumer node afterward.
     for (int i = 0; i < static_cast<int>(const_node->InputDefs().size()); ++i) {
       if (const_node->InputDefs()[i] == origin_initializer_node_arg) {
         consumer_node_to_input_ports_map[const_node].push_back(i);
@@ -233,24 +232,17 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     size_t value_id = GetOrAddValueInConstantStore(std::move(init_value), const_value_store, data_store_key);
 
     // Construct a string by data type, value, and rank. Used as a key in pattern_key_to_shared_arg_map.
-    const std::string pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, data_store_key, "_", value_id);
+    const std::string pattern_key = MakeString(data_store_key, "_", value_id);
 
     // If there is no such existing scalar pattern, add a new one.
     if (pattern_key_to_shared_arg_map.find(pattern_key) == pattern_key_to_shared_arg_map.end()) {
-      // Do a copy and rename the TensorProto.
-      ONNX_NAMESPACE::TensorProto constant_tensor_proto_as_replacement(*tensor_proto);
-      constant_tensor_proto_as_replacement.set_name(graph.GenerateNodeArgName(pattern_key));
-      NodeArg& shared_scalar_initializer_node_arg = graph_utils::AddInitializer(graph,
-                                                                                constant_tensor_proto_as_replacement);
-      pattern_key_to_shared_arg_map[pattern_key] = &shared_scalar_initializer_node_arg;
+      pattern_key_to_shared_arg_map[pattern_key] = origin_initializer_node_arg;
     } else {
       shared_count += 1;
+      ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
+                                          pattern_key_to_shared_arg_map[pattern_key]);
+      modified = true;
     }
-
-    ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
-                                        pattern_key_to_shared_arg_map[pattern_key]);
-
-    modified = true;
   }
   if (shared_count > 0) {
     LOGS(logger, INFO) << "Total shared scalar initializer count: " << shared_count;

@@ -30,11 +30,13 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
   // We only support Resize opset 11+ here.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                              const logging::Logger& logger) const override;
 };
 
 // Helper functions
@@ -162,7 +164,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                         const Node& node,
-                                        const WebnnDeviceType device_type,
+                                        const WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
@@ -182,18 +184,10 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     const auto mode = helper.Get("mode", "nearest");
     bool is_linear_resize = mode == "linear";
     bool is_nearest_resize = mode == "nearest";
-    // WebNN CPU backend only supports "linear" mode.
-    // WebNN GPU backend only supports "linear" and "nearest" modes.
-    if (device_type == WebnnDeviceType::CPU) {
-      if (!is_linear_resize) {
-        LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode << " for CPU backend.";
-        return false;
-      }
-    } else {
-      if (!is_linear_resize && !is_nearest_resize) {
-        LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode << " for GPU backend.";
-        return false;
-      }
+    // WebNN only supports "linear" and "nearest" modes.
+    if (!is_linear_resize && !is_nearest_resize) {
+      LOGS(logger, VERBOSE) << "Resize does not support input mode: " << mode;
+      return false;
     }
 
     const auto exclude_outside = helper.Get("exclude_outside", 0);
@@ -275,6 +269,30 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
       }
     }
+  }
+
+  return true;
+}
+
+bool ResizeOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                                             const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  // WebNN resample2d op only supports float32 and float16 input data types.
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+  };
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
   }
 
   return true;

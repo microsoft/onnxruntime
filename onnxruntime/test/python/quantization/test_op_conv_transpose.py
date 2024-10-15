@@ -13,7 +13,6 @@ import unittest
 
 import numpy as np
 import onnx
-import packaging.version as pv
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
@@ -150,9 +149,6 @@ class TestOpConvTranspose(unittest.TestCase):
     def test_quantize_conv_transpose_u8u8(self):
         self.quantize_conv_transpose_u8u8(TensorProto.FLOAT, 13, 7)
 
-    @unittest.skipIf(
-        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
-    )
     def test_quantize_conv_transpose_u8u8_fp16(self):
         self.quantize_conv_transpose_u8u8(TensorProto.FLOAT16, 19, 9)
 
@@ -163,7 +159,7 @@ class TestOpConvTranspose(unittest.TestCase):
 
         np.random.seed(1)
         model_fp32_path = "conv_transpose_fp32.onnx"
-        self.construct_model(model_fp32_path)
+        self.construct_model(model_fp32_path, onnx_type, opset, ir_version)
         dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
         data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]}, dtype)
 
@@ -178,9 +174,6 @@ class TestOpConvTranspose(unittest.TestCase):
     def test_quantize_conv_transpose_s8s8(self):
         self.quantize_conv_transpose_s8s8(TensorProto.FLOAT, 13, 7)
 
-    @unittest.skipIf(
-        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
-    )
     def test_quantize_conv_transpose_s8s8_fp16(self):
         self.quantize_conv_transpose_s8s8(TensorProto.FLOAT16, 19, 9)
 

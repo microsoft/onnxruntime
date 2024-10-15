@@ -15,15 +15,32 @@
 
 namespace onnxruntime {
 
+// Add bf16 support for ConstantOfShape operator for phimm model.
+// Although ONNX don't have bf16 support in opset-9 for ConstantOfShape we add support here:
+// https://github.com/onnx/onnx/blob/main/docs/Changelog.md#constantofshape-9
 using ConstantOfShapeDefaultOutputTypes =
     TypeList<
         MLFloat16,
         float, double,
         int8_t, int16_t, int32_t, int64_t,
         uint8_t, uint16_t, uint32_t, uint64_t,
-        bool>;
+        bool, BFloat16>;
 
 using ConstantOfShapeDefaultOutputTypesOpset20 =
+    TypeList<
+        BFloat16,
+        MLFloat16,
+        float, double,
+#if !defined(DISABLE_FLOAT8_TYPES)
+        Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
+#endif
+        int8_t, int16_t, int32_t, int64_t,
+        uint8_t, uint16_t, uint32_t, uint64_t,
+        bool>;
+
+// Opset 21 added int4 and uint4
+// TODO(adrianlizarraga): Implement int4 and uint4 support.
+using ConstantOfShapeDefaultOutputTypesOpset21 =
     TypeList<
         BFloat16,
         MLFloat16,
@@ -144,6 +161,7 @@ void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const O
     CASE_FETCH_VALUE_DATA(uint16_t)
     CASE_FETCH_VALUE_DATA(uint32_t)
     CASE_FETCH_VALUE_DATA(uint64_t)
+    CASE_FETCH_VALUE_DATA(BFloat16)
     default:
       ORT_THROW("Unsupported value attribute datatype: ", tensor_type);
   }

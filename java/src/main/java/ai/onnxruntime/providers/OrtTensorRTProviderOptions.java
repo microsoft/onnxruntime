@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime.providers;
@@ -41,7 +41,6 @@ public final class OrtTensorRTProviderOptions extends StringConfigProviderOption
 
     String id = "" + deviceId;
     this.options.put("device_id", id);
-    add(getApiHandle(), this.nativeHandle, "device_id", id);
   }
 
   @Override
@@ -59,17 +58,17 @@ public final class OrtTensorRTProviderOptions extends StringConfigProviderOption
   private static native long create(long apiHandle) throws OrtException;
 
   /**
-   * Adds an option to this options instance.
+   * Adds the options to this options instance.
    *
    * @param apiHandle The api pointer.
    * @param nativeHandle The native options pointer.
-   * @param key The option key.
-   * @param value The option value.
+   * @param keys The option keys.
+   * @param values The option values.
    * @throws OrtException If the addition failed.
    */
   @Override
-  protected native void add(long apiHandle, long nativeHandle, String key, String value)
-      throws OrtException;
+  protected native void applyToNative(
+      long apiHandle, long nativeHandle, String[] keys, String[] values) throws OrtException;
 
   /**
    * Closes this options instance.

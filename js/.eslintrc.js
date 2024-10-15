@@ -59,7 +59,8 @@ module.exports = {
     '@typescript-eslint/no-misused-new': 'error',
     '@typescript-eslint/no-namespace': ['error', { 'allowDeclarations': true }],
     '@typescript-eslint/no-non-null-assertion': 'off',
-    '@typescript-eslint/no-require-imports': 'error',
+    '@typescript-eslint/no-require-imports': ['error', { 'allow': ['^node:']}],
+    '@typescript-eslint/no-var-requires': ['error', { 'allow': ['^node:']}],
     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
     '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
     '@typescript-eslint/promise-function-async': 'error',
@@ -215,10 +216,6 @@ module.exports = {
       'no-param-reassign': 'off',
       'no-underscore-dangle': 'off',
       'guard-for-in': 'off'
-    }
-  }, {
-    files: ['web/lib/wasm/binding/**/*.ts'], rules: {
-      '@typescript-eslint/naming-convention': 'off'
     }
   }, {
     files: ['react_native/e2e/src/**/*.ts', 'react_native/e2e/src/**/*.tsx'], rules: {

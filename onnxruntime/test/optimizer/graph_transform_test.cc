@@ -6,20 +6,20 @@
 #endif
 
 #include <random>
-#include "core/graph/onnx_protobuf.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "onnx/defs/parser.h"
 #include "onnx/defs/printer.h"
 
-#include "asserts.h"
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
@@ -33,10 +33,9 @@
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
-#include "core/optimizer/matmul_bn_fusion.h"
-#include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
+#include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/expand_elimination.h"
@@ -47,29 +46,33 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
-#include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_config.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_bn_fusion.h"
+#include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/pad_fusion.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/propagate_cast_ops.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/label_encoder_fusion.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -87,9 +90,6 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
-#include "core/optimizer/pre_shape_node_elimination.h"
-#include "core/optimizer/double_qdq_pairs_remover.h"
-#include "core/optimizer/qdq_transformer/qdq_util.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -186,6 +186,11 @@ TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
   };
 
   test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx",
+            false,  // use_contrib_qdq
+            *logger_);
+
+  // Test with 16-bit DequantizeLinear(21)
+  test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq16.onnx",
             false,  // use_contrib_qdq
             *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
@@ -884,6 +889,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   };
 
   test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+            false, *logger_);
+
+  // Test with 16-bit DequantizeLinear(21).
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16.onnx",
             false, *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Test with 8-bit contrib QDQ ops
@@ -6206,9 +6215,10 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
           std::make_unique<PropagateCastOps>(strategy, level, test_case.allow_ops),
           TransformerLevel::Level1));
       ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-      Path p = Path::Parse(test_case.model_uri);
-      ASSERT_FALSE(p.GetComponents().empty());
-      PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
+      std::filesystem::path p = test_case.model_uri;
+      PathString model_filename = ORT_TSTR("transformed_");
+      model_filename += p.filename();
+      std::filesystem::path transformed_model_uri = std::filesystem::path(temp_dir.Path()) / model_filename;
       ASSERT_STATUS_OK(Model::Save(*p_model, transformed_model_uri));
       // Load the transformed model to validate
       ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
@@ -7681,79 +7691,99 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
   }
 }
 
-TEST_F(GraphTransformationTests, ShapeInputMerge) {
-  auto build_test_case = [&](ModelTestBuilder& builder) {
-    std::vector<std::variant<int64_t, std::string>> input_shape;
-    input_shape.reserve(5);
-    input_shape.emplace_back("dim0");
-    input_shape.emplace_back(512);
-    input_shape.emplace_back(1);
-    input_shape.emplace_back(1536);
-    input_shape.emplace_back("dim4");
-    auto* input_arg = builder.MakeSymbolicInput<float>(input_shape);
-    auto* neg_out = builder.MakeIntermediate();
-    auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(2)});
-    auto* squeeze_out = builder.MakeIntermediate();
-    auto* cast_out = builder.MakeIntermediate();
-    auto* unsqueeze_out = builder.MakeOutput();
-    auto* shape_1_out = builder.MakeOutput();
-    auto* shape_2_out = builder.MakeOutput();
-    auto* shape_3_out = builder.MakeOutput();
-    auto* shape_4_out = builder.MakeOutput();
-    auto* shape_5_out = builder.MakeOutput();
-    builder.AddNode("Neg", {input_arg}, {neg_out});
-    builder.AddNode("Squeeze", {neg_out, axes_initializer}, {squeeze_out});
-    builder.AddNode("Cast", {squeeze_out}, {cast_out}).AddAttribute("to", static_cast<int64_t>(10));
-    builder.AddNode("Unsqueeze", {cast_out, axes_initializer}, {unsqueeze_out});
-    builder.AddNode("Shape", {input_arg}, {shape_1_out});
-    builder.AddNode("Shape", {neg_out}, {shape_2_out});
-    builder.AddNode("Shape", {squeeze_out}, {shape_3_out});
-    builder.AddNode("Shape", {cast_out}, {shape_4_out});
-    builder.AddNode("Shape", {unsqueeze_out}, {shape_5_out});
+#if !defined(DISABLE_CONTRIB_OPS)
+
+TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
+  struct TestOptions {
+    bool bias_is_first_add_input{false};
+    bool add_produces_graph_output{false};
   };
 
-  auto pre_graph_checker = [&](Graph& graph) {
-    InlinedHashMap<std::string, int> ref_count;
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "Shape") {
-        std::string name = node.InputDefs()[0]->Name();
-        if (ref_count.find(name) == ref_count.end()) {
-          ref_count[name] = 1;
-        } else {
-          ref_count[name]++;
-        }
+  auto run_test = [&logger = *logger_](const TestOptions& opts) {
+    SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
+                            ", add_produces_graph_output:", opts.add_produces_graph_output));
+
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      constexpr size_t qbits = 4;
+      constexpr size_t block_size = 32;
+
+      constexpr int64_t M = 2, K = 4, N = 8;
+
+      int q_rows, q_cols;
+      MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
+                                                K, N,
+                                                q_rows, q_cols);
+
+      size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+      MlasBlockwiseQuantizedBufferSizes(qbits, block_size, /* columnwise */ true,
+                                        K, N,
+                                        q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+      auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
+
+      auto* B_data = builder.MakeInitializer<uint8_t>({int64_t{q_rows}, int64_t{q_cols}},
+                                                      uint8_t{0}, uint8_t{255});
+      auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
+                                                      1.0f, 2.0f);
+      auto* B_zero_points = builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
+                                                             uint8_t{0}, uint8_t{255});
+
+      auto* matmul_output = builder.MakeIntermediate();
+
+      auto& matmul = builder.AddNode("MatMulNBits",
+                                     {A, B_data, B_scales, B_zero_points},
+                                     {matmul_output},
+                                     kMSDomain);
+      matmul.AddAttribute("N", N);
+      matmul.AddAttribute("K", K);
+      matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
+      matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+
+      auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
+
+      auto* graph_output = builder.MakeOutput();
+
+      auto* add_output = opts.add_produces_graph_output ? graph_output : builder.MakeIntermediate();
+
+      builder.AddNode("Add",
+                      {opts.bias_is_first_add_input ? Bias : matmul_output,
+                       opts.bias_is_first_add_input ? matmul_output : Bias},
+                      {add_output});
+
+      if (!opts.add_produces_graph_output) {
+        builder.AddNode("Identity",
+                        {add_output},
+                        {graph_output});
       }
-    }
-    TEST_RETURN_IF_NOT(ref_count.size() == 5);
-    return Status::OK();
+    };
+
+    auto pre_graph_checker = [](Graph& graph) {
+      auto op_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_count["Add"], 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      auto op_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_count["Add"], 0);
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, logger, std::make_unique<MatMulNBitsFusion>(),
+                                          TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   };
 
-  auto post_graph_checker = [&](Graph& graph) {
-    InlinedHashMap<std::string, int> ref_count;
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "Shape") {
-        std::string name = node.InputDefs()[0]->Name();
-        if (ref_count.find(name) == ref_count.end()) {
-          ref_count[name] = 1;
-        } else {
-          ref_count[name]++;
-        }
-      }
+  for (bool bias_is_first_add_input : {false, true}) {
+    for (bool add_produces_graph_output : {false, true}) {
+      TestOptions opts{};
+      opts.bias_is_first_add_input = bias_is_first_add_input;
+      opts.add_produces_graph_output = add_produces_graph_output;
+      run_test(opts);
     }
-    TEST_RETURN_IF_NOT(ref_count.size() == 2);
-    int sum = 0, mul = 1;
-    for (auto& entry : ref_count) {
-      sum += entry.second;
-      mul *= entry.second;
-    }
-    TEST_RETURN_IF_NOT(sum == 5 && mul == 6);
-    return Status::OK();
-  };
-
-  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ShapeInputMerge>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  }
 }
+
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime

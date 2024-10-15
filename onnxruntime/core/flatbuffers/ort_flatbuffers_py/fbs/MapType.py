@@ -10,12 +10,16 @@ class MapType(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsMapType(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = MapType()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsMapType(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def MapTypeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -42,7 +46,26 @@ class MapType(object):
             return obj
         return None
 
-def MapTypeStart(builder): builder.StartObject(2)
-def MapTypeAddKeyType(builder, keyType): builder.PrependInt32Slot(0, keyType, 0)
-def MapTypeAddValueType(builder, valueType): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(valueType), 0)
-def MapTypeEnd(builder): return builder.EndObject()
+def MapTypeStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    MapTypeStart(builder)
+
+def MapTypeAddKeyType(builder, keyType):
+    builder.PrependInt32Slot(0, keyType, 0)
+
+def AddKeyType(builder, keyType):
+    MapTypeAddKeyType(builder, keyType)
+
+def MapTypeAddValueType(builder, valueType):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(valueType), 0)
+
+def AddValueType(builder, valueType):
+    MapTypeAddValueType(builder, valueType)
+
+def MapTypeEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return MapTypeEnd(builder)

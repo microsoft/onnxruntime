@@ -25,9 +25,11 @@ class StringNormalizer : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-  bool is_case_sensitive_;
-  CaseAction case_change_action_;
-  CaseAction compare_caseaction_;  // used for case-insensitive compare
+  bool is_case_sensitive_{true};
+  CaseAction case_change_action_{NONE};
+  // Set this to lower because some characters do not have capital case.
+  // used for case-insensitive compare
+  CaseAction compare_caseaction_{LOWER};
   std::string locale_name_;
   // Either if these are populated but not both
   InlinedHashSet<std::string> stopwords_;

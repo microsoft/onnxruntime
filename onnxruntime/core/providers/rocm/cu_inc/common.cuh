@@ -138,6 +138,9 @@ __device__ __inline__ double _Erf(double a) { return erf(a); }
 template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
+template <>
+__device__ __inline__ BFloat16 _Erf(BFloat16 a) { return BFloat16(erff((float)a)); }
+
 template <typename T>
 __device__ __inline__ T _Round(T a);
 

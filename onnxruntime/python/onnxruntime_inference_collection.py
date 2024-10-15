@@ -646,7 +646,7 @@ class IOBinding:
         return self._iobinding.get_outputs()
 
     def copy_outputs_to_cpu(self):
-        """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
+        """Copy output contents to CPU."""
         return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):
