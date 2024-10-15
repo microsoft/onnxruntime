@@ -13,7 +13,7 @@ ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
 ENV DEBIAN_FRONTEND noninteractive
 
-ARG DEVICE=CPU_FP32
+ARG DEVICE=CPU
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=main
 

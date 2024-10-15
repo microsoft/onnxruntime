@@ -8,7 +8,8 @@ namespace onnxruntime {
 void GraphViewerToProto(const GraphViewer& graph_view,
                         ONNX_NAMESPACE::GraphProto& graph_proto,
                         bool include_initializer,
-                        bool include_outer_scope_args) {
+                        bool include_outer_scope_args,
+                        ExecutionOrder order) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
@@ -20,7 +21,21 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  for (const auto* value_info : graph_view.GetValueInfo()) {
+  std::unordered_set<const onnxruntime::NodeArg*> value_info_ = graph_view.GetValueInfo();
+
+  // Reserve memory for the vector to avoid reallocations
+  std::vector<const NodeArg*> value_info_sorted;
+  value_info_sorted.reserve(value_info_.size());
+
+  value_info_sorted.assign(value_info_.begin(), value_info_.end());
+  auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) {
+    return v1->Name() < v2->Name();
+  };
+
+  // This ensures consistent ordering of value_info entries in the output graph
+  std::sort(value_info_sorted.begin(), value_info_sorted.end(), sort_predicate);
+
+  for (const auto* value_info : value_info_sorted) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
@@ -34,7 +49,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+  for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
     const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{graph_view.GetNode(node_idx)};
     // we need to update any GraphProto attributes for subgraphs so that any changes made by things
@@ -62,7 +77,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
 
     // handle outer scope value which is a constant initializer
     if (include_outer_scope_args) {
-      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
           if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {

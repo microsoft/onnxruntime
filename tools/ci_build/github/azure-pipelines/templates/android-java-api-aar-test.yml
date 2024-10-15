@@ -10,7 +10,6 @@ parameters:
   default: ''
 
 - name: packageName
-  # now we can build onnxruntime-android or onnxruntime-mobile for Android, need specify it here
   displayName: Package Name
   type: string
   default: 'onnxruntime-android'
@@ -62,7 +61,7 @@ jobs:
       cp -av $(Build.SourcesDirectory)/java/src/test/android ./
       cd ./android
       mkdir -p app/libs
-      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
+      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)

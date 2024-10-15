@@ -129,6 +129,9 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
                       int total_matrix_count = -1);
 
+Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
+
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const int all_sequence_length,
                                   const int sequence_length,
@@ -172,6 +175,13 @@ Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                            const T* biases,
                                            const T* qkv_buffer,
                                            T* present);
+
+template <typename T>
+Status LaunchStridedCopy(
+    cudaStream_t stream,
+    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    int max_threads_per_block);
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,

@@ -183,7 +183,7 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(const TrainingGraphTransforme
   }
 
   if (!config.optimized_pre_grad_filepath.empty()) {
-    ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, config.optimized_pre_grad_filepath));
+    ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, ToPathString(config.optimized_pre_grad_filepath)));
   }
 
   return Status::OK();

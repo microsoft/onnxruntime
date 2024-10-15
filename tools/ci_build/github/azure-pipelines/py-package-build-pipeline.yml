@@ -27,7 +27,7 @@ parameters:
 - name: cpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for CPU package.'
   type: string
-  default: '--use_openvino CPU_FP32'
+  default: '--use_openvino CPU'
 
 - name: gpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for GPU package.'

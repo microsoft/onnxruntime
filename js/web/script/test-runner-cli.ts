@@ -558,7 +558,9 @@ async function main() {
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
-      if (webgpu || webnn) {
+
+      // When using BrowserStack with Safari, we need NOT to use 'localhost' as the hostname.
+      if (!(browser.startsWith('BS_') && browser.includes('Safari'))) {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
@@ -567,7 +569,7 @@ async function main() {
         chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
       }
       if (webnn) {
-        chromiumFlags.push('--enable-experimental-web-platform-features');
+        chromiumFlags.push('--enable-features=WebMachineLearningNeuralNetwork');
       }
       if (process.argv.includes('--karma-debug')) {
         karmaArgs.push('--log-level debug');

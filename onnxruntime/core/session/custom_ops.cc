@@ -584,7 +584,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernel
     auto tensorp = std::make_unique<onnxruntime::Tensor>(type, tensor_shape, std::move(alloc_ptr));
 
     // Deserialize TensorProto into pre-allocated, empty Tensor.
-    status = onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), nullptr, tensor_proto, *tensorp);
+    // TODO: here the TensorProto loses model path information, so it cannot be an external tensor.
+    status = onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), std::filesystem::path(),
+                                                     tensor_proto, *tensorp);
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }

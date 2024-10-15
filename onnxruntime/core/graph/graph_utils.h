@@ -59,6 +59,11 @@ const std::string& GetNodeOutputName(const Node& node, int index);
 */
 const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 
+/** Move the input edges that src_node has to target_node.
+After the move is complete src_node will have no input edges.
+*/
+void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node);
+
 /** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
@@ -89,6 +94,9 @@ struct GraphEdge {
   /** Returns a vector of the input GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
 
+  /** Returns a vector of the input GraphEdges of a node for the provided input index. */
+  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node, size_t index);
+
   /** Returns a vector of the output GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);
 
@@ -98,6 +106,11 @@ struct GraphEdge {
   /** Removes a set of GraphEdges from the graph. */
   static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges);
 };
+
+/** Returns true if the execution provider assigned to current node is present in the compatible providers list
+    or if the compatible_providers list is empty. */
+bool IsSupportedProvider(const Node& node,
+                         const InlinedHashSet<std::string_view>& compatible_providers);
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -109,10 +122,6 @@ bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::Ope
 bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-/** Returns true if the execution provider assigned to current node is present in the compatible providers list
-    or if the compatible_providers list is empty. */
-bool IsSupportedProvider(const Node& node,
-                         const InlinedHashSet<std::string_view>& compatible_providers);
 
 /** Checks if the output at the specified index is input to downstream Nodes. */
 bool IsOutputUsed(const Node& node, int index);

@@ -9,6 +9,7 @@
 #include <string>
 #include <optional>
 #include <vector>
+#include <filesystem>
 
 #include "core/graph/basic_types.h"
 #include "core/graph/graph.h"
@@ -41,10 +42,11 @@ struct NodeGroup {
 // If the optional quant_param is present, then this is a quantized input,
 // otherwise this is a regular input
 struct NodeUnitIODef {
-  // The quantization parameter, scale is manadatory, and zero_point is optional
+  // The quantization parameter. Scale is mandatory. Zero-point and axis are optional.
   struct QuantParam {
     const NodeArg& scale;
     const NodeArg* zero_point{nullptr};
+    std::optional<int64_t> axis{std::nullopt};
   };
 
   const NodeArg& node_arg;
@@ -77,7 +79,7 @@ class NodeUnit {
   const std::string& Name() const noexcept;
   int SinceVersion() const noexcept;
   NodeIndex Index() const noexcept;
-  const Path& ModelPath() const noexcept;
+  const std::filesystem::path& ModelPath() const noexcept;
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }

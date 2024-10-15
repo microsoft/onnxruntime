@@ -763,6 +763,25 @@ export class ProtoOpTestContext {
       throw new Error(
           `Test cases for test: ${test.name} [${test.operator}] must have the same number of inputs and outputs`);
     }
+    const inputsOmitted = test.cases[0].inputs.map(input => !input.data);
+    const outputsOmitted = test.cases[0].outputs.map(output => !output.data);
+    for (let caseIndex = 1; caseIndex < test.cases.length; caseIndex++) {
+      const testCase = test.cases[caseIndex];
+      for (let i = 0; i < inputCount; i++) {
+        if (inputsOmitted[i] !== !testCase.inputs![i].data) {
+          throw new Error(`Test cases for test: ${test.name} [${
+              test.operator}] must have consistent inputs data availability. Data of input[${i}] in testCase #0 and #${
+              caseIndex} should be both available or both omitted.`);
+        }
+      }
+      for (let i = 0; i < outputCount; i++) {
+        if (outputsOmitted[i] !== !testCase.outputs![i].data) {
+          throw new Error(`Test cases for test: ${test.name} [${
+              test.operator}] must have consistent outputs data availability. Data of output[${
+              i}] in testCase #0 and #${caseIndex} should be both available or both omitted.`);
+        }
+      }
+    }
 
     const model = onnx.ModelProto.create();
     model.irVersion = onnx.Version.IR_VERSION;
@@ -770,8 +789,8 @@ export class ProtoOpTestContext {
     model.graph = onnx.GraphProto.create();
 
     model.graph.node = [onnx.NodeProto.create({
-      input: test.cases[0].inputs!.map((_, i) => `input_${i}`),
-      output: test.cases[0].outputs!.map((_, i) => `output_${i}`),
+      input: test.cases[0].inputs!.map((t, i) => t.data ? `input_${i}` : ''),
+      output: test.cases[0].outputs!.map((t, i) => t.data ? `output_${i}` : ''),
       opType: operator,
       domain: test.opset?.domain,
       name: operator,
@@ -830,27 +849,36 @@ export class ProtoOpTestContext {
       normalizedInputShapeDefinitions = test.inputShapeDefinitions;
     }
 
-    model.graph.input = test.cases[0].inputs!.map((input, i) => {
-      const shapeDefinition = normalizedInputShapeDefinitions[i];
-      const shape = shapeDefinition ? onnx.TensorShapeProto.create({
-        dim: shapeDefinition.map(
-            dim => onnx.TensorShapeProto.Dimension.create(typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
-      }) :
-                                      undefined;
-      return onnx.ValueInfoProto.create({
-        name: `input_${i}`,
-        type: onnx.TypeProto.create({
-          tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
-        }),
-      });
-    });
+    model.graph.input =
+        test.cases[0]
+            .inputs!
+            .map((input, i) => {
+              const shapeDefinition = normalizedInputShapeDefinitions[i];
+              const shape = shapeDefinition ? onnx.TensorShapeProto.create({
+                dim: shapeDefinition.map(
+                    dim => onnx.TensorShapeProto.Dimension.create(
+                        typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
+              }) :
+                                              undefined;
+              return onnx.ValueInfoProto.create({
+                name: `input_${i}`,
+                type: onnx.TypeProto.create({
+                  tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
+                }),
+              });
+            })
+            .filter((_, i) => test.cases[0].inputs![i].data);
 
-    model.graph.output = test.cases[0].outputs!.map((output, i) => onnx.ValueInfoProto.create({
-      name: `output_${i}`,
-      type: onnx.TypeProto.create({
-        tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(output.type)}),
-      }),
-    }));
+    model.graph.output =
+        test.cases[0]
+            .outputs!
+            .map((output, i) => onnx.ValueInfoProto.create({
+              name: `output_${i}`,
+              type: onnx.TypeProto.create({
+                tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(output.type)}),
+              }),
+            }))
+            .filter((_, i) => test.cases[0].outputs![i].data);
 
     model.graph.name = test.name;
 

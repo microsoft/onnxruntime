@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -1022,6 +1022,8 @@ public class OrtSession implements AutoCloseable {
     public void addCUDA(OrtCUDAProviderOptions cudaOpts) throws OrtException {
       checkClosed();
       if (OnnxRuntime.extractCUDA()) {
+        // Cast is to make the compiler pick the right overload.
+        ((OrtProviderOptions) cudaOpts).applyToNative();
         addCUDAV2(OnnxRuntime.ortApiHandle, nativeHandle, cudaOpts.nativeHandle);
       } else {
         throw new OrtException(
@@ -1125,6 +1127,8 @@ public class OrtSession implements AutoCloseable {
     public void addTensorrt(OrtTensorRTProviderOptions tensorRTOpts) throws OrtException {
       checkClosed();
       if (OnnxRuntime.extractTensorRT()) {
+        // Cast is to make the compiler pick the right overload.
+        ((OrtProviderOptions) tensorRTOpts).applyToNative();
         addTensorrtV2(OnnxRuntime.ortApiHandle, nativeHandle, tensorRTOpts.nativeHandle);
       } else {
         throw new OrtException(

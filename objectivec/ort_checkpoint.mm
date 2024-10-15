@@ -8,6 +8,7 @@
 #include <variant>
 #import "cxx_api.h"
 
+#import "cxx_utils.h"
 #import "error_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -73,7 +74,7 @@ NS_ASSUME_NONNULL_BEGIN
   try {
     Ort::Property value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
     if (std::string* str = std::get_if<std::string>(&value)) {
-      return [NSString stringWithUTF8String:str->c_str()];
+      return utils::toNSString(str->c_str());
     }
     ORT_CXX_API_THROW("Property is not a string.", ORT_INVALID_ARGUMENT);
   }

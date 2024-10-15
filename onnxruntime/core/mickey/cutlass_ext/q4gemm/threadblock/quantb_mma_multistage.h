@@ -490,7 +490,10 @@ public:
     // accuracy, where each mainloop iteration first accumulates into a temporary
     // set of freshly-cleared accumulators, which are subsequently added to the
     // final accumulator set.
-    static bool const kStagedAccumulation = arch::UseStagedAccumulation<typename Operator::MathOperator>::value;
+
+    // Change the following to avoid build error: class "cutlass::arch::OpMultiplyAdd" has no member "ElementA".
+    //     kStagedAccumulation = arch::detail::UseStagedAccumulation<typename Operator::MathOperator>::value;
+    static bool const kStagedAccumulation = false;
   };
 
  private:

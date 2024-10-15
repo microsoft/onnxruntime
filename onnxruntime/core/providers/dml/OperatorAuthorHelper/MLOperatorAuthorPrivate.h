@@ -14,7 +14,7 @@ struct MLOperatorGraphDesc
 {
     uint32_t nodeCount;
     _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodes;
-    
+
     uint32_t inputEdgeCount;
     _Field_size_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
 
@@ -35,7 +35,7 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         ) const noexcept PURE;
 
     STDMETHOD(TryGetConstantInputTensor)(
-        uint32_t inputIndex, 
+        uint32_t inputIndex,
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
@@ -72,7 +72,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         ) const noexcept PURE;
 
     STDMETHOD(TryGetConstantInputTensor)(
-        uint32_t inputIndex, 
+        uint32_t inputIndex,
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
@@ -174,11 +174,12 @@ IMLOperatorRegistryPrivate : public IUnknown
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
         _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
         bool isInternalOperator,
-        bool canAliasFirstInput,
         bool supportsGraph,
         const uint32_t* requiredInputCountForGraph = nullptr,
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
-        uint32_t constantCpuInputCount = 0
+        uint32_t constantCpuInputCount = 0,
+        _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases = nullptr,
+        uint32_t aliasCount = 0
         ) const noexcept PURE;
 };
 

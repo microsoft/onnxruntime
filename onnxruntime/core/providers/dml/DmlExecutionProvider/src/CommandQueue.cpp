@@ -6,9 +6,10 @@
 
 namespace Dml
 {
-    CommandQueue::CommandQueue(ID3D12CommandQueue* existingQueue)
+    CommandQueue::CommandQueue(ID3D12CommandQueue* existingQueue, bool cpuSyncSpinningEnabled)
         : m_queue(existingQueue)
         , m_type(existingQueue->GetDesc().Type)
+        , m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
     {
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(m_queue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
@@ -75,7 +76,7 @@ namespace Dml
         assert(!m_closing);
         m_closing = true;
         GpuEvent event = GetCurrentCompletionEvent();
-        event.WaitForSignal();
+        event.WaitForSignal(m_cpuSyncSpinningEnabled);
         m_queuedReferences.clear();
         m_closing = false;
     }

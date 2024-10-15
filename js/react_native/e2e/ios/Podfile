@@ -1,7 +1,7 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '12.4'
+platform :ios, '13.0'
 
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
@@ -10,13 +10,6 @@ target 'OnnxruntimeModuleExample' do
 
   use_frameworks!
 
-  # Mobile build:
-  # ort_mobile_c_local_pod_path = ENV['ORT_MOBILE_C_LOCAL_POD_PATH']
-  # if ort_mobile_c_local_pod_path != nil
-  #   print 'Using onnxruntime-c pod at ', ort_mobile_c_local_pod_path, "\n"
-  #   pod 'onnxruntime-mobile-c', :path => ort_mobile_c_local_pod_path
-  # end
-  
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
     print 'Using onnxruntime-c pod at ', ort_c_local_pod_path, "\n"

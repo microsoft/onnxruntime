@@ -32,8 +32,6 @@ Status CheckInputs(const Tensor* query,
   //     query            (Q)       : (B, S, D) or (B, S, (D_q + 2 D_kv))
   //     key              (K)       : (B, S, D_kv) or nullptr
   //     value            (V)       : (B, S, D_kv) or nullptr
-  ORT_UNUSED_PARAMETER(value);
-
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
   AttentionQkvFormat past_kv_format = is_past_bsnh ? Q_K_V_BSNH : Q_K_V_BNSH;
   const bool is_packed_qkv = key == nullptr;
@@ -215,13 +213,13 @@ Status CheckInputs(const Tensor* query,
                              "head_size shall be a multiple of 16. Got head_size % 16 == ",
                              head_size % 16);
     }
-    if (cos_dims[0] < present_sequence_length) {
+    if (cos_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 should be of max_sequence_length.");
+                             "cos_cache dimension 0 should be not be less than total_sequence_length.");
     }
-    if (sin_dims[0] < present_sequence_length) {
+    if (sin_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 should be of max_sequence_length.");
+                             "sin_cache dimension 0 should be not be less than total_sequence_length.");
     }
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -241,7 +239,11 @@ Status CheckInputs(const Tensor* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
-  bool is_prompt = sequence_length != 1;
+  bool is_prompt = (sequence_length == total_sequence_length);
+  if (!is_prompt && sequence_length != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence_length shall be 1 when it is not prompt.");
+  }
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
@@ -256,7 +258,6 @@ Status CheckInputs(const Tensor* query,
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->rotary_dim = rotary_dim;
     output_parameters->is_packed_qkv = is_packed_qkv;
-    output_parameters->is_unidirectional = true;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;

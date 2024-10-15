@@ -216,6 +216,31 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
     if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
       out << " scale=" << quantize_params.scaleOffsetEncoding.scale;
       out << " offset=" << quantize_params.scaleOffsetEncoding.offset;
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+      out << " axis=" << quantize_params.axisScaleOffsetEncoding.axis;
+      size_t num_elems = quantize_params.axisScaleOffsetEncoding.numScaleOffsets;
+      out << " scales=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].scale << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ") offsets=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].offset << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ")";
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+      out << " axis=" << quantize_params.bwAxisScaleOffsetEncoding.axis;
+      out << " bw=" << quantize_params.bwAxisScaleOffsetEncoding.bitwidth;
+      size_t num_elems = quantize_params.bwAxisScaleOffsetEncoding.numElements;
+      out << " scales=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.bwAxisScaleOffsetEncoding.scales[i] << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ") offsets=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.bwAxisScaleOffsetEncoding.offsets[i] << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ")";
     } else {
       out << " encoding not supported.";
     }
@@ -303,6 +328,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_32) {
       operator<< <int32_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_16) {
+      operator<< <uint16_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_16) {
+      operator<< <int16_t>(out, GetQnnTensorClientBuf(tensor));
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_8) {
       operator<< <uint8_t>(out, GetQnnTensorClientBuf(tensor));
@@ -374,6 +405,15 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
                     "Failed to map Onnx data type to Qnn data type!");
 
   return Status::OK();
+}
+
+const std::string& GetNodeName(const NodeUnit& node_unit) {
+  const std::string& node_name = node_unit.Name();
+  if (node_name.empty()) {
+    return node_unit.Outputs()[0].node_arg.Name();
+  }
+
+  return node_name;
 }
 
 bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {

@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
@@ -37,7 +38,7 @@ class TileOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -100,7 +101,11 @@ Status TileOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrappe
                                                const std::vector<std::string>& input_names,
                                                size_t output_index,
                                                Qnn_DataType_t qnn_data_type,
-                                               Qnn_QuantizeParams_t& quant_param) const {
+                                               QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
   // Force the Tile operator output to use the same quantization parameters as the input if nearly equal.
   // This helps the HTP backend employ certain optimizations.
   return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,

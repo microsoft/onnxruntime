@@ -219,7 +219,7 @@ def add_common_dependencies(xml_text, package_name, version):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.13.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.14.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -260,24 +260,16 @@ def generate_dependencies(xml_text, package_name, version):
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
-            # Support monoandroid11.0
-            xml_text.append('<group targetFramework="monoandroid11.0">')
+            # Support net8.0-android
+            xml_text.append('<group targetFramework="net8.0-android31.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
-            # Support xamarinios10
-            xml_text.append('<group targetFramework="xamarinios10">')
+            # Support net8.0-ios
+            xml_text.append('<group targetFramework="net8.0-ios15.4">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
-            # Support net6.0-android
-            xml_text.append('<group targetFramework="net6.0-android31.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            xml_text.append("</group>")
-            # Support net6.0-ios
-            xml_text.append('<group targetFramework="net6.0-ios15.4">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            xml_text.append("</group>")
-            # Support net6.0-macos
-            xml_text.append('<group targetFramework="net6.0-macos12.3">')
+            # Support net8.0-maccatalyst
+            xml_text.append('<group targetFramework="net8.0-maccatalyst14.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
         # Support Native C++
@@ -317,6 +309,10 @@ def generate_release_notes(line_list, dependency_sdk_info):
 
 
 def generate_metadata(line_list, args):
+    tags = "native ONNX Runtime ONNXRuntime Machine Learning MachineLearning"
+    if "Microsoft.ML.OnnxRuntime.Training." in args.package_name:
+        tags.append(" ONNXRuntime-Training Learning-on-The-Edge On-Device-Training On-Device Training")
+
     metadata_list = ["<metadata>"]
     generate_id(metadata_list, args.package_name)
     generate_version(metadata_list, args.package_version)
@@ -324,13 +320,7 @@ def generate_metadata(line_list, args):
     generate_owners(metadata_list, "Microsoft")
     generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, "\xc2\xa9 " + "Microsoft Corporation. All rights reserved.")
-    (
-        generate_tags(metadata_list, "ONNX ONNX Runtime Machine Learning")
-        if "Microsoft.ML.OnnxRuntime.Training." in args.package_name
-        else generate_tags(
-            metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
-        )
-    )
+    generate_tags(metadata_list, tags)
     generate_icon(metadata_list, "ORT_icon_for_light_bg.png")
     generate_license(metadata_list)
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
@@ -484,7 +474,7 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_factory.h")
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_options.h")
             + '" target="build\\native\\include" />'
         )
 
@@ -560,6 +550,33 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
         )
+
+    if is_qnn_package:
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />")
+        if args.target_architecture != "x64":
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpPrepare.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV73Stub.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV73Skel.so") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libqnnhtpv73.cat") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV68Stub.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV68Skel.so") + runtimes + " />"
+            )
 
     is_ado_packaging_build = False
     # Process runtimes
@@ -925,169 +942,104 @@ def generate_files(line_list, args):
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":
-            monoandroid_source_targets = os.path.join(
+            net8_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "monoandroid11.0",
+                "net8.0-android",
                 "targets.xml",
             )
-            monoandroid_target_targets = os.path.join(
+            net8_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "monoandroid11.0",
+                "net8.0-android",
                 args.package_name + ".targets",
             )
 
-            xamarinios_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10", "targets.xml"
+            net8_ios_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net8.0-ios", "targets.xml"
             )
-            xamarinios_target_targets = os.path.join(
+            net8_ios_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "xamarinios10",
+                "net8.0-ios",
                 args.package_name + ".targets",
             )
 
-            net6_android_source_targets = os.path.join(
+            net8_maccatalyst_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net6.0-android",
-                "targets.xml",
-            )
-            net6_android_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-android",
-                args.package_name + ".targets",
+                "net8.0-maccatalyst",
+                "_._",
             )
 
-            net6_ios_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-ios", "targets.xml"
-            )
-            net6_ios_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-ios",
-                args.package_name + ".targets",
+            net8_maccatalyst_target_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net8.0-maccatalyst", "_._"
             )
 
-            net6_macos_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos", "targets.xml"
-            )
-            net6_macos_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-macos",
-                args.package_name + ".targets",
-            )
-
-            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
-            os.system(copy_command + " " + xamarinios_source_targets + " " + xamarinios_target_targets)
-            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
-            os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
-            os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
-
-            files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
-            files_list.append(
-                "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
-            )
-
-            files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
-            files_list.append(
-                "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
-            )
+            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
+            os.system(copy_command + " " + net8_ios_source_targets + " " + net8_ios_target_targets)
+            os.system(copy_command + " " + net8_maccatalyst_source_targets + " " + net8_maccatalyst_target_targets)
 
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
-            )
-
-            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
-            files_list.append(
-                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
             )
 
-            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
+            files_list.append("<file src=" + '"' + net8_ios_target_targets + '" target="build\\net8.0-ios15.4" />')
             files_list.append(
-                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'
+                "<file src=" + '"' + net8_ios_target_targets + '" target="buildTransitive\\net8.0-ios15.4" />'
+            )
+            files_list.append(
+                "<file src=" + '"' + net8_maccatalyst_target_targets + '" target="build\\net8.0-maccatalyst14.0" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net8_maccatalyst_target_targets
+                + '" target="buildTransitive\\net8.0-maccatalyst14.0" />'
             )
 
         # Process Training specific targets and props
         if args.package_name == "Microsoft.ML.OnnxRuntime.Training":
-            monoandroid_source_targets = os.path.join(
+            net8_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "monoandroid11.0",
+                "net8.0-android",
                 "targets.xml",
             )
-            monoandroid_target_targets = os.path.join(
+            net8_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "monoandroid11.0",
+                "net8.0-android",
                 args.package_name + ".targets",
             )
 
-            net6_android_source_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-android",
-                "targets.xml",
-            )
-            net6_android_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-android",
-                args.package_name + ".targets",
-            )
-
-            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
-            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
-
-            files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
+            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
             files_list.append(
-                "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
-            )
-
-            files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
             )
 
     # README
@@ -1110,6 +1062,13 @@ def generate_files(line_list, args):
         + os.path.join(args.sources_path, "ORT_icon_for_light_bg.png")
         + '" target="ORT_icon_for_light_bg.png" />'
     )
+    if is_qnn_package:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, "Qualcomm AI Hub Proprietary License.pdf")
+            + '" target="Qualcomm AI Hub Proprietary License.pdf" />'
+        )
     files_list.append("</files>")
 
     line_list += files_list

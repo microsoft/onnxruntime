@@ -822,6 +822,8 @@ public:
 #endif
       } else {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
+        uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
         asm volatile(
           "{\n\t"
           "  .reg  .b32    rb0;\n"

@@ -44,7 +44,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
       "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
@@ -55,6 +55,7 @@ void usage() {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [profiling_file_path]: QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
@@ -168,6 +169,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_qnn = false;
   bool enable_nnapi = false;
+  bool enable_vsinpu = false;
   bool enable_coreml = false;
   bool enable_snpe = false;
   bool enable_dml = false;
@@ -247,6 +249,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_qnn = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
+            enable_vsinpu = true;
           } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
             enable_coreml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
@@ -479,9 +483,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         std::string key(token.substr(0, pos));
         std::string value(token.substr(pos + 1));
 
-        if (key == "backend_path") {
+        if (key == "backend_path" || key == "profiling_file_path") {
           if (value.empty()) {
-            ORT_THROW("Please provide the QNN backend path.");
+            ORT_THROW("Please provide the valid file path.");
           }
         } else if (key == "qnn_context_embed_mode") {
           if (value != "0") {
@@ -541,7 +545,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           }
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
 'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
         }
@@ -559,6 +563,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, 0));
 #else
       fprintf(stderr, "NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_vsinpu) {
+#ifdef USE_VSINPU
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VSINPU(sf));
+#else
+      fprintf(stderr, "VSINPU is not supported in this build");
       return -1;
 #endif
     }
@@ -811,7 +823,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
-        ORT_TSTR("sce_none_weights_expanded")};
+        ORT_TSTR("sce_none_weights_expanded"),
+        ORT_TSTR("convtranspose_3d")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 

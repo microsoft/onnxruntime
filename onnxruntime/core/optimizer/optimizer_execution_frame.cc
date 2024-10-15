@@ -30,7 +30,7 @@ static size_t EstimateInputsOutputs(gsl::span<const Node* const> nodes) {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
-                                    const Path& model_path,
+                                    const std::filesystem::path& model_path,
                                     const IExecutionProvider& execution_provider,
                                     const std::function<bool(const std::string&)>& is_sparse_initializer_func)
     : execution_provider_(execution_provider),
@@ -52,7 +52,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       OrtValue ort_value;
       ORT_RETURN_IF_ERROR(
           utils::TensorProtoToOrtValue(Env::Default(),
-                                       model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
+                                       model_path,
                                        tensor_proto, allocator_ptr_, ort_value));
 
       initializers_[idx] = std::move(ort_value);
@@ -77,7 +77,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
-                                    const Path& model_path,
+                                    const std::filesystem::path& /* model_path */,
                                     const IExecutionProvider& execution_provider,
                                     const std::function<bool(const std::string&)>& is_sparse_initializer_func)
     : execution_provider_(execution_provider),
@@ -88,8 +88,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   // Create MLValues related maps
-  auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
-    (void)model_path;
+  auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
     int idx = ort_value_name_idx_map_.Add(arg.Name());
     ort_value_idx_nodearg_map_.insert_or_assign(idx, &arg);
 

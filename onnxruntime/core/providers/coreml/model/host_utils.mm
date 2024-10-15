@@ -3,6 +3,7 @@
 
 #include "core/platform/env.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/objc_str_utils.h"
 
 #import <Foundation/Foundation.h>
 
@@ -36,7 +37,7 @@ std::string GetTemporaryFilePath() {
 #if !defined(NDEBUG)
   std::string path_override = Env::Default().GetEnvironmentVar(kOverrideModelOutputDirectoryEnvVar);
   if (!path_override.empty()) {
-    NSString* ns_path_override = [NSString stringWithUTF8String:path_override.c_str()];
+    NSString* ns_path_override = Utf8StringToNSString(path_override.c_str());
     temporary_directory_url = [NSURL fileURLWithPath:ns_path_override isDirectory:YES];
   }
 #endif

@@ -104,7 +104,16 @@ HRESULT EtwRegistrationManager::Status() const {
 
 void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
-  callbacks_.push_back(callback);
+  callbacks_.push_back(&callback);
+}
+
+void EtwRegistrationManager::UnregisterInternalCallback(const EtwInternalCallback& callback) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
+  callbacks_.erase(new_end, callbacks_.end());
 }
 
 void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
@@ -126,6 +135,8 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 }
 
 EtwRegistrationManager::~EtwRegistrationManager() {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  callbacks_.clear();
   ::TraceLoggingUnregister(etw_provider_handle);
 }
 
@@ -150,7 +161,7 @@ void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, 
                                              PVOID CallbackContext) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
-    callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+    (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 

@@ -109,6 +109,7 @@ int main(int argc, char* argv[]) {
     {},                                // initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},  // external_initializers
+    {},  // external_initializer_files
 #endif
     nullptr,  // custom_create_thread_fn
     nullptr,  // custom_thread_creation_options

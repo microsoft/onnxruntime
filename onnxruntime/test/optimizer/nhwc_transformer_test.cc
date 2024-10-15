@@ -544,7 +544,16 @@ static NodeArg* MakeInitializerARangeFP16(ModelTestBuilder& builder, const std::
   return builder.MakeInitializer<MLFloat16>(shape, ARangeOfFP16Values(shape, min, max));
 }
 
-TEST(NhwcTransformerTests, ConvFp16) {
+class NhwcTransformerTestsFp16 : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    if (!MlasFp16AccelerationSupported()) {
+      GTEST_SKIP() << "Skipping test because FP16 acceleration support was not detected.";
+    }
+  }
+};
+
+TEST_F(NhwcTransformerTestsFp16, ConvFp16) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = MakeInputARangeFP16(builder, input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
@@ -572,7 +581,7 @@ TEST(NhwcTransformerTests, ConvFp16) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
 
-TEST(NhwcTransformerTests, ConvMaxPoolFp16) {
+TEST_F(NhwcTransformerTestsFp16, ConvMaxPoolFp16) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = MakeInputARangeFP16(builder, input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
@@ -607,7 +616,7 @@ TEST(NhwcTransformerTests, ConvMaxPoolFp16) {
   test_case({1, 15, 11, 13, 15}, {31, 15, 5, 3, 3});
 }
 
-TEST(NhwcTransformerTests, ConvGlobalAveragePoolFp16) {
+TEST_F(NhwcTransformerTestsFp16, ConvGlobalAveragePoolFp16) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = MakeInputARangeFP16(builder, {1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
     auto* conv1_output_arg = builder.MakeIntermediate();
@@ -638,7 +647,7 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePoolFp16) {
                     TransformerLevel::Level3);
 }
 
-TEST(NhwcTransformerTests, ConvAveragePoolFp16) {
+TEST_F(NhwcTransformerTestsFp16, ConvAveragePoolFp16) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = MakeInputARangeFP16(builder, {1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
     auto* conv1_output_arg = builder.MakeIntermediate();

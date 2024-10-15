@@ -91,10 +91,6 @@ stages:
 
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:
-    packageVariant: Mobile
-
-- template: templates/stages/mac-ios-packaging-build-stage.yml
-  parameters:
     packageVariant: Full
 
 - template: templates/stages/mac-ios-packaging-build-stage.yml

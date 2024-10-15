@@ -4,15 +4,32 @@
 import {env as envImpl} from './env-impl.js';
 
 export declare namespace Env {
-  export type WasmPrefixOrFilePaths = string|{
-    /* eslint-disable @typescript-eslint/naming-convention */
-    'ort-wasm.wasm'?: string;
-    'ort-wasm-threaded.wasm'?: string;
-    'ort-wasm-simd.wasm'?: string;
-    'ort-training-wasm-simd.wasm'?: string;
-    'ort-wasm-simd-threaded.wasm'?: string;
-    /* eslint-enable @typescript-eslint/naming-convention */
-  };
+  export type WasmPathPrefix = string;
+  export interface WasmFilePaths {
+    /**
+     * Specify the override path for the main .wasm file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .wasm file is:
+     * - `ort-wasm-simd-threaded.wasm` for default build
+     * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.wasm` for training build
+     */
+    wasm?: URL|string;
+    /**
+     * Specify the override path for the main .mjs file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .mjs file is:
+     * - `ort-wasm-simd-threaded.mjs` for default build
+     * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.mjs` for training build
+     */
+    mjs?: URL|string;
+  }
+  export type WasmPrefixOrFilePaths = WasmPathPrefix|WasmFilePaths;
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -29,6 +46,8 @@ export declare namespace Env {
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
      *
+     * @deprecated This property is deprecated. Since SIMD is supported by all major JavaScript engines, non-SIMD
+     * build is no longer provided. This property will be removed in future release.
      * @defaultValue `true`
      */
     simd?: boolean;
@@ -50,8 +69,8 @@ export declare namespace Env {
     initTimeout?: number;
 
     /**
-     * Set a custom URL prefix to the .wasm files or a set of overrides for each .wasm file. The override path should be
-     * an absolute path.
+     * Set a custom URL prefix to the .wasm/.mjs files, or an object of overrides for both .wasm/.mjs file. The override
+     * path should be an absolute path.
      */
     wasmPaths?: WasmPrefixOrFilePaths;
 

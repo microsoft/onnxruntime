@@ -22,7 +22,8 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {}
+MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {
+}
 
 template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
@@ -72,6 +73,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
   const CudaT* fc_scales_ptr = nullptr;
+
   moe_runner.run_moe_fc(
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
       reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),

@@ -64,34 +64,36 @@ const setExecutionProviders =
             epName = 'WEBNN';
             if (typeof ep !== 'string') {
               const webnnOptions = ep as InferenceSession.WebNNExecutionProviderOption;
-              if (webnnOptions?.deviceType) {
+              // const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
+              const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
+              const numThreads = (webnnOptions as InferenceSession.WebNNContextOptions)?.numThreads;
+              const powerPreference = (webnnOptions as InferenceSession.WebNNContextOptions)?.powerPreference;
+              if (deviceType) {
                 const keyDataOffset = allocWasmString('deviceType', allocs);
-                const valueDataOffset = allocWasmString(webnnOptions.deviceType, allocs);
+                const valueDataOffset = allocWasmString(deviceType, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  checkLastError(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}.`);
+                  checkLastError(`Can't set a session config entry: 'deviceType' - ${deviceType}.`);
                 }
               }
-              if (webnnOptions?.numThreads) {
-                let numThreads = webnnOptions.numThreads;
+              if (numThreads !== undefined) {
                 // Just ignore invalid webnnOptions.numThreads.
-                if (typeof numThreads != 'number' || !Number.isInteger(numThreads) || numThreads < 0) {
-                  numThreads = 0;
-                }
+                const validatedNumThreads =
+                    (typeof numThreads !== 'number' || !Number.isInteger(numThreads) || numThreads < 0) ? 0 :
+                                                                                                          numThreads;
                 const keyDataOffset = allocWasmString('numThreads', allocs);
-                const valueDataOffset = allocWasmString(numThreads.toString(), allocs);
+                const valueDataOffset = allocWasmString(validatedNumThreads.toString(), allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  checkLastError(`Can't set a session config entry: 'numThreads' - ${webnnOptions.numThreads}.`);
+                  checkLastError(`Can't set a session config entry: 'numThreads' - ${numThreads}.`);
                 }
               }
-              if (webnnOptions?.powerPreference) {
+              if (powerPreference) {
                 const keyDataOffset = allocWasmString('powerPreference', allocs);
-                const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
+                const valueDataOffset = allocWasmString(powerPreference, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  checkLastError(
-                      `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}.`);
+                  checkLastError(`Can't set a session config entry: 'powerPreference' - ${powerPreference}.`);
                 }
               }
             }
