@@ -48,6 +48,8 @@ namespace qnnctxgen {
       "\t    [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '1' (enabled).\n"
+      "\t    [enable_graph_io_quant_dequant_on_cpu]: Offload graph input quantization and graph output dequantization to the CPU EP. \n"
+      "\t    Defaults to '0' (QNN EP does the graph input/output quantization/dequantization). \n"
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
       "\t-h: help\n");
@@ -143,7 +145,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
               std::string str = str_stream.str();
               ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
             }
-          } else if (key == "enable_htp_fp16_precision" || key == "enable_htp_weight_sharing") {
+          } else if (key == "enable_htp_fp16_precision" || key == "enable_htp_weight_sharing" ||
+                     key == "enable_graph_io_quant_dequant_on_cpu") {
             std::unordered_set<std::string> supported_options = {"0", "1"};
             if (supported_options.find(value) == supported_options.end()) {
               std::ostringstream str_stream;
@@ -154,7 +157,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
             }
           } else {
             ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'vtcm_mb', 'htp_performance_mode',
- 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision', 'enable_htp_weight_sharing'])");
+ 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision', 'enable_htp_weight_sharing',
+ 'enable_graph_io_quant_dequant_on_cpu'])");
           }
 
           test_config.run_config.qnn_options[key] = value;
