@@ -1,5 +1,5 @@
 variables:
-  common_trt_version: '10.4.0.26'
+  common_trt_version: '10.5.0.18'
   linux_trt_version_cuda11: ${{ variables.common_trt_version }}-1.cuda11.8
   linux_trt_version_cuda12: ${{ variables.common_trt_version }}-1.cuda12.6
   common_linux_trt_version: ${{ variables.linux_trt_version_cuda12 }}
