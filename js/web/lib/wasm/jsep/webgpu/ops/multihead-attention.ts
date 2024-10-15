@@ -397,18 +397,7 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
   );
 
   if (kvBNSH) {
-    return applyAttention(
-      context,
-      Q,
-      key,
-      value,
-      keyPaddingMask,
-      undefined,
-      pastKey,
-      pastValue,
-      attentionBias,
-      params,
-    );
+    return applyAttention(context, Q, key, value, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params);
   }
   if (!key || !value) {
     throw new Error('key and value must be provided');
