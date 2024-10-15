@@ -68,6 +68,7 @@ stages:
     timeoutInMinutes: 180
     pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
+    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
@@ -75,12 +76,11 @@ stages:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
-
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: 10.4.0.26-1.cuda11.8
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: 10.4.0.26-1.cuda12.6
+      ${{ if eq(parameters.cuda_version, '11.8') }}:
+        value: ${{ variables.linux_trt_version_cuda11 }}
+      ${{ if eq(parameters.cuda_version, '12.2') }}:
+        value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self
       clean: true
@@ -140,16 +140,17 @@ stages:
       clean: all
     pool: 'Onnxruntime-Linux-GPU'
     variables:
+    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: '12'
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: 10.4.0.26-1.cuda11.8
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: 10.4.0.26-1.cuda12.6
+      ${{ if eq(parameters.cuda_version, '11.8') }}:
+        value: ${{ variables.linux_trt_version_cuda11 }}
+      ${{ if eq(parameters.cuda_version, '12.2') }}:
+        value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
