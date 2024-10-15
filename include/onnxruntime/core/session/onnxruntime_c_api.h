@@ -3658,8 +3658,11 @@ struct OrtApi {
    *   "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
    *     - "0": Default. Disabled.
    *     - "1": Enabled.
-   *   "enable_graph_io_quant_dequant_on_cpu": Offload graph input quantization and graph output dequantization to the CPU EP.
-   *     - "0": Default. Disabled. QNN EP will handle quantization of graph inputs and dequantization of graph outputs.
+   *   "offload_graph_input_quantization": Offload graph input quantization to another execution provider (typically CPU EP).
+   *     - "0": Default. Disabled. QNN EP will handle quantization of graph inputs.
+   *     - "1": Enabled.
+   *   "offload_graph_output_dequantization": Offload graph output dequantization to another execution provider (typically CPU EP).
+   *     - "0": Default. Disabled. QNN EP will handle dequantization of graph outputs.
    *     - "1": Enabled.
    *
    * SNPE supported keys:

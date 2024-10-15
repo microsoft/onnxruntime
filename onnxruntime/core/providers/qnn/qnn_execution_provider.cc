@@ -161,6 +161,23 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
   }
 }
 
+static bool ParseBoolOption(const std::string& key, bool default_value,
+                            const std::unordered_map<std::string, std::string>& options) {
+  bool result = default_value;
+  auto it = options.find(key);
+  if (it != options.end()) {
+    if ("1" == it->second) {
+      result = true;
+    } else if ("0" == it->second) {
+      result = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid value for " << key << " (" << it->second << "). Only 0 or 1 allowed.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "Using " << key << ": " << result;
+  }
+  return result;
+}
+
 qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned char level) {
   if (level == 5) {
     LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
@@ -403,24 +420,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
   }
 
-  static const std::string QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU = "enable_graph_io_quant_dequant_on_cpu";
-  auto graph_io_qdq_on_cpu_pos = provider_options_map.find(QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU);
-  if (graph_io_qdq_on_cpu_pos != provider_options_map.end()) {
-    if ("1" == graph_io_qdq_on_cpu_pos->second) {
-      if (disable_cpu_ep_fallback_) {
-        LOGS_DEFAULT(WARNING) << "Should not enable " << QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU
-                              << " when fallback to CPU EP is disabled. Session creation may fail.";
-      }
-      model_settings_.enable_graph_io_quant_dequant_on_cpu = true;
-    } else if ("0" == graph_io_qdq_on_cpu_pos->second) {
-      model_settings_.enable_graph_io_quant_dequant_on_cpu = false;
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid value for " << QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU << " ("
-                            << graph_io_qdq_on_cpu_pos->second << "). Only 0 or 1 allowed. Set to 0.";
-    }
-    LOGS_DEFAULT(VERBOSE) << "Using " << QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU << ": "
-                          << model_settings_.enable_graph_io_quant_dequant_on_cpu;
-  }
+  model_settings_.offload_graph_input_quantization = ParseBoolOption("offload_graph_input_quantization", false, provider_options_map);
+  model_settings_.offload_graph_output_dequantization = ParseBoolOption("offload_graph_output_dequantization", false,
+                                                                        provider_options_map);
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),

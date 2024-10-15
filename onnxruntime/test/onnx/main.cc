@@ -77,8 +77,10 @@ void usage() {
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
-      "\t    [QNN only] [enable_graph_io_quant_dequant_on_cpu]: Offload graph input quantization and graph output dequantization to the CPU EP. \n"
-      "\t    Defaults to '0' (QNN EP does the graph input/output quantization/dequantization). \n"
+      "\t    [QNN only] [offload_graph_input_quantization]: Offload graph input quantization to another EP (typically CPU EP). \n"
+      "\t    Defaults to '0' (QNN EP does the graph input quantization). \n"
+      "\t    [QNN only] [offload_graph_output_dequantization]: Offload graph output dequantization to another EP (typically CPU EP). \n"
+      "\t    Defaults to '0' (QNN EP does the graph output dequantization). \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -589,7 +591,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_arch. select from: " + str);
           }
-        } else if (key == "enable_htp_fp16_precision" || key == "enable_graph_io_quant_dequant_on_cpu") {
+        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_input_quantization" ||
+                   key == "offload_graph_output_dequantization") {
           std::unordered_set<std::string> supported_options = {"0", "1"};
           if (supported_options.find(value) == supported_options.end()) {
             std::ostringstream str_stream;
@@ -602,7 +605,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
-'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'enable_graph_io_quant_dequant_on_cpu'])");
+'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_input_quantization',
+'offload_graph_output_dequantization'])");
         }
 
         qnn_options[key] = value;
