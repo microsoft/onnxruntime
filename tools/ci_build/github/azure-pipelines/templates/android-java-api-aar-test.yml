@@ -84,7 +84,6 @@ jobs:
     displayName: Run E2E tests using Browserstack
     workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
     timeoutInMinutes: 15
-    enabled: false
     env:
       BROWSERSTACK_ID: $(browserstack_username)
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
