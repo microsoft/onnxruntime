@@ -32,8 +32,7 @@ class GroupQueryAttention : public JsKernel, GQAAttentionBase {
                                static_cast<int32_t>(do_rotary_),
                                static_cast<int32_t>(rotary_interleaved_),
                                static_cast<int32_t>(use_smooth_softmax_),
-                               static_cast<int32_t>(local_window_size_)
-                               );
+                               static_cast<int32_t>(local_window_size_));
   }
 };
 
