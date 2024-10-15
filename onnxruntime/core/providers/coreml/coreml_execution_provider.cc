@@ -35,8 +35,9 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
   // check if only one flag is set
   if ((coreml_flags & COREML_FLAG_USE_CPU_ONLY) && (coreml_flags & COREML_FLAG_USE_CPU_AND_GPU)) {
     // multiple device options selected
-    LOGS_DEFAULT(ERROR) << "Multiple device options selected, you should use at most one of the following options:"
-                        << "COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU or not set";
+    ORT_THROW(
+        "Multiple device options selected, you should use at most one of the following options:"
+        "COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU or not set");
   }
 
 #if defined(COREML_ENABLE_MLPROGRAM)
