@@ -206,30 +206,12 @@ TEST(MathOpTest, MatMulFloatType) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
   RunMatMulTest<float>(7, false, false);
-}
-
-TEST(MathOpTest, MatMulFloat16) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
-  }
-  RunMatMulTest<MLFloat16>(14, false, false);
-}
-
-TEST(MathOpTest, MatMulDoubleType) {
-  RunMatMulTest<double>(7);
-}
-
-TEST(MathOpTest, MatMulFloatTypeInitializer) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
-  }
+  // Note. Xnnpack only supports matmul when Matrix B is constant
   RunMatMulTest<float>(7, false, true);
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
-TEST(MathOpTest, MatMulFloat16Initializer) {
+TEST(MathOpTest, MatMulFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
@@ -241,10 +223,15 @@ TEST(MathOpTest, MatMulFloat16Initializer) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
-
+  RunMatMulTest<MLFloat16>(14, false, false);
+  // Note. Xnnpack only supports matmul when Matrix B is constant
   RunMatMulTest<MLFloat16>(14, false, true);
 }
 #endif
+
+TEST(MathOpTest, MatMulDoubleType) {
+  RunMatMulTest<double>(7);
+}
 
 TEST(MathOpTest, MatMulInt32Type) {
   RunMatMulTest<int32_t>(9);
