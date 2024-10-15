@@ -23,6 +23,11 @@
         "-runtime/references"
     ],
     "files.associations": {
-        "span": "cpp"
+        "span": "cpp",
+        "tensor": "cpp",
+        "__node_handle": "cpp",
+        "optional": "cpp",
+        "regex": "cpp",
+        "*.main": "cpp"
     }
 }

@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+include(CMakePrintHelpers)
 
 if(UNIX)
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime.lds)
@@ -189,6 +190,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_SNPE}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
+  ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
@@ -204,13 +206,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_common
   onnxruntime_flatbuffers
 )
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnxruntime_INTERNAL_LIBRARIES
-    onnxruntime_language_interop
-    onnxruntime_pyop
-  )
-endif()
 
 if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
@@ -278,6 +273,40 @@ if (winml_is_inbox)
     duplicate_shared_library(onnxruntime onnxruntime_${WAI_ARCH})
   endif()
 endif()
+
+#cmake_print_properties(TARGETS onnxruntime)
+#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
+#cmake_print_variables(MY_VARIABLE)
+
+
+function(print_target_properties tgt)
+    if(NOT TARGET ${tgt})
+        message("There is no target named '${tgt}'")
+        return()
+    endif()
+
+    # this list of properties can be extended as needed
+    set(CMAKE_PROPERTY_LIST SOURCE_DIR BINARY_DIR COMPILE_DEFINITIONS
+             COMPILE_OPTIONS INCLUDE_DIRECTORIES LINK_LIBRARIES)
+
+    message("Configuration for target ${tgt}")
+
+    foreach (prop ${CMAKE_PROPERTY_LIST})
+        get_property(propval TARGET ${tgt} PROPERTY ${prop} SET)
+        if (propval)
+            get_target_property(propval ${tgt} ${prop})
+            message (STATUS "${prop} = ${propval}")
+        endif()
+    endforeach(prop)
+
+endfunction(print_target_properties)
+
+message(STATUS "++++++++ Paco START")
+#print_target_properties(onnxruntime)
+MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
+message(STATUS "++++++++ Paco END")
+#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
@@ -373,3 +402,30 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   endforeach()
 
 endif()
+
+# message(STATUS "++++++++ Paco START 2")
+# #print_target_properties(onnxruntime)
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+# MESSAGE( STATUS "CMAKE_CXX_COMPILER_TARGET: " ${CMAKE_CXX_COMPILER_TARGET} )
+# MESSAGE( STATUS "CMAKE_CXX_COMPILER: " ${CMAKE_CXX_COMPILER} )
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS_RELEASE: " ${CMAKE_CXX_FLAGS_RELEASE} )
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS_RELEASE_INIT: " ${CMAKE_CXX_FLAGS_RELEASE_INIT} )
+# MESSAGE( STATUS "CMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN: " ${CMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN} )
+
+# message(STATUS "++++++++ Paco START 3")
+# print_target_properties(onnxruntime)
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+
+# get_cmake_property(_variableNames VARIABLES)
+# list (SORT _variableNames)
+# foreach (_variableName ${_variableNames})
+#     message(STATUS "${_variableName}=${${_variableName}}")
+# endforeach()
+# message(STATUS "++++++++ Paco END 3")
+# #message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
+
+# message(STATUS "++++++++ Paco END 2")
+# #message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
+
+# #set(CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH NO) #Paco
+# #set(CMAKE_OSX_SYSROOT, "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk")

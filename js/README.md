@@ -286,7 +286,9 @@ Prior to ORT v1.13, the ONNX Runtime React Native package utilized the ONNX Runt
 Follow these [instructions](https://onnxruntime.ai/docs/reference/ort-format-models.html#convert-onnx-models-to-ort-format) to convert ONNX model to ORT format.
 Note that the ONNX Runtime Mobile package includes a reduced set of operators and types, so not all models are supported. See [here](https://onnxruntime.ai/docs/reference/operators/MobileOps.html) for the list of supported operators and types.
 
-From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both ONNX and ORT format models, and all operators and types.
+From ORT v1.13 onwards, the 'full' ONNX Runtime package is used. It supports both ONNX and ORT format models, and all operators and types.
+
+From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published.
 
 ### Build
 
@@ -298,34 +300,23 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
 2. Acquire or build the Android ONNX Runtime package
 
-   1. To use a published Android ONNX Runtime Mobile package from Maven, go to step 5.
+   1. To use a published Android ONNX Runtime package from Maven, go to step 5.
 
    2. Set up an Android build environment using these [instructions](https://onnxruntime.ai/docs/build/android.html). Note that the dependencies are quite convoluted, so using the specified JDK and Gradle versions is important.
 
    3. In `<ORT_ROOT>`, run the below python script to build the ONNX Runtime Android archive file. On a Windows machine, this requires an admin account to build.
 
-   You can build a 'full' package that supports all operators and types, or a reduced size 'mobile' package that supports a limited set of operators and types based on your model/s to miminize the binary size.
+   You can build a 'full' package that supports all operators and types, or a reduced size package that supports a limited set of operators and types based on your model/s to miminize the binary size.
    See [here](https://onnxruntime.ai/docs/build/custom.html) for information about how the reduced build works, including creating the configuration file using your model/s.
-
-   Full build:
+   The instructions here show how to build a 'full' package.
 
    ```sh
    python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_full_aar_build_settings.json --config Release --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
    ```
 
-   Reduced size build with configuration file generated from your model/s. Note that either Release or MinSizeRel could be used as the config, depending on your priorities:
-
-   ```sh
-   python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_mobile_aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY> --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
-   ```
-
    4. Move the generated ONNX Runtime Android archive file to `<ORT_ROOT>/js/react_native/android/libs/`.
 
-      Full build:
       Copy `<BUILD_DIRECTORY>/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/<version>/onnxruntime-android-<version>.aar` into `<ORT_ROOT>/js/react_native/android/libs` directory.
-
-      Reduced size build:
-      Copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/android/libs` directory and update to dependencies in [js/react_native/android/build.gradle](https://github.com/microsoft/onnxruntime/blob/365a01397dbd1293e0c2773380c57fd271432b72/js/react_native/android/build.gradle#L136-L137) to use onnxruntime-mobile instead of onnxruntime-android.
 
    5. To verify, open the Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
@@ -339,41 +330,19 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
    2. Set up iOS build environment using these [instructions](https://onnxruntime.ai/docs/build/ios.html).
 
-   3. Build a fat ONNX Runtime Mobile Framework for iOS and iOS simulator from `<ORT_ROOT>` using this command:
-
-      Full build:
+   3. Build a fat ONNX Runtime Framework for iOS and iOS simulator from `<ORT_ROOT>` using this command:
 
       ```sh
       python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_full_apple_framework_build_settings.json --config Release
       ```
 
-      Reduced size build:
-
-      ```sh
-      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
-      ```
-
-      The build creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-c.zip` for a full build or `onnxruntime-mobile-c.zip` for a reduced size build and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
-
-      Full build:
+      The build creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-c.zip` and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
 
       ```sh
       zip -r onnxruntime-c.zip .
       ```
 
-      Reduced size build:
-
-      ```sh
-      zip -r onnxruntime-mobile-c.zip .
-      ```
-
    4. To verify, open the iOS Simulator and run the below command from `<ORT_ROOT>/js/react_native/ios`. Change the destination argument as needed to specify a running iOS Simulator.
-
-      If using the reduced size build it is necessary to first update some configuration to use the mobile ORT package:
-
-      - replace `onnxruntime/onnxruntime.framework` with `onnxruntime-mobile/onnxruntime.framework` in /js/react_native/ios/OnnxruntimeModule.xcodeproj/project.pbxproj
-      - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/ios/Podfile
-      - For reference, [this PR](https://github.com/microsoft/onnxruntime/pull/13037) shows the changes made to switch from using the 'mobile' ORT package to the 'full' package.
 
       ```sh
       pod install
@@ -394,14 +363,9 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    yarn bootstrap
    ```
 
-   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-{android|mobile}/<version>/onnxruntime-{android|mobile}-<version>.aar` into the `<ORT_ROOT>/js/react_native/e2e/android/app/libs` directory.
+   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-android/<version>/onnxruntime-android-<version>.aar` into the `<ORT_ROOT>/js/react_native/e2e/android/app/libs` directory.
 
-   When testing with a custom built ONNX Runtime iOS package, copy `onnxruntime-[mobile-]c.zip` into the `<ORT_ROOT>/js/react_native/local_pods` directory.
-
-   If using the reduced size build it is necessary to update some configuration to use the mobile ORT package:
-
-   - replace `com.microsoft.onnxruntime:onnxruntime-android` with `com.microsoft.onnxruntime:onnxruntime-mobile` in /js/react_native/e2e/android/app/build.gradle
-   - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/e2e/ios/Podfile
+   When testing with a custom built ONNX Runtime iOS package, copy `onnxruntime-c.zip` into the `<ORT_ROOT>/js/react_native/local_pods` directory.
 
 - Run E2E Testing with Detox framework
 

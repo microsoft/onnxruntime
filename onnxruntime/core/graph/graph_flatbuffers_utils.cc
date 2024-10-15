@@ -28,7 +28,7 @@ SaveDims(flatbuffers::FlatBufferBuilder& builder, const DimsFieldType& dims) {
 
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
-                                const Path& model_path,
+                                const std::filesystem::path& model_path,
                                 flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
                                 const ExternalDataWriter& external_writer) {
   auto name = SaveStringToOrtFormat(builder, initializer.has_name(), initializer.name());
@@ -85,7 +85,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       const ONNX_NAMESPACE::SparseTensorProto& initializer,
-                                      const Path& model_path,
+                                      const std::filesystem::path& model_path,
                                       flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor) {
   // values
   const auto& values = initializer.values();
@@ -126,7 +126,7 @@ Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               const AttributeProto& attr_proto,
                               flatbuffers::Offset<fbs::Attribute>& fbs_attr,
-                              const Path& model_path,
+                              const std::filesystem::path& model_path,
                               const onnxruntime::Graph* subgraph) {
   auto name = SaveStringToOrtFormat(builder, attr_proto.has_name(), attr_proto.name());
   auto doc_string = SaveStringToOrtFormat(builder, attr_proto.has_doc_string(), attr_proto.doc_string());

@@ -171,7 +171,15 @@ Status CheckInputs(const T* query,
       if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
+            "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size)");
+      }
+
+      if (value == nullptr || value->Shape().GetDims().size() != 4) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' shall be 4D when 'key' is 4D");
+      }
+
+      if (bias != nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when 'key' is 4D");
       }
 
       qkv_format = UNKNOWN;
@@ -260,8 +268,14 @@ Status CheckInputs(const T* query,
     } else {  // value_dims.size() == 4
       if (static_cast<int64_t>(kv_sequence_length) != value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");
+                               "Input 'key' and 'value' shall have the same dim 2 (kv_sequence_length)");
       }
+
+      if (past_key != nullptr || past_value != nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'past_key' and 'past_value' shall be empty when 'value' is 4D");
+      }
+
       v_hidden_size = static_cast<int>(value_dims[1]) * static_cast<int>(value_dims[3]);
       pass_past_in_kv = true;
     }

@@ -412,9 +412,10 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
 
 // Checks if a tensor in the ONNX graph is per-channel quantized.
 Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
-                                              /*out*/ bool& is_per_axis) const {
+                                              /*out*/ bool& is_per_channel,
+                                              /*out*/ int64_t& axis) const {
   if (!io_def.quant_param) {
-    is_per_axis = false;
+    is_per_channel = false;
     return Status::OK();
   }
 
@@ -432,7 +433,12 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
   const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
                                           (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
 
-  is_per_axis = !is_scalar_or_1_elem_vector;
+  is_per_channel = !is_scalar_or_1_elem_vector;
+
+  if (is_per_channel) {
+    axis = io_def.quant_param->axis.value_or(1);  // 1 is default axis for Q/DQ ops.
+  }
+
   return Status::OK();
 }
 

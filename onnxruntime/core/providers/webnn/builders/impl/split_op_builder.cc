@@ -27,7 +27,7 @@ class SplitOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -94,7 +94,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                        const Node& node,
-                                       const WebnnDeviceType device_type,
+                                       const WebnnDeviceType /* device_type */,
                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
@@ -126,20 +126,12 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       LOGS(logger, VERBOSE) << "Cannot get split.";
       return false;
     }
-    if (split.size() > 4 && device_type == WebnnDeviceType::CPU) {
-      LOGS(logger, VERBOSE) << "WebNN CPU backend only supports up to 4 outputs.";
-      return false;
-    }
   } else {
     if (helper.HasAttr("num_outputs")) {
       // Split has 'num_outputs' attribute when opset is 18.
       const int32_t num_outputs = helper.Get("num_outputs", 1);
       if (num_outputs < 1) {
         LOGS(logger, VERBOSE) << "The 'num_outputs' must be a positive integer.";
-        return false;
-      }
-      if (num_outputs > 4 && device_type == WebnnDeviceType::CPU) {
-        LOGS(logger, VERBOSE) << "WebNN CPU backend only supports up to 4 outputs.";
         return false;
       }
     } else {

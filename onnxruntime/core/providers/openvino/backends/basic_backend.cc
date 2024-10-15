@@ -545,6 +545,11 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
       std::cout << "Inference successful" << std::endl;
     }
 
+    // Create a duplicate infer_request_ shared ptr on the stack in the current local scope,
+    // as the infer_request gets freed in the next stage the reference count for the infer_request decrements &
+    // thus we dont have any dangling ptr leading to seg faults in the debug mode subsequent execution call
+    OVInferRequestPtr infer_request_ = infer_request;
+
     // Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
     inferRequestsQueue_->putIdleRequest(std::move(infer_request));
 #ifndef NDEBUG
@@ -552,7 +557,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus();  // Printing the elements of infer_requests_ vector pool only in debug mode
       std::string& hw_target = global_context_.device_type;
-      printPerformanceCounts(infer_request, std::cout, hw_target);
+      printPerformanceCounts(std::move(infer_request_), std::cout, hw_target);
     }
 #endif
 #endif

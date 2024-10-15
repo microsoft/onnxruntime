@@ -122,11 +122,27 @@ export const importProxyWorker = async(): Promise<[undefined | string, Worker]> 
 };
 
 /**
+ * The embedded WebAssembly module.
+ *
+ * This is only available in ESM and when embedding is not disabled.
+ */
+const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule>|undefined =
+    BUILD_DEFS.IS_ESM && BUILD_DEFS.DISABLE_DYNAMIC_IMPORT ?
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    require(
+        !BUILD_DEFS.DISABLE_TRAINING ? '../../dist/ort-training-wasm-simd-threaded.mjs' :
+            !BUILD_DEFS.DISABLE_JSEP ? '../../dist/ort-wasm-simd-threaded.jsep.mjs' :
+                                       '../../dist/ort-wasm-simd-threaded.mjs')
+        .default :
+    undefined;
+
+/**
  * Import the WebAssembly module.
  *
  * This function will perform the following steps:
- * 1. If a preload is needed, it will preload the module and return the object URL.
- * 2. Otherwise, it will perform a dynamic import of the module.
+ * 1. If BUILD_DEFS.DISABLE_DYNAMIC_IMPORT is true, use the embedded module.
+ * 2. If a preload is needed, it will preload the module and return the object URL.
+ * 3. Otherwise, it will perform a dynamic import of the module.
  *
  * @returns - A promise that resolves to a tuple of 2 elements:
  *            - The object URL of the preloaded module, or undefined if no preload is needed.
@@ -135,22 +151,26 @@ export const importProxyWorker = async(): Promise<[undefined | string, Worker]> 
 export const importWasmModule = async(
     urlOverride: string|undefined, prefixOverride: string|undefined,
     isMultiThreaded: boolean): Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
-  const wasmModuleFilename = !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded.mjs' :
-      !BUILD_DEFS.DISABLE_JSEP                            ? 'ort-wasm-simd-threaded.jsep.mjs' :
-                                                            'ort-wasm-simd-threaded.mjs';
-  const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
-  // need to preload if all of the following conditions are met:
-  // 1. not in Node.js.
-  //    - Node.js does not have the same origin policy for creating workers.
-  // 2. multi-threaded is enabled.
-  //    - If multi-threaded is disabled, no worker will be created. So we don't need to preload the module.
-  // 3. the absolute URL is available.
-  //    - If the absolute URL is failed to be created, the origin cannot be determined. In this case, we will not
-  //    preload the module.
-  // 4. the worker URL is not from the same origin.
-  //    - If the worker URL is from the same origin, we can create the worker directly.
-  const needPreload = !isNode && isMultiThreaded && wasmModuleUrl && !isSameOrigin(wasmModuleUrl, prefixOverride);
-  const url =
-      needPreload ? (await preload(wasmModuleUrl)) : (wasmModuleUrl ?? fallbackUrl(wasmModuleFilename, prefixOverride));
-  return [needPreload ? url : undefined, await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(url)];
+  if (BUILD_DEFS.DISABLE_DYNAMIC_IMPORT) {
+    return [undefined, embeddedWasmModule!];
+  } else {
+    const wasmModuleFilename = !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded.mjs' :
+        !BUILD_DEFS.DISABLE_JSEP                            ? 'ort-wasm-simd-threaded.jsep.mjs' :
+                                                              'ort-wasm-simd-threaded.mjs';
+    const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
+    // need to preload if all of the following conditions are met:
+    // 1. not in Node.js.
+    //    - Node.js does not have the same origin policy for creating workers.
+    // 2. multi-threaded is enabled.
+    //    - If multi-threaded is disabled, no worker will be created. So we don't need to preload the module.
+    // 3. the absolute URL is available.
+    //    - If the absolute URL is failed to be created, the origin cannot be determined. In this case, we will not
+    //    preload the module.
+    // 4. the worker URL is not from the same origin.
+    //    - If the worker URL is from the same origin, we can create the worker directly.
+    const needPreload = !isNode && isMultiThreaded && wasmModuleUrl && !isSameOrigin(wasmModuleUrl, prefixOverride);
+    const url = needPreload ? (await preload(wasmModuleUrl)) :
+                              (wasmModuleUrl ?? fallbackUrl(wasmModuleFilename, prefixOverride));
+    return [needPreload ? url : undefined, await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(url)];
+  }
 };

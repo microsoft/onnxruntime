@@ -1,33 +1,16 @@
 #![allow(non_snake_case)]
 
-use std::env::args;
 #[cfg(not(target_family = "windows"))]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_family = "windows")]
 use std::os::windows::ffi::OsStrExt;
 
-use onnxruntime_sys::{
-    onnxruntime, GraphOptimizationLevel, ONNXTensorElementDataType, OrtAllocator, OrtAllocatorType,
-    OrtApi, OrtEnv, OrtLoggingLevel, OrtMemType, OrtMemoryInfo, OrtRunOptions, OrtSession,
-    OrtSessionOptions, OrtStatus, OrtTensorTypeAndShapeInfo, OrtTypeInfo, OrtValue,
-    ORT_API_VERSION,
-};
+use onnxruntime_sys::*;
 
 // https://github.com/microsoft/onnxruntime/blob/v1.4.0/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp
 
 fn main() {
-    let onnxruntime_path = args()
-        .nth(1)
-        .expect("This example expects a path to the ONNXRuntime shared library");
-
-    let (_, g_ort) = unsafe {
-        let ort = onnxruntime::new(onnxruntime_path);
-
-        let ort = ort.expect("Error initializing onnxruntime");
-        let g_ort = ort.OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(ORT_API_VERSION);
-
-        (ort, g_ort)
-    };
+    let g_ort = unsafe { OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(ORT_API_VERSION) };
     assert_ne!(g_ort, std::ptr::null_mut());
 
     //*************************************************************************
@@ -72,10 +55,10 @@ fn main() {
     //*************************************************************************
     // create session and load model into memory
     // NOTE: Original C version loaded SqueezeNet 1.0 (ONNX version: 1.3, Opset version: 8,
-    //       https://github.com/onnx/models/blob/main/vision/classification/squeezenet/model/squeezenet1.0-8.onnx)
+    //       https://github.com/onnx/models/blob/master/vision/classification/squeezenet/model/squeezenet1.0-8.onnx)
     //       Download it:
-    //           curl -LO "https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-8.onnx"
-    //       Reference: https://github.com/onnx/models/tree/main/vision/classification/squeezenet#model
+    //           curl -LO "https://github.com/onnx/models/raw/master/vision/classification/squeezenet/model/squeezenet1.0-8.onnx"
+    //       Reference: https://github.com/onnx/models/tree/master/vision/classification/squeezenet#model
     let model_path = std::ffi::OsString::from("squeezenet1.0-8.onnx");
 
     #[cfg(target_family = "windows")]
@@ -258,7 +241,7 @@ fn main() {
     let mut input_tensor_ptr: *mut OrtValue = std::ptr::null_mut();
     let input_tensor_ptr_ptr: *mut *mut OrtValue = &mut input_tensor_ptr;
     let input_tensor_values_ptr: *mut std::ffi::c_void =
-        input_tensor_values.as_mut_ptr().cast::<std::ffi::c_void>();
+        input_tensor_values.as_mut_ptr() as *mut std::ffi::c_void;
     assert_ne!(input_tensor_values_ptr, std::ptr::null_mut());
 
     let shape: *const i64 = input_node_dims.as_ptr();
@@ -306,12 +289,12 @@ fn main() {
     let input_node_names_ptr_ptr: *const *const i8 = input_node_names_ptr.as_ptr();
 
     let output_node_names_cstring: Vec<std::ffi::CString> = output_node_names
-        .iter()
-        .map(|n| std::ffi::CString::new(*n).unwrap())
+        .into_iter()
+        .map(|n| std::ffi::CString::new(n.clone()).unwrap())
         .collect();
     let output_node_names_ptr: Vec<*const i8> = output_node_names_cstring
         .iter()
-        .map(|n| n.as_ptr().cast::<i8>())
+        .map(|n| n.as_ptr() as *const i8)
         .collect();
     let output_node_names_ptr_ptr: *const *const i8 = output_node_names_ptr.as_ptr();
 
@@ -345,15 +328,14 @@ fn main() {
     // Get pointer to output tensor float values
     let mut floatarr: *mut f32 = std::ptr::null_mut();
     let floatarr_ptr: *mut *mut f32 = &mut floatarr;
-    let floatarr_ptr_void: *mut *mut std::ffi::c_void =
-        floatarr_ptr.cast::<*mut std::ffi::c_void>();
+    let floatarr_ptr_void: *mut *mut std::ffi::c_void = floatarr_ptr as *mut *mut std::ffi::c_void;
     let status = unsafe {
         g_ort.as_ref().unwrap().GetTensorMutableData.unwrap()(output_tensor_ptr, floatarr_ptr_void)
     };
     CheckStatus(g_ort, status).unwrap();
     assert_ne!(floatarr, std::ptr::null_mut());
 
-    assert!((unsafe { *floatarr.offset(0) } - 0.000_045).abs() < 1e-6);
+    assert!((unsafe { *floatarr.offset(0) } - 0.000045).abs() < 1e-6);
 
     // score the model, and print scores for first 5 classes
     // NOTE: The C ONNX Runtime allocated the array, we shouldn't drop the vec

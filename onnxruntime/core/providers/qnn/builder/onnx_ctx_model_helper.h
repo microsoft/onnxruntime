@@ -35,7 +35,7 @@ bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGr
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                           QnnBackendManager* qnn_backend_manager,
                           const logging::Logger& logger,
-                          int& main_context_pos,
+                          std::vector<int>& main_context_pos,
                           std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
 Status CreateNodeArgs(const std::vector<std::string>& names,

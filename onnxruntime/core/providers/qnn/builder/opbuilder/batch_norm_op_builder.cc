@@ -435,7 +435,7 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   } else {
     const auto& inputs = node_unit.Inputs();
-    ORT_ENFORCE(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
+    ORT_RETURN_IF_NOT(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
 
     // Check input type is float for CPU. Can't use Qnn Op validation API since it's before layout transformation
     ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));

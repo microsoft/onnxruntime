@@ -198,6 +198,7 @@ try:
                     "libcudart.so.11.0",
                     "libcudart.so.12",
                     "libcudnn.so.8",
+                    "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
@@ -296,11 +297,13 @@ if platform.system() == "Linux":
         "libmklml_gnu.so",
         "libiomp5.so",
         "mimalloc.so",
+        "libonnxruntime.so*",
     ]
     dl_libs = ["libonnxruntime_providers_shared.so"]
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
+    dl_libs.append("libonnxruntime.so*")
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
@@ -312,7 +315,12 @@ if platform.system() == "Linux":
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
-    libs = ["onnxruntime_pybind11_state.so", "libdnnl.2.dylib", "mimalloc.so"]  # TODO add libmklml and libiomp5 later.
+    libs = [
+        "onnxruntime_pybind11_state.so",
+        "libdnnl.2.dylib",
+        "mimalloc.so",
+        "libonnxruntime.dylib*",
+    ]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.dylib"])
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
@@ -322,7 +330,13 @@ elif platform.system() == "Darwin":
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
-    libs = ["onnxruntime_pybind11_state.pyd", "dnnl.dll", "mklml.dll", "libiomp5md.dll"]
+    libs = [
+        "onnxruntime_pybind11_state.pyd",
+        "dnnl.dll",
+        "mklml.dll",
+        "libiomp5md.dll",
+        "onnxruntime.dll",
+    ]
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
@@ -375,7 +389,7 @@ if is_manylinux:
         dl_libs.append("plugins.xml")
         dl_libs.append("usb-ma2x8x.mvcmd")
     data = ["capi/libonnxruntime_pywrapper.so"] if nightly_build else []
-    data += [path.join("capi", x) for x in dl_libs if path.isfile(path.join("onnxruntime", "capi", x))]
+    data += [path.join("capi", x) for x in dl_libs if glob(path.join("onnxruntime", "capi", x))]
     ext_modules = [
         Extension(
             "onnxruntime.capi.onnxruntime_pybind11_state",
@@ -383,7 +397,7 @@ if is_manylinux:
         ),
     ]
 else:
-    data = [path.join("capi", x) for x in libs if path.isfile(path.join("onnxruntime", "capi", x))]
+    data = [path.join("capi", x) for x in libs if glob(path.join("onnxruntime", "capi", x))]
     ext_modules = []
 
 # Additional examples

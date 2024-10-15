@@ -123,9 +123,9 @@ jobs:
     displayName: 'API Documentation Check and generate'
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 6.10.x
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 6.10.x
 
   - task: NuGetCommand@2
     displayName: 'NuGet restore'

@@ -108,11 +108,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "OpenVINO") == 0) {
 #if defined(USE_OPENVINO)
-    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options));
+    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
-
   } else if (strcmp(provider_name, "SNPE") == 0) {
 #if defined(USE_SNPE)
     options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));

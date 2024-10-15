@@ -105,7 +105,11 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
-      if (device_type.find("NPU") != std::string::npos) {
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+      ORT_THROW(ex.what());
+#else
+      if (device_type.find("NPU") != std::string::npos &&
+          !GetGlobalContext().disable_cpu_fallback) {
         LOGS_DEFAULT(WARNING) << ex.what();
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -122,6 +126,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       } else {
         ORT_THROW(ex.what());
       }
+#endif
     }
   }
 }
@@ -419,7 +424,13 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
       } catch (const OnnxRuntimeException& ex) {
-        if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
+        // Build option disables fallback to CPU on compilation failures with NPU.
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU.";
+        ORT_THROW(ex.what());
+#else
+        if (GetGlobalContext().device_type.find("NPU") != std::string::npos &&
+            !GetGlobalContext().disable_cpu_fallback) {
           LOGS_DEFAULT(WARNING) << ex.what();
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                                 << "Falling back to OV CPU for execution";
@@ -434,7 +445,10 @@ void BackendManager::Compute(OrtKernelContext* context) {
           } catch (std::string const& msg) {
             ORT_THROW(msg);
           }
+        } else {
+          ORT_THROW(ex.what());
         }
+#endif
       }
       backend_map_.insert({key, dynamic_backend});
     } else {

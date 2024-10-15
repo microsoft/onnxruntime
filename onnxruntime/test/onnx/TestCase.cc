@@ -796,7 +796,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       auto test_case_dir = model_info->GetDir();
       auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir.native();
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN) && !defined(USE_VSINPU)
       // to skip some models like *-int8 or *-qdq
       if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
           (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
@@ -1381,6 +1381,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     // expected 13.5 (41580000), got 0 (0), diff: 13.5, tol=0.0145 idx=3. 3 of 4 differ
     broken_tests->insert({"averagepool_2d_ceil", "result differs"});
 #endif
+    // These next 3 Resize tests fail on CPU backend with QNN SDK 2.22.0 due to inaccuracy.
+    // output=Y:expected 1 (3f800000), got 3 (40400000), diff: 2, tol=0.002 idx=24. 8 of 56 differ
+    broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
+    broken_tests->insert({"resize_upsample_sizes_nearest_axes_2_3", "result differs"});
+    broken_tests->insert({"resize_upsample_sizes_nearest_axes_3_2", "result differs"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

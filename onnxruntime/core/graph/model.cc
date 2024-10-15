@@ -81,7 +81,7 @@ Model::Model(const std::string& graph_name,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger,
              const ModelOptions& options)
-    : model_path_(Path::Parse(model_path)) {
+    : model_path_(model_path) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -159,7 +159,7 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
 Model::Model(ModelProto&& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger, const ModelOptions& options)
-    : model_path_(Path::Parse(model_path)) {
+    : model_path_(model_path) {
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
   }
@@ -378,8 +378,8 @@ ModelProto Model::ToProto() const {
   return result;
 }
 
-ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                       const PathString& file_path,
+ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                       const std::filesystem::path& file_path,
                                                        size_t initializer_size_threshold) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
@@ -593,16 +593,14 @@ static Status SaveModel(Model& model, const T& file_path) {
 #endif
 }
 
-#ifdef _WIN32
-Status Model::Save(Model& model, const std::wstring& file_path) {
+Status Model::Save(Model& model, const PathString& file_path) {
   return SaveModel(model, file_path);
 }
-#endif
 
 template <typename T>
 static Status SaveModelWithExternalInitializers(Model& model,
                                                 const T& file_path,
-                                                const std::string& external_file_name,
+                                                const std::filesystem::path& external_file_name,
                                                 size_t initializer_size_threshold) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
@@ -638,12 +636,8 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
-Status Model::Save(Model& model, const std::string& file_path) {
-  return SaveModel(model, file_path);
-}
-
-Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_path,
-                                           const std::string& external_file_name,
+Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
+                                           const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold) {
   return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
 }
@@ -759,8 +753,8 @@ Status Model::Save(Model& model, int p_fd) {
 
 Status Model::SaveWithExternalInitializers(Model& model,
                                            int fd,
-                                           const PathString& file_path,
-                                           const std::string& external_file_name,
+                                           const std::filesystem::path& file_path,
+                                           const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");

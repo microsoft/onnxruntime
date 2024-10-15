@@ -32,6 +32,10 @@ interface BuildDefinitions {
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
+  /**
+   * defines whether to disable dynamic importing WASM module in the build.
+   */
+  readonly DISABLE_DYNAMIC_IMPORT: boolean;
 
   // #endregion
 

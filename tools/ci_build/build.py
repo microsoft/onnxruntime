@@ -79,6 +79,7 @@ def _openvino_verify_device_type(device_read):
         "CPU_NO_PARTITION",
         "GPU_NO_PARTITION",
         "NPU_NO_PARTITION",
+        "NPU_NO_CPU_FALLBACK",
     ]
     status_hetero = True
     res = False
@@ -366,7 +367,11 @@ def parse_arguments():
         default="",
         help="Path to RISC-V qemu. e.g. --riscv_qemu_path=$HOME/qemu-dir/qemu-riscv64",
     )
-    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/25192
+    parser.add_argument(
+        "--msvc_toolset",
+        help="MSVC toolset to use. e.g. 14.11. It doesn't work if the version number is in the range of [14.36, 14.39]",
+    )
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
@@ -556,6 +561,7 @@ def parse_arguments():
     parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
     parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
+    parser.add_argument("--use_vsinpu", action="store_true", help="Build with VSINPU support.")
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
@@ -600,11 +606,6 @@ def parse_arguments():
 
     parser.add_argument(
         "--enable_msvc_static_runtime", action="store_true", help="Enable static linking of MSVC runtimes."
-    )
-    parser.add_argument(
-        "--enable_language_interop_ops",
-        action="store_true",
-        help="Enable operator implemented in language other than cpp",
     )
     parser.add_argument(
         "--cmake_generator",
@@ -872,6 +873,7 @@ def install_python_deps(numpy_version=""):
     dep_packages.append("sympy>=1.10")
     dep_packages.append("packaging")
     dep_packages.append("cerberus")
+    dep_packages.append("psutil")
     run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
@@ -1019,6 +1021,7 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
+        "-Donnxruntime_USE_VSINPU=" + ("ON" if args.use_vsinpu else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
@@ -1048,7 +1051,6 @@ def generate_build_tree(
             else "OFF"
         ),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
@@ -1074,7 +1076,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
-        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
+        "-Donnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
@@ -1158,6 +1160,7 @@ def generate_build_tree(
                     f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
                     f"Add '--disable_types float8' to your command line. See option disable_types."
                 )
+        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -1227,6 +1230,7 @@ def generate_build_tree(
     if args.use_openvino:
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
+            "-Donnxruntime_NPU_NO_FALLBACK=" + ("ON" if args.use_openvino == "NPU_NO_CPU_FALLBACK" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU=" + ("ON" if args.use_openvino == "GPU" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU=" + ("ON" if args.use_openvino == "CPU" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_NPU=" + ("ON" if args.use_openvino == "NPU" else "OFF"),
@@ -1534,6 +1538,8 @@ def generate_build_tree(
         cudaflags = []
         if is_windows() and not args.ios and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
+            if args.use_cuda:
+                cudaflags.append("-allow-unsupported-compiler")
             if njobs > 1:
                 if args.parallel == 0:
                     cflags += ["/MP"]
@@ -1548,7 +1554,11 @@ def generate_build_tree(
             and not args.build_wasm
         ):
             if is_windows():
-                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
+                # DLL initialization errors due to old conda msvcp140.dll dll are a result of the new MSVC compiler
+                # See https://developercommunity.visualstudio.com/t/Access-violation-with-std::mutex::lock-a/10664660#T-N10668856
+                # Remove this definition (_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+                # once the conda msvcp140.dll dll is updated.
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS", "/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1727,7 +1737,6 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if args.android:
             env["ANDROID_SDK_ROOT"] = args.android_sdk_path
             env["ANDROID_NDK_HOME"] = args.android_ndk_path
-
         run_subprocess(cmd_args, env=env)
 
 
@@ -2002,7 +2011,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "--framework_info_file",
                 framework_info_file,
                 "--variant",
-                "Mobile",
+                "Full",
+                "--skip_macos_test",
             ],
             cwd=cwd,
         )
@@ -2016,7 +2026,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "--framework_info_file",
                 framework_info_file,
                 "--variant",
-                "Mobile",
+                "Full",
+                "--skip_macos_test",
             ],
             cwd=cwd,
         )
@@ -2297,8 +2308,8 @@ def build_nuget_package(
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
 
-    # in most cases we don't want/need to include the Xamarin mobile targets, as doing so means the Xamarin
-    # mobile workloads must be installed on the machine.
+    # in most cases we don't want/need to include the MAUI mobile targets, as doing so means the mobile workloads
+    # must be installed on the machine.
     # they are only included in the Microsoft.ML.OnnxRuntime nuget package
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
     have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options
@@ -2581,7 +2592,16 @@ def main():
     if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+    if (
+        args.build_csharp
+        or args.build_nuget
+        or args.build_java
+        or args.build_nodejs
+        or (args.enable_pybind and not args.enable_training)
+    ):
+        # If pyhon bindings are enabled, we embed the shared lib in the python package.
+        # If training is enabled, we don't embed the shared lib in the python package since training requires
+        # torch interop.
         args.build_shared_lib = True
 
     if args.build_nuget and cross_compiling:

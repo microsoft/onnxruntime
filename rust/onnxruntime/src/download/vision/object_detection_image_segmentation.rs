@@ -84,18 +84,18 @@ pub enum ObjectDetectionImageSegmentation {
 impl ModelUrl for ObjectDetectionImageSegmentation {
     fn fetch_url(&self) -> &'static str {
         match self {
-            ObjectDetectionImageSegmentation::TinyYoloV2 => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/tiny-yolov2/model/tinyyolov2-8.onnx",
-            ObjectDetectionImageSegmentation::Ssd => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/ssd/model/ssd-10.onnx",
-            ObjectDetectionImageSegmentation::SSDMobileNetV1 => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_10.onnx",
-            ObjectDetectionImageSegmentation::FasterRcnn => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx",
-            ObjectDetectionImageSegmentation::MaskRcnn => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/mask-rcnn/model/MaskRCNN-10.onnx",
-            ObjectDetectionImageSegmentation::RetinaNet => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/retinanet/model/retinanet-9.onnx",
-            ObjectDetectionImageSegmentation::YoloV2 => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/yolov2/model/yolov2-voc-8.onnx",
-            ObjectDetectionImageSegmentation::YoloV2Coco => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx",
-            ObjectDetectionImageSegmentation::YoloV3 => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx",
-            ObjectDetectionImageSegmentation::TinyYoloV3 => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx",
-            ObjectDetectionImageSegmentation::YoloV4 => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/yolov4/model/yolov4.onnx",
-            ObjectDetectionImageSegmentation::Duc => "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/duc/model/ResNet101-DUC-7.onnx",
+            ObjectDetectionImageSegmentation::TinyYoloV2 => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/tiny-yolov2/model/tinyyolov2-8.onnx",
+            ObjectDetectionImageSegmentation::Ssd => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/ssd/model/ssd-10.onnx",
+            ObjectDetectionImageSegmentation::SSDMobileNetV1 => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_10.onnx",
+            ObjectDetectionImageSegmentation::FasterRcnn => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx",
+            ObjectDetectionImageSegmentation::MaskRcnn => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/mask-rcnn/model/MaskRCNN-10.onnx",
+            ObjectDetectionImageSegmentation::RetinaNet => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/retinanet/model/retinanet-9.onnx",
+            ObjectDetectionImageSegmentation::YoloV2 => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/yolov2/model/yolov2-voc-8.onnx",
+            ObjectDetectionImageSegmentation::YoloV2Coco => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx",
+            ObjectDetectionImageSegmentation::YoloV3 => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx",
+            ObjectDetectionImageSegmentation::TinyYoloV3 => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx",
+            ObjectDetectionImageSegmentation::YoloV4 => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/yolov4/model/yolov4.onnx",
+            ObjectDetectionImageSegmentation::Duc => "https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/duc/model/ResNet101-DUC-7.onnx",
         }
     }
 }

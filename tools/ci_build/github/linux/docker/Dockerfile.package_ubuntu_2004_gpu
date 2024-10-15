@@ -46,7 +46,9 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
     libnvonnxparsers-dev=${TRT_VERSION} \
     libnvonnxparsers10=${TRT_VERSION} \
     tensorrt-dev=${TRT_VERSION} \
-    libnvinfer-bin=${TRT_VERSION}
+    libnvinfer-bin=${TRT_VERSION} &&\
+    if [ $(echo $CUDA_VERSION | cut -d"." -f1) -ge 12 ]; then apt-get install -y cudnn9-cuda-12 ; fi
+#   ^^^^^^^^^^^If cuda version is 12 or higher, install cudnn 9 for cuda 12
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts

@@ -52,6 +52,7 @@ def get_qnn_qdq_config(
     activation_symmetric: bool = False,
     weight_symmetric: bool | None = None,
     keep_removable_activations: bool = False,
+    stride: int | None = None,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
@@ -171,6 +172,7 @@ def get_qnn_qdq_config(
         "TensorQuantOverrides": overrides_helper.get_dict(),
         "ActivationSymmetric": activation_symmetric,
         "WeightSymmetric": weight_symmetric,
+        "CalibStridedMinMax": stride,
     }
 
     # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain

@@ -40,7 +40,7 @@ int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_vi
 
     // prefer path the model was loaded from
     // this may not be available if the model was loaded from a stream or in-memory bytes
-    const auto& model_path_str = main_graph.ModelPath().ToPathString();
+    const auto model_path_str = main_graph.ModelPath().string();
     if (!model_path_str.empty()) {
       MurmurHash3::x86_128(model_path_str.data(), gsl::narrow_cast<int32_t>(model_path_str.size()), hash[0], &hash);
     } else {

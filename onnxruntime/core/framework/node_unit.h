@@ -9,6 +9,7 @@
 #include <string>
 #include <optional>
 #include <vector>
+#include <filesystem>
 
 #include "core/graph/basic_types.h"
 #include "core/graph/graph.h"
@@ -78,7 +79,7 @@ class NodeUnit {
   const std::string& Name() const noexcept;
   int SinceVersion() const noexcept;
   NodeIndex Index() const noexcept;
-  const Path& ModelPath() const noexcept;
+  const std::filesystem::path& ModelPath() const noexcept;
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }

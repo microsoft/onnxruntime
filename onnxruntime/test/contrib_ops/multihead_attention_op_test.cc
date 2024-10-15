@@ -531,6 +531,12 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
   RunMultiHeadAttentionTests(data);
 }
 
+TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize8) {
+  AttentionTestData data;
+  GetCrossAttentionData_HeadSize8_NoBias(data);
+  RunMultiHeadAttentionTests(data, false, true);
+}
+
 // TODO (pavignol): Fix this regression
 // Bug #50220930
 #ifndef USE_DML

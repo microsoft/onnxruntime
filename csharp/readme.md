@@ -64,27 +64,19 @@ Add that folder to your PATH.
 
 If we're starting with VS 2022 17.2.4 we should have dotnet sdk 6.0.301
 
-Make sure all the required workloads are installed
-  `dotnet workload install android ios maccatalyst macos`
-    - original example from [here](https://github.com/Sweekriti91/maui-samples/blob/swsat/devops/6.0/Apps/WeatherTwentyOne/devops/AzureDevOps/azdo_windows.yml):
-      - `dotnet workload install android ios maccatalyst macos maui --source https://aka.ms/dotnet6/nuget/index.json --source https://api.nuget.org/v3/index.json`
-    - don't need 'maui' in this list until we update the sample/test apps
-    - didn't seem to need --source arg/s for local build. YMMV.
+The IncludeMobileTargets property determines whether the MAUI targets are included. This is set to 'true' for the
+real package build.
 
-Build pre-net6 targets
-  `msbuild -t:restore .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=PreNet6`
-  `msbuild -t:build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=PreNet6`
+Make sure all the required workloads are installed if the MAUI targets are included.
+  `dotnet workload install maui android ios maccatalyst`
+    - original example from [here](https://github.com/Sweekriti91/maui-samples/blob/swsat/devops/6.0/Apps/WeatherTwentyOne/devops/AzureDevOps/azdo_windows.yml):
+
+Restore and build the managed package.
+  `msbuild -t:restore .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:IncludeMobileTargets=true`
+  `msbuild -t:build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:IncludeMobileTargets=true`
 
   Need to run msbuild twice - once to restore which creates some json configs that are needed like
-  Microsoft.ML.OnnxRuntime\obj\project.assets.json, and once to build using the configs.
-
-Build net6 targets
-  `dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6`
-
-  The dotnet build does the restore internally.
-
-Create project.assets.json in obj dir with all targets so the nuget package creation includes them all
-  `msbuild -t:restore .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=All`
+  Microsoft.ML.OnnxRuntime\obj\project.assets.json, and once to build using those configs.
 
 Create nuget package
   `msbuild .\OnnxRuntime.CSharp.proj -t:CreatePackage -p:OrtPackageId=Microsoft.ML.OnnxRuntime -p:Configuration=Debug -p:Platform="Any CPU"`

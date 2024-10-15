@@ -935,7 +935,8 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnknown)
+        IUnknown* persistentResourceAllocatorUnknown,
+        bool keepTemporaryResourceAlive)
     {
         DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
 
@@ -1042,6 +1043,11 @@ namespace DmlGraphFusionHelper
             }
 
             commandListState.tempBindingAllocId = tempAllocId;
+
+            if (keepTemporaryResourceAlive)
+            {
+                commandListState.temporaryResource = std::move(tempResource);
+            }
         }
 
         // Execute the command list and if it succeeds, update the fence value at which this command may be

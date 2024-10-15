@@ -152,17 +152,6 @@ stages:
           filename: 'C:\Program Files\Intel\openvino_2021.4.752\bin\setupvars.bat'
           modifyEnvironment: true
 
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            import sys
-            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
-            import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
-          workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'Install python modules'
-
       - task: PowerShell@2
         displayName: 'Install ONNX'
         inputs:
@@ -387,7 +376,7 @@ stages:
     - job: Windows_py_GPU_Wheels
       workspace:
         clean: all
-      pool: 'onnxruntime-Win2022-GPU-T4'
+      pool: 'onnxruntime-Win2022-GPU-A10'
       timeoutInMinutes:  300
       variables:
         CUDA_VERSION: '11.8'
@@ -418,17 +407,6 @@ stages:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
-
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            import sys
-            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
-            import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
-          workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'Install python modules'
 
       - task: PowerShell@2
         displayName: 'Install ONNX'

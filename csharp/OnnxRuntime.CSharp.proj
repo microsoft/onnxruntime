@@ -23,7 +23,7 @@ CMake creates a target to this project
     <IsPlatformSpecificSubPackage Condition=" '$(IsPlatformSpecificSubPackage)' == '' ">false</IsPlatformSpecificSubPackage>
     <NuSpecName Condition=" '$(NuSpecName)' == '' ">NativeNuget.nuspec</NuSpecName>
 
-    <!-- include Xamarin/MAUI Android and iOS target frameworks? Command line property overrides this value. -->
+    <!-- include MAUI Android and iOS target frameworks? Command line property overrides this value. -->
     <IncludeMobileTargets>true</IncludeMobileTargets>
 
     <!--internal build related properties-->

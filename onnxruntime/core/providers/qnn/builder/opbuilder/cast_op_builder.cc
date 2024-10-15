@@ -40,7 +40,7 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(do_op_validation);
 
   const auto& inputs = node_unit.Inputs();
-  ORT_ENFORCE(inputs.size() == 1, "QNN Cast node must have a single input.");
+  ORT_RETURN_IF_NOT(inputs.size() == 1, "QNN Cast node must have a single input.");
   const auto& input = inputs[0];
 
   const auto& input_name = input.node_arg.Name();
@@ -87,7 +87,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_UNUSED_PARAMETER(logger);
 
   const auto& outputs = node_unit.Outputs();
-  ORT_ENFORCE(outputs.size() == 1, "QNN Cast node must have a single output.");
+  ORT_RETURN_IF_NOT(outputs.size() == 1, "QNN Cast node must have a single output.");
   const auto& output = outputs[0];
   const auto& output_name = output.node_arg.Name();
 

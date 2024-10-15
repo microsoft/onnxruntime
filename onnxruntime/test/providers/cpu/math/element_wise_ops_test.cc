@@ -484,6 +484,22 @@ TEST(MathOpTest, Add_Invalid_Broadcast) {
            {}, nullptr, &execution_providers);
 }
 
+// TEST(MathOpTest, Add_large_dimension) {
+//   OpTester test("Add");
+
+//   int64_t num_elem = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1000;
+//   // int64_t num_elem = static_cast<int64_t>(200) + 1000;
+//   float input_scalar{4.0f};
+//   std::vector<float> input_sequence(num_elem, 0), output_sequence(num_elem, input_scalar);
+//   test.AddInput<float>("A", {num_elem}, input_sequence);
+//   test.AddInput<float>("B", {1}, {input_scalar});
+//   test.AddOutput<float>("C", {num_elem}, output_sequence);
+
+//   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+//   execution_providers.push_back(DefaultCudaExecutionProvider());
+//   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+// }
+
 TEST(MathOpTest, Sub_int32) {
   OpTester test("Sub");
   test.AddInput<int32_t>("A", {3}, {1, 4, 3});

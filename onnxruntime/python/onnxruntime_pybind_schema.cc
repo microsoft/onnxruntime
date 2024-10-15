@@ -40,7 +40,8 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_OPENVINO
             []() {
               ProviderOptions provider_options_map;
-              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options_map);
+              SessionOptions session_options;
+              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options_map, &session_options);
             }(),
 #endif
 #ifdef USE_TENSORRT

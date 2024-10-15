@@ -279,7 +279,10 @@ void CPUIDInfo::ArmAppleInit() {
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
 
-    // TODO figure out how to set core_uarchs_ and is_armv8_narrow_ld_
+    // Note: We leave is_armv8_narrow_ld_ unset because it only applies to a limited set of uarchs that we don't expect
+    // to encounter on Apple platforms.
+
+    // TODO figure out how to set core_uarchs_
   } else
 #endif  // defined(CPUINFO_SUPPORTED)
   {

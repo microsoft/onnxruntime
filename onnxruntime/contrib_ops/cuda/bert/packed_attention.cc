@@ -288,11 +288,10 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = is_good_for_rpb &&
-                                     sizeof(T) == 2 &&  // only enable for fp16
-                                     (parameters.head_size & 7) == 0 &&
-                                     (parameters.v_head_size & 7) == 0 &&
-                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
+    use_memory_efficient_attention =
+        is_good_for_rpb &&
+        sizeof(T) == 2 &&  // only enable for fp16
+        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
 #endif
 

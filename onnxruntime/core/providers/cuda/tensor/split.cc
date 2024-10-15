@@ -76,6 +76,33 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
+#ifndef USE_ROCM
+  if (split_sizes.size() == 3 && ((axis + 1) == gsl::narrow_cast<int64_t>(input_shape.NumDimensions()))) {
+    // we use (axis + 1) == num_dimensions to check if we are splitting on inner most axis.
+    // only when split on inner axis and output size is 3, we can use Split3Inner.
+    // this kernel is not using pin_memory, so it is ok for using cuda graph.
+    output_dimensions[axis] = split_sizes[0];
+    Tensor* output0 = ctx->Output(0, TensorShape{output_dimensions});
+    output_dimensions[axis] = split_sizes[1];
+    Tensor* output1 = ctx->Output(1, TensorShape{output_dimensions});
+    output_dimensions[axis] = split_sizes[2];
+    Tensor* output2 = ctx->Output(2, TensorShape{output_dimensions});
+
+    // if input tensor is empty, we don't need to launch kernel, but still need to set output tensor.
+    if (input_tensor->Shape().Size() <= 0) return Status::OK();
+
+    return Split3Inner(Stream(ctx),
+                       input_tensor->DataType()->Size(),
+                       split_sizes[0], split_sizes[1],
+                       split_sizes[2],
+                       input_tensor->DataRaw(),
+                       output0->MutableDataRaw(),
+                       output1->MutableDataRaw(),
+                       output2->MutableDataRaw(),
+                       input_dims);
+  }
+#endif
+
   CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
   TensorShapeVector axis_dimension_input_output_mapping(input_dims[axis]);

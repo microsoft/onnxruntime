@@ -326,5 +326,18 @@ TEST(BlkQ4_GEMM, Sm80SmallMTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, true, true>(16, 1024, 576);
 }
 
+TEST(BlkQ4_GEMM, Sm80SmallTileKernelTest) {
+  Status status = onnxruntime::cuda::test::sm80_supported();
+  if (!status.IsOK()) {
+    // skip the test if sm80 is not supported
+    return;
+  }
+
+  onnxruntime::cuda::test::run_blkq4_small_gemm<16, true, false>(5, 16, 2048 - 16);
+  onnxruntime::cuda::test::run_blkq4_small_gemm<32, true, true>(3, 48, 1536 + 32);
+  onnxruntime::cuda::test::run_blkq4_small_gemm<64, false, false>(67, 64, 2048 - 16);
+  onnxruntime::cuda::test::run_blkq4_small_gemm<128, false, true>(54, 128, 1536 + 16);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

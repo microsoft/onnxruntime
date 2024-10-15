@@ -84,9 +84,19 @@ struct Int4x2Base {
     return (num_int4_elems + 1) / 2;
   }
 
+  /// <summary>
+  /// Copy a source buffer of 4-bit elements (packed) into a destination buffer of 8-bit elements (unpacked).
+  /// </summary>
+  /// <param name="dst">Destination buffer to store unpacked 8-bit elements</param>
+  /// <param name="src">Source buffer with 4-bit elements</param>
+  /// <returns>True on success</returns>
   static bool Unpack(gsl::span<UnpackedType> dst, gsl::span<const Int4x2Base<Signed>> src) {
     if (CalcNumInt4Pairs(dst.size()) != src.size()) {
       return false;
+    }
+
+    if (src.empty()) {
+      return true;
     }
 
     for (size_t i = 0; i < dst.size(); i++) {
@@ -98,9 +108,19 @@ struct Int4x2Base {
     return true;
   }
 
+  /// <summary>
+  /// Copy a source buffer of 8-bit elements (unpacked) into a destination buffer of 4-bit elements (packed).
+  /// </summary>
+  /// <param name="dst">Destination buffer to store packed 4-bit elements</param>
+  /// <param name="src">Source buffer with 8-bit elements</param>
+  /// <returns>True on success</returns>
   static bool Pack(gsl::span<Int4x2Base<Signed>> dst, gsl::span<const UnpackedType> src) {
-    if (src.empty() || (CalcNumInt4Pairs(src.size()) != dst.size())) {
+    if (CalcNumInt4Pairs(src.size()) != dst.size()) {
       return false;
+    }
+
+    if (src.empty()) {
+      return true;
     }
 
     size_t src_i = 0;
@@ -115,6 +135,20 @@ struct Int4x2Base {
     }
 
     return true;
+  }
+
+  /// <summary>
+  /// Returns hierarchical indices for a packed int4 element from the given element index.
+  ///
+  /// Usage:
+  ///   Int4x2* data = ...;
+  ///   auto indices = GetTensorElemIndices(3);  // 4th int4 element
+  ///   int8_t elem = data[indices.first].GetElem(indices.second);
+  /// </summary>
+  /// <param name="index">Index of 4-bit element</param>
+  /// <returns>Unpacked element</returns>
+  static inline std::pair<size_t, size_t> GetTensorElemIndices(size_t index) {
+    return {index >> 1, index & 0x1};
   }
 };
 

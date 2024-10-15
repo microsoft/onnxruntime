@@ -6,10 +6,10 @@ version = "0.0.14"
 
 description = "Wrapper around Microsoft's ONNX Runtime"
 documentation = "https://docs.rs/onnxruntime"
-homepage = "https://onnxruntime.ai/"
+homepage = "https://github.com/nbigaouette/onnxruntime-rs"
 license = "MIT OR Apache-2.0"
 readme = "../README.md"
-repository = "https://github.com/microsoft/onnxruntime"
+repository = "https://github.com/nbigaouette/onnxruntime-rs"
 
 categories = ["science"]
 keywords = ["neuralnetworks", "onnx", "bindings"]
@@ -20,9 +20,11 @@ required-features = ["model-fetching"]
 
 [dependencies]
 libloading = "0.7"
-ndarray = "0.15"
-once_cell = "1.17"
 onnxruntime-sys = { version = "0.0.14", path = "../onnxruntime-sys" }
+
+lazy_static = "1.4"
+# FIXME: ndarray >=0.15.2 breaks the build
+ndarray = ">=0.15.0,<0.16.0"
 thiserror = "1.0"
 tracing = "0.1"
 
@@ -30,14 +32,17 @@ tracing = "0.1"
 ureq = { version = "2.1", optional = true }
 
 [dev-dependencies]
-image = "0.24"
-test-log = { version = "0.2", default-features = false, features = ["trace"] }
+image = "0.23"
+test-env-log = { version = "0.2", default-features = false, features = ["trace"] }
 tracing-subscriber = "0.2"
 ureq = "2.1"
 
 [features]
 # Fetch model from ONNX Model Zoo (https://github.com/onnx/models)
 model-fetching = ["ureq"]
+# Disable build script; used for https://docs.rs
+disable-sys-build-script = ["onnxruntime-sys/disable-sys-build-script"]
+generate-bindings = ["onnxruntime-sys/generate-bindings"]
 
 [package.metadata.docs.rs]
-features = ["model-fetching"]
+features = ["disable-sys-build-script", "model-fetching"]

@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace training {
 
 /**
- * @brief Create OrtValues From TensorProto objects
+ * @brief Create OrtValues From TensorProto objects. Doesn't support external tensor.
  *
  * @param tensor_protos vector of TensorProto
  * @param name_to_ort_value saved results.
@@ -42,7 +42,7 @@ Status CreateOrtValuesFromTensorProtos(
                                            tensor_proto.data_type())
                                            ->GetElementType();
     auto p_tensor = std::make_unique<Tensor>(tensor_dtype, tensor_shape, cpu_allocator);
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), nullptr, tensor_proto, *p_tensor));
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), std::filesystem::path(), tensor_proto, *p_tensor));
 
     OrtValue ort_value;
     ort_value.Init(p_tensor.release(),

@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+message(STATUS "++++++++ Paco START onnxruntime_mlas.cmake")
+MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
+message(STATUS "++++++++ Paco END")
+
+#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
 set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
@@ -645,6 +651,16 @@ if (WIN32)
   endif()
 endif()
 
+#target_compile_options(onnxruntime_mlas PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CXX_FLAGS}>)
+#target_compile_options(onnxruntime_mlas PRIVATE $<$<COMPILE_LANGUAGE:C>:${CMAKE_C_FLAGS}>)
+#target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS}) #Needed for maccatalyst
+
+# message(STATUS "++++++++ Paco START")
+#print_target_properties(onnxruntime)
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+# MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
+# MESSAGE( STATUS "PLATFORM: " ${PLATFORM} )
+# message(STATUS "++++++++ Paco END")
 if (PLATFORM_NAME STREQUAL "macabi")
   # Needed for maccatalyst C compilation
   # i.e. the flags below add "--target=x86_64-apple-ios14.0-macabi -ffunction-sections -fdata-sections"

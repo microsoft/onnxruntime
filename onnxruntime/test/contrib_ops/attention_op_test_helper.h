@@ -72,6 +72,9 @@ void GetCrossAttentionData_HeadSize16_8_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_HeadSize16(AttentionTestData& data);
 void GetCrossAttentionData_HeadSize16_NoBias(AttentionTestData& data);
 
+void GetCrossAttentionData_HeadSize8(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize8_NoBias(AttentionTestData& data);
+
 void GetCrossAttentionDataWithPast(AttentionTestData& data);
 void GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(AttentionTestData& data);
 

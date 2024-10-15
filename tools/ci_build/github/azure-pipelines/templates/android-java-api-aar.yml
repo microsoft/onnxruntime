@@ -36,7 +36,6 @@ parameters:
   default: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 - name: packageName
-  # now we can build onnxruntime or onnxruntime-mobile for Android, need specify it here
   displayName: Package Name
   type: string
   default: 'onnxruntime-android'

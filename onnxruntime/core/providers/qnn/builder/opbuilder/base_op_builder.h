@@ -163,6 +163,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Relu", QNN_OP_RELU},
         {"Gelu", QNN_OP_GELU},
 
+        {"HardSigmoid", QNN_OP_ELEMENT_WISE_NEURON},
         {"HardSwish", QNN_OP_HARD_SWISH},
         {"DepthToSpace", QNN_OP_DEPTH_TO_SPACE},
         {"SpaceToDepth", QNN_OP_SPACE_TO_DEPTH},
@@ -206,7 +207,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   // NCHW shape to channel last
   Status NchwShapeToNhwc(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& nhwc_shape) const {
-    ORT_ENFORCE(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
+    ORT_RETURN_IF_NOT(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
     nhwc_shape[0] = nchw_shape[0];
     nhwc_shape[1] = nchw_shape[2];
     nhwc_shape[2] = nchw_shape[3];

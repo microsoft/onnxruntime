@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"

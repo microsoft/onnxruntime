@@ -23,9 +23,9 @@
 //! will be returned by the method which can be derefed into its internal
 //! [`ndarray::ArrayView`](https://docs.rs/ndarray/latest/ndarray/type.ArrayView.html).
 
-pub mod construct;
 pub mod ndarray_tensor;
-pub mod ort_input_tensor;
-pub mod ort_output_tensor;
+pub mod ort_owned_tensor;
+pub mod ort_tensor;
 
-pub use ort_output_tensor::{OrtOutputTensor, WithOutputTensor};
+pub use ort_owned_tensor::OrtOwnedTensor;
+pub use ort_tensor::OrtTensor;

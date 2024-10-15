@@ -107,6 +107,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Not', [unaryOps.not]],
   ['Pad', [pad]],
   ['Pow', [binaryOps.pow]],
+  ['QuickGelu', [unaryOps.quickgelu, unaryOps.parseAlphaAttributes]],
   ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],
   ['ReduceMin', [reduceMin]],

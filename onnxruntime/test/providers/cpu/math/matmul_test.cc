@@ -163,22 +163,15 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
 
     // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
     // Disable TensorRT because of unsupported data type
-    std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+    // QNN EP: Crash during graph execution for QNN's CPU backend on QNN SDK 2.22. Not a problem for QNN's HTP backend.
+    std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider,
+                                                       kOpenVINOExecutionProvider,
+                                                       kQnnExecutionProvider};
     if (t.name == "test 2D empty input") {
       // NNAPI: currently fails for the "test 2D empty input" case
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 
-    if ("test padding and broadcast A > B" == t.name || "test 2D empty input" == t.name) {
-      // QNN can't handle 0 shap
-      excluded_providers.insert(kQnnExecutionProvider);
-    }
-#if defined(__linux__)
-    if (t.name == "test padding and broadcast B > A") {
-      // Accuracy error with QNN SDK 2.17.0 on CPU backend.
-      excluded_providers.insert(kQnnExecutionProvider);
-    }
-#endif
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
         .RunWithConfig();

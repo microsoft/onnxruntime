@@ -72,7 +72,8 @@ namespace Dml
         Dml::ExecutionContext* executionContext,
         bool enableMetacommands,
         bool enableGraphCapture,
-        bool enableSyncSpinning) :
+        bool enableSyncSpinning,
+        bool disableMemoryArena) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = executionContext->GetCommandListTypeForQueue();
@@ -85,7 +86,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands, enableGraphCapture, enableSyncSpinning);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands, enableGraphCapture, enableSyncSpinning, disableMemoryArena);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -149,12 +150,13 @@ namespace Dml
         }
     }
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ExecutionContext* executionContext, bool enableMetacommands, bool enableGraphCapture, bool enableCpuSyncSpinning)
+    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ExecutionContext* executionContext, bool enableMetacommands, bool enableGraphCapture, bool enableCpuSyncSpinning, bool disableMemoryArena)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
           m_graphCaptureEnabled(enableGraphCapture),
           m_cpuSyncSpinningEnabled(enableCpuSyncSpinning),
+          m_memoryArenaDisabled(disableMemoryArena),
           m_context(executionContext)
     {
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
@@ -1181,9 +1183,13 @@ namespace Dml
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
-        // Allocations after this point are potentially transient and their sizes are
-        // rounded to enable pooling.
-        m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+        if (!m_memoryArenaDisabled)
+        {
+            // Allocations after this point are potentially transient and their sizes are
+            // rounded to enable pooling.
+            m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+        }
+
         m_sessionInitialized = true;
 
         return onnxruntime::common::Status::OK();
@@ -1242,9 +1248,10 @@ namespace Dml
         Dml::ExecutionContext* executionContext,
         bool enableMetacommands,
         bool enableGraphCapture,
-        bool enableCpuSyncSpinning)
+        bool enableCpuSyncSpinning,
+        bool disableMemoryArena)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, executionContext, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, executionContext, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning, disableMemoryArena);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

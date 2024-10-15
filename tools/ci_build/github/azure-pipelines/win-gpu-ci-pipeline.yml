@@ -44,7 +44,7 @@ stages:
         buildArch: x64
         additionalBuildFlags: >-
           --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8"
-          --enable_cuda_profiling
+          --enable_cuda_profiling --enable_transformers_tool_test
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
           --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON

@@ -106,3 +106,4 @@ jobs:
             --osx_arch=x86_64 \
             --cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF \
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
+

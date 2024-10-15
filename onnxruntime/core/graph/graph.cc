@@ -560,7 +560,7 @@ void Node::SetPriority(int priority) noexcept {
   priority_ = priority;
 }
 
-const Path& Node::ModelPath() const noexcept {
+const std::filesystem::path& Node::ModelPath() const noexcept {
   return graph_->ModelPath();
 }
 
@@ -3025,7 +3025,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
-  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  // ONNX expects a UTF-8 string here.
+  ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -3370,7 +3371,7 @@ const std::string& Graph::Description() const noexcept {
   return graph_proto_->doc_string();
 }
 
-const Path& Graph::ModelPath() const {
+const std::filesystem::path& Graph::ModelPath() const {
   return owning_model_.ModelPath();
 }
 
@@ -3971,21 +3972,17 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
-ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                       const PathString& destination_file_path,
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                       const std::filesystem::path& model_file_path,
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
+  ORT_ENFORCE(external_file_path.is_relative());
+  // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could
+  // be empty. Else, save external data file in same directory as the model.
+  const std::filesystem::path modified_external_file_path = model_file_path.parent_path() / external_file_path;
 
-  Path parent_path = Path::Parse(destination_file_path).ParentPath();
-  Path external_file_path = Path::Parse(ToPathString(external_file_name));
-  // Check if parent_path is relative path (length = 0)
-  if (parent_path.ToPathString().length()) {
-    // Save external data file in same directory as model
-    external_file_path = parent_path.Append(external_file_path);
-  }
-
-  std::ofstream external_stream(external_file_path.ToPathString(), std::ofstream::out | std::ofstream::binary);
+  std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
@@ -4022,7 +4019,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
       ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
       location->set_key("location");
-      location->set_value(external_file_name);
+      location->set_value(ToUTF8String(external_file_path.native()));
       ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
       offset->set_key("offset");
       offset->set_value(std::to_string(external_offset));
