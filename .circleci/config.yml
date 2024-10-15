@@ -46,11 +46,10 @@ jobs:
       - run:
           name: archive the build results
           command: |
-            cd $HOME/onnxlibrary/
-            tar -cvf onnxruntime_xcf.tar $HOME/onnxlibrary/macabi_release_v20230327_2320
+            tar -cvf /Users/distiller/project/onnxruntime_xcf.tar $HOME/onnxlibrary/macabi_release_v20230327_2320
 
       - store_artifacts:
-          path: $HOME/onnxlibrary/onnxruntime_xcf.tar
+          path: /onnxruntime_xcf.tar
           destination: onnxruntime_xcf.tar
 workflows:
   version: 2
