@@ -262,41 +262,103 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   };
 };
 
-const createInPlaceSoftmaxProgramInfo = (input: TensorView, n: number, d: number) => {
-  const components = getMaxComponents(d);
+const initVarStub = (
+  seqLensInput: IndicesHelper | undefined,
+  totalSequenceLengthInput: IndicesHelper | undefined,
+  initPastSequenceLength: boolean,
+) => {
+  // In the case of GQA, redefine total_sequence_length and past_sequence_length based on seqlen_k input
+  if (totalSequenceLengthInput && seqLensInput) {
+    return `
+      let total_sequence_length_input = u32(${totalSequenceLengthInput.getByOffset('0')});
+      // let present_sequence_length = max(total_sequence_length_input, uniforms.past_sequence_length);
+      let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length_input;
+      let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length_input;
+      let total_sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')}) + 1;
+      var past_sequence_length: u32 = 0;
+      if (is_first_prompt == false) {
+        past_sequence_length = total_sequence_length - sequence_length;
+      }
+       `;
+  } else {
+    return `
+    ${initPastSequenceLength ? 'let past_sequence_length = uniforms.past_sequence_length' : ''};
+    let total_sequence_length = uniforms.total_sequence_length;
+    // let present_sequence_length = total_sequence_length;
+    `;
+  }
+};
+
+const createInPlaceSoftmaxProgramInfo = (
+  input: TensorView,
+  batchSize: number,
+  numHeads: number,
+  sequenceLength: number,
+  totalSequenceLength: number,
+  seqLens: TensorView | undefined,
+  totalSequenceLengthInput: TensorView | undefined,
+) => {
+  // Use no components if seqLens is specifie, i.e. GroupQueryAttention.
+  const components = getMaxComponents(seqLens ? 1 : totalSequenceLength);
   let WG = 64;
-  const dComp = d / components;
-  if (dComp < WG) {
+  const totalSequenceLengthComp = totalSequenceLength / components;
+  if (totalSequenceLengthComp < WG) {
     WG = 32;
   }
-  const elementsPerThread = Math.ceil(d / components / WG);
+  const elementsPerThread = Math.ceil(totalSequenceLength / components / WG);
   const programUniforms: ProgramUniform[] = [
-    { type: DataType.float, data: 1 / d },
-    { type: DataType.uint32, data: dComp },
+    { type: DataType.uint32, data: batchSize },
+    { type: DataType.uint32, data: numHeads },
+    { type: DataType.uint32, data: sequenceLength },
+    { type: DataType.uint32, data: totalSequenceLengthComp },
     { type: DataType.uint32, data: elementsPerThread },
   ];
   const dataType = tensorTypeToWsglStorageType(input.dataType, components);
   const f32Type = tensorTypeToWsglValueType(DataType.float, components);
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type'];
+  if (seqLens) {
+    inputDependencies.push('type');
+  }
+  if (totalSequenceLengthInput) {
+    inputDependencies.push('type');
+  }
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const inputHelper = outputVariable('x', input.dataType, input.dims, components);
+    const inputHelpers = [inputHelper];
+    const seqLensInputHelper = seqLens ? inputVariable('seq_lens', seqLens.dataType, seqLens.dims) : undefined;
+    if (seqLensInputHelper) {
+      inputHelpers.push(seqLensInputHelper);
+    }
+
+    const totalSequenceLengthInputHelper = totalSequenceLengthInput
+      ? inputVariable('total_sequence_length_input', totalSequenceLengthInput.dataType, totalSequenceLengthInput.dims)
+      : undefined;
+    if (totalSequenceLengthInputHelper) {
+      inputHelpers.push(totalSequenceLengthInputHelper);
+    }
     const elemValueType = tensorTypeToWsglValueType(input.dataType);
     const uniforms: UniformsArrayType = [
-      { name: 'd_inv', type: 'f32' },
-      { name: 'd_comp', type: 'u32' },
+      { name: 'batch_size', type: 'u32' },
+      { name: 'num_heads', type: 'u32' },
+      { name: 'sequence_length', type: 'u32' },
+      { name: 'total_sequence_length', type: 'u32' },
       { name: 'elements_per_thread', type: 'u32' },
     ];
 
     return `
   var<workgroup> thread_max: array<f32, ${WG}>;
   var<workgroup> thread_sum: array<f32, ${WG}>;
-  ${shaderHelper.registerUniforms(uniforms).declareVariables(inputHelper)}
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputHelpers)}
   ${shaderHelper.mainStart([WG, 1, 1])}
-    let local_offset = local_idx * uniforms.elements_per_thread;
-    let offset = (global_idx / ${WG}) * uniforms.d_comp + local_offset;
-
+    let batchIdx = global_id.z / uniforms.num_heads;
+    let headIdx = global_id.z % uniforms.num_heads;
+    let sequence_length = uniforms.sequence_length;
+    ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
+    let local_offset = local_id.x * uniforms.elements_per_thread;
+    let offset = (global_idx / ${WG}) * uniforms.total_sequence_length + local_offset;
+    let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + global_id.y + 1)' : 'total_sequence_length'};
     var thread_max_vector = ${f32Type}(-3.402823e+38f);
-    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
     thread_max[local_idx] = ${(() => {
@@ -314,12 +376,12 @@ const createInPlaceSoftmaxProgramInfo = (input: TensorView, n: number, d: number
     workgroupBarrier();
 
     var max_value =  f32(-3.402823e+38f);
-    for (var i = 0u; i < ${WG}; i++) {
+    for (var i = 0u; i < ${WG} && i < seq_causal_length; i++) {
       max_value = max(thread_max[i], max_value);
     }
 
     var sum_vector = ${f32Type}(0);
-    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
     thread_sum[local_idx] = ${(() => {
@@ -342,44 +404,38 @@ const createInPlaceSoftmaxProgramInfo = (input: TensorView, n: number, d: number
     }
 
     if (sum == 0) {
-      for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
-        x[offset + i] = ${inputHelper.type.value}(${elemValueType}(uniforms.d_inv));
+      for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
+        x[offset + i] = ${inputHelper.type.value}(${elemValueType}(1.0) / ${elemValueType}(seq_causal_length));
       }
     } else {
-      for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
+      for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
         var f32input = ${f32Type}(x[offset + i]);
         x[offset + i] = ${inputHelper.type.value}(exp(f32input - max_value) / sum);
       }
     }
+      ${
+        seqLens
+          ? `for (var i: u32 = seq_causal_length; i < uniforms.elements_per_thread && i + local_offset < uniforms.total_sequence_length; i++) {
+      x[offset + i] = ${inputHelper.type.value}(${elemValueType}(0));
+    }`
+          : ''
+      };
   }`;
   };
 
   return {
     name: 'AttentionProbsSoftmax',
-    shaderCache: { hint: `${WG};${dataType};${components}`, inputDependencies },
+    shaderCache: {
+      hint: `${batchSize};${numHeads};${sequenceLength};${totalSequenceLength};${dataType};${components}`,
+      inputDependencies,
+    },
     getShaderSource,
-    getRunData: () => ({ outputs: [], dispatchGroup: { x: n }, programUniforms }),
+    getRunData: () => ({
+      outputs: [],
+      dispatchGroup: { x: 1, y: sequenceLength, z: batchSize * numHeads },
+      programUniforms,
+    }),
   };
-};
-
-const initVarStub = (seqLensInput: IndicesHelper | undefined, totalSequenceLengthInput: IndicesHelper | undefined) => {
-  if (totalSequenceLengthInput) {
-    return `
-      var total_sequence_length = u32(${totalSequenceLengthInput.getByOffset('0')});
-      let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length;
-      let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length;
-      sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')});
-      var past_sequence_length: u32 = 0;
-      if (is_first_prompt) {
-        past_sequence_length = total_sequence_length - sequence_length;
-      }
-       `;
-  } else {
-    return `
-     let past_sequence_length = uniforms.past_sequence_length;
-     let total_sequence_length = uniforms.total_sequence_length;
-     `;
-  }
 };
 
 const createAttentionProbsProgramInfo = (
@@ -498,7 +554,7 @@ const createAttentionProbsProgramInfo = (
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
     var sequence_length = uniforms.M;
-    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
+    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable, true)}
     let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx;
     let qOffset = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
     ${feedPastKey && presentKey ? 'let pastKeyOffset = absKvHeadIdx * uniforms.past_sequence_length * uniforms.K;' : ''};
@@ -672,7 +728,7 @@ const createVxAttentionScoreProgramInfo = (
    let m = global_id.y;
    let n = global_id.x;
    var sequence_length = uniforms.M;
-   ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable)}
+   ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable, true)}
    let offsetA = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
    let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx; // kvHeadIdx is relative to the batch
    ${feedPastValue && presentValue ? 'let pastValueOffset = absKvHeadIdx * uniforms.N * uniforms.past_sequence_length + n;' : ''};
@@ -784,10 +840,14 @@ export const applyAttention = (
   context.compute(
     createInPlaceSoftmaxProgramInfo(
       probs,
-      parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
+      parameters.batchSize,
+      parameters.numHeads,
+      parameters.sequenceLength,
       totalSequenceLength,
+      seqLens,
+      totalSequenceLengthInput,
     ),
-    { inputs: [probs], outputs: [] },
+    { inputs: seqLens && totalSequenceLengthInput ? [probs, seqLens, totalSequenceLengthInput] : [probs], outputs: [] },
   );
 
   // Run AttentionScore
