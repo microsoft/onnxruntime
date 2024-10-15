@@ -365,18 +365,19 @@ const createInPlaceSoftmaxProgramInfo = (input: TensorView, n: number, d: number
 const initVarStub = (seqLensInput: IndicesHelper | undefined, totalSequenceLengthInput: IndicesHelper | undefined) => {
   if (totalSequenceLengthInput) {
     return `
-      var total_sequence_length_input = u32(${totalSequenceLengthInput.getByOffset('0')});
-      let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length_input;
-      let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length_input;
+      var total_sequence_length = u32(${totalSequenceLengthInput.getByOffset('0')});
+      let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length;
+      let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length;
       sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')});
       var past_sequence_length: u32 = 0;
       if (is_first_prompt) {
-        past_sequence_length = total_sequence_length_input - sequence_length;
+        past_sequence_length = total_sequence_length - sequence_length;
       }
        `;
   } else {
     return `
      let past_sequence_length = uniforms.past_sequence_length;
+     let total_sequence_length = uniforms.total_sequence_length;
      `;
   }
 };
@@ -508,19 +509,21 @@ const createAttentionProbsProgramInfo = (
       if (global_id.y < sequence_length && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
       }
-      if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
+      if (n + local_id.y < total_sequence_length && w + local_id.x < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
       ${(() => {
         if (feedPastKey && presentKey) {
           return `
               if (n + local_id.y < past_sequence_length) {
                 tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
-              } else {
-                tileK[idx] =
-                         key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
+              } else if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {
+                tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
               }`;
         } else {
-          return 'tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];';
+          return `
+          if (n + local_id.y < uniforms.kv_sequence_length) {
+            tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+          }`;
         }
       })()}
       ${
@@ -536,7 +539,7 @@ const createAttentionProbsProgramInfo = (
       workgroupBarrier();
     }
 
-    if (global_id.y < sequence_length && global_id.x < uniforms.N) {
+    if (global_id.y < sequence_length && global_id.x < total_sequence_length) {
       let headOffset = workgroup_id.z * sequence_length * uniforms.N;
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
       var sum: f32 = ${(() => {
@@ -677,28 +680,31 @@ const createVxAttentionScoreProgramInfo = (
    ${presentValue ? 'let presentValueOffset = absKvHeadIdx * uniforms.N * uniforms.K + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (m < sequence_length && w + local_id.x < uniforms.K) {
+      if (m < sequence_length && w + local_id.x < total_sequence_length) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
       }
-      if (n < uniforms.N && w + local_id.y < uniforms.K) {
+      if (n < uniforms.N && w + local_id.y < total_sequence_length) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
         ${(() => {
           if (feedPastValue && presentValue) {
             return `
         if (w + local_id.y < past_sequence_length) {
           tileV[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
-        } else {
+        } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {
           tileV[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N];
         }
       `;
           } else {
-            return 'tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N];';
+            return `
+            if (w + local_id.y < uniforms.kv_sequence_length) {
+              tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N];
+            }`;
           }
         })()}
         ${presentValue ? 'present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];' : ''}
       }
      workgroupBarrier();
-     for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.total_sequence_length; k++) {
+     for (var k: u32 = 0u; k < TILE_SIZE && w+k < total_sequence_length; k++) {
        value += tileQ[TILE_SIZE * local_id.y + k] * tileV[TILE_SIZE * k + local_id.x];
      }
      workgroupBarrier();
