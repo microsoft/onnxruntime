@@ -35,13 +35,13 @@ index 008c19225..cbab108c2 100644
 +++ b/src/google/protobuf/map.h
 @@ -52,7 +52,8 @@
  #endif  // defined(__cpp_lib_string_view)
- 
+
  #if !defined(GOOGLE_PROTOBUF_NO_RDTSC) && defined(__APPLE__)
 -#include <mach/mach_time.h>
 +// apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
 +#include <time.h>
  #endif
- 
+
  #include <google/protobuf/stubs/common.h>
 @@ -1154,7 +1155,8 @@ class Map {
  #if defined(__APPLE__)

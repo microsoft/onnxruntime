@@ -1576,15 +1576,9 @@ struct Attribute FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyString(name()) &&
            VerifyOffset(verifier, VT_DOC_STRING) &&
            verifier.VerifyString(doc_string()) &&
-<<<<<<< HEAD
-           VerifyField<int32_t>(verifier, VT_TYPE, sizeof(int32_t)) &&
-           VerifyField<float>(verifier, VT_F, sizeof(float)) &&
-           VerifyField<int64_t>(verifier, VT_I, sizeof(int64_t)) &&
-=======
            VerifyField<int32_t>(verifier, VT_TYPE, 4) &&
            VerifyField<float>(verifier, VT_F, 4) &&
            VerifyField<int64_t>(verifier, VT_I, 8) &&
->>>>>>> main
            VerifyOffset(verifier, VT_S) &&
            verifier.VerifyString(s()) &&
            VerifyOffset(verifier, VT_T) &&
