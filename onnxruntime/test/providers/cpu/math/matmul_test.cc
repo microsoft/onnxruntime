@@ -208,6 +208,14 @@ TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, false);
 }
 
+TEST(MathOpTest, MatMulFloatType) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<MLFloat16>(14, false, false);
+}
+
 // To Test XNNPACK, Matrix B must be constant
 TEST(MathOpTest, MatMulFloatType_ConstantB) {
   // TODO: Unskip when fixed #41968513
@@ -231,7 +239,7 @@ TEST(MathOpTest, MatMulFloat16_ConstantB) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
 
-  RunMatMulTest<MLFloat16>(7, false, true);
+  RunMatMulTest<MLFloat16>(14, false, true);
 }
 #endif
 
@@ -245,6 +253,14 @@ TEST(MathOpTest, MatMulFloatTypeInitializer) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
   RunMatMulTest<float>(7, false, true);
+}
+
+TEST(MathOpTest, MatMulFloatTypeInitializer) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
+  RunMatMulTest<MLfloat16>(14, false, true);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
