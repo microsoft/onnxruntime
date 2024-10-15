@@ -245,19 +245,12 @@ __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
 template <>
 __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (float)b)); }
 
-#define ISNAN_HALF(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~MLFloat16::kSignMask) \
-                            > MLFloat16::kPositiveInfinityBits
-
 #define ISNAN_BFLOAT16(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~BFloat16::kSignMask) \
                                 > BFloat16::kPositiveInfinityBits
 
-// CUDART_NAN_BF16 and CUDART_NAN_FP16 constants were only added in CUDA 12.2,
-// so define our own equivalent constants to support older versions.
 // Note that there is no consistent canonical NaN for FP16 and BF16;
-// CUDA uses 0x7FFF for both, but ONNX Runtime uses 0x7E00 and 0x7FC1
-// for FP16 and BF16 respectively
-// (see Float16Impl::kPositiveQNaNBits and BFloat16Impl::kPositiveQNaNBits).
-#define NAN_HALF __ushort_as_half((unsigned short)0x7FFFU)
+// HIP uses 0x7FFF for HIPRT_NAN_BF16, but ONNX Runtime uses 0x7FC1.
+// (see BFloat16Impl::kPositiveQNaNBits).
 #define NAN_BFLOAT16 BFloat16::FromBits((uint16_t)0x7FFFU)
 
 template <typename T>
@@ -306,9 +299,7 @@ __device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
   return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a > b ? a : b);
 }
 
-#undef ISNAN_HALF
 #undef ISNAN_BFLOAT16
-#undef NAN_HALF
 #undef NAN_BFLOAT16
 
 template <typename T>
