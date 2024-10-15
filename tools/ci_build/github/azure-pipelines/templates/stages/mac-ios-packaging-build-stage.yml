@@ -129,8 +129,8 @@ stages:
       displayName: 'Create archive'
 
     - script: |
-        echo $(find . -name "*.xcarchive" -printf "%p\n")
-        echo $(find . -name "*Runner.app" -printf "%p\n")
+        echo $(find ~+ -name "*.xcarchive" -type f)
+        echo $(find ~+ -name "*.Runner.app" -type f)
         zip -r package_tests.zip $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos/ios_package_testUITests-Runner.app
     #       --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
     #    echo $(find . -name "*.plist" -printf "%p\n")
@@ -153,7 +153,7 @@ stages:
       displayName: 'Create archive'
 
     - script: |
-        echo $(find . -name "*.ipa" -printf "%p\n")
+        echo $(find ~+ -name "*.ipa" -type f)
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "find ipa file"
 
