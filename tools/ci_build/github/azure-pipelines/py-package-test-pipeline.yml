@@ -5,9 +5,6 @@ resources:
     trigger: true
     branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
 
-variables:
-  - template: templates/common-variables.yml
-
 stages:
 - stage: Linux_Test_CPU_x86_64_stage
   jobs:
@@ -58,7 +55,6 @@ stages:
       python_wheel_suffix: '_gpu'
       timeout: 480
       docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241008.1
-      trt_version: ${{ variables.linux_trt_version_cuda11 }}
       cuda_version: '11.8'
 
 
