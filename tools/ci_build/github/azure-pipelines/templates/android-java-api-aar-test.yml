@@ -93,6 +93,9 @@ jobs:
       BROWSERSTACK_ID: $(browserstack_username)
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
 
+  - ${{ if eq(parameters.runBrowserStackTests, false) }}:
+    - template: install-appcenter.yml
+
   - script: |
       set -e -x
       cd android_test/android
