@@ -48,11 +48,10 @@ parameters:
   type: object
   displayName: 'Python versions to build'
   default:
-    - '3.8'
-    - '3.9'
     - '3.10'
     - '3.11'
     - '3.12'
+    - '3.13'
 
 stages:
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
@@ -78,8 +77,8 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241008.1
+            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241010.2
             trt_version: 10.4.0.26-1.cuda11.8
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241008.1
+            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241010.2
             trt_version: 10.4.0.26-1.cuda12.6
