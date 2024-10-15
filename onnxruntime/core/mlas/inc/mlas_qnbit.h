@@ -43,7 +43,7 @@ typedef enum {
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
  */
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
-    const float* A = nullptr;                       ///< address of A (float32 matrix)
+    const void* A = nullptr;                   ///< address of A (float32 matrix)
     size_t lda = 0;                                 ///< leading dimension of A
     const void* QuantBDataWorkspace;                ///< address of quantized B (quantized n-bit int values)
     const std::byte* PackedQuantBData = nullptr;    /// address of packed quantized B data
@@ -85,6 +85,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
                                     buffer with at least that many bytes. Otherwise, it may be nullptr.
  * @param[in]       ThreadPool      optional thread pool to use
  */
+template<typename T>
 void MLASCALL
 MlasSQNBitGemmBatch(
     size_t M,

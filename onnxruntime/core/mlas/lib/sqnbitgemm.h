@@ -184,9 +184,10 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
      * @param       Bias                Bias vector of length N.
      */
-    typedef void(SQ4BitGemmM1Kernel_CompFp32_Fn)(
+    template<typename AType>
+    using SQ4BitGemmM1Kernel_CompFp32_Fn = void(
         size_t BlkLen,
-        const float* A,
+        const AType* A,
         const std::byte* QuantBData,
         const float* QuantBScale,
         const std::byte* QuantBZeroPoint,
@@ -197,7 +198,61 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* Bias
     );
 
-    SQ4BitGemmM1Kernel_CompFp32_Fn* SQ4BitGemmM1Kernel_CompFp32 = nullptr;
+    SQ4BitGemmM1Kernel_CompFp32_Fn<float>* SQ4BitGemmM1Kernel_CompFp32_ATypeFp32 = nullptr;
+    SQ4BitGemmM1Kernel_CompFp32_Fn<MLAS_FP16>* SQ4BitGemmM1Kernel_CompFp32_ATypeFp16 = nullptr;
+
+    template <typename AType>
+        SQ4BitGemmM1Kernel_CompFp32_Fn<AType>*
+    GetSQ4BitGemmM1Kernel_CompFp32_Fn()
+    {
+        if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+            return SQ4BitGemmM1Kernel_CompFp32_ATypeFp16;
+        } else {
+            return SQ4BitGemmM1Kernel_CompFp32_ATypeFp32;
+        }
+    }
+
+    template <typename AType>
+    void CallSQ4BitGemmM1Kernel_CompFp32_Fn(
+      size_t BlkLen,
+      const AType* A,
+      const std::byte* QuantBData,
+      const float* QuantBScale,
+      const std::byte* QuantBZeroPoint,
+      float* C,
+      size_t CountN,
+      size_t CountK,
+      size_t BlockStrideQuantB,
+      const float* Bias
+    ) const {
+        if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+            SQ4BitGemmM1Kernel_CompFp32_ATypeFp16(
+                BlkLen,
+                A,
+                QuantBData,
+                QuantBScale,
+                QuantBZeroPoint,
+                C,
+                CountN,
+                CountK,
+                BlockStrideQuantB,
+                Bias
+            );
+        } else {
+            SQ4BitGemmM1Kernel_CompFp32_ATypeFp32(
+                BlkLen,
+                A,
+                QuantBData,
+                QuantBScale,
+                QuantBZeroPoint,
+                C,
+                CountN,
+                CountK,
+                BlockStrideQuantB,
+                Bias
+            );
+        }
+    }
 
     /**
      * @brief Dequantize B into the format expected by the Sgemm kernel.
@@ -328,13 +383,26 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
 
-    typedef void(QuantizeARowComputeBlkSum_CompInt8_Fn)(
+    template<typename T>
+    using QuantizeARowComputeBlkSum_CompInt8_Fn = void(
         size_t BlkLen,
-        const float* A,
+        const T* A,
         size_t CountK,
         std::byte* QuantA,
         float* QuantAScale,
         float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
     );
-    QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
+
+    QuantizeARowComputeBlkSum_CompInt8_Fn<float>* QuantizeARowComputeBlkSum_CompInt8_ATypeFp32 = nullptr;
+    QuantizeARowComputeBlkSum_CompInt8_Fn<MLAS_FP16>* QuantizeARowComputeBlkSum_CompInt8_ATypeFp16 = nullptr;
+    template <typename AType>
+    QuantizeARowComputeBlkSum_CompInt8_Fn<AType>*
+    GetQuantizeARowComputeBlkSum_CompInt8_Fn() const
+    {
+        if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+            return QuantizeARowComputeBlkSum_CompInt8_ATypeFp16;
+        } else {
+            return QuantizeARowComputeBlkSum_CompInt8_ATypeFp32;
+        }
+    }
 };
