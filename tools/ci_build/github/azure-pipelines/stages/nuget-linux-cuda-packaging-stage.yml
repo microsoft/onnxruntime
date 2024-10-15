@@ -77,9 +77,9 @@ stages:
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
     - name: linux_trt_version
-      ${{ if eq(parameters.cuda_version, '11.8') }}:
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: ${{ variables.linux_trt_version_cuda11 }}
-      ${{ if eq(parameters.cuda_version, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self
@@ -147,9 +147,9 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: '12'
     - name: linux_trt_version
-      ${{ if eq(parameters.cuda_version, '11.8') }}:
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: ${{ variables.linux_trt_version_cuda11 }}
-      ${{ if eq(parameters.cuda_version, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
