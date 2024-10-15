@@ -78,6 +78,17 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
         }
         return nullptr;
     };
+
+    OrtExecutionProvider::ReleaseIndexedSubGraphs = [](OrtIndexedSubGraph** indexed_sub_graphs, size_t num_sub_graph) {
+      if (indexed_sub_graphs == nullptr) return;
+      for (size_t i = 0; i < num_sub_graph; i++) {
+        OrtIndexedSubGraph* sub_graph = indexed_sub_graphs[i];
+        delete[] sub_graph->node_index;
+        delete sub_graph->meta_def;
+        delete sub_graph;
+      }
+      delete[] indexed_sub_graphs;
+    };
 }
 
 OutTreeEpFactory::OutTreeEpFactory() {

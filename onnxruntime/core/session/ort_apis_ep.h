@@ -45,6 +45,8 @@ ORT_API(size_t, OrtGraph_SerializeToArray, const OrtGraphViewer*, _Out_ void** d
 
 ORT_API_STATUS_IMPL(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph);
 
+ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraph, const OrtGraphViewer* graph);
+
 ORT_API(const char*, OrtNode_GetName, const OrtNode* node);
 
 ORT_API(const char*, OrtNode_GetDescription, const OrtNode* node);
@@ -98,5 +100,7 @@ ORT_API(int64_t, OrtNode_GetAttributeInt, const OrtNode* node, const char* key) 
 ORT_API(float, OrtNode_GetAttributeFloat, const OrtNode* node, const char* key) ORT_ALL_ARGS_NONNULL;
 
 ORT_API(size_t, OrtNode_GetSubgraphs, const OrtNode* node, _Outptr_ const OrtGraphViewer*** subgraphs);
+
+ORT_API_STATUS_IMPL(OrtFreeMem, void* p);
 
 }

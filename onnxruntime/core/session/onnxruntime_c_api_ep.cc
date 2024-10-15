@@ -524,6 +524,14 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraph, const OrtGraphViewer* graph) {
+  if (graph) {
+    const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+    delete graph_viewer;
+  }
+  return nullptr;
+}
+
 ORT_API(const char*, OrtGraphApis::OrtNode_GetName, const OrtNode* node) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   return n->Name().c_str();
@@ -676,6 +684,13 @@ ORT_API(size_t, OrtGraphApis::OrtNode_GetSubgraphs, const OrtNode* node, _Outptr
   return ret;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtFreeMem, void* p) {
+  if (p) {
+    free(p);
+  }
+  return nullptr;
+}
+
 static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetName,
     &OrtGraphApis::OrtGraph_IsConstantInitializer,
@@ -698,6 +713,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetValueInfo,
     &OrtGraphApis::OrtGraph_SerializeToArray,
     &OrtGraphApis::OrtGraph_GetSubGraph,
+    &OrtGraphApis::OrtGraph_ReleaseGraph,
     &OrtGraphApis::OrtNode_GetName,
     &OrtGraphApis::OrtNode_GetDescription,
     &OrtGraphApis::OrtNode_GetDomain,
@@ -725,6 +741,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtNode_GetAttributeInt,
     &OrtGraphApis::OrtNode_GetAttributeFloat,
     &OrtGraphApis::OrtNode_GetSubgraphs,
+    &OrtGraphApis::OrtFreeMem,
 };
 
 ORT_API(const OrtGraphApi*, OrtGraphApis::GetGraphApi, uint32_t) {

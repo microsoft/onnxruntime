@@ -1578,6 +1578,17 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
       return ret;
     };
 
+    OrtExecutionProvider::ReleaseIndexedSubGraphs = [](OrtIndexedSubGraph** indexed_sub_graphs, size_t num_sub_graph) {
+      if (indexed_sub_graphs == nullptr) return;
+      for (size_t i = 0; i < num_sub_graph; i++) {
+        OrtIndexedSubGraph* sub_graph = indexed_sub_graphs[i];
+        delete[] sub_graph->node_index;
+        delete sub_graph->meta_def;
+        delete sub_graph;
+      }
+      delete[] indexed_sub_graphs;
+    };
+
     type = ep_type;
     create_stream = new OrtCreateStream();
     create_stream->device_type = 1; // GPU
@@ -2117,6 +2128,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   size_t buf_size = graph_api_->OrtGraph_SerializeToArray(graph_body_viewer, &buf_data);
   trt_parser->parse(buf_data, buf_size, model_path_);
   trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
+  graph_api_->OrtFreeMem(buf_data);
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
   if (fp16_enable_ && layer_norm_fp32_fallback_) {
@@ -3625,6 +3637,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 #pragma warning(disable : 4996)
 #endif
         trt_parser->supportsModel(buf_data, buf_size, parser_nodes_list, model_path_);
+        graph_api_->OrtFreeMem(buf_data);
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -3639,6 +3652,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
+        graph_api_->OrtGraph_ReleaseGraph(sub_graph_viewer);
       }
     }
   }
