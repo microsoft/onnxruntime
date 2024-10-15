@@ -49,7 +49,7 @@ jobs:
             tar -cvf /Users/distiller/project/onnxruntime_xcf.tar $HOME/onnxlibrary/macabi_release_v20230327_2320
 
       - store_artifacts:
-          path: /onnxruntime_xcf.tar
+          path: /Users/distiller/project/onnxruntime_xcf.tar
           destination: onnxruntime_xcf.tar
 workflows:
   version: 2
