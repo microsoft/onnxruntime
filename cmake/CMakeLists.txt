@@ -50,17 +50,6 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-#set(CMAKE_CXX_COMPILER "/usr/bin/clang++ --target=arm64-apple-macos14.0-macabi" ) #Paco
-#set(CMAKE_C_COMPILER "/usr/bin/clang --target=arm64-apple-macos14.0-macabi" )
-
-#set(CMAKE_CXX_FLAGS "--target=arm64-apple-macos14.0-macabi" ) #Paco
-#set(CMAKE_C_FLAGS "--target=arm64-apple-macos14.0-macabi" )
-
-# Suggested by https://gitlab.kitware.com/cmake/cmake/-/issues/20132
-# Because MacCatalyst does not support well in CMake
-add_compile_options(-Wno-overriding-t-option)
-add_link_options(-Wno-overriding-t-option)
-
 # Enable CTest
 enable_testing()
 include(Dart)
@@ -130,7 +119,7 @@ option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
-option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." ON)
+option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
 cmake_dependent_option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB "Build dump debug information about node inputs and outputs with support for sql database." OFF "onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS" OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
@@ -1661,8 +1650,6 @@ endif()
 #Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
 #The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
 set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME})
-# set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas) #Paco to be disable
-# set(ONNXRUNTIME_CMAKE_FILES onnxruntime_mlas) #Paco to be disable
 
 if (onnxruntime_USE_WINML)
   # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
