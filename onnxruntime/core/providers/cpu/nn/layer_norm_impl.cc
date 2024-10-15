@@ -5,6 +5,7 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/force_inline.h"
@@ -12,66 +13,166 @@
 
 namespace onnxruntime {
 
-// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
-template <typename T, typename Ret>
-ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
+namespace {
 
-template <>
-ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val) {
-  return val.ToFloat();
+template <typename T,
+          typename U,
+          typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
+void ComputeJob(
+    const T* X_data,
+    const T* scale_data,
+    const T* bias_data,
+    const ptrdiff_t task_idx,
+    const int64_t norm_size,
+    IAllocatorUniquePtr<float>& scale_float_uptr,
+    IAllocatorUniquePtr<float>& bias_float_uptr,
+    float epsilon,
+    bool simplified,
+    T* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data,
+    AllocatorPtr alloc) {
+  ORT_UNUSED_PARAMETER(scale_float_uptr);  // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(bias_float_uptr);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(alloc);
+
+  const T* p_input = X_data + task_idx * norm_size;
+  T* p_output = Y_data + task_idx * norm_size;
+
+  T mean(0.0f);
+  T mean_square(0.0f);
+
+  for (int64_t h = 0; h < norm_size; h++) {
+    p_output[h] = p_input[h];
+    mean += p_input[h];
+    mean_square += p_input[h] * p_input[h];
+  }
+
+  mean = mean / norm_size;
+  if (simplified) {
+    mean_square = sqrt(mean_square / norm_size + epsilon);
+  } else {
+    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
+  }
+
+  for (int64_t h = 0; h < norm_size; h++) {
+    if (simplified) {
+      p_output[h] = p_output[h] / mean_square * scale_data[h];
+    } else if (nullptr == bias_data) {
+      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[h];
+    } else {
+      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+    }
+  }
+
+  if (mean_data != nullptr) {
+    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
+    mean_data[task_idx] = gsl::narrow_cast<float>(mean);
+  }
+
+  if (inv_std_dev_data != nullptr) {
+    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / mean_square);
+  }
 }
 
-template <>
-ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val) {
-  return double(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
+template <typename U>
+void ComputeJob(
+    const MLFloat16* X_data,
+    const MLFloat16* scale_data,
+    const MLFloat16* bias_data,
+    const ptrdiff_t task_idx,
+    const int64_t norm_size,
+    IAllocatorUniquePtr<float>& scale_float_uptr,
+    IAllocatorUniquePtr<float>& bias_float_uptr,
+    float epsilon,
+    bool simplified,
+    MLFloat16* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data,
+    AllocatorPtr alloc) {
+  const MLFloat16* p_input = X_data + task_idx * norm_size;
+  MLFloat16* p_output = Y_data + task_idx * norm_size;
+
+  float mean(0.0f);
+  float mean_square(0.0f);
+
+  const size_t num_elems = static_cast<size_t>(norm_size);
+  IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
+
+  IAllocatorUniquePtr<float> output_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+  float* output_float_ptr = output_float_uptr.get();
+
+  const float* input_float_ptr = input_float_uptr.get();
+  for (size_t h = 0; h < num_elems; h++) {
+    output_float_ptr[h] = input_float_ptr[h];
+    mean += input_float_ptr[h];
+    mean_square += input_float_ptr[h] * input_float_ptr[h];
+  }
+
+  mean = mean / norm_size;
+  if (simplified) {
+    mean_square = sqrt(mean_square / norm_size + epsilon);
+  } else {
+    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
+  }
+
+  if (!scale_float_uptr) {
+    scale_float_uptr = std::move(input_float_uptr);  // overwrite input with scale values, since they have the same size
+    MlasConvertHalfToFloatBuffer(scale_data, scale_float_uptr.get(), num_elems);
+  }
+
+  if (bias_data && !bias_float_uptr) {
+    bias_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+    MlasConvertHalfToFloatBuffer(bias_data, bias_float_uptr.get(), num_elems);
+  }
+
+  const float* scale_float_ptr = scale_float_uptr.get();
+  const float* bias_float_ptr = bias_float_uptr.get();
+  for (size_t h = 0; h < num_elems; h++) {
+    if (simplified) {
+      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[h];
+    } else if (nullptr == bias_data) {
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h];
+    } else {
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h] + bias_float_ptr[h];
+    }
+  }
+
+  MlasConvertFloatToHalfBuffer(output_float_ptr, p_output, num_elems);
+
+  if (mean_data != nullptr) {
+    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
+    mean_data[task_idx] = MLFloat16(mean);
+  }
+
+  if (inv_std_dev_data != nullptr) {
+    inv_std_dev_data[task_idx] = MLFloat16(1 / mean_square);
+  }
 }
 
-template <>
-ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val) {
-  return val;
+void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
+  if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
+    auto tensor_data_ptr = tensor.Data<MLFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+
+    MlasConvertHalfToFloatBuffer(tensor_data_ptr, float_ptr.get(), tensor_size);
+    dest = std::move(float_ptr);
+    is_packed = true;
+  }
 }
 
-template <>
-ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val) {
-  return val;
-}
-
-ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(float val) {
-  return val;
-}
-
-ORT_FORCEINLINE constexpr float ConvertToFloatIfNeeded(double val) {
-  // ONNX spec doesn't support 'double' for 'Ret' so when 'T' == double, 'Ret' == float and we need to narrow
-  return gsl::narrow_cast<float>(val);
-}
-
-// Function template that only converts the input value to MLFloat16 if T is MLFloat16.
-template <typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, float>
-ConvertToMLFloat16IfNeeded(float val) {
-  return val;
-}
-
-template <typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, MLFloat16>
-ConvertToMLFloat16IfNeeded(float val) {
-  return MLFloat16(val);
-}
-
-template <typename T>
-ORT_FORCEINLINE constexpr double ConvertToMLFloat16IfNeeded(double val) {
-  return val;
-}
+}  // namespace
 
 LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified, bool contrib_op)
-    : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op} {
+    : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op}, scale_fp32_(nullptr), bias_fp32_(nullptr) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
-namespace {
 template <typename T, typename U>
-Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) {
+Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) const {
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = p_ctx->Input<Tensor>(1);
@@ -81,21 +182,12 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
   const T* bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
-  const int64_t axis = HandleNegativeAxis(orig_axis, x_shape.NumDimensions());
-  int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
-  int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
-
-  const auto scale_size = scale->Shape().Size();
-  const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
-  if (scale_size != norm_size || (bias_data && bias_size != norm_size)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Size of X.shape()[axis:] == ", norm_size,
-                           ". Size of scale and bias (if provided) must match this. Got scale size of ",
-                           scale_size, " and bias size of ", bias_size);
-  }
-
+  const TensorShape& scale_shape = scale->Shape();
+  const TensorShape& bias_shape = bias->Shape();
   Tensor* Y = p_ctx->Output(0, x_shape);
-  auto Y_data = Y->MutableData<T>();
+  T* Y_data = Y->MutableData<T>();
+
+  const int64_t axis = HandleNegativeAxis(orig_axis, x_shape.NumDimensions());
 
   std::vector<int64_t> mean_inv_std_dev_dim;
   mean_inv_std_dev_dim.reserve(x_shape.NumDimensions());
@@ -107,11 +199,7 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
     }
   }
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
-
   int output_index = 1;
-
   U* mean_data = nullptr;
   if (!simplified) {
     Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_dev_dim));
@@ -126,79 +214,13 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
     inv_std_dev_data = inv_std_dev->MutableData<U>();
   }
 
-  concurrency::ThreadPool::TryBatchParallelFor(
-      p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(norm_count),
-      [&](ptrdiff_t task_idx) {
-        const T* p_input = X_data + task_idx * norm_size;
-        T* p_output = Y_data + task_idx * norm_size;
+  onnxruntime::concurrency::ThreadPool* thread_pool = p_ctx->GetOperatorThreadPool();
 
-        using DoubleOrFloat = typename std::conditional<
-            std::is_same<T, double>::value,  // If T is double
-            double,                          // Use double
-            float                            // Otherwise, use float (covers float and MLFloat16)
-            >::type;
-
-        DoubleOrFloat mean(0.0f);
-        DoubleOrFloat mean_square(0.0f);
-
-        for (int64_t h = 0; h < norm_size; h++) {
-          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
-          mean += input_value;
-          mean_square += input_value * input_value;
-        }
-
-        mean = mean / norm_size;
-        if (simplified) {
-          mean_square = sqrt(mean_square / norm_size + epsilon);
-        } else {
-          mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
-        }
-
-        for (int64_t h = 0; h < norm_size; h++) {
-          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
-          DoubleOrFloat scale_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(scale_data[h]);
-          if (simplified) {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>(input_value / mean_square * scale_value);
-          } else if (nullptr == bias) {
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value);
-          } else {
-            DoubleOrFloat bias_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
-            p_output[h] = ConvertToMLFloat16IfNeeded<T>((input_value - mean) / mean_square * scale_value + bias_value);
-          }
-        }
-
-        if (mean_data != nullptr) {
-          // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-          mean_data[task_idx] = ConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(mean));
-        }
-
-        if (inv_std_dev_data != nullptr) {
-          inv_std_dev_data[task_idx] = ConvertToMLFloat16IfNeeded<U>(ConvertToFloatIfNeeded(1 / mean_square));
-        }
-      },
-      0);
-
-  return Status::OK();
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
+  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape, Y_data, mean_data,
+                                     inv_std_dev_data, thread_pool, axis, epsilon, simplified, alloc);
 }
-
-template <typename T>
-struct SrcDispatcher {
-  Status operator()(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified, bool contrib_op) const {
-    // the contrib op kernel was always registered with the same type for all constraints.
-    // our implementation of the onnx op only supports 'float' as the U constraint.
-#if !defined(DISABLE_CONTRIB_OPS)
-    if (contrib_op) {
-      return ComputeImpl<T, T>(p_ctx, orig_axis, epsilon, simplified);
-    } else
-#else
-    ORT_UNUSED_PARAMETER(contrib_op);
-#endif
-    {
-      return ComputeImpl<T, float>(p_ctx, orig_axis, epsilon, simplified);
-    }
-  }
-};
-}  // namespace
 
 Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
   const auto elem_type = p_ctx->Input<Tensor>(0)->GetElementType();
@@ -206,7 +228,60 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
   using SupportedTypeList = boost::mp11::mp_list<float, double, MLFloat16>;
 
   utils::MLTypeCallDispatcherFromTypeList<SupportedTypeList> t_disp(elem_type);
-  return t_disp.InvokeRet<Status, SrcDispatcher>(p_ctx, axis_, epsilon_, simplified_, contrib_op_);
+  return t_disp.InvokeRet<Status, SrcDispatcher>(this, p_ctx, axis_, epsilon_, simplified_, contrib_op_);
+}
+
+Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+
+  is_packed = false;
+  if (input_idx == 1) {  // scale
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, scale_fp32_, is_packed);
+  } else if (input_idx == 2) {  // bias
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, bias_fp32_, is_packed);
+  }
+
+  return Status::OK();
+}
+
+template <typename T, typename U>
+Status LayerNormImpl::ComputeWithoutContext(
+    const T* X_data,
+    const TensorShape& x_shape,
+    const T* scale_data,
+    const TensorShape& scale_shape,
+    const T* bias_data,
+    const TensorShape& bias_shape,
+    T* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data,
+    onnxruntime::concurrency::ThreadPool* thread_pool,
+    int64_t axis,
+    float epsilon,
+    bool simplified,
+    AllocatorPtr alloc) const {
+  int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
+  int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
+
+  const auto scale_size = scale_shape.Size();
+  const auto bias_size = (bias_data) ? bias_shape.Size() : 0;
+  if (scale_size != norm_size || (bias_data && bias_size != norm_size)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Size of X.shape()[axis:] == ", norm_size,
+                           ". Size of scale and bias (if provided) must match this. Got scale size of ",
+                           scale_size, " and bias size of ", bias_size);
+  }
+
+  concurrency::ThreadPool::TryBatchParallelFor(
+      thread_pool, static_cast<int32_t>(norm_count),
+      [&](ptrdiff_t task_idx) {
+        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_, bias_fp32_,
+                   epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
+      },
+      0);
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime
