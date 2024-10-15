@@ -280,7 +280,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         super().__init__(
             algorithm="nvidia_awq",
-            quant_format=quant_format,
+            quant_format=QuantFormat.QDQ,
             op_types_to_quantize=None,  # Assuming op_types_to_quantize is handled elsewhere
             quant_axes=None,  # Assuming quant_axes is handled elsewhere
         )
