@@ -76,6 +76,8 @@ public:
 
         ret.push_back(std::make_unique<ComputeCapability>(std::move(sb)));
     }
+
+    if (indexed_subgraph && ep_impl_->ReleaseIndexedSubGraphs) ep_impl_->ReleaseIndexedSubGraphs(indexed_subgraph, cnt);
     return ret;
   }
 

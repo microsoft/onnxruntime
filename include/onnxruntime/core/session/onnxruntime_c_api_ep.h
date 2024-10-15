@@ -74,6 +74,7 @@ typedef struct OrtExecutionProvider {
   bool(ORT_API_CALL* CanCopy)(const OrtDevice* source, const OrtDevice* target);
   OrtStatusPtr(ORT_API_CALL* CopyTensor)(const void* src, OrtMemoryInfoDeviceType source_device_type, OrtMemoryType source_mem_type, void* dst, OrtMemoryInfoDeviceType target_device_type, size_t count, void* stream);
   int(ORT_API_CALL* CreatePreferredAllocators)(OrtExecutionProvider* this_, OrtAllocator*** ort_allocators);
+  void(ORT_API_CALL* ReleaseIndexedSubGraphs)(OrtIndexedSubGraph** indexed_sub_graphs, size_t num_sub_graph);
   const char* type;
   OrtCreateStream* create_stream;
   const OrtDevice* default_device;
@@ -128,6 +129,8 @@ size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ voi
 
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
 
+ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraphViewer* graph);
+
 const char*(ORT_API_CALL* OrtNode_GetName)(const OrtNode* node);
 
 const char*(ORT_API_CALL* OrtNode_GetDescription)(const OrtNode* node);
@@ -181,5 +184,7 @@ int64_t(ORT_API_CALL* OrtNode_GetAttributeInt)(const OrtNode*, const char* key)N
 float(ORT_API_CALL* OrtNode_GetAttributeFloat)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
 size_t(ORT_API_CALL* OrtNode_GetSubgraphs)(const OrtNode* node, _Outptr_ const OrtGraphViewer*** subgraphs);
+
+ORT_API2_STATUS(OrtFreeMem, void* p);
 };
 typedef struct OrtGraphApi OrtGraphApi;
