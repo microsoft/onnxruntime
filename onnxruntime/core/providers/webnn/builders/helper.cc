@@ -12,6 +12,19 @@
 namespace onnxruntime {
 namespace webnn {
 
+WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type) {
+  if (device_type == "gpu") {
+    return WebnnDeviceType::GPU;
+  }
+  if (device_type == "cpu") {
+    return WebnnDeviceType::CPU;
+  }
+  if (device_type == "npu") {
+    return WebnnDeviceType::NPU;
+  }
+  ORT_THROW("Unknown WebNN deviceType.");
+}
+
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer) {
   InitializedTensorSet all_initializers;
   if (graph_viewer.IsSubgraph()) {
@@ -45,12 +58,12 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer,
-                     const WebnnDeviceType device_type, const logging::Logger& logger) {
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const WebnnDeviceType device_type,
+                     const emscripten::val& wnn_limits, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, logger);
+    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, wnn_limits, logger);
   } else {
     return false;
   }
@@ -86,6 +99,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                       const emscripten::val& wnn_builder,
                                                       const WebnnDeviceType device_type,
+                                                      const emscripten::val& wnn_limits,
                                                       const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
 
@@ -105,7 +119,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
     // Firstly check if platform supports the WebNN op.
     if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
       LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType() << "] is supported by browser";
-      supported = IsNodeSupported(*node, graph_viewer, device_type, logger);
+      supported = IsNodeSupported(*node, graph_viewer, device_type, wnn_limits, logger);
     }
 
     LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
@@ -130,10 +144,54 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
-bool IsSupportedDataType(const int32_t data_type,
-                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types) {
-  return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) !=
-         supported_data_types.end();
+bool AreInputDataTypesSame(const std::string& op_type,
+                           gsl::span<const int32_t> input_types,
+                           const logging::Logger& logger) {
+  for (size_t i = 1; i < input_types.size(); i++) {
+    if (input_types[0] != input_types[i]) {
+      LOGS(logger, VERBOSE) << "[" << op_type
+                            << "] Input data types should be the same, but ["
+                            << input_types[0] << "] does not match "
+                            << input_types[i] << "].";
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types) {
+  auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(onnx_data_type));
+  if (it == onnx_to_webnn_data_type_map.end())
+    return false;
+
+  std::string webnn_data_type = it->second;
+
+  // Check if WebNN supports the data type.
+  emscripten::val is_supported = webnn_supported_data_types.call<emscripten::val>("includes",
+                                                                                  emscripten::val(webnn_data_type));
+  return is_supported.as<bool>();
+}
+
+// Check if the input or output data type of ONNX node is supported by the WebNN operator.
+bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
+                             const int32_t onnx_data_type,
+                             const emscripten::val& wnn_limits,
+                             const std::string& webnn_input_output_name,
+                             const std::string& onnx_input_output_name,
+                             const logging::Logger& logger) {
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(onnx_op_type, webnn_op_type))
+    return false;
+
+  if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type
+                          << "] " << onnx_input_output_name
+                          << " type: [" << onnx_data_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
 }
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
@@ -196,6 +254,11 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
     default:
       return false;
   }
+}
+
+bool IsMLTensorSupported() {
+  static bool is_supported = !emscripten::val::global("MLTensor").isUndefined();
+  return is_supported;
 }
 
 }  // namespace webnn

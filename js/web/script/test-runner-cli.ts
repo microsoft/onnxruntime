@@ -161,6 +161,7 @@ async function main() {
     op: opTestGroups,
     log: args.logConfig,
     profile: args.profile,
+    downloadModel: args.downloadModel,
     options: {
       sessionOptions: {
         graphOptimizationLevel: args.graphOptimizationLevel,
@@ -380,7 +381,7 @@ async function main() {
     }
 
     let ioBinding: Test.IOBindingMode;
-    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+    if (!['webgpu', 'webnn'].includes(backend) && args.ioBindingMode !== 'none') {
       npmlog.warn(
         'TestRunnerCli.Init.Model',
         `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`,

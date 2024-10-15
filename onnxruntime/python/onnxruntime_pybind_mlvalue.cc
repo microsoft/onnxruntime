@@ -87,15 +87,15 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
@@ -226,7 +226,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
       auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_device_guid, dml_device.Get()));
 
-      context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true, true);
+      context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true);
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, context.Get()));
     }
 
@@ -465,6 +465,10 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   } else {
     return it->second;
   }
+}
+
+MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type) {
+  return DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)->GetElementType();
 }
 
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of

@@ -21,12 +21,13 @@ namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            const emscripten::val& context, const DataLayout preferred_layout,
-                           const WebnnDeviceType wnn_device_type)
+                           const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
       preferred_layout_(preferred_layout),
-      wnn_device_type_(wnn_device_type) {
+      wnn_device_type_(wnn_device_type),
+      wnn_limits_(wnn_limits) {
   // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
   // is only allowed to be called once.
   wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(context);
@@ -99,10 +100,14 @@ Status ModelBuilder::RegisterInitializers() {
                    [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
 
     emscripten::val desc = emscripten::val::object();
+    // TODO: @Honry, remove all MLOperandDescriptor.dimensions usage in the future.
+    // MLOperandDescriptor.dimensions is deprecated in WebNN API, we need to keep it
+    // in WebNN EP for a while to support older Chromium versions.
     desc.set("dimensions", emscripten::val::array(dims));
+    desc.set("shape", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (IsSupportedDataType(data_type, webnn_supported_data_types)) {
+    if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
       auto num_elements = SafeInt<size_t>(Product(shape));
       emscripten::val view = emscripten::val::undefined();
@@ -202,6 +207,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   emscripten::val desc = emscripten::val::object();
 
   desc.set("dimensions", emscripten::val::array(dims));
+  desc.set("shape", emscripten::val::array(dims));
 
   int32_t data_type;
   {  // type
@@ -302,6 +308,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   }
 
   desc.set("dimensions", emscripten::val::array(shape));
+  desc.set("shape", emscripten::val::array(shape));
   emscripten::val operand = emscripten::val::object();
   // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
   // buffers in JS side. Simply create a copy to fix it.
@@ -333,7 +340,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   }
   // Explicitly release the WebNN builder to free memory.
   wnn_builder_ = emscripten::val::undefined();
-  model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_));
+  model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_, IsMLTensorSupported()));
   model->SetInputs(std::move(input_names_));
   model->SetOutputs(std::move(output_names_));
   model->SetInputOutputInfo(std::move(input_output_info_));
@@ -353,27 +360,49 @@ void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& op
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-value-type
 // BTW, the spec is discussing if the builer.constant(value, type) should be dropped at
 // https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
-const emscripten::val& ModelBuilder::GetZeroConstant(const std::string& data_type) {
-  std::string name = "webnn_zero_constant_" + data_type;
+const emscripten::val& ModelBuilder::GetZeroConstant(const int32_t& data_type) {
+  std::string name = "webnn_zero_constant_" + std::to_string(data_type);
   // If the operand does not exist, create it.
   if (wnn_operands_.find(name) == wnn_operands_.end()) {
     emscripten::val desc = emscripten::val::object();
     emscripten::val dims = emscripten::val::array();
     desc.set("dimensions", dims);
+    desc.set("shape", dims);
     emscripten::val zero_buffer = emscripten::val::undefined();
-    if (data_type == "uint8") {
-      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
-        ORT_THROW("Unsupported data type: " + data_type);
-      }
-      zero_buffer = emscripten::val::global("Uint8Array").new_(1);
-    } else if (data_type == "float32") {
-      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-        ORT_THROW("Unsupported data type: " + data_type);
-      }
-      zero_buffer = emscripten::val::global("Float32Array").new_(1);
-    } else {
-      ORT_THROW("Unsupported data type: " + data_type);
+    if (!SetWebnnDataType(desc, data_type)) {
+      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
     }
+
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        zero_buffer = emscripten::val::global("Uint8Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        zero_buffer = emscripten::val::global("Int8Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        zero_buffer = emscripten::val::global("Uint16Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        zero_buffer = emscripten::val::global("Float32Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        zero_buffer = emscripten::val::global("Int32Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        zero_buffer = emscripten::val::global("BigInt64Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        zero_buffer = emscripten::val::global("Uint32Array").new_(1);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        zero_buffer = emscripten::val::global("BigUint64Array").new_(1);
+        break;
+      default:
+        break;
+    }
+
     emscripten::val zero_constant = wnn_builder_.call<emscripten::val>("constant", desc, zero_buffer);
     wnn_operands_.insert(std::make_pair(name, zero_constant));
   }

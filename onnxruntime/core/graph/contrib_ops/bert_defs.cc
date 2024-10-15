@@ -787,14 +787,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(7,
                "beam_width",
-               "The beam width that is being used while decoding."
+               "The beam width that is being used while decoding. "
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
         .Input(8,
                "cache_indirection",
-               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
-               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
+               "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -871,7 +871,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "attention_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -902,15 +902,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "beam_width",
-               "The beam width that is being used while decoding."
+               "The beam width that is being used while decoding. "
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
         .Input(9,
                "cache_indirection",
                // This input is useful for CUDA EP only.
-               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
-               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
+               "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
                OpSchema::Optional)
         .Input(10,
@@ -940,7 +940,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(3,
                 "qk",
-                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
+                "normalized Q * K, of shape (batch_size, num_heads, 1, total_sequence_length). ",
                 "V",
                 OpSchema::Optional)
         .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
@@ -1049,6 +1049,8 @@ Supports different number of heads for q and kv for CPU and CUDA.
 Only supports causal and local attention.
 Supports rotary position embedding for CPU and CUDA.
 Supports packed input for CPU and CUDA.
+Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1110,12 +1112,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
-               // For prompt, the value is number of tokens (excluding padding) - 1.
-               "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
+               "1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).",
                "M")
         .Input(6,
                "total_sequence_length",
-               "Scalar tensor of total sequence length (past + new).",
+               "Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for "
+               "checking inputs and determining prompt vs token generation case.",
                "M")
         .Input(7,
                "cos_cache",

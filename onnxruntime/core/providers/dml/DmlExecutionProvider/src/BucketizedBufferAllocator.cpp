@@ -186,7 +186,7 @@ namespace Dml
         }
         else
         {
-            if (!m_context->IsClosed())
+            if (!m_closed)
             {
                 // Free the underlying allocation once queued work has completed.
     #ifdef _GAMING_XBOX

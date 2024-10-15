@@ -48,14 +48,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);
 
-#ifndef NDEBUG
-  if (IsDebugEnabled()) {
-    std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
-    std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(outfile);
-  }
-#endif
-
   try {
     std::string dev_prec = global_context.device_type + "_" + global_context_.precision_str;
 
@@ -91,7 +83,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                            subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else if (global_context_.export_ep_ctx_blob &&
-                 hw_target.find("NPU") != std::string::npos) {
+                 hw_target.find("NPU") != std::string::npos &&
+                 !global_context_.has_external_weights) {
         std::shared_ptr<ov::Model> ov_model;
         {
           const std::string model = model_proto->SerializeAsString();
@@ -101,7 +94,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
           ov_model = global_context_.ie_core.Get().read_model(model, ov::Tensor());
         }
         exe_network_ = OVExeNetwork(global_context_.ie_core.Get().compile_model(ov_model, hw_target, device_config));
-      } else if ((!subgraph_context_.has_dynamic_input_shape) &&
+      } else if (!global_context_.has_external_weights &&
+                 (!subgraph_context_.has_dynamic_input_shape) &&
                  ((hw_target.find("AUTO") == std::string::npos) ||
                   (global_context_.OpenVINO_Version.at(0) >= 2024 && global_context_.OpenVINO_Version.at(1) > 2))) {
         // Optimized OV compile_model API is supported with AUTO from version 2024.3 and above
@@ -180,6 +174,79 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       device_property = std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type);
     }
     device_config.emplace(ov::device::properties("NPU", device_property));
+#if (OPENVINO_VERSION_MAJOR >= 2024) && (OPENVINO_VERSION_MINOR > 3)
+    if (global_context_.export_ep_ctx_blob) {
+      global_context_.ie_core.Get().set_property("NPU", ov::intel_npu::bypass_umd_caching(true));
+    }
+#endif
+  }
+
+  if (!global_context_.load_config.empty()) {
+    const std::map<std::string, ov::AnyMap>& target_config = global_context_.load_config;
+
+    // Parse device types like "AUTO:CPU,GPU" and extract individual devices
+    auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
+      std::vector<std::string> devices;
+      auto delimiter_pos = device_type.find(':');
+      if (delimiter_pos != std::string::npos) {
+        std::stringstream str_stream(device_type.substr(delimiter_pos + 1));
+        std::string device;
+        while (std::getline(str_stream, device, ',')) {
+          devices.emplace_back(device);
+        }
+      } else {
+        devices.emplace_back(device_type);
+      }
+      return devices;
+    };
+
+    // Check if a property is supported and mutable
+    auto is_supported_and_mutable = [&](const std::string& key,
+                                        const std::vector<ov::PropertyName>& supported_config) -> bool {
+      auto it = std::find_if(supported_config.begin(), supported_config.end(), [&](const ov::PropertyName& property) {
+        return property == key && property.is_mutable();
+      });
+      return it != supported_config.end();
+    };
+
+    // Set properties if they are valid, else log a warning if the property is missing or immutable by skipping the same
+    auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
+                                     const std::vector<ov::PropertyName>& supported_properties) {
+      for (const auto& [key, value] : config_options) {
+        if (is_supported_and_mutable(key, supported_properties)) {
+          global_context_.ie_core.Get().set_property(device, ov::AnyMap{{key, value}});
+        } else {
+          LOGS_DEFAULT(WARNING) << "WARNING: Property \"" << key
+                                << "\" is either unsupported in current OpenVINO version"
+                                << " or property is immutable for target device \""
+                                << device << "\". Skipping setting this property.";
+        }
+      }
+    };
+
+    // Check if the device type is AUTO, HETERO, or MULTI
+    if (global_context_.device_type.find("AUTO") == 0 ||
+        global_context_.device_type.find("HETERO") == 0 ||
+        global_context_.device_type.find("MULTI") == 0) {
+      // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
+      auto individual_devices = parse_individual_devices(global_context_.device_type);
+      // Set properties only for individual devices (e.g., "CPU", "GPU")
+      for (const std::string& device : individual_devices) {
+        if (target_config.count(device)) {
+          // Get supported properties for each individual device
+          auto device_properties = global_context_.ie_core.Get().get_property(device, ov::supported_properties);
+          // Set properties for the device
+          set_target_properties(device, target_config.at(device), device_properties);
+        }
+      }
+    } else {
+      if (target_config.count(global_context_.device_type)) {
+        auto supported_properties = global_context_.ie_core.Get().get_property(global_context_.device_type,
+                                                                               ov::supported_properties);
+        set_target_properties(global_context_.device_type,
+                              target_config.at(global_context_.device_type), supported_properties);
+      }
+    }
   }
 }
 
@@ -278,7 +345,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           input_tensor_shape[tensor_iter] = *i;
           tensor_iter += 1;
         }
-        auto input = graph_input_info.at(input_idx);
+        const auto& input = graph_input_info.at(input_idx);
         OVTensorPtr tensor_ptr;
         // avoid input copies on the CPU device
         if (global_context_.device_type.find("CPU") != std::string::npos) {
@@ -295,16 +362,84 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           ORT_THROW(msg);
         }
       } else {
-        OVTensorPtr graph_input_blob;
-        try {
-          graph_input_blob = infer_request->GetTensor(input_name);
-        } catch (const char* msg) {
-          ORT_THROW(msg);
+        if ((global_context_.device_type.find("CPU") != std::string::npos ||
+             global_context_.device_type.find("GPU") != std::string::npos)) {
+          OVTensorPtr graph_input_blob;
+          try {
+            graph_input_blob = infer_request->GetTensor(input_name);
+          } catch (const char* msg) {
+            ORT_THROW(msg);
+          }
+          FillInputBlob(std::move(graph_input_blob), batch_slice_idx, std::move(input_name), context, subgraph_context_);
+        } else {
+          auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
+          ort_tensor_key_t ort_tensor_key{input_name};
+          auto it = ort_ov_tensor_map.find(ort_tensor_key);
+          if ((it == ort_ov_tensor_map.end()) ||
+              (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
+            ov_tensor_data_t ov_tensor_data;
+            auto input = graph_input_info.at(input_idx);
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
+                                                                     const_cast<void*>(tensor.GetTensorRawData()));
+
+            ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
+            ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
+
+            try {
+              infer_request->SetTensor(std::move(input_name), ov_tensor_data.tensor_ptr);
+            } catch (const char* msg) {
+              ORT_THROW(msg);
+            }
+          }
         }
-        FillInputBlob(std::move(graph_input_blob), batch_slice_idx, std::move(input_name), context, subgraph_context_);
       }
       input_idx++;
     }
+    if (global_context_.device_type.find("NPU") != std::string::npos) {
+      // Set the output blob as remote blob
+      auto graph_output_info = exe_network_.Get().outputs();
+      auto output_idx = 0;
+      for (auto output_info_iter = graph_output_info.begin();
+           output_info_iter != graph_output_info.end(); ++output_info_iter) {
+        auto output_names = output_info_iter->get_names();
+        std::string onnx_output_name;
+        std::string output_name;
+        // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
+        for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
+          onnx_output_name = it->first;
+          if (output_names.find(onnx_output_name) != output_names.end()) {
+            // Assigning the output_name
+            output_name = it->first;
+            break;
+          }
+        }
+        size_t batch_size = 1;
+        Ort::UnownedValue tensor = GetOutputTensor(context,
+                                                   batch_size,
+                                                   infer_request,
+                                                   output_name,
+                                                   subgraph_context_.output_names);
+        ort_tensor_key_t ort_tensor_key{output_name};
+        const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
+        if ((it == ort_ov_tensor_map.end()) ||
+            (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
+          ov_tensor_data_t ov_tensor_data;
+          const auto& output = graph_output_info.at(output_idx);
+          ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
+          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_shape(),
+                                                                   const_cast<void*>(tensor.GetTensorRawData()));
+          ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
+
+          try {
+            infer_request->SetTensor(std::move(output_name), ov_tensor_data.tensor_ptr);
+          } catch (const char* msg) {
+            ORT_THROW(msg);
+          }
+        }
+        output_idx++;
+      }
+    }
+
     // Start Async inference
     infer_request->StartAsync();
   } catch (const char* msg) {
@@ -454,20 +589,23 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
             " doesn't exist in the "
             "list of OpenVINO output tensor names");
       }
-      try {
-        graph_output_blob = infer_request->GetTensor(output_name);
-      } catch (const char* msg) {
-        ORT_THROW(msg);
-      }
-      size_t batch_size = 1;
-      Ort::UnownedValue output_tensor =
-          GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
-      auto mem_info = output_tensor.GetTensorMemoryInfo();
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        return;
-      } else {
-        size_t batch_slice = 0;
-        FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
+      if ((global_context_.device_type.find("CPU") != std::string::npos ||
+           global_context_.device_type.find("GPU") != std::string::npos)) {
+        try {
+          graph_output_blob = infer_request->GetTensor(output_name);
+        } catch (const char* msg) {
+          ORT_THROW(msg);
+        }
+        size_t batch_size = 1;
+        Ort::UnownedValue output_tensor =
+            GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
+        auto mem_info = output_tensor.GetTensorMemoryInfo();
+        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+          return;
+        } else {
+          size_t batch_slice = 0;
+          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
+        }
       }
     }
 
