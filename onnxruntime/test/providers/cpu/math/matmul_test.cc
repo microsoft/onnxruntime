@@ -208,7 +208,7 @@ TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, false);
 }
 
-TEST(MathOpTest, MatMulFloatType) {
+TEST(MathOpTest, MatMulFloat16) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
@@ -255,7 +255,7 @@ TEST(MathOpTest, MatMulFloatTypeInitializer) {
   RunMatMulTest<float>(7, false, true);
 }
 
-TEST(MathOpTest, MatMulFloatTypeInitializer) {
+TEST(MathOpTest, MatMulFloat16Initializer) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
