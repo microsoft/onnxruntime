@@ -1,5 +1,4 @@
 import java.nio.file.Paths
-
 buildscript {
   repositories {
     google()
@@ -12,9 +11,7 @@ buildscript {
   }
 }
 
-plugins {
-  id 'com.android.library'
-}
+apply plugin: 'com.android.library'
 
 def getExtOrDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties['OnnxruntimeModule_' + name]
