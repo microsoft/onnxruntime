@@ -127,7 +127,7 @@ namespace perftest {
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.\n"
       "\t    [Example] [For NNAPI EP] -e nnapi -i \"NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED\"\n"
       "\n"
-      "\t    [CoreML only] [COREML_FLAG_CREATE_MLPROGRAM]: Create an ML Program model instead of Neural Network.\n"
+      "\t    [CoreML only] [COREML_FLAG_CREATE_MLPROGRAM COREML_FLAG_USE_CPU_ONLY COREML_FLAG_USE_CPU_AND_GPU]: Create an ML Program model instead of Neural Network.\n"
       "\t    [Example] [For CoreML EP] -e coreml -i \"COREML_FLAG_CREATE_MLPROGRAM\"\n"
       "\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"

@@ -37,8 +37,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  rocblas_handle PerThreadDefaultRocblasHandle() {
-    return GetPerThreadContext().RocblasHandle();
+  hipblasHandle_t PerThreadDefaultHipblasHandle() {
+    return GetPerThreadContext().HipblasHandle();
   }
 
   miopenHandle_t PerThreadDefaultMiopenHandle() {
@@ -99,8 +99,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
                      ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
     ~PerThreadContext();
 
-    rocblas_handle RocblasHandle() const {
-      return rocblas_handle_;
+    hipblasHandle_t HipblasHandle() const {
+      return hipblas_handle_;
     }
 
     miopenHandle_t MiopenHandle() const {
@@ -146,7 +146,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
-    rocblas_handle rocblas_handle_ = nullptr;
+    hipblasHandle_t hipblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
 
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
