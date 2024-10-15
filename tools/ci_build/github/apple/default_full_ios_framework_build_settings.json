@@ -24,17 +24,17 @@
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
-            "--apple_deploy_target=12.0"
+            "--apple_deploy_target=16.6"
         ],
         "iphonesimulator": [
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
-            "--apple_deploy_target=12.0"
+            "--apple_deploy_target=16.6"
         ],
         "macabi":[
             "--macos=Catalyst",
-            "--apple_deploy_target=14.0"
+            "--apple_deploy_target=16.6"
         ]
     }
 }
