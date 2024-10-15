@@ -173,8 +173,8 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
                                                           OrtArenaCfg* /*default_memory_arena_cfg*/) {
   HIP_CALL_THROW(hipSetDevice(device_id));
 
-  ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-  ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
+  HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
+  HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
 
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
   MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
@@ -183,7 +183,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
-  ORT_IGNORE_RETURN_VALUE(ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(HIPBLAS_CALL(hipblasDestroy(hipblas_handle_)));
   ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(miopen_handle_)));
 }
 
@@ -2521,7 +2521,7 @@ void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
                             stream_,
                             use_ep_level_unified_stream_,
                             GetPerThreadContext().MiopenHandle(),
-                            GetPerThreadContext().RocblasHandle());
+                            GetPerThreadContext().HipblasHandle());
 }
 
 OrtDevice ROCMExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
