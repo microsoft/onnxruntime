@@ -113,7 +113,7 @@ Status GemmFloat8::ComputeFp8Fp16Fp16(
   onnxruntime::rocm::tunable::blas::GemmFloat8Params<Fp8T, MLFloat16, MLFloat16> params{};
   params.tuning_ctx = GetTuningContext();
   params.stream = ctx->GetComputeStream();
-  params.handle = GetRocblasHandle(ctx);
+  params.handle = GetHipblasHandle(ctx);
   params.opa = transA_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
   params.opb = transB_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
 
@@ -157,7 +157,7 @@ Status GemmFloat8::ComputeFp16Fp8Fp16(
   onnxruntime::rocm::tunable::blas::GemmFloat8Params<MLFloat16, Fp8T, MLFloat16> params{};
   params.tuning_ctx = GetTuningContext();
   params.stream = ctx->GetComputeStream();
-  params.handle = GetRocblasHandle(ctx);
+  params.handle = GetHipblasHandle(ctx);
   params.opa = transA_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
   params.opb = transB_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
 

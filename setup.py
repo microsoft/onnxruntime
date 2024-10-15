@@ -244,6 +244,7 @@ try:
                     "libMIOpen.so.1",
                     "libnuma.so.1",
                     "librccl.so.1",
+                    "libhipblas.so.2",
                     "librocblas.so.3",
                     "librocblas.so.4",
                     "librocfft.so.0",

@@ -89,12 +89,12 @@ class RocmKernel : public OpKernel {
     return stream->miopen_handle_;
   }
 
-  inline rocblas_handle GetRocblasHandle(OpKernelContext* ctx) const {
-    return GetRocblasHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  inline hipblasHandle_t GetHipblasHandle(OpKernelContext* ctx) const {
+    return GetHipblasHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
   }
 
-  static inline rocblas_handle GetRocblasHandle(onnxruntime::RocmStream* stream) {
-    return stream->rocblas_handle_;
+  static inline hipblasHandle_t GetHipblasHandle(onnxruntime::RocmStream* stream) {
+    return stream->hipblas_handle_;
   }
 
   tunable::RocmTuningContext* GetTuningContext() const {
@@ -169,8 +169,8 @@ class RocmKernel : public OpKernel {
     const RocmKernel* op_kernel_;
   };
 
-  inline rocblas_handle DefaultRocblasHandle() const {
-    return provider_->PerThreadDefaultRocblasHandle();
+  inline hipblasHandle_t DefaultHipblasHandle() const {
+    return provider_->PerThreadDefaultHipblasHandle();
   }
 
   inline miopenHandle_t DefaultMiopenHandle() const {
