@@ -403,6 +403,25 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
   }
 
+  static const std::string QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU = "enable_graph_io_quant_dequant_on_cpu";
+  auto graph_io_qdq_on_cpu_pos = provider_options_map.find(QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU);
+  if (graph_io_qdq_on_cpu_pos != provider_options_map.end()) {
+    if ("1" == graph_io_qdq_on_cpu_pos->second) {
+      if (disable_cpu_ep_fallback_) {
+        LOGS_DEFAULT(WARNING) << "Should not enable " << QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU
+                              << " when fallback to CPU EP is disabled. Session creation may fail.";
+      }
+      model_settings_.enable_graph_io_quant_dequant_on_cpu = true;
+    } else if ("0" == graph_io_qdq_on_cpu_pos->second) {
+      model_settings_.enable_graph_io_quant_dequant_on_cpu = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid value for " << QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU << " ("
+                            << graph_io_qdq_on_cpu_pos->second << "). Only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "Using " << QNN_ENABLE_GRAPH_IO_QUANT_DEQUANT_ON_CPU << ": "
+                          << model_settings_.enable_graph_io_quant_dequant_on_cpu;
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
@@ -499,7 +518,8 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 model_input_index_map,
                                                 model_output_index_map,
                                                 initializer_input_lookup,
-                                                qnn_backend_manager_->GetQnnBackendType());
+                                                qnn_backend_manager_->GetQnnBackendType(),
+                                                model_settings_);
 
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
@@ -845,7 +865,8 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, logger, graph_configs_builder.GetQnnConfigs()));
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
+                                                graph_configs_builder.GetQnnConfigs()));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 

@@ -1023,6 +1023,75 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
                   &ep_graph_checker);
 }
 
+// Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
+TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
+  // Local function that checks that the Q/DQ ops at the graph IO boundary are assigned to the CPU EP.
+  std::function<void(const Graph&)> graph_checker = [](const Graph& graph) {
+    size_t num_q = 0;
+    size_t num_dq = 0;
+    size_t num_qnn_fused_node = 0;
+
+    for (const Node& node : graph.Nodes()) {
+      const std::string& ep_name = node.GetExecutionProviderType();
+      const std::string& op_type = node.OpType();
+
+      if (op_type == "QuantizeLinear") {
+        const bool consumes_graph_input = graph.IsInputsIncludingInitializers(node.InputDefs()[0]);
+        EXPECT_EQ(ep_name, kCpuExecutionProvider);
+        EXPECT_TRUE(consumes_graph_input);
+        num_q += 1;
+      } else if (op_type == "DequantizeLinear") {
+        const bool produces_graph_output = graph.IsOutput(node.OutputDefs()[0]);
+        EXPECT_EQ(ep_name, kCpuExecutionProvider);
+        EXPECT_TRUE(produces_graph_output);
+        num_dq += 1;
+      } else {
+        EXPECT_EQ(ep_name, kQnnExecutionProvider);
+        num_qnn_fused_node += 1;
+      }
+    }
+
+    EXPECT_EQ(num_q, 1);
+    EXPECT_EQ(num_dq, 1);
+    EXPECT_EQ(num_qnn_fused_node, 1);
+  };
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_graph_io_quant_dequant_on_cpu"] = "1";
+
+  const std::vector<std::string> op_types = {
+      "Sigmoid",
+      "Transpose",
+      "Sin",
+      "Cos",
+      "Softmax",
+      "Sqrt",
+      "Elu",
+  };
+
+  for (auto op_type : op_types) {
+    float min_val = (op_type == "Sqrt") ? 0.0f : -10.0f;
+    TestInputDef<float> input_def({1, 2, 2, 2}, false, GetFloatDataInRange(min_val, 10.0f, 8));
+    auto f32_model_build_fn = BuildOpTestCase<float>(op_type, {input_def}, {}, {});
+    auto qdq_model_build_fn = BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {});
+    TestQDQModelAccuracy<uint8_t>(f32_model_build_fn,
+                                  qdq_model_build_fn,
+                                  provider_options,
+                                  /*opset*/ 19,
+                                  ExpectedEPNodeAssignment::Some,
+                                  /*abs_err*/ QDQTolerance(),
+                                  logging::Severity::kERROR,
+                                  /*qnn_ctx_model_path*/ "",
+                                  /*session_option_pairs*/ {},
+                                  &graph_checker);
+  }
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
