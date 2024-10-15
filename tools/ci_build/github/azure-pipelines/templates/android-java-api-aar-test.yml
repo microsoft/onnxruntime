@@ -72,6 +72,7 @@ jobs:
       stop: true
 
   # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
+  # disabling this step until BrowserStack account issues are resolved
   - script: |
       set -e -x
       pip install requests
@@ -83,6 +84,7 @@ jobs:
     displayName: Run E2E tests using Browserstack
     workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
     timeoutInMinutes: 15
+    enabled: false
     env:
       BROWSERSTACK_ID: $(browserstack_username)
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
