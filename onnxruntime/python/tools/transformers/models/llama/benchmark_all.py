@@ -252,7 +252,7 @@ def save_results(results, filename):
         [
             f"{i.key}=={i.version}"
             for i in installed_packages
-            if i.key in ["ort-nightly-gpu", "ort-nightly", "onnxruntime", "onnxruntime-gpu"]
+            if i.key in ["onnxruntime", "onnxruntime-gpu"]
         ]
     )
 
