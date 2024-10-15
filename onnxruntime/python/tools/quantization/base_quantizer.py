@@ -230,9 +230,19 @@ class BaseQuantizer:
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
 
+            # Quantize by dividing by bias_scale
             quantized_data = np.asarray(bias_data, dtype=np.float64) / np.asarray(bias_scale, dtype=np.float64)
-            quantized_data = np.clip(quantized_data.round(), np.iinfo(np.int32).min, np.iinfo(np.int32).max)
-            quantized_data = quantized_data.astype(np.int32)
+            quantized_data = quantized_data.round()
+
+            # Clip quantized data to the range of a int32
+            int32_min = np.float64(np.iinfo(np.int32).min)
+            int32_max = np.float64(np.iinfo(np.int32).max)
+            if np.any(quantized_data < int32_min) or np.any(quantized_data > int32_max):
+                logging.warning(
+                    f"Quantized bias `{bias_name}` exceeds the range of a int32. The bias scale is too small."
+                )
+
+            quantized_data = np.clip(quantized_data, int32_min, int32_max).astype(np.int32)
 
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
