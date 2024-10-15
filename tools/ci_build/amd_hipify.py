@@ -11,7 +11,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run([hipify_perl_path, "-roc", src_file_path], stdout=subprocess.PIPE, text=True, check=False).stdout
+    s = subprocess.run([hipify_perl_path, src_file_path], stdout=subprocess.PIPE, text=True, check=False).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -21,22 +21,6 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("kCudaStreamCopyIn", "kHipStreamCopyIn")
     s = s.replace("kCudaStreamCopyOut", "kHipStreamCopyOut")
     s = s.replace("kTotalCudaStreams", "kTotalHipStreams")
-
-    # We want rocblas interfaces, not hipblas. Also force some hipify replacements back to rocblas from hipblas.
-    s = s.replace("CublasHandle", "RocblasHandle")
-    s = s.replace("cublas_handle", "rocblas_handle")
-    s = s.replace("hipblasHandle_t", "rocblas_handle")
-    s = s.replace("hipblasDatatype_t", "rocblas_datatype")
-    s = s.replace("HIPBLAS_STATUS_SUCCESS", "rocblas_status_success")
-    s = s.replace("hipblasStatus_t", "rocblas_status")
-    s = s.replace("hipblasCreate", "rocblas_create_handle")
-    s = s.replace("hipblasDestroy", "rocblas_destroy_handle")
-    s = s.replace("hipblasSetStream", "rocblas_set_stream")
-    s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
-    s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
-
-    # in rocm 6.0, hipify-perl, the -roc option also maps __half -> rocblas_half which we don't want
-    s = s.replace("rocblas_half", "__half")
 
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
@@ -100,23 +84,14 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("typedef half MappedType", "typedef __half MappedType")
 
     # CUBLAS -> HIPBLAS
-    # Note: We do not use the hipblas marshalling interfaces; use rocblas instead.
-    # s = s.replace('CUBLAS', 'HIPBLAS')
-    # s = s.replace('Cublas', 'Hipblas')
-    # s = s.replace('cublas', 'hipblas')
-
-    # CUBLAS -> ROCBLAS
-    s = s.replace("CUBLAS", "ROCBLAS")
-    s = s.replace("Cublas", "Rocblas")
-    s = s.replace("cublas", "rocblas")
+    s = s.replace("CUBLAS", "HIPBLAS")
+    s = s.replace("Cublas", "Hipblas")
+    s = s.replace("cublas", "hipblas")
+    # deprecated cublas symbol doesn't exist in hipblas, map to new symbol
+    s = s.replace("HIPBLAS_GEMM_DEFAULT_TENSOR_OP", "HIPBLAS_GEMM_DEFAULT")
 
     # Undefined ROCMRT constants -> std::numeric_limits
     s = s.replace("ROCMRT_INF_F", "std::numeric_limits<float>::infinity()")
-
-    # HIPBLAS -> rocblas
-    s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
-    s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
-    s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
 
     # compatible layer
     s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")
