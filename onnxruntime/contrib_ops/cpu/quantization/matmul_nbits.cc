@@ -163,7 +163,7 @@ void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& 
     prepack_tensor_data_type_ = tensor.DataType();
   }
 
-  std::vector<int64_t> weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / prepack_tensor_data_type_->Size()) + 1};
+  TensorShapeVector weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / prepack_tensor_data_type_->Size()) + 1};
   packed_tensor_ = Tensor(prepack_tensor_data_type_,
                           TensorShape(weights_dims),
                           packed_b_.get(),
