@@ -150,6 +150,13 @@ template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<flo
     const TensorShape* input_shape_override,
     concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
+
+template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<float>(
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_rocm_assets);
+
 // MLFloat16
 template Status DeviceHelpers::RocmDeviceHelpers::MatMul<MLFloat16>(
     const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,

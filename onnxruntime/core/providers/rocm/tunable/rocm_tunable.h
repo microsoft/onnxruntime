@@ -4,7 +4,6 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include <hip/hip_fp16.h>
 
 #include "core/providers/rocm/rocm_common.h"  // avoid provider_api.h ODR violation
 #include "core/framework/tunable.h"
@@ -22,7 +21,6 @@ template <typename ParamsT>
 using Op = Op<ParamsT>;
 
 class Timer;
-
 template <typename ParamsT>
 using TunableOp = TunableOp<ParamsT, Timer>;
 
@@ -32,9 +30,9 @@ using TunableOp = TunableOp<ParamsT, Timer>;
 // As a convenience for authoring TunableOp in contrib namespace
 namespace contrib {
 namespace rocm {
+using onnxruntime::rocm::tunable::RocmTuningContext;
 using onnxruntime::rocm::tunable::Op;
 using onnxruntime::rocm::tunable::OpParams;
-using onnxruntime::rocm::tunable::RocmTuningContext;
 using onnxruntime::rocm::tunable::TunableOp;
 }  // namespace rocm
 }  // namespace contrib

@@ -185,7 +185,7 @@ struct ROCM_Provider : Provider {
     info.has_user_compute_stream = params->has_user_compute_stream != 0;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
-    info.enable_hip_graph = params->enable_hip_graph;
+    info.enable_hip_graph = params->enable_hip_graph != 0;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
     info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;

@@ -41,8 +41,18 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().HipblasHandle();
   }
 
+  hipblasLtHandle_t PerThreadHipblasLtHandle() {
+    return GetPerThreadContext().HipblasLtHandle();
+  }
+
   miopenHandle_t PerThreadDefaultMiopenHandle() {
     return GetPerThreadContext().MiopenHandle();
+  }
+
+  hipStream_t ComputeStream() {
+    // this will return the ROCM EP level stream which can differ from the actual compute tasks stream
+    // the compute task stream is supplied within OpKernelContext during inference
+    return stream_;
   }
 
   template <typename T>
@@ -75,8 +85,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured(int graph_annotation_id) const override;
-  Status ReplayGraph(int graph_annotation_id) override;
+  bool IsGraphCaptured(HipGraphAnnotation_t graph_annotation_id) const override;
+  Status ReplayGraph(HipGraphAnnotation_t graph_annotation_id) override;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -98,6 +108,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                      ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
     ~PerThreadContext();
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 
     hipblasHandle_t HipblasHandle() const {
       return hipblas_handle_;
@@ -105,6 +116,10 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
     miopenHandle_t MiopenHandle() const {
       return miopen_handle_;
+    }
+
+    hipblasLtHandle_t HipblasLtHandle() const {
+      return hipblas_lt_handle_;
     }
 
     template <typename T>
@@ -138,16 +153,19 @@ class ROCMExecutionProvider : public IExecutionProvider {
       }
     }
 
-    bool IsGraphCaptureAllowed() const;
-    void CaptureBegin(int graph_annotation_id);
-    void CaptureEnd(int graph_annotation_id);
-    bool IsGraphCaptured(int graph_annotation_id) const;
-    Status ReplayGraph(int graph_annotation_id);
-    void IncrementRegularRunCountBeforeGraphCapture();
+    bool IsGraphCaptureAllowed(HipGraphAnnotation_t hip_graph_annotation_id) const;
+    bool IsGraphCaptureAllowedOnRun(HipGraphAnnotation_t hip_graph_annotation_id) const;
+    void CaptureBegin(HipGraphAnnotation_t hip_graph_annotation_id);
+    void CaptureEnd(HipGraphAnnotation_t hip_graph_annotation_id);
+    bool IsGraphCaptured(HipGraphAnnotation_t hip_graph_annotation_id) const;
+    HipGraphAnnotation_t GetHipGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
+    Status ReplayGraph(HipGraphAnnotation_t hip_graph_annotation_id);
+    void IncrementRegularRunCountBeforeGraphCapture(HipGraphAnnotation_t hip_graph_annotation_id);
 
    private:
     hipblasHandle_t hipblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
+    hipblasLtHandle_t hipblas_lt_handle_ = nullptr;
 
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
@@ -157,8 +175,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
     // Hip graph with multi threads will be supported in the future, so hip_graph_
     // is put under PerThreadContext.
     ROCMGraph hip_graph_;
-    bool is_graph_captured_ = false;
-    int regular_run_count_before_graph_capture_ = 0;
+    // Map of graph id to regular_run_count_before_graph_capture
+    std::unordered_map<HipGraphAnnotation_t, int> graph_id_to_run_count_;
 
     // There is chance that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.
