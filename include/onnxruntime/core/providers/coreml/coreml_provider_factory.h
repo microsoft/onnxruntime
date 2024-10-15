@@ -31,9 +31,14 @@ enum COREMLFlags {
   // Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or later.
   COREML_FLAG_CREATE_MLPROGRAM = 0x010,
 
+  // Exclude ANE as sometimes this decrease performance
+  // https://developer.apple.com/documentation/coreml/mlcomputeunits?language=objc
+  // there are four compute units:
+  // MLComputeUnitsCPUAndNeuralEngine|MLComputeUnitsCPUAndGPU|MLComputeUnitsCPUOnly|MLComputeUnitsAll
+  COREML_FLAG_USE_CPU_AND_GPU = 0x020,
   // Keep COREML_FLAG_LAST at the end of the enum definition
   // And assign the last COREMLFlag to it
-  COREML_FLAG_LAST = COREML_FLAG_CREATE_MLPROGRAM,
+  COREML_FLAG_LAST = COREML_FLAG_USE_CPU_AND_GPU,
 };
 
 #ifdef __cplusplus
