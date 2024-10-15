@@ -314,17 +314,18 @@ TEST(MathOpTest, MatMul_Float16) {
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
   ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
-  for (int i = 0; i < 2; i++) {
+  auto run_test = [&](bool B_is_constant) {
     // it needs Matrix B as constant to test XNNPack
-    bool b_is_constant = i == 0 ? false : true;
     OpTester test("MatMul", 14);
     test.AddInput<MLFloat16>("A", {2, 4}, f_A);
-    test.AddInput<MLFloat16>("B", {4, 3}, f_B, b_is_constant);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, B_is_constant);
     test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
     test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
         .Config(run_with_tunable_op)
         .RunWithConfig();
-  }
+  };
+  run_test(true);
+  run_test(false);
 }
 #endif
 

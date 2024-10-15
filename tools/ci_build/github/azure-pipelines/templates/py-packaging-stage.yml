@@ -96,6 +96,10 @@ stages:
             PythonVersion: '3.12'
             MsbuildPlatform: x64
             buildArch: x64
+          Python313_x64:
+            PythonVersion: '3.13'
+            MsbuildPlatform: x64
+            buildArch: x64
           # Training build cannot support Win32 for now because one or more of its python
           # dependencies does not support Win32. So, don't build a training package for Win32
           ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
@@ -310,6 +314,16 @@ stages:
 
     - template: py-win-gpu.yml
       parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
+        PYTHON_VERSION: '3.13'
+        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        ENV_SETUP_SCRIPT: setup_env_gpu.bat
+        EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: py-win-gpu.yml
+      parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
         PYTHON_VERSION: '3.10'
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
@@ -338,6 +352,16 @@ stages:
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
+    - template: py-win-gpu.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+        PYTHON_VERSION: '3.13'
+        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+        ENV_SETUP_SCRIPT: setup_env.bat
+        EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
     dependsOn: []
@@ -358,6 +382,9 @@ stages:
             PythonVersion: '3.11'
           Python312:
             PythonVersion: '3.12'
+          Python313:
+            PythonVersion: '3.13'
+
       steps:
       - checkout: self
         clean: true
@@ -443,7 +470,7 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241008.1
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241010.2
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           trt_version: '10.4.0.26-1.cuda11.8'

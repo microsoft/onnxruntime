@@ -251,13 +251,12 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - powershell: |
-            pushd onnxruntime/test/python
-            python -m pip install --upgrade pip
-            python -m pip install -r requirements.txt
-            popd
-          workingDirectory: '$(Build.SourcesDirectory)'
+        - task: PowerShell@2
           displayName: 'Install ONNX'
+          inputs:
+            filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+            workingDirectory: '$(Build.BinariesDirectory)'
+            arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
 
         - powershell: |
             python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
