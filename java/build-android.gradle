@@ -1,5 +1,8 @@
-apply plugin: 'com.android.library'
-apply plugin: 'maven-publish'
+plugins {
+  id 'com.android.library'
+  id 'maven-publish'
+}
+
 
 def jniLibsDir = System.properties['jniLibsDir']
 def buildDir = System.properties['buildDir']
