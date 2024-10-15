@@ -64,13 +64,6 @@ CMake creates a target to this project
     <Error Text="Building via this file is not supported. Please build using the appropriate .sln file in this directory." />
   </Target>
 
-  <Target Name="RunTest">
-    <Message Importance="High" Text="Running CSharp tests..." />
-    <Exec Command="$(DotNetExe) test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build --blame -v n" ConsoleToMSBuild="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
-    </Exec>
-  </Target>
-
    <Target Name="ObtainPackageVersion" BeforeTargets="Build;CreatePackage;CreateWindowsAIPackage;CreateNativePackage">
     <ReadLinesFromFile File="..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
@@ -153,7 +146,7 @@ CMake creates a target to this project
     <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
     <Message Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
     <MSBuild Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="CopyMiscFiles;Pack"
+             Targets="RenameFilesToPack;Pack"
              Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
 
     <MSBuild Projects ="$(MSBuildProjectFullPath)"
