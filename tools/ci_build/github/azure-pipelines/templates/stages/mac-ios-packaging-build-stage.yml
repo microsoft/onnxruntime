@@ -138,19 +138,16 @@ stages:
       displayName: "find files"
 
 # this will create the ipa file
-    - task: Xcode@5
-      inputs:
-        actions: 'exportArchive'
-        archivePath: 'ios_package_test.xcarchive'
-        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
-        sdk: 'iphoneos'
-        scheme: 'ios_package_test'
-        xcodeVersion: 'specifyPath'
-        xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
-        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
-        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
-        useXcpretty: false
-      displayName: 'Create archive'
+    - script: |
+        xcodebuild -exportArchive \
+          -archivePath ios_package_test.xcarchive \
+          -workspace $(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace \
+          -sdk iphoneos \
+          -derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData \
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "Create .ipa file"
+      env:
+        DEVELOPER_DIR: /Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer
 
     - script: |
         echo $(find ~+ -name "*.ipa" -type f)
