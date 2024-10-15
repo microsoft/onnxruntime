@@ -30,17 +30,22 @@ struct WebGpuExecutionProviderInfo {
         uniform_buffer_cache_mode{},
         query_resolve_buffer_cache_mode{},
         default_buffer_cache_mode{} {}
+  WebGpuExecutionProviderInfo(WebGpuExecutionProviderInfo&&) = default;
+  WebGpuExecutionProviderInfo& operator=(WebGpuExecutionProviderInfo&&) = default;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(WebGpuExecutionProviderInfo);
+
   DataLayout data_layout;
   bool enable_graph_capture;
   webgpu::BufferCacheMode storage_buffer_cache_mode;
   webgpu::BufferCacheMode uniform_buffer_cache_mode;
   webgpu::BufferCacheMode query_resolve_buffer_cache_mode;
   webgpu::BufferCacheMode default_buffer_cache_mode;
+  std::vector<std::string> force_cpu_node_names;
 };
 
 class WebGpuExecutionProvider : public IExecutionProvider {
  public:
-  WebGpuExecutionProvider(int context_id, webgpu::WebGpuContext& context, const WebGpuExecutionProviderInfo& info);
+  WebGpuExecutionProvider(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderInfo&& info);
   ~WebGpuExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
@@ -77,10 +82,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   void IncrementRegularRunCountBeforeGraphCapture();
   int context_id_;
   webgpu::WebGpuContext& context_;
+  webgpu::WebGpuProfiler* profiler_ = nullptr;
   DataLayout preferred_data_layout_;
+  std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool is_graph_captured_ = false;
-  webgpu::WebGpuProfiler* profiler_ = nullptr;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 };
