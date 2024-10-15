@@ -1058,6 +1058,10 @@ class QDQQuantizer(BaseQuantizer):
         A bias scale that is too small leads to quantized bias values that fall outside the range of a int32 and have to
         be clipped, which decreases accuracy. If this function detects such a scenario, the weight_scale value will be
         increased to prevent this from happening.
+
+        Although the adjustment method and amount differs, the idea to adjust the weight's scale came from the following
+        reference:
+        https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/optimize/quantization_utils.cc#L252
         """
         bias_float_data = tensor_proto_to_array(bias_tp)
         weight_scale: np.ndarray = tensor_proto_to_array(weight_scale_tp)
