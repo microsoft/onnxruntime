@@ -51,6 +51,7 @@ jobs:
 
       - store_artifacts:
           path: $HOME/onnxlibrary/onnxruntime_xcf.tar
+          destination: onnxruntime_xcf.tar
 workflows:
   version: 2
   build-and-test-xcframework:
