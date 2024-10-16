@@ -9,7 +9,14 @@ set(BUILD_TESTING 0)
 set(ABSL_BUILD_TESTING OFF)
 set(ABSL_BUILD_TEST_HELPERS OFF)
 set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
-set(ABSL_ENABLE_INSTALL ON)
+
+# Both abseil and xnnpack create a target called memory, which
+# results in a duplicate target if ABSL_ENABLE_INSTALL is on.
+if (onnxruntime_USE_XNNPACK)
+  set(ABSL_ENABLE_INSTALL OFF)
+else()
+  set(ABSL_ENABLE_INSTALL ON)
+endif()
 
 if(Patch_FOUND AND WIN32)
   set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)

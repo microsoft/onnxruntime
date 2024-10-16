@@ -23,3 +23,10 @@ add_dependencies(tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 if(WIN32)
   target_compile_options(tensorboard PRIVATE "/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182")
 endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+  install(TARGETS tensorboard EXPORT ${PROJECT_NAME}Targets
+  ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
