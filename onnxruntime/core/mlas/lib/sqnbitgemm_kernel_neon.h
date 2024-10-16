@@ -88,6 +88,23 @@ Q4BitBlkDequantBForSgemm_CompFp16(
     size_t BlockCountK
 );
 
+template <size_t StrideM, size_t StrideN>
+void
+SQ4BitGemmKernel_CompFp16(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* C,
+    size_t CountM,
+    size_t CountN,
+    size_t K,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const size_t stride_M,
+    const size_t stride_N,
+);
+
 // CompInt8 declarations
 
 void

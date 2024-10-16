@@ -610,76 +610,59 @@ SQ4BitGemm_CompFp16(
     const size_t RangeCountN
 )
 {
-    // TODO(fajin): loop L1 cache blocks -> create B dequant buffer and C buffer -> loop micro-kernel
     constexpr size_t BlkBitWidth = 4;
-
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
 
     const size_t lda = DataParams->lda;
     const size_t ldc = DataParams->ldc;
-
     const size_t k_blk_num = MlasDivRoundup(K, BlkLen);
     const size_t ldb = k_blk_num * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t k_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blk_num);
 
     const MLAS_FP16* A = DataParams->A + RangeStartM * lda;
-    MLAS_FP16* C = DataParams->C + RangeStartM * ldc;
-    const MLAS_FP16* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias;
-
-    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData);
-    const MLAS_FP16* QuantBScale = DataParams->QuantBScale;
+    MLAS_FP16* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
+    const MLAS_FP16* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blk_num;
     const std::byte* QuantBZeroPoint =
         (DataParams->QuantBZeroPoint == nullptr)
             ? nullptr
-            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint);
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_zp_bytes;
+    const MLAS_FP16* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias;
 
     // L1 cache blocking
     constexpr size_t StrideN = 32;
     constexpr size_t StrideM = 64;
-    constexpr size_t StrideK = 128;
+
     size_t bufsize = k_blk_num * BlkLen * StrideN * sizeof(MLAS_FP16);
     MlasThreadedBufAlloc(bufsize);
     auto* dequant_b = reinterpret_cast<MLAS_FP16*>(ThreadedBufHolder.get());
 
-    for (int n = RangeStartN; n + StrideN <= RangeStartN + RangeCountN; n += StrideN) {
+    for (size_t n = 0, CountN; n < RangeCountN; n += CountN) {
+        CountN = std::min(RangeCountN - n, StrideN);
         // dequant B
-        const MLAS_FP16* a_row = A;
-        const std::byte* b_col = QuantBData + n * ldb;
-        const MLAS_FP16* b_col_scale = QuantBScale + n * k_blk_num;
-        const std::byte* b_col_zp =
-            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_zp_bytes;
-        MLAS_FP16* c_blk = C + n;
-        const MLAS_FP16* bias = (Bias == nullptr) ? nullptr : Bias + n;
-
         GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
-            BlkLen, dequant_b, b_col, b_col_scale, b_col_zp, StrideN, K, k_blk_num
+            BlkLen, dequant_b, QuantBData, QuantBScale, QuantBZeroPoint, CountN, K, k_blk_num
         );
 
-        // L1 cache blocking
-        for (int m = RangeStartM; m + StrideM <= RangeStartM + RangeCountM; m += StrideM) {
-            MLAS_FP16 c_cache[StrideM * StrideN];
-            for (int k = 0; k + StrideK <= K; k += StrideK) {
-                const MLAS_FP16* a_row = A + m * lda + k;
-                const std::byte* b_col = QuantBData + n * ldb + k / BlkLen * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-                const MLAS_FP16* b_col_scale = QuantBScale + n * k_blk_num + k / BlkLen;
-                const std::byte* b_col_zp =
-                    (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_zp_bytes + k / BlkLen * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blk_num);
-                MLAS_FP16* c_blk = C + m * ldc + n;
-                const MLAS_FP16* bias = (Bias == nullptr) ? nullptr : Bias + n;
+        // loop cache blocks
+        const MLAS_FP16* a = A;
+        MLAS_FP16* c = C;
+        for (size_t m = 0, CountM; m < RangeCountM; m += CountM) {
+            CountM = std::min(RangeCountM - m, StrideM);
+            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
+                a, dequant_b, Bias, c, CountM, CountN, K, lda, ldb, ldc, StrideM, StrideN
+            );
 
-                GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
-                    BlkLen,
-                    a_row, b_col, b_col_scale, b_col_zp, c_blk, StrideM, StrideN, StrideK, k_blk_num, ldc, bias
-                );
-            }
-
-            // TOOD: remaining K
+            a += CountM * lda;
+            c += CountM * ldc;
         }
 
-        // TODO: remaining M
+        QuantBData += CountN * ldb;
+        QuantBScale += CountN * k_blk_num;
+        QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + CountN * k_zp_bytes : nullptr;
+        Bias = Bias ? Bias + CountN : nullptr;
+        C += CountN;
     }
-
-    // TODO: remaining N
 }
 
 template <typename T>

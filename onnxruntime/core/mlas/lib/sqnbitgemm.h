@@ -352,39 +352,33 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
 
     /**
-     * @brief Multiply fp16 matrix A with quantized 4-bit integer matrix B.
-     *        B is block quantized and B is column major.
+     * @brief Multiply fp16 matrix A rows with fp16 matrix B columns.
+     *        Results are written to fp16 matrix C.
+     *        If bias is provided, the bias are added to the result.
      *
-     * @param       BlkLen              Number of values in a block.
-     * @param       A                   Supplies the A matrix.
-     * @param       QuantBData          Supplies the quantized B matrix block data.
-     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
-     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
-     * @param[out]  C                   Supplies the output C matrix.
-     * @param       CountM              Number of rows of A and C to process, an upper bound.
-     * @param       CountN              Number of columns of B and C to process.
-     * @param       CountK              Number of columns of A and rows of B.
-     * @param       BlockCountK         Number of blocks in one row of A and one column of B.
-     * @param       lda                 Number of elements between adjacent rows of A.
-     * @param       ldc                 Number of elements between adjacent rows of C.
-     * @param       Bias                Bias vector of length N.
-     *
-     * @return                          The number of rows of A and C that were processed, at most CountM.
+     * @param       A                   first row of the A matrix segment. Row major.
+     * @param       B                   first column of the B matrix segment. Column major.
+     * @param       Bias                the bias at the target column. Optional.
+     * @param[out]  C                   first element of the output matrix segment. Row major.
+     * @param       CountM              the number of rows of A chunk.
+     * @param       CountN              the number of columns of B chunk.
+     * @param       K                   the number of columns of A matrix and rows of B matrix.
+     * @param       lda                 the leading dimension of A.
+     * @param       ldb                 the leading dimension of B.
      */
-    using SQ4BitGemmKernel_CompFp16_Fn = std::function<size_t(
+    using SQ4BitGemmKernel_CompFp16_Fn = std::function<void(
         const MLAS_FP16* A,
-        const std::byte* QuantBData,
-        const MLAS_FP16* QuantBScale,
-        const std::byte* QuantBZeroPoint,
+        const MLAS_FP16* B,
         const MLAS_FP16* Bias,
         MLAS_FP16* C,
         size_t CountM,
         size_t CountN,
-        size_t CountK,
-        size_t BlkLen,
-        size_t BlockCountK,
+        size_t K,
         size_t lda,
-        size_t ldc
+        size_t ldb,
+        size_t ldc,
+        const size_t StrideM,
+        const size_t StrideN
     )>;
 
     SQ4BitGemmKernel_CompFp16_Fn SQ4BitGemmKernel_CompFp16;

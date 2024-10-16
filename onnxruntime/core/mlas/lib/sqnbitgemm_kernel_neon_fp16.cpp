@@ -19,6 +19,7 @@ Abstract:
 #include <arm_neon.h>
 
 #include <cassert>
+#include <cstring>
 
 #include "fp16_common.h"
 #include "sqnbitgemm.h"
@@ -26,7 +27,6 @@ Abstract:
 
 namespace sqnbitgemm_neon
 {
-
 MLAS_FORCEINLINE void
 Transpose8x8(uint8x8_t& v0, uint8x8_t& v1, uint8x8_t& v2, uint8x8_t& v3,
              uint8x8_t& v4, uint8x8_t& v5, uint8x8_t& v6, uint8x8_t& v7)
@@ -90,6 +90,39 @@ Transpose8x8(uint8x8_t& v0, uint8x8_t& v1, uint8x8_t& v2, uint8x8_t& v3,
     v5 = vreinterpret_u8_u32(c2.val[1]);
     v6 = vreinterpret_u8_u32(c1.val[1]);
     v7 = vreinterpret_u8_u32(c3.val[1]);
+}
+
+MLAS_FORCEINLINE void
+Transpose4x8(float16x8_t& v0, float16x8_t& v1, float16x8_t& v2, float16x8_t& v3)
+{
+    // |v00|v01|v02|v03|v04|v05|v06|v07|
+    // |v10|v11|v12|v13|v14|v15|v16|v17|
+    // |v20|v21|v22|v23|v24|v25|v26|v27|
+    // |v30|v31|v32|v33|v34|v35|v36|v37|
+    //  =>
+    // |v00|v10|v20|v30|v04|v14|v24|v34|
+    // |v01|v11|v21|v31|v05|v15|v25|v35|
+    // |v02|v12|v22|v32|v06|v16|v26|v36|
+    // |v03|v13|v23|v33|v07|v17|v27|v37|
+    float16x8x2_t t01 = vtrnq_f16(v0, v1);
+    float16x8x2_t t23 = vtrnq_f16(v2, v3);
+
+    v0 = vtrn1q_f32(t01.val[0], t23.val[0]);
+    v1 = vtrn1q_f32(t01.val[1], t23.val[1]);
+    v2 = vtrn2q_f32(t01.val[0], t23.val[0]);
+    v3 = vtrn2q_f32(t01.val[1], t23.val[1]);
+}
+
+MLAS_FORCEINLINE void
+Transpose4x4(float16x4_t& v0, float16x4_t& v1, float16x4_t& v2, float16x4_t& v3)
+{
+    float16x4x2_t t01 = vtrn_f16(v0, v1);
+    float16x4x2_t t23 = vtrn_f16(v2, v3);
+
+    v0 = vtrn1_f32(t01.val[0], t23.val[0]);
+    v1 = vtrn1_f32(t01.val[1], t23.val[1]);
+    v2 = vtrn2_f32(t01.val[0], t23.val[0]);
+    v3 = vtrn2_f32(t01.val[1], t23.val[1]);
 }
 
 void
@@ -191,9 +224,10 @@ SQ4BitGemmPackQuantBData_CompFp16(
     );
 }
 
+template<size_t N, size_t K>
 MLAS_FORCEINLINE
-void
-Q4BitBlkDequantB_16K_8N(
+typename std::enable_if_t<(N == 8 && K == 16), void>
+Q4BitBlkDequantBKernel(
     const std::byte* src_ptr,
     const float16x8_t& scale,
     const float16x8_t& neg_scaled_zp,
@@ -262,9 +296,10 @@ Q4BitBlkDequantB_16K_8N(
     vst1q_f16(dst_ptr + 120, cf);
 }
 
+template<size_t N, size_t K>
 MLAS_FORCEINLINE
-void
-Q4BitBlkDequantB_16K_1N(
+typename std::enable_if_t<(N == 1 && K == 16), void>
+Q4BitBlkDequantBKernel(
     const std::byte* src_ptr,
     const float16x8_t& scale,
     const float16x8_t& neg_scaled_zp,
@@ -344,7 +379,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
 
             for (int kk = 0; kk < BlkLen; kk += kk_blk_dim) {
-                Q4BitBlkDequantB_16K_8N(src_ptr, scale_vec, neg_scaled_zp_vec, dst_ptr);
+                Q4BitBlkDequantBKernel<8, 16>(src_ptr, scale_vec, neg_scaled_zp_vec, dst_ptr);
 
                 src_ptr += kk_n_src_bytes;
                 dst_ptr += kk_n_dst_size;
@@ -380,7 +415,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
 
             for (int kk = 0; kk < BlkLen; kk += kk_blk_dim) {
-                Q4BitBlkDequantB_16K_1N(QuantBData, scale_vec, neg_scaled_zp_vec, FpData);
+                Q4BitBlkDequantBKernel<1, 16>(QuantBData, scale_vec, neg_scaled_zp_vec, FpData);
 
                 QuantBData += kk_blk_bytes;
                 FpData += kk_blk_dim;
@@ -393,4 +428,799 @@ Q4BitBlkDequantBForSgemm_CompFp16(
         }
     }
 }
+
+template <bool Initialize, bool UseBias, size_t N, size_t M>
+MLAS_FORCEINLINE
+typename std::enable_if_t<(N == 8 && M == 1), float16x8_t>
+PrepareAccumulator(
+    const MLAS_FP16* Bias,
+    const MLAS_FP16* C
+) {
+    if constexpr (Initialize) {
+        if constexpr (UseBias) {
+            return vld1q_f16(Bias);
+        } else {
+            return vdupq_n_f16(0.0f);
+        }
+    } else {
+        return vld1q_f16(C);
+    }
+}
+
+template <bool Initialize, bool UseBias, size_t N, size_t M>
+MLAS_FORCEINLINE
+typename std::enable_if_t<(N == 4 && M == 1), float16x4_t>
+PrepareAccumulator(
+    const MLAS_FP16* Bias,
+    const MLAS_FP16* C
+) {
+    if constexpr (Initialize) {
+        if constexpr (UseBias) {
+            return vld1_f16(Bias);
+        } else {
+            return vdup_n_f16(0.0f);
+        }
+    } else {
+        return vld1_f16(C);
+    }
+}
+
+template <bool Initialize, bool UseBias, size_t N, size_t M>
+MLAS_FORCEINLINE
+typename std::enable_if_t<((N == 2 || N == 1) && M == 1), float16x4_t>
+PrepareAccumulator(
+    const MLAS_FP16* Bias,
+    const MLAS_FP16* C
+) {
+    if constexpr (Initialize) {
+        if constexpr (UseBias) {
+            float16x4_t v;
+            v = vld1_lane_f16(Bias, v, 0);
+            if constexpr (N == 2) {
+                v = vld1_lane_f16(Bias + 1, v, 1);
+            }
+            return v;
+        } else {
+            return vdup_n_f16(0.0f);
+        }
+    } else {
+        float16x4_t v;
+        v = vld1_lane_f16(C, v, 0);
+        if constexpr (N == 2) {
+            v = vld1_lane_f16(C + 1, v, 1);
+        }
+        return v;
+    }
+}
+
+template<size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<(N == 8 && M == 1 && K == 8), float16x8_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    float16x8_t accumulator
+) {
+    float16x8_t a0 = vld1q_f16(A);
+    float16x8_t b0 = vld1q_f16(B);
+    float16x8_t b1 = vld1q_f16(B + 8);
+    float16x8_t b2 = vld1q_f16(B + 16);
+    float16x8_t b3 = vld1q_f16(B + 24);
+    float16x8_t b4 = vld1q_f16(B + 32);
+    float16x8_t b5 = vld1q_f16(B + 40);
+    float16x8_t b6 = vld1q_f16(B + 48);
+    float16x8_t b7 = vld1q_f16(B + 56);
+
+    float16x8_t c0 = vfmaq_laneq_f16(accumulator, b0, a0, 0);
+    float16x8_t c01 = vfmaq_laneq_f16(c0, b1, a0, 1);
+    float16x8_t c2 = vmulq_laneq_f16(b2, a0, 2);
+    float16x8_t c23 = vfmaq_laneq_f16(c2, b3, a0, 3);
+    float16x8_t c4 = vmulq_laneq_f16(b4, a0, 4);
+    float16x8_t c45 = vfmaq_laneq_f16(c4, b5, a0, 5);
+    float16x8_t c6 = vmulq_laneq_f16(b6, a0, 6);
+    float16x8_t c67 = vfmaq_laneq_f16(c6, b7, a0, 7);
+
+    float16x8_t c0123 = vaddq_f16(c01, c23);
+    float16x8_t c4567 = vaddq_f16(c45, c67);
+
+    return vaddq_f16(c0123, c4567);
+}
+
+template<size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<(N == 8 && M == 1 && K == 4), float16x8_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    float16x8_t accumulator
+) {
+    float16x4_t a0 = vld1_f16(A);
+    float16x8_t b0 = vld1q_f16(B);
+    float16x8_t b1 = vld1q_f16(B + 8);
+    float16x8_t b2 = vld1q_f16(B + 16);
+    float16x8_t b3 = vld1q_f16(B + 24);
+
+    float16x8_t c0 = vfmaq_lane_f16(accumulator, b0, a0, 0);
+    float16x8_t c01 = vfmaq_lane_f16(c0, b1, a0, 1);
+    float16x8_t c2 = vmulq_lane_f16(b2, a0, 2);
+    float16x8_t c23 = vfmaq_lane_f16(c2, b3, a0, 3);
+
+    return vaddq_f16(c01, c23);
+}
+
+template<size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<(N == 8 && M == 1 && (K == 2 || K == 1)), float16x8_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    float16x8_t accumulator
+) {
+    float16x4_t a0;
+    a0 = vld1_lane_f16(A, a0, 0);
+    if constexpr (K == 2) a0 = vld1_lane_f16(A + 1, a0, 1);
+    float16x8_t b0 = vld1q_f16(B), b1;
+    if constexpr (K == 2) b1 = vld1q_f16(B + 8);
+
+    float16x8_t c0 = vfmaq_lane_f16(accumulator, b0, a0, 0), c01;
+    if constexpr (K == 2) c01 = vfmaq_lane_f16(c0, b1, a0, 1);
+
+    if constexpr (K == 1) return c0;
+    else return c01;
+}
+
+template<size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && K == 8), float16x4_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const size_t ldb,
+    float16x4_t accumulator
+) {
+    float16x8_t a0 = vld1q_f16(A);
+
+    float16x8_t b0, b1, b2, b3
+    b0 = vld1q_f16(B);
+    if constexpr (N > 1) b1 = vld1q_f16(B + ldb);
+    if constexpr (N > 2) b2 = vld1q_f16(B + ldb * 2);
+    if constexpr (N > 3) b3 = vld1q_f16(B + ldb * 3);
+
+    float16x8_t c00, c01, c02, c03;
+    c00 = vmulq_f16(b0, a0);
+    if constexpr (N > 1) c01 = vmulq_f16(b1, a0);
+    else c01 = vdupq_n_f16(0.0f);
+    if constexpr (N > 2) c02 = vmulq_f16(b2, a0);
+    else c02 = vdupq_n_f16(0.0f);
+    if constexpr (N > 3) c03 = vmulq_f16(b3, a0);
+    else c03 = vdupq_n_f16(0.0f);
+
+    Transpose4x8(c00, c01, c02, c03);
+
+    float16x8_t c_low_high = vaddq_f16(vaddq_f16(c00, c01), vaddq_f16(c02, c03));
+    float16x4_t c_low = vget_low_f16(c_low_high);
+    float16x4_t c_high = vget_high_f16(c_low_high);
+    float16x4_t c = vadd_f16(c_low, c_high);
+
+    return vadd_f16(c, accumulator);
+}
+
+template<size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K > 0 && K <= 4)), float16x4_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const size_t ldb,
+    float16x4_t accumulator
+) {
+    float16x4_t a0;
+    if constexpr (K == 4) a0 = vld1_f16(A);
+    else {
+        a0 = vld1_lane_f16(A, 0);
+        if constexpr (K >= 2) a0 = vld1_lane_f16(A + 1, 1);
+        if constexpr (K >= 3) a0 = vld1_lane_f16(A + 2, 2);
+    }
+
+    float16x4_t b0, b1, b2, b3;
+    b0 = vld1_f16(B);
+    if constexpr (N > 1) b1 = vld1_f16(B + ldb);
+    if constexpr (N > 2) b2 = vld1_f16(B + ldb * 2);
+    if constexpr (N > 3) b3 = vld1_f16(B + ldb * 3);
+
+    float16x4_t c00, c01, c02, c03;
+    c00 = vmul_f16(b0, a0);
+    if constexpr (N > 1) c01 = vmul_f16(b1, a0);
+    else c01 = vdup_n_f16(0.0f);
+    if constexpr (N > 2) c02 = vmul_f16(b2, a0);
+    else c02 = vdup_n_f16(0.0f);
+    if constexpr (N > 3) c03 = vmul_f16(b3, a0);
+    else c03 = vdup_n_f16(0.0f);
+
+    Transpose4x4(c00, c01, c02, c03);
+
+    float16x4_t c = vadd_f16(vadd_f16(c00, c01), vadd_f16(c02, c03));
+    return vadd_f16(c, accumulator);
+}
+
+template <size_t StrideN, bool Initialize, bool UseBias, size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<((N == 16 || N == 8) && (M == 2 || M == 1) && (K == 8)), void>
+SQ4BitGemmRegisterKernel(
+    const MLAS_FP16* a,
+    const MLAS_FP16* b,
+    const MLAS_FP16* bias,
+    MLAS_FP16* buffer,
+    size_t CountK,
+    size_t lda,
+    size_t ldb
+) {
+    const size_t ldb_substep = ldb * 8;
+    float16x8_t accu00, accu01, accu10, accu11;
+    // if k == 0 load bias or zero, else load buffer, init register accumulator
+    auto* bias_1 = constexpr UseBias ? bias + 8 : nullptr;
+    accu00 = PrepareAccumulator<Initialize, UseBias, 8, 1>(bias, buffer);
+    if constexpr (N == 16) {
+        accu01 = PrepareAccumulator<Initialize, UseBias, 8, 1>(bias_1, buffer + 8);
+    }
+    if constexpr (M == 2) {
+        accu10 = PrepareAccumulator<Initialize, UseBias, 8, 1>(bias, buffer + StrideN);
+    }
+    if constexpr (M == 2 && N == 16) {
+        accu11 = PrepareAccumulator<Initialize, UseBias, 8, 1>(bias_1, buffer + StrideN + 8);
+    }
+
+    const MLAS_FP16* aa = a;
+    const MLAS_FP16* bb = b;
+    size_t kk = 0;
+    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) { // 16N_2M_8K
+        accu00 = SQ4BitGemmMicroKernel<8, 1, 8>(aa, bb, accu00);
+        if constexpr (N == 16) {
+            accu01 = SQ4BitGemmMicroKernel<8, 1, 8>(aa, bb + ldb_substep, accu01);
+        }
+        if constexpr (M == 2) {
+            accu10 = SQ4BitGemmMicroKernel<8, 1, 8>(aa + lda, bb, accu10);
+        }
+        if constexpr (M == 2 && N == 16) {
+            accu11 = SQ4BitGemmMicroKernel<8, 1, 8>(aa + lda, bb + ldb_substep, accu11);
+        }
+    }
+
+    // remaining K
+    if (kk + 4 <= CountK) {
+        accu00 = SQ4BitGemmMicroKernel<8, 1, 4>(aa, bb, accu00);
+        if constexpr (N == 16) {
+            accu01 = SQ4BitGemmMicroKernel<8, 1, 4>(aa, bb + ldb_substep, accu01);
+        }
+        if constexpr (M == 2) {
+            accu10 = SQ4BitGemmMicroKernel<8, 1, 4>(aa + lda, bb, accu10);
+        }
+        if constexpr (M == 2 && N == 16) {
+            accu11 = SQ4BitGemmMicroKernel<8, 1, 4>(aa + lda, bb + ldb_substep, accu11);
+        }
+        kk += 4, aa += 4, bb += 4;
+    }
+
+    if (kk + 2 <= CountK) {
+        accu00 = SQ4BitGemmMicroKernel<8, 1, 2>(aa, bb, accu00);
+        if constexpr (N == 16) {
+            accu01 = SQ4BitGemmMicroKernel<8, 1, 2>(aa, bb + ldb_substep, accu01);
+        }
+        if constexpr (M == 2) {
+            accu10 = SQ4BitGemmMicroKernel<8, 1, 2>(aa + lda, bb, accu10);
+        }
+        if constexpr (M == 2 && N == 16) {
+            accu11 = SQ4BitGemmMicroKernel<8, 1, 2>(aa + lda, bb + ldb_substep, accu11);
+        }
+        kk += 2, aa += 2, bb += 2;
+    }
+
+    if (kk < CountK) {
+        accu00 = SQ4BitGemmMicroKernel<8, 1, 1>(aa, bb, accu00);
+        if constexpr (N == 16) {
+            accu01 = SQ4BitGemmMicroKernel<8, 1, 1>(aa, bb + ldb_substep, accu01);
+        }
+        if constexpr (M == 2) {
+            accu10 = SQ4BitGemmMicroKernel<8, 1, 1>(aa + lda, bb, accu10);
+        }
+        if constexpr (M == 2 && N == 16) {
+            accu11 = SQ4BitGemmMicroKernel<8, 1, 1>(aa + lda, bb + ldb_substep, accu11);
+        }
+    }
+
+    // save register to buffer
+    vst1q_f16(buffer, accu00);
+    if constexpr (N == 16) {
+        vst1q_f16(buffer + 8, accu01);
+    }
+    if constexpr (M == 2) {
+        vst1q_f16(buffer + StrideN, accu10);
+    }
+    if constexpr (M == 2 && N == 16) {
+        vst1q_f16(buffer + StrideN + 8, accu11);
+    }
+}
+
+template <size_t StrideN, bool Initialize, bool UseBias, size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<((N > 0 && N <= 4) && (M == 2 || M == 1) && (K == 8)), void>
+SQ4BitGemmRegisterKernel(
+    const MLAS_FP16* a,
+    const MLAS_FP16* b,
+    const MLAS_FP16* bias,
+    MLAS_FP16* buffer,
+    size_t CountK,
+    size_t lda,
+    size_t ldb
+) {
+    float16x4_t accu0, accu1;
+    // if k == 0 load bias or zero, else load buffer, init register accumulator
+    accu0 = PrepareAccumulator<Initialize, UseBias, N, 1>(bias, buffer);
+    if constexpr (M == 2) {
+        accu1 = PrepareAccumulator<Initialize, UseBias, N, 1>(bias, buffer + StrideN);
+    }
+
+    const MLAS_FP16* aa = a;
+    const MLAS_FP16* bb = b;
+    size_t kk = 0;
+    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) { // 4N_2M_8K
+        accu0 = SQ4BitGemmMicroKernel<N, 1, 8>(aa, bb, ldb, accu0);
+        if constexpr (M == 2) {
+            accu1 = SQ4BitGemmMicroKernel<N, 1, 8>(aa + lda, bb, ldb, accu1);
+        }
+    }
+
+    // remaining K
+    if (kk + 4 <= CountK) {
+        accu0 = SQ4BitGemmMicroKernel<N, 1, 4>(aa, bb, ldb, accu0);
+        if constexpr (M == 2) {
+            accu1 = SQ4BitGemmMicroKernel<N, 1, 4>(aa + lda, bb, ldb, accu1);
+        }
+        kk += 4, aa += 4, bb += 4;
+    }
+
+    if (kk + 2 <= CountK) {
+        accu0 = SQ4BitGemmMicroKernel<N, 1, 2>(aa, bb, ldb, accu0);
+        if constexpr (M == 2) {
+            accu1 = SQ4BitGemmMicroKernel<N, 1, 2>(aa + lda, bb, ldb, accu1);
+        }
+        kk += 2, aa += 2, bb += 2;
+    }
+
+    if (kk < CountK) {
+        accu0 = SQ4BitGemmMicroKernel<N, 1, 1>(aa, bb, ldb, accu0);
+        if constexpr (M == 2) {
+            accu1 = SQ4BitGemmMicroKernel<N, 1, 1>(aa + lda, bb, ldb, accu1);
+        }
+    }
+
+    // save register to buffer
+    if constexpr (M == 2) {
+        if constexpr (N == 4) {
+            vst1_f16(buffer, accu0);
+            vst1q_f16(buffer + StrideN, accu1);
+        } else {
+            vst1_lane_f16(buffer, accu0, 0);
+            vst1_lane_f16(buffer + StrideN, accu1, 0);
+            if constexpr (N > 1) {
+                vst1_lane_f16(buffer + 1, accu0, 1);
+                vst1_lane_f16(buffer + StrideN + 1, accu1, 1);
+            }
+            if constexpr (N > 2) {
+                vst1_lane_f16(buffer + 2, accu0, 2);
+                vst1_lane_f16(buffer + StrideN + 2, accu1, 2);
+            }
+        }
+    } else {
+        if constexpr (N == 4) vst1_f16(buffer, accu0);
+        else {
+            vst1_lane_f16(buffer, accu0, 0);
+            if constexpr (N > 1) vst1_lane_f16(buffer + 1, accu0, 1);
+            if constexpr (N > 2) vst1_lane_f16(buffer + 2, accu0, 2);
+        }
+    }
+}
+
+template <size_t StrideM, size_t StrideN>
+void
+SQ4BitGemmKernel_CompFp16(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* C,
+    size_t CountM,
+    size_t CountN,
+    size_t K,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const size_t stride_M,
+    const size_t stride_N
+) {
+    assert(stride_M == StrideM);
+    assert(stride_N == StrideN);
+    assert(StrideM >= CountM);
+    assert(StrideN >= CountN);
+
+    constexpr size_t StrideK = 128;
+    constexpr size_t m_step = 2;
+    constexpr size_t n_step = 16;
+    constexpr size_t k_step = 8;
+    const size_t lda_step = lda * m_step;
+    const size_t ldb_step = ldb * n_step;
+    const size_t ldb_substep = ldb * 8;
+    const size_t ldc_step = StrideN * m_step;
+
+    MLAS_FP16 buffer[StrideM * StrideN];
+
+    // First cache block K, directly write to buffer. Add bias if exists.
+    size_t k = 0, CountK;
+    if (k < K) {
+        CountK = std::min(K, StrideK);
+        if (Bias) {
+            MLAS_FP16 *b = B, bias = Bias;
+            size_t nn = 0, c = 0;
+            for (; nn + n_step <= CountN; nn += n_step) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, n_step, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, n_step, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                b += ldb_step;
+                bias = bias ? bias + n_step : nullptr;
+                c += n_step;
+            }
+
+            if (nn + 8 <= CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 8, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 8, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                nn += 8;
+                b += ldb * 8;
+                bias = bias ? bias + 8 : nullptr;
+                c += 8;
+            }
+
+            if (nn + 4 <= CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 4, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 4, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                nn += 4;
+                b += ldb * 4;
+                bias = bias ? bias + 4 : nullptr;
+                c += 4;
+            }
+
+            if (nn + 2 <= CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 2, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                // remaining 1M
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 2, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                nn += 2;
+                b += ldb * 2;
+                bias = bias ? bias + 2 : nullptr;
+                c += 2;
+            }
+
+            if (nn < CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 1, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, true, 1, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+            }
+        } else {
+            MLAS_FP16 *b = B, bias = nullptr;
+            size_t nn = 0, c = 0;
+            for (; nn + n_step <= CountN; nn += n_step, b += ldb_step, c += n_step) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, n_step, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, n_step, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+            }
+
+            // remaining N
+            if (nn + 8 <= CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 8, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 8, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                nn += 8;
+                b += ldb * 8;
+                c += 8;
+            }
+
+            if (nn + 4 <= CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 4, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                // remaining 1M
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 4, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                nn += 4;
+                b += ldb * 4;
+                c += 4;
+            }
+
+            if (nn + 2 <= CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 2, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                // remaining 1M
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 2, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                nn += 2;
+                b += ldb * 2;
+                c += 2;
+            }
+
+            if (nn < CountN) {
+                const MLAS_FP16* a = A;
+                size_t mm = 0, cc = c;
+                for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 1, m_step, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+
+                // remaining 1M
+                if (mm < CountM) {
+                    SQ4BitGemmRegisterKernel<StrideN, true, false, 1, 1, k_step>(
+                        a, b, bias, buffer + cc, CountK, lda, ldb
+                    );
+                }
+            }
+        }
+
+        k += CountK;
+        A += CountK;
+        B += CountK;
+    }
+
+    // 2nd+ cache block K, accumulate to buffer.
+    for (; k < K; k += CountK, A += CountK, B += CountK) {
+        CountK = std::min(K - k, StrideK);
+        MLAS_FP16* b = B;
+        size_t nn = 0, c = 0;
+        for (; nn + n_step <= CountN; nn += n_step) {
+            const MLAS_FP16* a = A;
+            size_t mm = 0, cc = c;
+            for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                // load buffer, init register accumulator
+                SQ4BitGemmRegisterKernel<StrideN, false, false, n_step, m_step, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            // remaining 1M
+            if (mm < CountM) {
+                SQ4BitGemmRegisterKernel<StrideN, false, false, n_step, 1, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            b += ldb_step;
+            c += n_step;
+        }
+
+        // remaining N
+        if (nn + 8 <= CountN) {
+            const MLAS_FP16* a = A;
+            size_t mm = 0, cc = c;
+            for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                // load buffer, init register accumulator
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 8, 2, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            // remaining 1M
+            if (mm < CountM) {
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 8, 1, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            nn += 8;
+            b += ldb * 8;
+            c += 8;
+        }
+
+        if (nn + 4 <= CountN) {
+            const MLAS_FP16* a = A;
+            size_t mm = 0, cc = c;
+            for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                // load buffer, init register accumulator
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 4, 2, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            // remaining 1M
+            if (mm < CountM) {
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 4, 1, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            nn += 4;
+            b += ldb * 4;
+            c += 4;
+        }
+
+        if (nn + 2 <= CountN) {
+            const MLAS_FP16* a = A;
+            size_t mm = 0, cc = c;
+            for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                // load buffer, init register accumulator
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 2, 2, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            // remaining 1M
+            if (mm < CountM) {
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 2, 1, k_step>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            nn += 2;
+            b += ldb * 2;
+            c += 2;
+        }
+
+        if (nn < CountN) {
+            const MLAS_FP16* a = A;
+            size_t mm = 0, cc = c;
+            for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
+                // load buffer, init register accumulator
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 2, 16>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+
+            // remaining 1M
+            if (mm < CountM) {
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 1, 16>(
+                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                );
+            }
+        }
+    }
+
+    // save buffer to C
+    if (CountN == StrideN) {
+        size_t m = 0;
+        MLAS_FP16* pbuffer = buffer;
+        for (; m + 2 <= CountM; m += 2, C += ldc * 2, pbuffer += StrideN * 2) {
+            float16x8_t c00 = vld1q_f16(pbuffer);
+            vst1q_f16(C, c00);
+            float16x8_t c01 = vld1q_f16(pbuffer + 8);
+            vst1q_f16(C + 8, c01);
+            float16x8_t c02 = vld1q_f16(pbuffer + 16);
+            vst1q_f16(C + 16, c02);
+            float16x8_t c03 = vld1q_f16(pbuffer + 24);
+            vst1q_f16(C + 24, c03);
+            float16x8_t c10 = vld1q_f16(pbuffer + StrideN);
+            vst1q_f16(C + ldc, c10);
+            float16x8_t c11 = vld1q_f16(pbuffer + StrideN + 8);
+            vst1q_f16(C + ldc + 8, c11);
+            float16x8_t c12 = vld1q_f16(pbuffer + StrideN + 16);
+            vst1q_f16(C + ldc + 16, c12);
+            float16x8_t c13 = vld1q_f16(pbuffer + StrideN + 24);
+            vst1q_f16(C + ldc + 24, c13);
+        }
+
+        if (m < CountM) {
+            float16x8_t c00 = vld1q_f16(pbuffer);
+            vst1q_f16(C, c00);
+            float16x8_t c01 = vld1q_f16(pbuffer + 8);
+            vst1q_f16(C + 8, c01);
+            float16x8_t c02 = vld1q_f16(pbuffer + 16);
+            vst1q_f16(C + 16, c02);
+            float16x8_t c03 = vld1q_f16(pbuffer + 24);
+            vst1q_f16(C + 24, c03);
+        }
+    } else {
+        size_t m = 0;
+        MLAS_FP16* pbuffer = buffer;
+        for (; m + 2 <= CountM; m += 2, C += ldc * 2, pbuffer += StrideN * 2) {
+            std::memcpy(C, pbuffer, sizeof(MLAS_FP16) * CountN);
+            std::memcpy(C + ldc, pbuffer + StrideN, sizeof(MLAS_FP16) * CountN);
+        }
+
+        if (m < CountM) {
+            std::memcpy(C, pbuffer, sizeof(MLAS_FP16) * CountN);
+        }
+    }
+}
+
 }  // namespace sqnbitgemm_neon
