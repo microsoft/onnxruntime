@@ -63,9 +63,19 @@ stages:
       pool:
         name: onnxruntime-Win-CPU-2022
       variables:
-        GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-        VSGenerator: 'Visual Studio 17 2022'
-        CUDA_MODULE_LOADING: 'LAZY'
+      # The build machine pool doesn't have dotnet, so it can't run CG.
+      - template: common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      - name: CUDA_MODULE_LOADING
+        value: 'LAZY'
+      - name: win_trt_folder
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: ${{ variables.win_trt_folder_cuda11 }}
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: ${{ variables.win_trt_folder_cuda12 }}
       steps:
           - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
             displayName: 'Clean Agent Directories'
