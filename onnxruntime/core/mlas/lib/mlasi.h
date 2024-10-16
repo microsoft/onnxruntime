@@ -2479,21 +2479,12 @@ MlasReadTimeStampCounter(void)
 // Aligned buffer for GEMM packing, etc.
 //
 
-#ifdef MLAS_THREAD_LOCAL
-#error MLAS_THREAD_LOCAL was previously defined
-#endif
-#if defined(_MSC_VER)
-#define MLAS_THREAD_LOCAL __declspec(thread)
-#else
-#define MLAS_THREAD_LOCAL 
-#endif
-
 constexpr size_t ThreadedBufAlignment = 64;
-extern MLAS_THREAD_LOCAL size_t ThreadedBufSize;
+extern thread_local size_t ThreadedBufSize;
 #ifdef _MSC_VER
-extern MLAS_THREAD_LOCAL std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
+extern thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
 #else
-extern MLAS_THREAD_LOCAL std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder;
+extern thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder;
 #endif
 
 MLAS_FORCEINLINE
