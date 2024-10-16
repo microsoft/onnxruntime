@@ -52,6 +52,10 @@ parameters:
   type: boolean
   default: false
 
+- name: use_tensorrt
+  type: boolean
+  default: false
+
 stages:
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
     dependsOn: []
@@ -76,6 +80,11 @@ stages:
           value: ${{ variables.win_trt_folder_cuda11 }}
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
+      - name: trt_build_flag
+        ${{ if eq(parameters.use_tensorrt, true) }}:
+          value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
+        ${{ if eq(parameters.use_tensorrt, false) }}:
+          value: ''
       steps:
           - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
             displayName: 'Clean Agent Directories'
@@ -105,19 +114,17 @@ stages:
             - template: jobs/set-winenv.yml
               parameters:
                 EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true) }}:
                   DownloadCUDA: true
-                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-                  DownloadTRT: true
+                DownloadTRT: ${{ parameters.use_tensorrt }}
 
           - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
             - template: jobs/download_win_gpu_library.yml
               parameters:
                 CudaVersion: ${{ parameters.CudaVersion }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true) }}:
                   DownloadCUDA: true
-                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-                  DownloadTRT: true
+                DownloadTRT: ${{ parameters.use_tensorrt }}
 
           - task: PythonScript@0
             displayName: 'Update deps.txt'
@@ -147,7 +154,7 @@ stages:
                 --enable_pybind
                 --enable_onnx_tests
                 --parallel --use_binskim_compliant_compile_flags --update
-                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
           # building with build.py so the parallelization parameters are added to the msbuild command

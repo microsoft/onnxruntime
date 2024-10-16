@@ -287,6 +287,7 @@ stages:
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:
@@ -297,6 +298,7 @@ stages:
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:
@@ -307,6 +309,7 @@ stages:
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:

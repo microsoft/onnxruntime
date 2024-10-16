@@ -55,13 +55,6 @@ parameters:
     - '3.12'
 
 stages:
-  - variables:
-    - template: ../templates/common-variables.yml
-    - name: win_trt_folder
-      ${{ if eq(parameters.cuda_version, '11.8') }}:
-        value: ${{ variables.win_trt_folder_cuda11 }}
-      ${{ if eq(parameters.cuda_version, '12.2') }}:
-        value: ${{ variables.win_trt_folder_cuda12 }}
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
       - template: ../templates/py-win-gpu.yml
@@ -71,7 +64,8 @@ stages:
           CudaVersion: ${{ parameters.cuda_version }}
           SpecificArtifact: ${{ parameters.SpecificArtifact }}
           BuildId: ${{ parameters.BuildId }}
-          EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\${{ variables.win_trt_folder }} --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --enable_lto --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          use_tensorrt: True
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
       - template: ../templates/py-linux-gpu.yml
