@@ -72,14 +72,6 @@ MlasIsSQNBitGemmAvailable(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
-);
-
-template<typename T>
-bool MLASCALL
-MlasIsSQNBitGemmAvailable(
-    size_t BlkBitWidth,
-    size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
