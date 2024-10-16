@@ -48,11 +48,10 @@ class NodeGroupSelector {
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit DropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
-                                    bool allow_nonpositive_scale = true,
-                                    const InlinedHashSet<std::string_view>& incompatible_execution_providers = {})
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale), incompatible_execution_providers_(incompatible_execution_providers) {}
 
+explicit DropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                    bool allow_nonpositive_scale = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
@@ -61,7 +60,6 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
   bool allow_16bit_;
   bool allow_4bit_;
   bool allow_nonpositive_scale_;
-  const InlinedHashSet<std::string_view> incompatible_execution_providers_;
 };
 
 // Single DQ -> node.

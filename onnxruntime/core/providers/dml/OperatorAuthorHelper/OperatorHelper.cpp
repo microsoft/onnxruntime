@@ -632,6 +632,7 @@ namespace OperatorHelper
             std::rotate(newStrides.begin(), newStrides.begin() + 1, newStrides.end() - 1);
         }
 
+
         return std::make_pair(newSizes, newStrides);
     }
 
