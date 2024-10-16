@@ -34,11 +34,16 @@ TreeEnsemble<T>::TreeEnsemble(const OpKernelInfo& info) : OpKernel(info) {
 
 template <typename T>
 Status TreeEnsemble<T>::GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
-  InlinedVector<std::string> names{
+  static constexpr std::array<std::string_view, 12> names{
       "leaf_targetids", "leaf_weights", "membership_values", "nodes_falseleafs",
       "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates", "nodes_missing_value_tracks_true",
       "nodes_modes", "nodes_splits", "nodes_trueleafs", "nodes_truenodeids"};
-  removable_attributes.swap(names);
+
+  removable_attributes.clear();
+  for(const auto& name : names) {
+    removable_attributes.emplace_back(name);
+  }
+
   return Status::OK();
 }
 
