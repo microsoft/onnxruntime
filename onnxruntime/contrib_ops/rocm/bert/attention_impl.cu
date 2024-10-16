@@ -182,7 +182,7 @@ Status DecoderQkvToContext(
     const hipDeviceProp_t& prop,
     RocmTuningContext* tuning_ctx,
     Stream* ort_stream,
-    rocblas_handle& rocblas,
+    hipblasHandle_t& hipblas,
     const size_t element_size,
     const int batch_size,
     const int sequence_length,
@@ -284,7 +284,7 @@ Status DecoderQkvToContext(
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, ort_stream, rocblas,
+        tuning_ctx, ort_stream, hipblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -295,7 +295,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, ort_stream, rocblas,
+        tuning_ctx, ort_stream, hipblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -320,7 +320,7 @@ Status DecoderQkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, ort_stream, rocblas,
+        tuning_ctx, ort_stream, hipblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -331,7 +331,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, ort_stream, rocblas,
+        tuning_ctx, ort_stream, hipblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -351,7 +351,7 @@ Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,
     RocmTuningContext* tuning_ctx,
     Stream* stream,
-    rocblas_handle& rocblas,
+    hipblasHandle_t& hipblas,
     const size_t element_size,
     const int batch_size,
     const int sequence_length,
@@ -378,7 +378,7 @@ Status LaunchDecoderAttentionKernel(
         prop,
         tuning_ctx,
         stream,
-        rocblas,
+        hipblas,
         element_size,
         batch_size,
         sequence_length,
@@ -405,7 +405,7 @@ Status LaunchDecoderAttentionKernel(
         prop,
         tuning_ctx,
         stream,
-        rocblas,
+        hipblas,
         element_size,
         batch_size,
         sequence_length,

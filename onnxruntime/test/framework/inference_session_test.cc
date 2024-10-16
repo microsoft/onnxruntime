@@ -769,7 +769,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   while (std::getline(profile, line)) {
     if (count == 0) {
       ASSERT_TRUE(line.find("[") != string::npos);
-    } else if (count <= 5) {
+    } else if (count <= 3) {
       for (auto& s : tags) {
         ASSERT_TRUE(line.find(s) != string::npos);
       }
@@ -778,7 +778,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     }
 
     if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
+      ASSERT_TRUE(line.find("mul_1_kernel_time") != string::npos);
     }
     count++;
   }

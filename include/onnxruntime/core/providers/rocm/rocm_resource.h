@@ -8,5 +8,5 @@
 enum RocmResource : int {
   hip_stream_t = rocm_resource_offset,
   miopen_handle_t,
-  rocblas_handle_t
+  hipblas_handle_t
 };

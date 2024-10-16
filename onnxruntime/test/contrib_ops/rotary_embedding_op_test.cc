@@ -139,8 +139,7 @@ static void RunTests(const std::vector<float>& input_data,
                      int max_sequence_length = 0,
                      int64_t interleaved = 0,
                      int64_t is_packed_batching = 0,
-                     bool use_float16 = true,
-                     bool disable_dml = false) {
+                     bool use_float16 = true) {
   // FP32 test for CPU
   RunTest(input_data,
           position_ids,
@@ -177,7 +176,7 @@ static void RunTests(const std::vector<float>& input_data,
           TensorType::kFloat,
           false, /* disable_cpu */
           false, /* disable_cuda */
-          disable_dml || false /* disable_dml */);
+          false /* disable_dml */);
 
   // FP16 test for CUDA and DML
   if (use_float16) {
@@ -197,7 +196,7 @@ static void RunTests(const std::vector<float>& input_data,
             TensorType::kFloat16,
             true,  /* disable_cpu */
             false, /* disable_cuda*/
-            disable_dml || false /* disable_dml */);
+            false /* disable_dml */);
 
     // RunTest(input_data,
     //         position_ids,
@@ -747,9 +746,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            num_heads,
            max_sequence_length,
            interleaved,
-           0,    // is_packed_batching
-           true, /*use_fp16*/
-           true /*disable_dml*/);
+           0,  // is_packed_batching
+           true /*use_fp16*/);
 }
 
 TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
@@ -789,9 +787,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_B
            num_heads,
            max_sequence_length,
            interleaved,
-           1,    // is_packed_batching
-           true, /*use_fp16*/
-           true /*disable_dml*/);
+           1,  // is_packed_batching
+           true /*use_fp16*/);
 }
 
 }  // namespace test
