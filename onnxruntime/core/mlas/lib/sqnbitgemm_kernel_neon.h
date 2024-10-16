@@ -102,7 +102,7 @@ SQ4BitGemmKernel_CompFp16(
     size_t ldb,
     size_t ldc,
     const size_t stride_M,
-    const size_t stride_N,
+    const size_t stride_N
 );
 
 // CompInt8 declarations

@@ -180,7 +180,7 @@ SQ4BitGemmPackQuantBData_CompFp16(
         [&](ptrdiff_t tid) {
             const size_t n_blk = tid / k_blk_num;
             const size_t k_blk = tid % k_blk_num;
-            const size_t n = n_blk * n_blk_dim;
+            size_t n = n_blk * n_blk_dim;
 
             if (n + n_blk_dim <= N) {
                 const size_t data_offset = n * ld + k_blk * k_blk_bytes * n_blk_dim;
@@ -228,12 +228,12 @@ template<size_t N, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 8 && K == 16), void>
 Q4BitBlkDequantBKernel(
-    const std::byte* src_ptr,
+    const std::uint8_t* src_ptr,
     const float16x8_t& scale,
     const float16x8_t& neg_scaled_zp,
     MLAS_FP16* dst_ptr
 ) {
-    constexpr uint8x8_t low_mask = vdup_n_u8(0x0F);
+    const uint8x8_t low_mask = vdup_n_u8(0x0F);
 
     uint8x8_t b01 = vld1_u8(src_ptr);
     uint8x8_t b23 = vld1_u8(src_ptr + 8);
@@ -278,34 +278,34 @@ Q4BitBlkDequantBKernel(
     float16x8_t ce = vfmaq_f16(neg_scaled_zp, be, scale);
     float16x8_t cf = vfmaq_f16(neg_scaled_zp, bf, scale);
 
-    vst1q_f16(dst_ptr, c0);
-    vst1q_f16(dst_ptr + 8, c1);
-    vst1q_f16(dst_ptr + 16, c2);
-    vst1q_f16(dst_ptr + 24, c3);
-    vst1q_f16(dst_ptr + 32, c4);
-    vst1q_f16(dst_ptr + 40, c5);
-    vst1q_f16(dst_ptr + 48, c6);
-    vst1q_f16(dst_ptr + 56, c7);
-    vst1q_f16(dst_ptr + 64, c8);
-    vst1q_f16(dst_ptr + 72, c9);
-    vst1q_f16(dst_ptr + 80, ca);
-    vst1q_f16(dst_ptr + 88, cb);
-    vst1q_f16(dst_ptr + 96, cc);
-    vst1q_f16(dst_ptr + 104, cd);
-    vst1q_f16(dst_ptr + 112, ce);
-    vst1q_f16(dst_ptr + 120, cf);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr), c0);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 8), c1);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 16), c2);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 24), c3);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 32), c4);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 40), c5);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 48), c6);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 56), c7);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 64), c8);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 72), c9);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 80), ca);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 88), cb);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 96), cc);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 104), cd);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 112), ce);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 120), cf);
 }
 
 template<size_t N, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 1 && K == 16), void>
 Q4BitBlkDequantBKernel(
-    const std::byte* src_ptr,
+    const std::uint8_t* src_ptr,
     const float16x8_t& scale,
     const float16x8_t& neg_scaled_zp,
     MLAS_FP16* dst_ptr
 ) {
-    constexpr uint8x8_t low_mask = vdup_n_u8(0x0F);
+    const uint8x8_t low_mask = vdup_n_u8(0x0F);
 
     uint8x8_t v0 = vld1_u8(src_ptr);
 
@@ -315,8 +315,8 @@ Q4BitBlkDequantBKernel(
     float16x8_t c0 = vfmaq_f16(neg_scaled_zp, f_low, scale);
     float16x8_t c1 = vfmaq_f16(neg_scaled_zp, f_high, scale);
 
-    vst1q_f16(dst_ptr, c0);
-    vst1q_f16(dst_ptr + 8, c1);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr), c0);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(dst_ptr + 8), c1);
 }
 
 void
@@ -330,13 +330,14 @@ Q4BitBlkDequantBForSgemm_CompFp16(
     size_t K,
     size_t BlockCountK
 ) {
+    MLAS_UNREFERENCED_PARAMETER(K);
     constexpr size_t nbits = 4;
     constexpr size_t kk_blk_dim = 16;
     constexpr size_t n_blk_dim = 8;
     assert(BlkLen > 0 && BlkLen % kk_blk_dim == 0);
 
     const size_t kk_blk_num = BlockCountK * BlkLen / kk_blk_dim;
-    const size_t kk_blk_bytes = MlasQNBitBlkDataSizeInBytes(nbits, kk_blk_dim);
+    constexpr size_t kk_blk_bytes = MlasQNBitBlkDataSizeInBytes(nbits, kk_blk_dim);
     const size_t kk_n_src_bytes = kk_blk_bytes * n_blk_dim;
     const size_t kk_n_dst_size = kk_blk_dim * n_blk_dim;
     const size_t ld_blk_src = kk_blk_num * kk_n_src_bytes;
@@ -344,13 +345,13 @@ Q4BitBlkDequantBForSgemm_CompFp16(
     const size_t ld_blk_scale = BlockCountK * n_blk_dim;
     const size_t ld_zp = (BlockCountK + 1) / 2;
     const size_t ld_blk_zp = ld_zp * n_blk_dim;
-    constexpr float16x8_t zp_mid_point_vec = vdupq_n_f16(8.0f);
+    const float16x8_t zp_mid_point_vec = MlasBroadcastFloat16x8(MLAS_FP16(8.0f).val);
 
     int n = 0;
     for (; n + n_blk_dim <= CountN; n += n_blk_dim) {
         const MLAS_FP16* scales_ptr = QuantBScale;
-        const std::byte* zero_points_ptr = QuantBZeroPoint;
-        const std::byte* src_ptr = QuantBData;
+        const std::uint8_t* zero_points_ptr = reinterpret_cast<const uint8_t*>(QuantBZeroPoint);
+        const std::uint8_t* src_ptr = reinterpret_cast<const uint8_t*>(QuantBData);
         MLAS_FP16* dst_ptr = FpData;
 
         for (int k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
@@ -363,7 +364,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             UnrolledLoop<n_blk_dim>([&](int nn){
                 scales[nn] = scales_ptr[nn * BlockCountK];
             });
-            scale_vec = vld1q_f16(scales);
+            scale_vec = MlasLoadFloat16x8(reinterpret_cast<_mlas_fp16_*>(scales));
 
             if (QuantBZeroPoint) {
                 UnrolledLoop<n_blk_dim>([&](int nn){
@@ -371,7 +372,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
                     zp = (k_blk_i & 1) ? (zp >> 4) : (zp & 0x0F);
                     zero_points[nn] = static_cast<uint16_t>(zp);
                 });
-                uint16x8_t zp_u16_vec = vld1_u16(zero_points);
+                uint16x8_t zp_u16_vec = vld1q_u16(zero_points);
                 neg_scaled_zp_vec = vcvtq_f16_u16(zp_u16_vec);
             } else {
                 neg_scaled_zp_vec = zp_mid_point_vec;
@@ -401,11 +402,11 @@ Q4BitBlkDequantBForSgemm_CompFp16(
     for (; n < CountN; ++n) {
         for (int k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
             MLAS_FP16 scale = QuantBScale[0];
-            float16x8_t scale_vec = vdupq_n_f16(scale);
+            float16x8_t scale_vec = MlasBroadcastFloat16x8(scale.val);
             float16x8_t neg_scaled_zp_vec;
 
             if (QuantBZeroPoint) {
-                uint8_t zero_point = QuantBZeroPoint[0];
+                uint8_t zero_point = static_cast<uint8_t>(QuantBZeroPoint[0]);
                 zero_point = (k_blk_i & 1) ? (zero_point >> 4) : (zero_point & 0x0F);
                 uint16x8_t zp_u16_vec = vdupq_n_u16(static_cast<uint16_t>(zero_point));
                 neg_scaled_zp_vec = vcvtq_f16_u16(zp_u16_vec);
@@ -415,7 +416,9 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
 
             for (int kk = 0; kk < BlkLen; kk += kk_blk_dim) {
-                Q4BitBlkDequantBKernel<1, 16>(QuantBData, scale_vec, neg_scaled_zp_vec, FpData);
+                Q4BitBlkDequantBKernel<1, 16>(
+                    reinterpret_cast<const uint8_t*>(QuantBData), scale_vec, neg_scaled_zp_vec, FpData
+                );
 
                 QuantBData += kk_blk_bytes;
                 FpData += kk_blk_dim;
@@ -438,12 +441,12 @@ PrepareAccumulator(
 ) {
     if constexpr (Initialize) {
         if constexpr (UseBias) {
-            return vld1q_f16(Bias);
+            return MlasLoadFloat16x8(Bias);
         } else {
-            return vdupq_n_f16(0.0f);
+            return MlasZeroFloat16x8();
         }
     } else {
-        return vld1q_f16(C);
+        return MlasLoadFloat16x8(C);
     }
 }
 
@@ -458,7 +461,7 @@ PrepareAccumulator(
         if constexpr (UseBias) {
             return vld1_f16(Bias);
         } else {
-            return vdup_n_f16(0.0f);
+            return MlasZeroFloat16x4();
         }
     } else {
         return vld1_f16(C);
@@ -481,7 +484,7 @@ PrepareAccumulator(
             }
             return v;
         } else {
-            return vdup_n_f16(0.0f);
+            return MlasZeroFloat16x4();
         }
     } else {
         float16x4_t v;
@@ -501,15 +504,15 @@ SQ4BitGemmMicroKernel(
     const MLAS_FP16* B,
     float16x8_t accumulator
 ) {
-    float16x8_t a0 = vld1q_f16(A);
-    float16x8_t b0 = vld1q_f16(B);
-    float16x8_t b1 = vld1q_f16(B + 8);
-    float16x8_t b2 = vld1q_f16(B + 16);
-    float16x8_t b3 = vld1q_f16(B + 24);
-    float16x8_t b4 = vld1q_f16(B + 32);
-    float16x8_t b5 = vld1q_f16(B + 40);
-    float16x8_t b6 = vld1q_f16(B + 48);
-    float16x8_t b7 = vld1q_f16(B + 56);
+    float16x8_t a0 = MlasLoadFloat16x8(A);
+    float16x8_t b0 = MlasLoadFloat16x8(B);
+    float16x8_t b1 = MlasLoadFloat16x8(B + 8);
+    float16x8_t b2 = MlasLoadFloat16x8(B + 16);
+    float16x8_t b3 = MlasLoadFloat16x8(B + 24);
+    float16x8_t b4 = MlasLoadFloat16x8(B + 32);
+    float16x8_t b5 = MlasLoadFloat16x8(B + 40);
+    float16x8_t b6 = MlasLoadFloat16x8(B + 48);
+    float16x8_t b7 = MlasLoadFloat16x8(B + 56);
 
     float16x8_t c0 = vfmaq_laneq_f16(accumulator, b0, a0, 0);
     float16x8_t c01 = vfmaq_laneq_f16(c0, b1, a0, 1);
@@ -535,10 +538,10 @@ SQ4BitGemmMicroKernel(
     float16x8_t accumulator
 ) {
     float16x4_t a0 = vld1_f16(A);
-    float16x8_t b0 = vld1q_f16(B);
-    float16x8_t b1 = vld1q_f16(B + 8);
-    float16x8_t b2 = vld1q_f16(B + 16);
-    float16x8_t b3 = vld1q_f16(B + 24);
+    float16x8_t b0 = MlasLoadFloat16x8(B);
+    float16x8_t b1 = MlasLoadFloat16x8(B + 8);
+    float16x8_t b2 = MlasLoadFloat16x8(B + 16);
+    float16x8_t b3 = MlasLoadFloat16x8(B + 24);
 
     float16x8_t c0 = vfmaq_lane_f16(accumulator, b0, a0, 0);
     float16x8_t c01 = vfmaq_lane_f16(c0, b1, a0, 1);
@@ -559,41 +562,49 @@ SQ4BitGemmMicroKernel(
     float16x4_t a0;
     a0 = vld1_lane_f16(A, a0, 0);
     if constexpr (K == 2) a0 = vld1_lane_f16(A + 1, a0, 1);
-    float16x8_t b0 = vld1q_f16(B), b1;
-    if constexpr (K == 2) b1 = vld1q_f16(B + 8);
+    float16x8_t b0 = MlasLoadFloat16x8(B), b1;
+    if constexpr (K == 2) b1 = MlasLoadFloat16x8(B + 8);
 
     float16x8_t c0 = vfmaq_lane_f16(accumulator, b0, a0, 0), c01;
     if constexpr (K == 2) c01 = vfmaq_lane_f16(c0, b1, a0, 1);
 
-    if constexpr (K == 1) return c0;
-    else return c01;
+    if constexpr (K == 1)
+        return c0;
+    else
+        return c01;
 }
 
-template<size_t N, size_t M, size_t K>
+template <size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
-typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && K == 8), float16x4_t>
-SQ4BitGemmMicroKernel(
-    const MLAS_FP16* A,
-    const MLAS_FP16* B,
-    const size_t ldb,
-    float16x4_t accumulator
-) {
-    float16x8_t a0 = vld1q_f16(A);
+    typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && K == 8), float16x4_t>
+    SQ4BitGemmMicroKernel(
+        const MLAS_FP16* A,
+        const MLAS_FP16* B,
+        const size_t ldb,
+        float16x4_t accumulator
+    )
+{
+    float16x8_t a0 = MlasLoadFloat16x8(A);
 
-    float16x8_t b0, b1, b2, b3
-    b0 = vld1q_f16(B);
-    if constexpr (N > 1) b1 = vld1q_f16(B + ldb);
-    if constexpr (N > 2) b2 = vld1q_f16(B + ldb * 2);
-    if constexpr (N > 3) b3 = vld1q_f16(B + ldb * 3);
+    float16x8_t b0, b1, b2, b3 b0 = MlasLoadFloat16x8(B);
+    if constexpr (N > 1) b1 = MlasLoadFloat16x8(B + ldb);
+    if constexpr (N > 2) b2 = MlasLoadFloat16x8(B + ldb * 2);
+    if constexpr (N > 3) b3 = MlasLoadFloat16x8(B + ldb * 3);
 
     float16x8_t c00, c01, c02, c03;
     c00 = vmulq_f16(b0, a0);
-    if constexpr (N > 1) c01 = vmulq_f16(b1, a0);
-    else c01 = vdupq_n_f16(0.0f);
-    if constexpr (N > 2) c02 = vmulq_f16(b2, a0);
-    else c02 = vdupq_n_f16(0.0f);
-    if constexpr (N > 3) c03 = vmulq_f16(b3, a0);
-    else c03 = vdupq_n_f16(0.0f);
+    if constexpr (N > 1)
+        c01 = vmulq_f16(b1, a0);
+    else
+        c01 = vdupq_n_f16(0.0f);
+    if constexpr (N > 2)
+        c02 = vmulq_f16(b2, a0);
+    else
+        c02 = vdupq_n_f16(0.0f);
+    if constexpr (N > 3)
+        c03 = vmulq_f16(b3, a0);
+    else
+        c03 = vdupq_n_f16(0.0f);
 
     Transpose4x8(c00, c01, c02, c03);
 
@@ -605,21 +616,23 @@ SQ4BitGemmMicroKernel(
     return vadd_f16(c, accumulator);
 }
 
-template<size_t N, size_t M, size_t K>
+template <size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
-typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K > 0 && K <= 4)), float16x4_t>
-SQ4BitGemmMicroKernel(
-    const MLAS_FP16* A,
-    const MLAS_FP16* B,
-    const size_t ldb,
-    float16x4_t accumulator
-) {
+    typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K > 0 && K <= 4)), float16x4_t>
+    SQ4BitGemmMicroKernel(
+        const MLAS_FP16* A,
+        const MLAS_FP16* B,
+        const size_t ldb,
+        float16x4_t accumulator
+    )
+{
     float16x4_t a0;
-    if constexpr (K == 4) a0 = vld1_f16(A);
+    if constexpr (K == 4)
+        a0 = vld1_f16(A);
     else {
-        a0 = vld1_lane_f16(A, 0);
-        if constexpr (K >= 2) a0 = vld1_lane_f16(A + 1, 1);
-        if constexpr (K >= 3) a0 = vld1_lane_f16(A + 2, 2);
+        a0 = vld1_lane_f16(A, a0, 0);
+        if constexpr (K >= 2) a0 = vld1_lane_f16(A + 1, a0, 1);
+        if constexpr (K >= 3) a0 = vld1_lane_f16(A + 2, a0, 2);
     }
 
     float16x4_t b0, b1, b2, b3;
@@ -630,12 +643,18 @@ SQ4BitGemmMicroKernel(
 
     float16x4_t c00, c01, c02, c03;
     c00 = vmul_f16(b0, a0);
-    if constexpr (N > 1) c01 = vmul_f16(b1, a0);
-    else c01 = vdup_n_f16(0.0f);
-    if constexpr (N > 2) c02 = vmul_f16(b2, a0);
-    else c02 = vdup_n_f16(0.0f);
-    if constexpr (N > 3) c03 = vmul_f16(b3, a0);
-    else c03 = vdup_n_f16(0.0f);
+    if constexpr (N > 1)
+        c01 = vmul_f16(b1, a0);
+    else
+        c01 = vdup_n_f16(0.0f);
+    if constexpr (N > 2)
+        c02 = vmul_f16(b2, a0);
+    else
+        c02 = vdup_n_f16(0.0f);
+    if constexpr (N > 3)
+        c03 = vmul_f16(b3, a0);
+    else
+        c03 = vdup_n_f16(0.0f);
 
     Transpose4x4(c00, c01, c02, c03);
 
@@ -645,16 +664,17 @@ SQ4BitGemmMicroKernel(
 
 template <size_t StrideN, bool Initialize, bool UseBias, size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
-typename std::enable_if_t<((N == 16 || N == 8) && (M == 2 || M == 1) && (K == 8)), void>
-SQ4BitGemmRegisterKernel(
-    const MLAS_FP16* a,
-    const MLAS_FP16* b,
-    const MLAS_FP16* bias,
-    MLAS_FP16* buffer,
-    size_t CountK,
-    size_t lda,
-    size_t ldb
-) {
+    typename std::enable_if_t<((N == 16 || N == 8) && (M == 2 || M == 1) && (K == 8)), void>
+    SQ4BitGemmRegisterKernel(
+        const MLAS_FP16* a,
+        const MLAS_FP16* b,
+        const MLAS_FP16* bias,
+        MLAS_FP16* buffer,
+        size_t CountK,
+        size_t lda,
+        size_t ldb
+    )
+{
     const size_t ldb_substep = ldb * 8;
     float16x8_t accu00, accu01, accu10, accu11;
     // if k == 0 load bias or zero, else load buffer, init register accumulator
@@ -673,7 +693,7 @@ SQ4BitGemmRegisterKernel(
     const MLAS_FP16* aa = a;
     const MLAS_FP16* bb = b;
     size_t kk = 0;
-    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) { // 16N_2M_8K
+    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) {  // 16N_2M_8K
         accu00 = SQ4BitGemmMicroKernel<8, 1, 8>(aa, bb, accu00);
         if constexpr (N == 16) {
             accu01 = SQ4BitGemmMicroKernel<8, 1, 8>(aa, bb + ldb_substep, accu01);
@@ -743,16 +763,17 @@ SQ4BitGemmRegisterKernel(
 
 template <size_t StrideN, bool Initialize, bool UseBias, size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
-typename std::enable_if_t<((N > 0 && N <= 4) && (M == 2 || M == 1) && (K == 8)), void>
-SQ4BitGemmRegisterKernel(
-    const MLAS_FP16* a,
-    const MLAS_FP16* b,
-    const MLAS_FP16* bias,
-    MLAS_FP16* buffer,
-    size_t CountK,
-    size_t lda,
-    size_t ldb
-) {
+    typename std::enable_if_t<((N > 0 && N <= 4) && (M == 2 || M == 1) && (K == 8)), void>
+    SQ4BitGemmRegisterKernel(
+        const MLAS_FP16* a,
+        const MLAS_FP16* b,
+        const MLAS_FP16* bias,
+        MLAS_FP16* buffer,
+        size_t CountK,
+        size_t lda,
+        size_t ldb
+    )
+{
     float16x4_t accu0, accu1;
     // if k == 0 load bias or zero, else load buffer, init register accumulator
     accu0 = PrepareAccumulator<Initialize, UseBias, N, 1>(bias, buffer);
@@ -763,7 +784,7 @@ SQ4BitGemmRegisterKernel(
     const MLAS_FP16* aa = a;
     const MLAS_FP16* bb = b;
     size_t kk = 0;
-    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) { // 4N_2M_8K
+    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) {  // 4N_2M_8K
         accu0 = SQ4BitGemmMicroKernel<N, 1, 8>(aa, bb, ldb, accu0);
         if constexpr (M == 2) {
             accu1 = SQ4BitGemmMicroKernel<N, 1, 8>(aa + lda, bb, ldb, accu1);
@@ -812,7 +833,8 @@ SQ4BitGemmRegisterKernel(
             }
         }
     } else {
-        if constexpr (N == 4) vst1_f16(buffer, accu0);
+        if constexpr (N == 4)
+            vst1_f16(buffer, accu0);
         else {
             vst1_lane_f16(buffer, accu0, 0);
             if constexpr (N > 1) vst1_lane_f16(buffer + 1, accu0, 1);
@@ -836,7 +858,8 @@ SQ4BitGemmKernel_CompFp16(
     size_t ldc,
     const size_t stride_M,
     const size_t stride_N
-) {
+)
+{
     assert(stride_M == StrideM);
     assert(stride_N == StrideN);
     assert(StrideM >= CountM);
@@ -1181,32 +1204,32 @@ SQ4BitGemmKernel_CompFp16(
         size_t m = 0;
         MLAS_FP16* pbuffer = buffer;
         for (; m + 2 <= CountM; m += 2, C += ldc * 2, pbuffer += StrideN * 2) {
-            float16x8_t c00 = vld1q_f16(pbuffer);
+            float16x8_t c00 = MlasLoadFloat16x8(pbuffer);
             vst1q_f16(C, c00);
-            float16x8_t c01 = vld1q_f16(pbuffer + 8);
+            float16x8_t c01 = MlasLoadFloat16x8(pbuffer + 8);
             vst1q_f16(C + 8, c01);
-            float16x8_t c02 = vld1q_f16(pbuffer + 16);
+            float16x8_t c02 = MlasLoadFloat16x8(pbuffer + 16);
             vst1q_f16(C + 16, c02);
-            float16x8_t c03 = vld1q_f16(pbuffer + 24);
+            float16x8_t c03 = MlasLoadFloat16x8(pbuffer + 24);
             vst1q_f16(C + 24, c03);
-            float16x8_t c10 = vld1q_f16(pbuffer + StrideN);
+            float16x8_t c10 = MlasLoadFloat16x8(pbuffer + StrideN);
             vst1q_f16(C + ldc, c10);
-            float16x8_t c11 = vld1q_f16(pbuffer + StrideN + 8);
+            float16x8_t c11 = MlasLoadFloat16x8(pbuffer + StrideN + 8);
             vst1q_f16(C + ldc + 8, c11);
-            float16x8_t c12 = vld1q_f16(pbuffer + StrideN + 16);
+            float16x8_t c12 = MlasLoadFloat16x8(pbuffer + StrideN + 16);
             vst1q_f16(C + ldc + 16, c12);
-            float16x8_t c13 = vld1q_f16(pbuffer + StrideN + 24);
+            float16x8_t c13 = MlasLoadFloat16x8(pbuffer + StrideN + 24);
             vst1q_f16(C + ldc + 24, c13);
         }
 
         if (m < CountM) {
-            float16x8_t c00 = vld1q_f16(pbuffer);
+            float16x8_t c00 = MlasLoadFloat16x8(pbuffer);
             vst1q_f16(C, c00);
-            float16x8_t c01 = vld1q_f16(pbuffer + 8);
+            float16x8_t c01 = MlasLoadFloat16x8(pbuffer + 8);
             vst1q_f16(C + 8, c01);
-            float16x8_t c02 = vld1q_f16(pbuffer + 16);
+            float16x8_t c02 = MlasLoadFloat16x8(pbuffer + 16);
             vst1q_f16(C + 16, c02);
-            float16x8_t c03 = vld1q_f16(pbuffer + 24);
+            float16x8_t c03 = MlasLoadFloat16x8(pbuffer + 24);
             vst1q_f16(C + 24, c03);
         }
     } else {
