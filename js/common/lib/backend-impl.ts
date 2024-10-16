@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend} from './backend.js';
-import {InferenceSession} from './inference-session.js';
+import { Backend } from './backend.js';
+import { InferenceSession } from './inference-session.js';
 
 interface BackendInfo {
   backend: Backend;
@@ -31,7 +31,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
   if (backend && typeof backend.init === 'function' && typeof backend.createInferenceSessionHandler === 'function') {
     const currentBackend = backends.get(name);
     if (currentBackend === undefined) {
-      backends.set(name, {backend, priority});
+      backends.set(name, { backend, priority });
     } else if (currentBackend.priority > priority) {
       // same name is already registered with a higher priority. skip registeration.
       return;
@@ -67,7 +67,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  * @param backendName - the name of the backend.
  * @returns the backend instance if resolved and initialized successfully, or an error message if failed.
  */
-const tryResolveAndInitializeBackend = async(backendName: string): Promise<Backend|string> => {
+const tryResolveAndInitializeBackend = async (backendName: string): Promise<Backend | string> => {
   const backendInfo = backends.get(backendName);
   if (!backendInfo) {
     return 'backend not found.';
@@ -107,55 +107,58 @@ const tryResolveAndInitializeBackend = async(backendName: string): Promise<Backe
  *
  * @ignore
  */
-export const resolveBackendAndExecutionProviders = async(options: InferenceSession.SessionOptions):
-    Promise<[backend: Backend, options: InferenceSession.SessionOptions]> => {
-      // extract backend hints from session options
-      const eps = options.executionProviders || [];
-      const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
-      const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
+export const resolveBackendAndExecutionProviders = async (
+  options: InferenceSession.SessionOptions,
+): Promise<[backend: Backend, options: InferenceSession.SessionOptions]> => {
+  // extract backend hints from session options
+  const eps = options.executionProviders || [];
+  const backendHints = eps.map((i) => (typeof i === 'string' ? i : i.name));
+  const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
 
-      // try to resolve and initialize all requested backends
-      let backend: Backend|undefined;
-      const errors = [];
-      const availableBackendNames = new Set<string>();
-      for (const backendName of backendNames) {
-        const resolveResult = await tryResolveAndInitializeBackend(backendName);
-        if (typeof resolveResult === 'string') {
-          errors.push({name: backendName, err: resolveResult});
-        } else {
-          if (!backend) {
-            backend = resolveResult;
-          }
-          if (backend === resolveResult) {
-            availableBackendNames.add(backendName);
-          }
-        }
-      }
-
-      // if no backend is available, throw error.
+  // try to resolve and initialize all requested backends
+  let backend: Backend | undefined;
+  const errors = [];
+  const availableBackendNames = new Set<string>();
+  for (const backendName of backendNames) {
+    const resolveResult = await tryResolveAndInitializeBackend(backendName);
+    if (typeof resolveResult === 'string') {
+      errors.push({ name: backendName, err: resolveResult });
+    } else {
       if (!backend) {
-        throw new Error(`no available backend found. ERR: ${errors.map(e => `[${e.name}] ${e.err}`).join(', ')}`);
+        backend = resolveResult;
       }
+      if (backend === resolveResult) {
+        availableBackendNames.add(backendName);
+      }
+    }
+  }
 
-      // for each explicitly requested backend, if it's not available, output warning message.
-      for (const {name, err} of errors) {
-        if (backendHints.includes(name)) {
-          // eslint-disable-next-line no-console
-          console.warn(`removing requested execution provider "${
-              name}" from session options because it is not available: ${err}`);
+  // if no backend is available, throw error.
+  if (!backend) {
+    throw new Error(`no available backend found. ERR: ${errors.map((e) => `[${e.name}] ${e.err}`).join(', ')}`);
+  }
+
+  // for each explicitly requested backend, if it's not available, output warning message.
+  for (const { name, err } of errors) {
+    if (backendHints.includes(name)) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `removing requested execution provider "${name}" from session options because it is not available: ${err}`,
+      );
+    }
+  }
+
+  const filteredEps = eps.filter((i) => availableBackendNames.has(typeof i === 'string' ? i : i.name));
+
+  return [
+    backend,
+    new Proxy(options, {
+      get: (target, prop) => {
+        if (prop === 'executionProviders') {
+          return filteredEps;
         }
-      }
-
-      const filteredEps = eps.filter(i => availableBackendNames.has(typeof i === 'string' ? i : i.name));
-
-      return [
-        backend, new Proxy(options, {
-          get: (target, prop) => {
-            if (prop === 'executionProviders') {
-              return filteredEps;
-            }
-            return Reflect.get(target, prop);
-          }
-        })
-      ];
-    };
+        return Reflect.get(target, prop);
+      },
+    }),
+  ];
+};

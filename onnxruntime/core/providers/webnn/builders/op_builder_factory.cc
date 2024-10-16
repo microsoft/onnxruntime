@@ -25,7 +25,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Identity", op_registrations);
     CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
-    CreateUnaryOpBuilder("Not", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
@@ -85,9 +84,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateDropoutOpBuilder("Dropout", op_registrations);
   }
 
-  {  // Quantize/Dequantize
+  {  // DequantizeLinear/QuantizeLinear/DynamicQuantizeLinear
+    CreateQDQOpBuilder("DequantizeLinear", op_registrations);
+    CreateQDQOpBuilder("QuantizeLinear", op_registrations);
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
-    CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);
   }
 
   {  // Expand
@@ -108,12 +108,21 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGemmOpBuilder("MatMulInteger", op_registrations);
   }
 
+  {  // GRU
+    CreateGruOpBuilder("GRU", op_registrations);
+  }
+
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
     CreateLogicalOpBuilder("LessOrEqual", op_registrations);
+    CreateLogicalOpBuilder("Not", op_registrations);
+  }
+
+  {  // LSTM
+    CreateLstmOpBuilder("LSTM", op_registrations);
   }
 
   {  // Max/Min
@@ -180,6 +189,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Squeeze/Unsqueeze
     CreateSqueezeUnsqueezeOpBuilder("Squeeze", op_registrations);
     CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
+  }
+
+  {  // Tile
+    CreateTileOpBuilder("Tile", op_registrations);
   }
 
   {  // Transpose

@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {
+  createTensorShapeVariables,
+  getMaxComponents,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+  UniformsArrayType,
+} from './common';
 
 export interface DequantizeLinerAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -50,9 +57,9 @@ const validateInputs = (inputs: readonly TensorView[], attributes: DequantizeLin
     if (inputs[1].dims.length === 0 || (inputs[1].dims.length === 1 && inputs[1].dims[0] === 1)) {
       throw new Error('blockSize must be set only for block quantization.');
     }
-    if (!inputs[1]
-             .dims.map((d, i) => i === attributes.axis || d === inputs[0].dims[i])
-             .reduce((a, b) => a && b, true)) {
+    if (
+      !inputs[1].dims.map((d, i) => i === attributes.axis || d === inputs[0].dims[i]).reduce((a, b) => a && b, true)
+    ) {
       throw new Error('For block qunatization, scale input shape to match the input shape except for the axis');
     }
     // Scale input rank should be same as the input rank
@@ -67,53 +74,62 @@ const validateInputs = (inputs: readonly TensorView[], attributes: DequantizeLin
   }
 };
 
-const createDequantizeLinearProgramInfo =
-    (inputs: readonly TensorView[], attributes: DequantizeLinerAttributes): ProgramInfo => {
-      const axis = ShapeUtil.normalizeAxis(attributes.axis, inputs[0].dims.length);
-      const inputType = inputs[0].dataType;
-      const isSigned = inputType === DataType.int8;
-      const outputShape = inputs[0].dims;   // output shape is same as the input shape
-      const dataType = inputs[1].dataType;  // output type is same as the the scale input type
-      const outputSize = ShapeUtil.size(outputShape);
-      const isPacked = inputType === DataType.int8 || inputType === DataType.uint8;
-      const inputShape = isPacked ? [Math.ceil(ShapeUtil.size(inputs[0].dims) / 4)] : inputs[0].dims;
-      const scaleShape = inputs[1].dims;
-      const zeroPointInput = inputs.length > 2 ? inputs[2] : undefined;
-      const zeroPointShape = zeroPointInput ?
-          (isPacked ? [Math.ceil(ShapeUtil.size(zeroPointInput.dims) / 4)] : zeroPointInput.dims) :
-          undefined;
-      // Scales input is a scaler for per-tensor/per-layer quantization, 1-D tensor for per-axis quantization
-      // or tensor with same rank as input for blocked quantization.
-      const perLayerQuantization = scaleShape.length === 0 || (scaleShape.length === 1 && scaleShape[0] === 1);
-      const perAxisQuantization = perLayerQuantization === false && scaleShape.length === 1;
-      // Left unnecessary commented-out assignment for documentation
-      // const blockQuantization = perLayerQuantization === false && perAxisQuantization === false;
-      const maxComponents = getMaxComponents(outputSize);
-      const useComponents = perLayerQuantization && (!isPacked || maxComponents === 4);
-      const components = useComponents ? maxComponents : 1;
-      const inputComponent = (useComponents && !isPacked) ? maxComponents : 1;
-      const input = inputVariable('input', isPacked ? DataType.uint32 : inputType, inputShape.length, inputComponent);
-      const scale = inputVariable('scale', dataType, scaleShape.length);
-      const zeroPoint = zeroPointInput ?
-          inputVariable('zero_point', isPacked ? DataType.uint32 : inputType, zeroPointShape!.length) :
-          undefined;
-      const output = outputVariable('output', dataType, outputShape.length, components);
-      const inputVariables = [input, scale];
-      if (zeroPoint) {
-        inputVariables.push(zeroPoint);
-      }
-      const inputShapes = [inputShape, scaleShape];
-      if (zeroPointInput) {
-        inputShapes.push(zeroPointShape!);
-      }
-      const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: outputSize / components}, {type: DataType.uint32, data: axis},
-        {type: DataType.uint32, data: attributes.blockSize}, ...createTensorShapeVariables(...inputShapes, outputShape)
-      ];
-      const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const uniforms: UniformsArrayType =
-            [{name: 'output_size', type: 'u32'}, {name: 'axis', type: 'u32'}, {name: 'block_size', type: 'u32'}];
-        return `
+const createDequantizeLinearProgramInfo = (
+  inputs: readonly TensorView[],
+  attributes: DequantizeLinerAttributes,
+): ProgramInfo => {
+  const axis = ShapeUtil.normalizeAxis(attributes.axis, inputs[0].dims.length);
+  const inputType = inputs[0].dataType;
+  const isSigned = inputType === DataType.int8;
+  const outputShape = inputs[0].dims; // output shape is same as the input shape
+  const dataType = inputs[1].dataType; // output type is same as the the scale input type
+  const outputSize = ShapeUtil.size(outputShape);
+  const isPacked = inputType === DataType.int8 || inputType === DataType.uint8;
+  const inputShape = isPacked ? [Math.ceil(ShapeUtil.size(inputs[0].dims) / 4)] : inputs[0].dims;
+  const scaleShape = inputs[1].dims;
+  const zeroPointInput = inputs.length > 2 ? inputs[2] : undefined;
+  const zeroPointShape = zeroPointInput
+    ? isPacked
+      ? [Math.ceil(ShapeUtil.size(zeroPointInput.dims) / 4)]
+      : zeroPointInput.dims
+    : undefined;
+  // Scales input is a scaler for per-tensor/per-layer quantization, 1-D tensor for per-axis quantization
+  // or tensor with same rank as input for blocked quantization.
+  const perLayerQuantization = scaleShape.length === 0 || (scaleShape.length === 1 && scaleShape[0] === 1);
+  const perAxisQuantization = perLayerQuantization === false && scaleShape.length === 1;
+  // Left unnecessary commented-out assignment for documentation
+  // const blockQuantization = perLayerQuantization === false && perAxisQuantization === false;
+  const maxComponents = getMaxComponents(outputSize);
+  const useComponents = perLayerQuantization && (!isPacked || maxComponents === 4);
+  const components = useComponents ? maxComponents : 1;
+  const inputComponent = useComponents && !isPacked ? maxComponents : 1;
+  const input = inputVariable('input', isPacked ? DataType.uint32 : inputType, inputShape.length, inputComponent);
+  const scale = inputVariable('scale', dataType, scaleShape.length);
+  const zeroPoint = zeroPointInput
+    ? inputVariable('zero_point', isPacked ? DataType.uint32 : inputType, zeroPointShape!.length)
+    : undefined;
+  const output = outputVariable('output', dataType, outputShape.length, components);
+  const inputVariables = [input, scale];
+  if (zeroPoint) {
+    inputVariables.push(zeroPoint);
+  }
+  const inputShapes = [inputShape, scaleShape];
+  if (zeroPointInput) {
+    inputShapes.push(zeroPointShape!);
+  }
+  const programUniforms: ProgramUniform[] = [
+    { type: DataType.uint32, data: outputSize / components },
+    { type: DataType.uint32, data: axis },
+    { type: DataType.uint32, data: attributes.blockSize },
+    ...createTensorShapeVariables(...inputShapes, outputShape),
+  ];
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const uniforms: UniformsArrayType = [
+      { name: 'output_size', type: 'u32' },
+      { name: 'axis', type: 'u32' },
+      { name: 'block_size', type: 'u32' },
+    ];
+    return `
       ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
       ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
@@ -121,94 +137,96 @@ const createDequantizeLinearProgramInfo =
 
           // Set input x
           ${(() => {
-          if (isPacked) {
-            return `
+            if (isPacked) {
+              return `
             let input = ${input.getByOffset('global_idx / 4')};
             let x_vec = ${isSigned ? 'unpack4xI8(input)' : 'unpack4xU8(input)'};
             let x_value = ${components === 1 ? 'x_vec[global_idx % 4]' : 'x_vec'};`;
-          } else {
-            return `let x_value = ${input.getByOffset('global_idx')};`;
-          }
-        })()};
+            } else {
+              return `let x_value = ${input.getByOffset('global_idx')};`;
+            }
+          })()};
 
           // Set scale input
           ${(() => {
-          if (perLayerQuantization) {
-            // scale input is a scalar ()
-            return `let scale_value= ${scale.getByOffset('0')}`;
-          } else if (perAxisQuantization) {
-            // scale input is a 1D tensor
-            return `
+            if (perLayerQuantization) {
+              // scale input is a scalar ()
+              return `let scale_value= ${scale.getByOffset('0')}`;
+            } else if (perAxisQuantization) {
+              // scale input is a 1D tensor
+              return `
             let scale_index = ${output.indicesGet('output_indices', 'uniforms.axis')};
             let scale_value= ${scale.getByOffset('scale_index')};`;
-          } else {
-            // Block quantization. Scale input rank is same as input/output rank.
-            return `
+            } else {
+              // Block quantization. Scale input rank is same as input/output rank.
+              return `
             var scale_indices: ${scale.type.indices} = output_indices;
             let index = ${scale.indicesGet('scale_indices', 'uniforms.axis')} / uniforms.block_size;
             ${scale.indicesSet('scale_indices', 'uniforms.axis', 'index')};
             let scale_value= ${scale.getByIndices('scale_indices')};`;
-          }
-        })()};
+            }
+          })()};
 
           // Set zero-point input
           ${(() => {
-          if (zeroPoint) {
-            if (perLayerQuantization) {
-              // zero-point input is a scalar
-              if (isPacked) {
-                return `
+            if (zeroPoint) {
+              if (perLayerQuantization) {
+                // zero-point input is a scalar
+                if (isPacked) {
+                  return `
                 let zero_point_input = ${zeroPoint.getByOffset('0')};
                 let zero_point_vec =  ${isSigned ? 'unpack4xI8(zero_point_input)' : 'unpack4xU8(zero_point_input)'};
                 let zero_point_value= zero_point_vec[0]`;
-              } else {
-                return `let zero_point_value = ${zeroPoint.getByOffset('0')}`;
-              }
-            } else if (perAxisQuantization) {
-              // zero-point input is a 1D tensor
-              if (isPacked) {
-                return `
+                } else {
+                  return `let zero_point_value = ${zeroPoint.getByOffset('0')}`;
+                }
+              } else if (perAxisQuantization) {
+                // zero-point input is a 1D tensor
+                if (isPacked) {
+                  return `
                 let zero_point_index = ${output.indicesGet('output_indices', 'uniforms.axis')};
                 let zero_point_input = ${zeroPoint.getByOffset('zero_point_index / 4')};
                 let zero_point_vec =  ${isSigned ? 'unpack4xI8(zero_point_input)' : 'unpack4xU8(zero_point_input)'};
                 let zero_point_value = zero_point_vec[zero_point_index % 4]`;
-              } else {
-                return `
+                } else {
+                  return `
                 let zero_point_index = ${output.indicesGet('output_indices', 'uniforms.axis')};
                 let zero_point_value = ${zeroPoint.getByOffset('zero_point_index')};`;
-              }
-            } else {
-              // BlockedQuantization. The zero-point input shape is same as the input shape except along axis.
-              if (isPacked) {
-                return `
+                }
+              } else {
+                // BlockedQuantization. The zero-point input shape is same as the input shape except along axis.
+                if (isPacked) {
+                  return `
                 let zero_point_offset = ${scale.indicesToOffset('scale_indices')};
                 let zero_point_input = ${zeroPoint.getByOffset('zero_point_offset / 4')};
                 let zero_point_vec = ${isSigned ? 'unpack4xI8(zero_point_input)' : 'unpack4xU8(zero_point_input)'};
                 let zero_point_value = zero_point_vec[zero_point_offset % 4];`;
-              } else {
-                return `let zero_point_value = ${zeroPoint.getByIndices('scale_indices')};`;
+                } else {
+                  return `let zero_point_value = ${zeroPoint.getByIndices('scale_indices')};`;
+                }
               }
+            } else {
+              return `let zero_point_value = ${isPacked ? (isSigned ? 'i32' : 'u32') : input.type.value}(0);`;
             }
-          } else {
-            return `let zero_point_value = ${isPacked ? (isSigned ? 'i32' : 'u32') : input.type.value}(0);`;
-          }
-        })()};
+          })()};
       // Compute and write output
       ${output.setByOffset('global_idx', `${output.type.value}(x_value - zero_point_value) * scale_value`)};
       }`;
-      };
-      return {
-        name: 'DequantizeLinear',
-        shaderCache:
-            {hint: attributes.cacheKey, inputDependencies: zeroPoint ? ['rank', 'rank', 'rank'] : ['rank', 'rank']},
-        getShaderSource,
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / components / 64), y: 1, z: 1},
-          programUniforms
-        })
-      };
-    };
+  };
+  return {
+    name: 'DequantizeLinear',
+    shaderCache: {
+      hint: attributes.cacheKey,
+      inputDependencies: zeroPoint ? ['rank', 'rank', 'rank'] : ['rank', 'rank'],
+    },
+    getShaderSource,
+    getRunData: () => ({
+      outputs: [{ dims: outputShape, dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / components / 64), y: 1, z: 1 },
+      programUniforms,
+    }),
+  };
+};
 
 export const dequantizeLinear = (context: ComputeContext, attributes: DequantizeLinerAttributes): void => {
   validateInputs(context.inputs, attributes);
@@ -216,4 +234,4 @@ export const dequantizeLinear = (context: ComputeContext, attributes: Dequantize
 };
 
 export const parseDequantizeLinearAttributes = (attributes: Record<string, unknown>): DequantizeLinerAttributes =>
-    createAttributeWithCacheKey({axis: attributes.axis as number, blockSize: attributes.blockSize as number});
+  createAttributeWithCacheKey({ axis: attributes.axis as number, blockSize: attributes.blockSize as number });

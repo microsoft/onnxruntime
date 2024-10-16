@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {WebGpuBackend} from '../backend-webgpu';
-import {LOG_DEBUG} from '../log';
+import { WebGpuBackend } from '../backend-webgpu';
+import { LOG_DEBUG } from '../log';
 
-import {GpuData, GpuDataId, GpuDataType} from './types';
+import { GpuData, GpuDataId, GpuDataType } from './types';
 
 /**
  * manages GpuDataId -> GpuBuffer
@@ -25,7 +25,7 @@ export interface GpuDataManager {
   /**
    * get GPU data by ID.
    */
-  get(id: GpuDataId): GpuData|undefined;
+  get(id: GpuDataId): GpuData | undefined;
   /**
    * release the data on GPU by ID.
    *
@@ -52,12 +52,12 @@ export interface GpuDataManager {
    * GPU data manager only manages a mapping between the buffer and the GPU data ID. It will not manage the lifecycle of
    * the external buffer.
    */
-  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previousBuffer?: GPUBuffer): number;
+  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previous?: [GpuDataId, GPUBuffer]): number;
 
   /**
    * unregister an external buffer for IO Binding.
    */
-  unregisterExternalBuffer(buffer: GPUBuffer): void;
+  unregisterExternalBuffer(id: GpuDataId): void;
 
   /**
    * destroy all gpu buffers.
@@ -141,39 +141,46 @@ const createNewGpuDataId = () => guid++;
  * @param getTargetBuffer - optional. If provided, the data will be copied to the target buffer. Otherwise, a new buffer
  * will be created and returned.
  */
-export const downloadGpuData =
-    async(backend: WebGpuBackend, gpuBuffer: GPUBuffer, originalSize: number, getTargetBuffer?: () => Uint8Array):
-        Promise<Uint8Array> => {
-          const bufferSize = calcNormalizedBufferSize(originalSize);
-          const gpuReadBuffer = backend.device.createBuffer(
-              // eslint-disable-next-line no-bitwise
-              {size: bufferSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
-          try {
-            const commandEncoder = backend.getCommandEncoder();
-            backend.endComputePass();
-            commandEncoder.copyBufferToBuffer(
-                gpuBuffer /* source buffer */, 0 /* source offset */, gpuReadBuffer /* destination buffer */,
-                0 /* destination offset */, bufferSize /* size */
-            );
-            backend.flush();
+export const downloadGpuData = async (
+  backend: WebGpuBackend,
+  gpuBuffer: GPUBuffer,
+  originalSize: number,
+  getTargetBuffer?: () => Uint8Array,
+): Promise<Uint8Array> => {
+  const bufferSize = calcNormalizedBufferSize(originalSize);
+  const gpuReadBuffer = backend.device.createBuffer(
+    // eslint-disable-next-line no-bitwise
+    { size: bufferSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ },
+  );
+  try {
+    const commandEncoder = backend.getCommandEncoder();
+    backend.endComputePass();
+    commandEncoder.copyBufferToBuffer(
+      gpuBuffer /* source buffer */,
+      0 /* source offset */,
+      gpuReadBuffer /* destination buffer */,
+      0 /* destination offset */,
+      bufferSize /* size */,
+    );
+    backend.flush();
 
-            await gpuReadBuffer.mapAsync(GPUMapMode.READ);
+    await gpuReadBuffer.mapAsync(GPUMapMode.READ);
 
-            const arrayBuffer = gpuReadBuffer.getMappedRange();
-            if (getTargetBuffer) {
-              // if we already have a CPU buffer to accept the data, no need to clone the ArrayBuffer.
-              const targetBuffer = getTargetBuffer();
-              targetBuffer.set(new Uint8Array(arrayBuffer, 0, originalSize));
-              return targetBuffer;
-            } else {
-              // the mapped ArrayBuffer will be released when the GPU buffer is destroyed. Need to clone the
-              // ArrayBuffer.
-              return new Uint8Array(arrayBuffer.slice(0, originalSize));
-            }
-          } finally {
-            gpuReadBuffer.destroy();
-          }
-        };
+    const arrayBuffer = gpuReadBuffer.getMappedRange();
+    if (getTargetBuffer) {
+      // if we already have a CPU buffer to accept the data, no need to clone the ArrayBuffer.
+      const targetBuffer = getTargetBuffer();
+      targetBuffer.set(new Uint8Array(arrayBuffer, 0, originalSize));
+      return targetBuffer;
+    } else {
+      // the mapped ArrayBuffer will be released when the GPU buffer is destroyed. Need to clone the
+      // ArrayBuffer.
+      return new Uint8Array(arrayBuffer.slice(0, originalSize));
+    }
+  } finally {
+    gpuReadBuffer.destroy();
+  }
+};
 
 class GpuDataManagerImpl implements GpuDataManager {
   // GPU Data ID => GPU Data ( storage buffer )
@@ -189,9 +196,6 @@ class GpuDataManagerImpl implements GpuDataManager {
   // The reusable uniform buffers
   private freeUniformBuffers: Map<number, GPUBuffer[]>;
 
-  // The external buffers registered users for IO Binding.
-  private externalBuffers: Map<GPUBuffer, GpuDataId>;
-
   // The pendingBuffers for capture graph.
   // a SessionID -> GPUBuffer[] mapping.
   private capturedPendingBuffers: Map<number, GPUBuffer[]>;
@@ -202,10 +206,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.freeUniformBuffers = new Map();
     this.buffersForUploadingPending = [];
     this.buffersPending = [];
-    this.externalBuffers = new Map();
     this.capturedPendingBuffers = new Map();
 
-    for (const [key, ] of bucketFreelist) {
+    for (const [key] of bucketFreelist) {
       bucketArr.push(key);
       this.freeBuffers.set(key, []);
       this.freeUniformBuffers.set(key, []);
@@ -229,14 +232,14 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     // create gpu buffer
     const gpuBufferForUploading = this.backend.device.createBuffer(
-        // eslint-disable-next-line no-bitwise
-        {mappedAtCreation: true, size, usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC});
+      // eslint-disable-next-line no-bitwise
+      { mappedAtCreation: true, size, usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC },
+    );
 
     // copy (upload) data
     const arrayBuffer = gpuBufferForUploading.getMappedRange();
     new Uint8Array(arrayBuffer).set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
     gpuBufferForUploading.unmap();
-
 
     // GPU copy
     const commandEncoder = this.backend.getCommandEncoder();
@@ -269,44 +272,46 @@ class GpuDataManagerImpl implements GpuDataManager {
     const commandEncoder = this.backend.getCommandEncoder();
     this.backend.endComputePass();
     commandEncoder.copyBufferToBuffer(
-        sourceGpuDataCache.gpuData.buffer, 0, destinationGpuDataCache.gpuData.buffer, 0, size);
+      sourceGpuDataCache.gpuData.buffer,
+      0,
+      destinationGpuDataCache.gpuData.buffer,
+      0,
+      size,
+    );
   }
 
-  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previousBuffer?: GPUBuffer): number {
-    let id: number|undefined;
-    if (previousBuffer) {
-      id = this.externalBuffers.get(previousBuffer);
-      if (id === undefined) {
-        throw new Error('previous buffer is not registered');
-      }
-      if (buffer === previousBuffer) {
+  registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previous?: [GpuDataId, GPUBuffer]): number {
+    let id: number | undefined;
+    if (previous) {
+      id = previous[0];
+      if (buffer === previous[1]) {
         LOG_DEBUG(
-            'verbose',
-            () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
-                id}, buffer is the same, skip.`);
+          'verbose',
+          () =>
+            `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
+              id
+            }, buffer is the same, skip.`,
+        );
         return id;
       } else if (this.backend.capturedCommandList.has(this.backend.currentSessionId!)) {
         throw new Error(`Registering a different external buffer under graph capture mode is not supported yet.
              Please use the previous external buffer!`);
       }
-      this.externalBuffers.delete(previousBuffer);
     } else {
       id = createNewGpuDataId();
     }
 
-    this.storageCache.set(id, {gpuData: {id, type: GpuDataType.default, buffer}, originalSize});
-    this.externalBuffers.set(buffer, id);
+    this.storageCache.set(id, { gpuData: { id, type: GpuDataType.default, buffer }, originalSize });
     LOG_DEBUG(
-        'verbose',
-        () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${id}, registered.`);
+      'verbose',
+      () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${id}, registered.`,
+    );
     return id;
   }
 
-  unregisterExternalBuffer(buffer: GPUBuffer): void {
-    const id = this.externalBuffers.get(buffer);
+  unregisterExternalBuffer(id: GpuDataId): void {
     if (id !== undefined) {
       this.storageCache.delete(id);
-      this.externalBuffers.delete(buffer);
       LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.unregisterExternalBuffer() => id=${id}`);
     }
   }
@@ -326,29 +331,29 @@ class GpuDataManagerImpl implements GpuDataManager {
       const buffers = freeBuffers.get(bufferSize);
       if (!buffers) {
         // no such bucket/freelist - create gpu buffer
-        gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+        gpuBuffer = this.backend.device.createBuffer({ size: bufferSize, usage });
       } else {
         if (buffers.length > 0) {
           // in freelist, use it
           gpuBuffer = buffers.pop() as GPUBuffer;
         } else {
           // bucket empty, create gpu buffer
-          gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+          gpuBuffer = this.backend.device.createBuffer({ size: bufferSize, usage });
         }
       }
     } else {
       // create gpu buffer
-      gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+      gpuBuffer = this.backend.device.createBuffer({ size: bufferSize, usage });
     }
 
-    const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
-    this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
+    const gpuData = { id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer };
+    this.storageCache.set(gpuData.id, { gpuData, originalSize: size });
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
     return gpuData;
   }
 
-  get(id: GpuDataId): GpuData|undefined {
+  get(id: GpuDataId): GpuData | undefined {
     return this.storageCache.get(id)?.gpuData;
   }
 
@@ -430,12 +435,12 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   dispose() {
     this.freeBuffers.forEach((buffers) => {
-      buffers.forEach(buffer => {
+      buffers.forEach((buffer) => {
         buffer.destroy();
       });
     });
     this.freeUniformBuffers.forEach((buffers) => {
-      buffers.forEach(buffer => {
+      buffers.forEach((buffer) => {
         buffer.destroy();
       });
     });
@@ -445,7 +450,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     });
 
     this.capturedPendingBuffers.forEach((buffers) => {
-      buffers.forEach(buffer => {
+      buffers.forEach((buffer) => {
         buffer.destroy();
       });
     });
@@ -459,7 +464,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     // release the captured pending buffers.
     const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
     if (pendingBuffers) {
-      pendingBuffers.forEach(buffer => {
+      pendingBuffers.forEach((buffer) => {
         buffer.destroy();
       });
       this.capturedPendingBuffers.delete(sessionId);
@@ -468,4 +473,4 @@ class GpuDataManagerImpl implements GpuDataManager {
 }
 
 export const createGpuDataManager = (...args: ConstructorParameters<typeof GpuDataManagerImpl>): GpuDataManager =>
-    new GpuDataManagerImpl(...args);
+  new GpuDataManagerImpl(...args);

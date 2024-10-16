@@ -1142,11 +1142,11 @@ namespace OperatorHelper
             HandleEmptyAxes(axes, inputShape, false);
         }
 
-        uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
-        for (int32_t i = 0; i < axes.size(); i++)
+        size_t numAxes = axes.size();
+        for (size_t i = 0; i < numAxes; i++)
         {
             auto xi_begin = padding[i];
-            auto xi_end = padding[i+axes.size()];
+            auto xi_end = padding[i+numAxes];
             m_startPadding[axes[i]] = xi_begin;
             m_endPadding[axes[i]] = xi_end;
         }
@@ -1881,7 +1881,7 @@ namespace OperatorHelper
         m_outputShape.resize(2 + m_imageShape.size());
         m_outputShape[0] = m_inputShape[0];                     // N
         m_outputShape[1] = m_inputShape[1] / blockShapeProduct; // C
-        for (int i = 2; i < m_outputShape.size(); i++)
+        for (size_t i = 2; i < m_outputShape.size(); i++)
         {
             m_outputShape[i] = m_imageShape[i - 2];
         };

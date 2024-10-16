@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {GlslContext, GlslLib, GlslLibRoutine} from './glsl-definitions';
+import { GlslContext, GlslLib, GlslLibRoutine } from './glsl-definitions';
 
 /**
  * This GLSL library handles routines converting
@@ -11,33 +11,33 @@ export class EncodingGlslLib extends GlslLib {
   constructor(context: GlslContext) {
     super(context);
   }
-  getFunctions(): {[name: string]: GlslLibRoutine} {
-    return {...this.encodeFloat32(), ...this.decodeFloat32()};
+  getFunctions(): { [name: string]: GlslLibRoutine } {
+    return { ...this.encodeFloat32(), ...this.decodeFloat32() };
   }
-  getCustomTypes(): {[name: string]: string} {
+  getCustomTypes(): { [name: string]: string } {
     return {};
   }
-  protected encodeFloat32(): {[name: string]: GlslLibRoutine} {
+  protected encodeFloat32(): { [name: string]: GlslLibRoutine } {
     return {
       encode: new GlslLibRoutine(`highp vec4 encode(highp float f) {
         return vec4(f, 0.0, 0.0, 0.0);
       }
-        `)
+        `),
     };
   }
-  protected decodeFloat32(): {[name: string]: GlslLibRoutine} {
+  protected decodeFloat32(): { [name: string]: GlslLibRoutine } {
     return {
       decode: new GlslLibRoutine(`highp float decode(highp vec4 rgba) {
         return rgba.r;
       }
-        `)
+        `),
     };
   }
   /**
    * returns the routine to encode encode a 32bit float to a vec4 (of unsigned bytes)
    * @credit: https://stackoverflow.com/questions/7059962/how-do-i-convert-a-vec4-rgba-value-to-a-float
    */
-  protected encodeUint8(): {[name: string]: GlslLibRoutine} {
+  protected encodeUint8(): { [name: string]: GlslLibRoutine } {
     const endianness = EncodingGlslLib.isLittleEndian() ? 'rgba.rgba=rgba.abgr;' : '';
     return {
       encode: new GlslLibRoutine(`
@@ -56,14 +56,14 @@ export class EncodingGlslLib extends GlslLib {
         rgba = rgba / 255.0; // values need to be normalized to [0,1]
         return rgba;
     }
-        `)
+        `),
     };
   }
   /**
    * returns the routine to encode a vec4 of unsigned bytes to float32
    * @credit: https://stackoverflow.com/questions/7059962/how-do-i-convert-a-vec4-rgba-value-to-a-float
    */
-  protected decodeUint8(): {[name: string]: GlslLibRoutine} {
+  protected decodeUint8(): { [name: string]: GlslLibRoutine } {
     const endianness = EncodingGlslLib.isLittleEndian() ? 'rgba.rgba=rgba.abgr;' : '';
     return {
       decode: new GlslLibRoutine(`
@@ -76,7 +76,7 @@ export class EncodingGlslLib extends GlslLib {
           highp float Result =  Sign * exp2(Exponent) * (Mantissa * exp2(-23.0 ));
           return Result;
       }
-        `)
+        `),
     };
   }
   /**

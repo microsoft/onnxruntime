@@ -18,6 +18,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
@@ -329,6 +330,9 @@ class InferenceSession {
    */
   [[nodiscard]] common::Status Initialize();
 
+  [[nodiscard]] common::Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                   gsl::span<const char* const> values);
+
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
                                    gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                                    std::vector<OrtValue>* p_fetches,
@@ -453,6 +457,11 @@ class InferenceSession {
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
+
+  /*
+   * Get the GetExternalDataLoaderManager associated with this session
+   */
+  const ExternalDataLoaderManager& GetExternalDataLoaderManager() const;
 
   /*
    * Get all the providers' options this session was initialized with.
@@ -783,6 +792,9 @@ class InferenceSession {
 
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
+
+  // External data loader manager.
+  ExternalDataLoaderManager external_data_loader_mgr_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;

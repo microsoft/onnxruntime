@@ -179,39 +179,35 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
   return Status::OK();
 }
 
-template <typename T>
-Status CheckRelativePositionBias(
-    const T* relative_position_bias, int batch_size, int num_heads, int sequence_length, int total_sequence_length,
-    bool& broadcast_res_pos_bias) {
-  const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
+inline Status CheckAttentionBias(
+    const gsl::span<const int64_t>& attention_bias_dims,
+    int64_t batch_size, int64_t num_heads, int64_t sequence_length, int64_t total_sequence_length) {
+  if (attention_bias_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'attention_bias' is expected to have 4 dimensions, got ",
+                           attention_bias_dims.size());
+  }
 
-  if (relative_position_bias_dims.size() != 4) {
+  if (attention_bias_dims[0] != batch_size && attention_bias_dims[0] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                           relative_position_bias_dims.size());
+                           "Input 'attention_bias' dimension 0 should be batch_size or 1, got ",
+                           attention_bias_dims[0]);
   }
-  if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
+
+  if (attention_bias_dims[1] != num_heads && attention_bias_dims[1] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'relative_position_bias' dimension 0 should be batch_size or 1, got ",
-                           relative_position_bias_dims[0]);
+                           "Input 'attention_bias' dimension 1 should be same as number of heads or 1, got ",
+                           attention_bias_dims[1]);
   }
-  if (relative_position_bias_dims[0] == 1) {
-    broadcast_res_pos_bias = true;
-  }
-  if (relative_position_bias_dims[1] != num_heads) {
+  if (attention_bias_dims[2] != sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                           relative_position_bias_dims[1]);
+                           "Input 'attention_bias' dimension 2 should be same as sequence_length, got ",
+                           attention_bias_dims[2]);
   }
-  if (relative_position_bias_dims[2] != sequence_length) {
+  if (attention_bias_dims[3] != total_sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                           relative_position_bias_dims[2]);
-  }
-  if (relative_position_bias_dims[3] != total_sequence_length) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
-                           relative_position_bias_dims[3]);
+                           "Input 'attention_bias' dimension 3 should be same as total_sequence_length, got ",
+                           attention_bias_dims[3]);
   }
   return Status::OK();
 }
@@ -243,7 +239,7 @@ Status CheckInputs(const T* query,
                    const T* value,
                    const T* bias,
                    const T* key_padding_mask,
-                   const T* relative_position_bias,
+                   const T* attention_bias,
                    const T* past_key,
                    const T* past_value,
                    const T* past_seq_len,
@@ -258,13 +254,15 @@ Status CheckInputs(const T* query,
   // Notations:
   //    B: batch_size
   //    N: num_heads
-  //    H: head_size (V might have different head size than Q and K)
-  //    D: hidden_size = N * H
+  //    H: head_size of Q and K.
+  //    H_v: head_size of V.
+  //    D: hidden_size of Q and K, where D = N * H
+  //    D_v: hidden_size of V, where D_v = N * H_v
   //    S: q_sequence_length
-  //    P: past_sequence_length
+  //    P: past_sequence_length of kv cache
   //    L: kv_sequence_length
   //    T: total_sequence_length = P + L
-  //    M: max_sequence_length
+  //    M: max_sequence_length of kv cache when past and present share buffer
   // ---------------------------------------------------------------
   // MultiHeadAttention inputs:
   // ---------------------------------------------------------------
@@ -275,7 +273,7 @@ Status CheckInputs(const T* query,
   //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache is not used, L == T, D == D_v):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
-  //     value            (V)       : (B, N, L, H)
+  //     value            (V)       : (B, N, L, H_v)
   //  Q_KV_BSNH_BSN2H - packed kv (kv cache is not used, bias is not allowed for packed kv):
   //     query            (Q)       : (B, S, D)
   //     key              (K/V)     : (B, L, N, 2, H)
@@ -288,7 +286,7 @@ Status CheckInputs(const T* query,
   //  Other inputs:
   //     bias             (Q/K/V)   : None or (D + D + D_v)
   //     key_padding_mask (K/V)     : (B) or (3 * B + 2) or (B, T) or (B, S, T)
-  //     relative_position_bias     : (B, N, S, T) or (1, N, S, T)
+  //     attention_bias             : (B, N, S, T), (1, N, S, T), (B, 1, S, T) or (1, 1, S, T)
   //     past_key                   : (B, N, P, H) or None. Past state is only allowed for Q_K_V_BSNH.
   //     past_value                 : (B, N, P, H) or None. Past state is only allowed for Q_K_V_BSNH.
   // ---------------------------------------------------------------
@@ -298,7 +296,7 @@ Status CheckInputs(const T* query,
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D)
-  //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache and relative_position_bias are not used. L == T):
+  //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache and attention_bias are not used. L == T):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
@@ -310,7 +308,7 @@ Status CheckInputs(const T* query,
   //  Other inputs:
   //     bias             (Q/K/V)   : None or (3 * D)
   //     key_padding_mask (K/V)     : None or (B, T)
-  //     relative_position_bias     : (1, N, S, T), or (B, N, S, T) where only 1 x N x S x T data is used in CUDA.
+  //     attention_bias     : (1, N, S, T), or (B, N, S, T) where only 1 x N x S x T data is used in CUDA.
   //
   //  The following inputs are not used in cross attention (so they are None for cross attention):
   //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
@@ -401,10 +399,11 @@ Status CheckInputs(const T* query,
     }
   }
 
-  bool broadcast_res_pos_bias = false;
-  if (relative_position_bias != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckRelativePositionBias(
-        relative_position_bias, batch_size, num_heads, sequence_length, total_sequence_length, broadcast_res_pos_bias));
+  gsl::span<const int64_t> attention_bias_dims;
+  if (attention_bias != nullptr) {
+    attention_bias_dims = attention_bias->Shape().GetDims();
+    ORT_RETURN_IF_ERROR(CheckAttentionBias(
+        attention_bias_dims, batch_size, num_heads, sequence_length, total_sequence_length));
   }
 
   assert(qkv_format != UNKNOWN);
@@ -428,7 +427,8 @@ Status CheckInputs(const T* query,
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
     output_parameters->scale = scale;
-    output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
+    output_parameters->broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+    output_parameters->broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
     output_parameters->qkv_format = qkv_format;
   }
 
@@ -441,7 +441,7 @@ Status CheckInputs(const T* query,
                    const T* value,
                    const T* bias,
                    const T* key_padding_mask,
-                   const T* relative_position_bias,
+                   const T* attention_bias,
                    const T* past_key,
                    const T* past_value,
                    const T* past_seq_len,
@@ -457,7 +457,7 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
+  return CheckInputs(query, key, value, bias, key_padding_mask, attention_bias, past_key, past_value,
                      past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
                      past_present_share_buffer, operator_type);
 }

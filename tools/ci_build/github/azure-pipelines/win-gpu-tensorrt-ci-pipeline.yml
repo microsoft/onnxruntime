@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -38,9 +39,9 @@ parameters:
 variables:
   - name: win_trt_folder
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: TensorRT-10.2.0.19.Windows10.x86_64.cuda-11.8
+      value: TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: TensorRT-10.2.0.19.Windows10.x86_64.cuda-12.5
+      value: TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6
 
 jobs:
 - job: 'build'

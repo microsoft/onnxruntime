@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     name: Generate Python API docs
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-CPU"]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
@@ -53,4 +53,4 @@ jobs:
         with:
           name: onnxruntime-python-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30

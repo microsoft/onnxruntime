@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
-import {getCoordsDataType} from '../utils';
+import { Tensor } from '../../../tensor';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, TextureType } from '../types';
+import { getCoordsDataType } from '../utils';
 
-import {getChannels, unpackFromChannel} from './packing-utils';
+import { getChannels, unpackFromChannel } from './packing-utils';
 
 const unpackProgramMetadata = {
   name: 'unpack',
   inputNames: ['A'],
-  inputTypes: [TextureType.packed]
+  inputTypes: [TextureType.packed],
 };
 
 export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
@@ -22,7 +22,7 @@ export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: T
   const innerDims = channels.slice(-2);
   const coordsDataType = getCoordsDataType(rank);
   const unpackChannel = unpackFromChannel();
-  const isScalar = (input.dims.length === 0);
+  const isScalar = input.dims.length === 0;
   const sourceCoords = isScalar ? '' : getSourceCoords(rank, channels);
   const coords = rank <= 1 ? 'rc' : `vec2(${innerDims.join(',')})`;
   const glsl = getGlsl(handler.session.backend.glContext.version);
@@ -41,13 +41,15 @@ export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: T
   return {
     ...unpackProgramMetadata,
     hasMain: true,
-    output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
-    shaderSource
+    output: { dims: input.dims, type: input.type, textureType: TextureType.unpacked },
+    shaderSource,
   };
 };
 
-export const createUnpackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
-    ({...unpackProgramMetadata, get: () => createUnpackProgramInfo(handler, input)});
+export const createUnpackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader => ({
+  ...unpackProgramMetadata,
+  get: () => createUnpackProgramInfo(handler, input),
+});
 
 function getSourceCoords(rank: number, dims: string[]): string {
   if (rank === 1) {

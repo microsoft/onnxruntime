@@ -31,82 +31,76 @@ constexpr size_t ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT = 17;
 
 // size of element in bytes for each data type. 0 indicates not supported.
 constexpr size_t DATA_TYPE_ELEMENT_SIZE_MAP[] = {
-    0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED     not supported
-    4, // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
-    1, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8
-    1, // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8
-    2, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16
-    2, // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16
-    4, // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
-    8, // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
-    0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING        N/A
-    1, // ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
-    2, // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
-    8, // ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE
-    4, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32
-    8, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
-    0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64     not supported
-    0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128    not supported
-    0  // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16      not supported
+    0,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED     not supported
+    4,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+    1,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8
+    1,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8
+    2,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16
+    2,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16
+    4,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
+    8,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
+    0,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING        N/A
+    1,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
+    2,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
+    8,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE
+    4,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32
+    8,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
+    0,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64     not supported
+    0,  // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128    not supported
+    0   // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16      not supported
 };
 static_assert(sizeof(DATA_TYPE_ELEMENT_SIZE_MAP) == sizeof(size_t) * ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT,
               "definition not matching");
 
 constexpr napi_typedarray_type DATA_TYPE_TYPEDARRAY_MAP[] = {
-    (napi_typedarray_type)(-1), // ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED     not supported
-    napi_float32_array,         // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
-    napi_uint8_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8
-    napi_int8_array,            // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8
-    napi_uint16_array,          // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16
-    napi_int16_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16
-    napi_int32_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
-    napi_bigint64_array,        // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
-    (napi_typedarray_type)(-1), // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING        not supported
-    napi_uint8_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
-    napi_uint16_array,          // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16       FLOAT16 uses Uint16Array
-    napi_float64_array,         // ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE
-    napi_uint32_array,          // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32
-    napi_biguint64_array,       // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
-    (napi_typedarray_type)(-1), // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64     not supported
-    (napi_typedarray_type)(-1), // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128    not supported
-    (napi_typedarray_type)(-1)  // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16      not supported
+    (napi_typedarray_type)(-1),  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED     not supported
+    napi_float32_array,          // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+    napi_uint8_array,            // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8
+    napi_int8_array,             // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8
+    napi_uint16_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16
+    napi_int16_array,            // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16
+    napi_int32_array,            // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
+    napi_bigint64_array,         // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
+    (napi_typedarray_type)(-1),  // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING        not supported
+    napi_uint8_array,            // ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
+    napi_uint16_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16       FLOAT16 uses Uint16Array
+    napi_float64_array,          // ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE
+    napi_uint32_array,           // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32
+    napi_biguint64_array,        // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
+    (napi_typedarray_type)(-1),  // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64     not supported
+    (napi_typedarray_type)(-1),  // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128    not supported
+    (napi_typedarray_type)(-1)   // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16      not supported
 };
 static_assert(sizeof(DATA_TYPE_TYPEDARRAY_MAP) == sizeof(napi_typedarray_type) * ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT,
               "definition not matching");
 
-constexpr const char *DATA_TYPE_ID_TO_NAME_MAP[] = {
-    nullptr,   // ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED
-    "float32", // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
-    "uint8",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8
-    "int8",    // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8
-    "uint16",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16
-    "int16",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16
-    "int32",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
-    "int64",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
-    "string",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING
-    "bool",    // ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
-    "float16", // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
-    "float64", // ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE
-    "uint32",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32
-    "uint64",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
-    nullptr,   // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64
-    nullptr,   // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128
-    nullptr    // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16
+constexpr const char* DATA_TYPE_ID_TO_NAME_MAP[] = {
+    nullptr,    // ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED
+    "float32",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+    "uint8",    // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8
+    "int8",     // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8
+    "uint16",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16
+    "int16",    // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16
+    "int32",    // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
+    "int64",    // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
+    "string",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING
+    "bool",     // ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
+    "float16",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
+    "float64",  // ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE
+    "uint32",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32
+    "uint64",   // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
+    nullptr,    // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64
+    nullptr,    // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128
+    nullptr     // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16
 };
-static_assert(sizeof(DATA_TYPE_ID_TO_NAME_MAP) == sizeof(const char *) * ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT,
+static_assert(sizeof(DATA_TYPE_ID_TO_NAME_MAP) == sizeof(const char*) * ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT,
               "definition not matching");
 
 const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_TO_ID_MAP = {
-    {"float32", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT},  {"uint8", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8},
-    {"int8", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8},      {"uint16", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16},
-    {"int16", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16},    {"int32", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
-    {"int64", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},    {"string", ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
-    {"bool", ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL},      {"float16", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16},
-    {"float64", ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE}, {"uint32", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32},
-    {"uint64", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64}};
+    {"float32", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT}, {"uint8", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8}, {"int8", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8}, {"uint16", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16}, {"int16", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16}, {"int32", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32}, {"int64", ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64}, {"string", ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING}, {"bool", ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL}, {"float16", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16}, {"float64", ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE}, {"uint32", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32}, {"uint64", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64}};
 
 // currently only support tensor
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo *memory_info) {
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* memory_info) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -144,7 +138,7 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo *
     auto tensorDataArray = tensorDataValue.As<Napi::Array>();
     auto tensorDataSize = tensorDataArray.Length();
     std::vector<std::string> stringData;
-    std::vector<const char *> stringDataCStr;
+    std::vector<const char*> stringDataCStr;
     stringData.reserve(tensorDataSize);
     stringDataCStr.reserve(tensorDataSize);
     for (uint32_t i = 0; i < tensorDataSize; i++) {
@@ -180,7 +174,7 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo *
                                 "Tensor.data must be a typed array (", DATA_TYPE_TYPEDARRAY_MAP[elemType], ") for ",
                                 tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
 
-    char *buffer = reinterpret_cast<char *>(tensorDataTypedArray.ArrayBuffer().Data());
+    char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
     size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
     size_t bufferByteLength = tensorDataTypedArray.ByteLength();
     return Ort::Value::CreateTensor(memory_info, buffer + bufferByteOffset, bufferByteLength,
@@ -188,7 +182,7 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo *
   }
 }
 
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value) {
+Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value& value) {
   Napi::EscapableHandleScope scope(env);
   auto returnValue = Napi::Object::New(env);
 

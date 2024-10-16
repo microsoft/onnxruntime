@@ -1,6 +1,19 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
+# Recursively set the folder for all targets in the subdirectories of the given source directory.
+function(set_folder_for_subdir_targets srcDir folderName)
+  get_property(subdirs DIRECTORY "${srcDir}" PROPERTY SUBDIRECTORIES)
+  foreach(subdir ${subdirs})
+    get_property(subdir_import_targets DIRECTORY "${subdir}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(subdir_target ${subdir_import_targets})
+      set_target_properties(${subdir_target} PROPERTIES FOLDER ${folderName})
+    endforeach()
+
+    set_folder_for_subdir_targets(${subdir} ${folderName})
+  endforeach()
+endfunction()
+
 # This file was copied from cmake source with modifications:
 # 1. Add the EXCLUDE_FROM_ALL keyword when this function calls add_subdirectory. It will also resolve the
 #    'make install' issue.
@@ -165,23 +178,28 @@ macro(onnxruntime_fetchcontent_makeavailable)
         else()
           add_subdirectory(${__cmake_srcdir} ${${__cmake_contentNameLower}_BINARY_DIR} EXCLUDE_FROM_ALL)
         endif()
-          get_property(subdir_import_targets DIRECTORY "${__cmake_srcdir}" PROPERTY BUILDSYSTEM_TARGETS)
-          foreach(subdir_target ${subdir_import_targets})
-            if(TARGET ${subdir_target})
-              get_target_property(subdir_target_type ${subdir_target} TYPE)
-              if(subdir_target_type STREQUAL "EXECUTABLE")
-                get_target_property(subdir_target_osx_arch ${subdir_target} OSX_ARCHITECTURES)
-                if (subdir_target_osx_arch)
-                  if (NOT ${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST subdir_target_osx_arch)
-                    message("Added an executable target ${subdir_target} but it can not run natively on ${CMAKE_HOST_SYSTEM_PROCESSOR}, we will try to modify it")
-                  endif()
+
+        get_property(subdir_import_targets DIRECTORY "${__cmake_srcdir}" PROPERTY BUILDSYSTEM_TARGETS)
+
+        foreach(subdir_target ${subdir_import_targets})
+          if(TARGET ${subdir_target})
+            get_target_property(subdir_target_type ${subdir_target} TYPE)
+            if(subdir_target_type STREQUAL "EXECUTABLE")
+              get_target_property(subdir_target_osx_arch ${subdir_target} OSX_ARCHITECTURES)
+              if (subdir_target_osx_arch)
+                if (NOT ${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST subdir_target_osx_arch)
+                  message("Added an executable target ${subdir_target} but it can not run natively on ${CMAKE_HOST_SYSTEM_PROCESSOR}, we will try to modify it")
                 endif()
               endif()
-              set_target_properties(${subdir_target} PROPERTIES FOLDER "External")
-              set_target_properties(${subdir_target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
             endif()
-          endforeach()
-          set(CMAKE_SKIP_INSTALL_RULES FALSE)
+            set_target_properties(${subdir_target} PROPERTIES FOLDER "External/${__cmake_contentName}")
+            set_target_properties(${subdir_target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
+          endif()
+        endforeach()
+        set(CMAKE_SKIP_INSTALL_RULES FALSE)
+
+        # set the FOLDER property for all targets contained in source directory and subfolders
+        set_folder_for_subdir_targets(${__cmake_srcdir} "External/${__cmake_contentName}")
       endif()
 
       unset(__cmake_srcdir)

@@ -13,13 +13,13 @@ void LoadDirectMLDll(Napi::Env env) {
   GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                     reinterpret_cast<LPCSTR>(&LoadDirectMLDll), &moduleHandle);
 
-  DWORD getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t *>(path.c_str()), pathLen);
+  DWORD getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t*>(path.c_str()), pathLen);
   while (getModuleFileNameResult == 0 || getModuleFileNameResult == pathLen) {
     int ret = GetLastError();
     if (ret == ERROR_INSUFFICIENT_BUFFER && pathLen < 32768) {
       pathLen *= 2;
       path.resize(pathLen);
-      getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t *>(path.c_str()), pathLen);
+      getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t*>(path.c_str()), pathLen);
     } else {
       ORT_NAPI_THROW_ERROR(env, "Failed getting path to load DirectML.dll, error code: ", ret);
     }

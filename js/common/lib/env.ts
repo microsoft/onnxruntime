@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env as envImpl} from './env-impl.js';
+import { env as envImpl } from './env-impl.js';
 
 export declare namespace Env {
   export type WasmPathPrefix = string;
@@ -16,7 +16,7 @@ export declare namespace Env {
      * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
      * - `ort-training-wasm-simd-threaded.wasm` for training build
      */
-    wasm?: URL|string;
+    wasm?: URL | string;
     /**
      * Specify the override path for the main .mjs file.
      *
@@ -27,9 +27,9 @@ export declare namespace Env {
      * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
      * - `ort-training-wasm-simd-threaded.mjs` for training build
      */
-    mjs?: URL|string;
+    mjs?: URL | string;
   }
-  export type WasmPrefixOrFilePaths = WasmPathPrefix|WasmFilePaths;
+  export type WasmPrefixOrFilePaths = WasmPathPrefix | WasmFilePaths;
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -78,7 +78,7 @@ export declare namespace Env {
      * Set a custom buffer which contains the WebAssembly binary. If this property is set, the `wasmPaths` property will
      * be ignored.
      */
-    wasmBinary?: ArrayBufferLike|Uint8Array;
+    wasmBinary?: ArrayBufferLike | Uint8Array;
 
     /**
      * Set or get a boolean value indicating whether to proxy the execution of main thread to a worker thread.
@@ -94,7 +94,7 @@ export declare namespace Env {
      *
      * @defaultValue `'webgl2'`
      */
-    contextId?: 'webgl'|'webgl2';
+    contextId?: 'webgl' | 'webgl2';
     /**
      * Get the WebGL rendering context.
      */
@@ -110,7 +110,7 @@ export declare namespace Env {
      *
      * @defaultValue `'full'`
      */
-    textureCacheMode?: 'initializerOnly'|'full';
+    textureCacheMode?: 'initializerOnly' | 'full';
     /**
      * Set or get the packed texture mode
      *
@@ -150,7 +150,7 @@ export declare namespace Env {
      * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
      * ignored.
      */
-    profilingMode?: 'off'|'default';
+    profilingMode?: 'off' | 'default';
     /**
      * Set or get the profiling configuration.
      */
@@ -160,7 +160,7 @@ export declare namespace Env {
        *
        * @defaultValue `'off'`
        */
-      mode?: 'off'|'default';
+      mode?: 'off' | 'default';
 
       /**
        * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
@@ -178,7 +178,7 @@ export declare namespace Env {
      *
      * @defaultValue `undefined`
      */
-    powerPreference?: 'low-power'|'high-performance';
+    powerPreference?: 'low-power' | 'high-performance';
     /**
      * Set or get the force fallback adapter flag.
      *
@@ -231,7 +231,7 @@ export interface Env {
    *
    * @defaultValue `'warning'`
    */
-  logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+  logLevel?: 'verbose' | 'info' | 'warning' | 'error' | 'fatal';
 
   /**
    * Indicate whether run in debug mode.
