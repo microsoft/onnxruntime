@@ -47,6 +47,7 @@
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/int16_qdq_pairs_remover.h"
 #include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
@@ -218,6 +219,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0") {
         // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
+
+        // DML doesn't support int16 QDQ, so we remove all pairs that cancel eachother to avoid falling back to the CPU
+        transformers.emplace_back(std::make_unique<Int16QDQPairsRemover>(dml_ep));
       }
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
