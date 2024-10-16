@@ -54,15 +54,14 @@ parameters:
     - '3.11'
     - '3.12'
 
-variables:
-  - template: ../templates/common-variables.yml
-  - name: win_trt_folder
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: ${{ variables.win_trt_folder_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: ${{ variables.win_trt_folder_cuda12 }}
-
 stages:
+  - variables:
+    - template: ../templates/common-variables.yml
+    - name: win_trt_folder
+      ${{ if eq(parameters.cuda_version, '11.8') }}:
+        value: ${{ variables.win_trt_folder_cuda11 }}
+      ${{ if eq(parameters.cuda_version, '12.2') }}:
+        value: ${{ variables.win_trt_folder_cuda12 }}
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
       - template: ../templates/py-win-gpu.yml
