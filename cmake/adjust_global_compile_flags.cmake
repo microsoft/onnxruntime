@@ -20,8 +20,8 @@ endif()
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
- string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
- string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
