@@ -596,15 +596,15 @@ MLAS_FORCEINLINE
     if constexpr (N > 1)
         c01 = vmulq_f16(b1, a0);
     else
-        c01 = vdupq_n_f16(0.0f);
+        c01 = MlasZeroFloat16x8();
     if constexpr (N > 2)
         c02 = vmulq_f16(b2, a0);
     else
-        c02 = vdupq_n_f16(0.0f);
+        c02 = MlasZeroFloat16x8();
     if constexpr (N > 3)
         c03 = vmulq_f16(b3, a0);
     else
-        c03 = vdupq_n_f16(0.0f);
+        c03 = MlasZeroFloat16x8();
 
     Transpose4x8(c00, c01, c02, c03);
 
@@ -646,15 +646,15 @@ MLAS_FORCEINLINE
     if constexpr (N > 1)
         c01 = vmul_f16(b1, a0);
     else
-        c01 = vdup_n_f16(0.0f);
+        c01 = MlasZeroFloat16x4();
     if constexpr (N > 2)
         c02 = vmul_f16(b2, a0);
     else
-        c02 = vdup_n_f16(0.0f);
+        c02 = MlasZeroFloat16x4();
     if constexpr (N > 3)
         c03 = vmul_f16(b3, a0);
     else
-        c03 = vdup_n_f16(0.0f);
+        c03 = MlasZeroFloat16x4();
 
     Transpose4x4(c00, c01, c02, c03);
 
@@ -749,15 +749,15 @@ MLAS_FORCEINLINE
     }
 
     // save register to buffer
-    vst1q_f16(buffer, accu00);
+    MlasStoreFloat16x8(buffer, accu00);
     if constexpr (N == 16) {
-        vst1q_f16(buffer + 8, accu01);
+        MlasStoreFloat16x8(buffer + 8, accu01);
     }
     if constexpr (M == 2) {
-        vst1q_f16(buffer + StrideN, accu10);
+        MlasStoreFloat16x8(buffer + StrideN, accu10);
     }
     if constexpr (M == 2 && N == 16) {
-        vst1q_f16(buffer + StrideN + 8, accu11);
+        MlasStoreFloat16x8(buffer + StrideN + 8, accu11);
     }
 }
 
@@ -819,7 +819,7 @@ MLAS_FORCEINLINE
     if constexpr (M == 2) {
         if constexpr (N == 4) {
             vst1_f16(buffer, accu0);
-            vst1q_f16(buffer + StrideN, accu1);
+            MlasStoreFloat16x8(buffer + StrideN, accu1);
         } else {
             vst1_lane_f16(buffer, accu0, 0);
             vst1_lane_f16(buffer + StrideN, accu1, 0);
@@ -1205,32 +1205,32 @@ SQ4BitGemmKernel_CompFp16(
         MLAS_FP16* pbuffer = buffer;
         for (; m + 2 <= CountM; m += 2, C += ldc * 2, pbuffer += StrideN * 2) {
             float16x8_t c00 = MlasLoadFloat16x8(pbuffer);
-            vst1q_f16(C, c00);
+            MlasStoreFloat16x8(C, c00);
             float16x8_t c01 = MlasLoadFloat16x8(pbuffer + 8);
-            vst1q_f16(C + 8, c01);
+            MlasStoreFloat16x8(C + 8, c01);
             float16x8_t c02 = MlasLoadFloat16x8(pbuffer + 16);
-            vst1q_f16(C + 16, c02);
+            MlasStoreFloat16x8(C + 16, c02);
             float16x8_t c03 = MlasLoadFloat16x8(pbuffer + 24);
-            vst1q_f16(C + 24, c03);
+            MlasStoreFloat16x8(C + 24, c03);
             float16x8_t c10 = MlasLoadFloat16x8(pbuffer + StrideN);
-            vst1q_f16(C + ldc, c10);
+            MlasStoreFloat16x8(C + ldc, c10);
             float16x8_t c11 = MlasLoadFloat16x8(pbuffer + StrideN + 8);
-            vst1q_f16(C + ldc + 8, c11);
+            MlasStoreFloat16x8(C + ldc + 8, c11);
             float16x8_t c12 = MlasLoadFloat16x8(pbuffer + StrideN + 16);
-            vst1q_f16(C + ldc + 16, c12);
+            MlasStoreFloat16x8(C + ldc + 16, c12);
             float16x8_t c13 = MlasLoadFloat16x8(pbuffer + StrideN + 24);
-            vst1q_f16(C + ldc + 24, c13);
+            MlasStoreFloat16x8(C + ldc + 24, c13);
         }
 
         if (m < CountM) {
             float16x8_t c00 = MlasLoadFloat16x8(pbuffer);
-            vst1q_f16(C, c00);
+            MlasStoreFloat16x8(C, c00);
             float16x8_t c01 = MlasLoadFloat16x8(pbuffer + 8);
-            vst1q_f16(C + 8, c01);
+            MlasStoreFloat16x8(C + 8, c01);
             float16x8_t c02 = MlasLoadFloat16x8(pbuffer + 16);
-            vst1q_f16(C + 16, c02);
+            MlasStoreFloat16x8(C + 16, c02);
             float16x8_t c03 = MlasLoadFloat16x8(pbuffer + 24);
-            vst1q_f16(C + 24, c03);
+            MlasStoreFloat16x8(C + 24, c03);
         }
     } else {
         size_t m = 0;
