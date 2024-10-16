@@ -5,11 +5,14 @@
 #include "webnn_execution_provider.h"
 
 #include "core/framework/compute_capability.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
+#include "core/providers/webnn/allocator.h"
+#include "core/providers/webnn/data_transfer.h"
 
 #include "builders/model.h"
 #include "builders/helper.h"
@@ -18,25 +21,28 @@
 namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
-    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
-  // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
-  if (webnn_device_flags.compare("cpu") == 0) {
-    preferred_layout_ = DataLayout::NHWC;
-    wnn_device_type_ = webnn::WebnnDeviceType::CPU;
-  } else {
-    preferred_layout_ = DataLayout::NCHW;
-    if (webnn_device_flags.compare("gpu") == 0) {
-      wnn_device_type_ = webnn::WebnnDeviceType::GPU;
-    } else if (webnn_device_flags.compare("npu") == 0) {
-      wnn_device_type_ = webnn::WebnnDeviceType::NPU;
-    } else {
-      ORT_THROW("Unknown WebNN deviceType.");
-    }
-  }
-
+    : IExecutionProvider{
+          onnxruntime::kWebNNExecutionProvider,
+          // If MLTensor is supported, we force all the tensors to be allocated as MLTensor.
+          OrtDevice(
+              webnn::IsMLTensorSupported() ? OrtDevice::GPU : OrtDevice::CPU,
+              OrtDevice::MemType::DEFAULT,
+              0)},
+      wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
   wnn_context_ = emscripten::val::module_property("currentContext");
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
+  }
+
+  // Retrieve the level of support for different WebNN operators.
+  // This varies across implementations and is obtained via the WebNN's opSupportLimits() function.
+  // https://www.w3.org/TR/webnn/#api-mlcontext-opsupportlimits
+  wnn_limits_ = wnn_context_.call<emscripten::val>("opSupportLimits");
+
+  if (wnn_limits_["preferredInputLayout"].as<std::string>().compare("nhwc") == 0) {
+    preferred_layout_ = DataLayout::NHWC;
+  } else {
+    preferred_layout_ = DataLayout::NCHW;
   }
 }
 
@@ -82,7 +88,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     ORT_THROW("Failed to create WebNN builder.");
   }
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, logger);
+  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, wnn_limits_, logger);
   wnn_builder = emscripten::val::undefined();
 
   if (node_groups.empty()) {
@@ -213,7 +219,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
     webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                preferred_layout_, wnn_device_type_);
+                                preferred_layout_, wnn_device_type_, wnn_limits_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
 
@@ -295,11 +301,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           auto output_type = output_info.data_type;
           auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
-
-          if (!webnn::IsSupportedDataType(output_type, webnn::webnn_supported_data_types)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Unsupported type: ", output_type, " for output: ", output_name);
-          }
           void* output_buffer = output_tensor.GetTensorMutableRawData();
           outputs.emplace(output_name,
                           webnn::OnnxTensorData{
@@ -318,6 +319,32 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   return Status::OK();
 }
 
+class WebNNMemcpy : public OpKernel {
+ public:
+  explicit WebNNMemcpy(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    auto jsepEnsureTensor = emscripten::val::module_property("jsepEnsureTensor");
+    const auto* X = context->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: input tensor is null");
+    auto* Y = context->Output(0, X->Shape());
+    ORT_ENFORCE(X != nullptr, "Memcpy: output tensor is null");
+    emscripten::val shape = emscripten::val::array();
+    for (auto dim : X->Shape().GetDims()) {
+      shape.call<void>("push", SafeInt<uint32_t>(dim).Ref());
+    }
+
+    jsepEnsureTensor(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
+                     Y->GetElementType(),
+                     shape, false)
+        .await();
+
+    const auto* data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+
+    return data_transfer->CopyTensor(*X, *Y);
+  }
+};
+
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
@@ -326,7 +353,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Memcpy);
+    WebNNMemcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyToHost,
@@ -367,6 +394,24 @@ WebNNExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry =
       onnxruntime::GetWebNNKernelRegistry();
   return kernel_registry;
+}
+
+std::unique_ptr<onnxruntime::IDataTransfer> WebNNExecutionProvider::GetDataTransfer() const {
+  if (!webnn::IsMLTensorSupported()) {
+    return nullptr;
+  }
+  return std::make_unique<webnn::DataTransfer>();
+}
+
+std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {
+  if (!webnn::IsMLTensorSupported()) {
+    return {};
+  }
+  AllocatorCreationInfo customAllocatorCreationInfo([&](OrtDevice::DeviceId) {
+    return std::make_unique<webnn::WebNNTensorAllocator>();
+  },
+                                                    0, false);
+  return {CreateAllocator(customAllocatorCreationInfo)};
 }
 
 }  // namespace onnxruntime

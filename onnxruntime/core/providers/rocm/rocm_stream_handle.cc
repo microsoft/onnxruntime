@@ -42,18 +42,18 @@ RocmStream::RocmStream(hipStream_t stream,
                        bool release_cpu_buffer_on_rocm_stream,
                        bool own_flag,
                        miopenHandle_t external_miopen_handle,
-                       rocblas_handle external_rocblas_handle) : Stream(stream, device),
-                                                                 own_stream_(own_flag),
-                                                                 cpu_allocator_(cpu_allocator),
-                                                                 release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
+                       hipblasHandle_t external_hipblas_handle) : Stream(stream, device),
+                                                                  own_stream_(own_flag),
+                                                                  cpu_allocator_(cpu_allocator),
+                                                                  release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
   if (own_flag) {
-    ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
+    HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
+    HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
     MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
     MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
   } else {
-    rocblas_handle_ = external_rocblas_handle;
-    ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
+    hipblas_handle_ = external_hipblas_handle;
+    HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
     miopen_handle_ = external_miopen_handle;
     MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
   }
@@ -62,7 +62,7 @@ RocmStream::RocmStream(hipStream_t stream,
 RocmStream::~RocmStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
   if (own_stream_) {
-    rocblas_destroy_handle(rocblas_handle_);
+    hipblasDestroy(hipblas_handle_);
     miopenDestroy(miopen_handle_);
     auto* handle = GetHandle();
     if (handle)
@@ -149,8 +149,8 @@ void* RocmStream::GetResource(int version, int id) const {
     case RocmResource::miopen_handle_t:
       return reinterpret_cast<void*>(miopen_handle_);
       break;
-    case RocmResource::rocblas_handle_t:
-      return reinterpret_cast<void*>(rocblas_handle_);
+    case RocmResource::hipblas_handle_t:
+      return reinterpret_cast<void*>(hipblas_handle_);
       break;
     default:
       break;
@@ -174,7 +174,7 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                hipStream_t external_stream,
                                bool use_existing_stream,
                                miopenHandle_t external_miopen_handle,
-                               rocblas_handle external_rocblas_handle) {
+                               hipblasHandle_t external_hipblas_handle) {
   // wait rocm notification on rocm ep
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitRocmNotificationOnDevice);
   // wait rocm notification on cpu ep
@@ -191,8 +191,8 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                                                 release_cpu_buffer_on_rocm_stream,
                                                                 external_stream,
                                                                 external_miopen_handle,
-                                                                external_rocblas_handle](const OrtDevice& device) {
-      return std::make_unique<RocmStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, false, external_miopen_handle, external_rocblas_handle);
+                                                                external_hipblas_handle](const OrtDevice& device) {
+      return std::make_unique<RocmStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, false, external_miopen_handle, external_hipblas_handle);
     });
 }
 

@@ -213,6 +213,10 @@ def generate_repo_url(line_list, repo_url, commit_id):
     line_list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
 
 
+def generate_readme(line_list):
+    line_list.append("<readme>README.md</readme>")
+
+
 def add_common_dependencies(xml_text, package_name, version):
     xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
@@ -221,7 +225,7 @@ def add_common_dependencies(xml_text, package_name, version):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.15.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.15.2"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -327,6 +331,7 @@ def generate_metadata(line_list, args):
     generate_license(metadata_list)
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
     generate_repo_url(metadata_list, "https://github.com/Microsoft/onnxruntime.git", args.commit_id)
+    generate_readme(metadata_list)
     generate_dependencies(metadata_list, args.package_name, args.package_version)
     generate_release_notes(metadata_list, args.sdk_info)
     metadata_list.append("</metadata>")
@@ -1045,7 +1050,9 @@ def generate_files(line_list, args):
             )
 
     # README
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
+    files_list.append(
+        "<file src=" + '"' + os.path.join(args.sources_path, "tools/nuget/nupkg.README.md") + '" target="README.md" />'
+    )
 
     # Process License, ThirdPartyNotices, Privacy
     files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')

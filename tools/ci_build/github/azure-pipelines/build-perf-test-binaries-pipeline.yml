@@ -29,6 +29,7 @@ stages:
         job_name_suffix: 'Full'
         publish_executables: '1'
         pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        enable_code_sign: false
 
 # build Python packages
 # Linux GPU only
