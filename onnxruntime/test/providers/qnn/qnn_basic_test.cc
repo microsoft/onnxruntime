@@ -1073,8 +1073,7 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
       "Elu",
   };
 
-  // Test various QDQ ops with all combinations of 'offload_graph_input_quantization' and
-  // 'offload_graph_output_dequantization'.
+  // Test various QDQ ops with offloading of I/O quantization enabled and disabled.
   for (auto op_type : op_types) {
     for (int offload_io_quant = 0; offload_io_quant <= 1; offload_io_quant++) {
       provider_options["offload_graph_io_quantization"] = offload_io_quant ? "1" : "0";
