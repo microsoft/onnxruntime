@@ -158,7 +158,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           } else {
             ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'vtcm_mb', 'htp_performance_mode',
  'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision', 'enable_htp_weight_sharing',
- 'offload_graph_input_quantization'])");
+ 'offload_graph_io_quantization'])");
           }
 
           test_config.run_config.qnn_options[key] = value;
