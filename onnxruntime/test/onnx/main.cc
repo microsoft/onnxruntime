@@ -77,6 +77,8 @@ void usage() {
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
+      "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
+      "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -587,20 +589,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_arch. select from: " + str);
           }
-        } else if (key == "enable_htp_fp16_precision") {
+        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization") {
           std::unordered_set<std::string> supported_options = {"0", "1"};
           if (supported_options.find(value) == supported_options.end()) {
             std::ostringstream str_stream;
             std::copy(supported_options.begin(), supported_options.end(),
                       std::ostream_iterator<std::string>(str_stream, ","));
             std::string str = str_stream.str();
-            ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+            ORT_THROW("Wrong value for ", key, ". select from: ", str);
           }
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
-'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
+'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization'])");
         }
 
         qnn_options[key] = value;

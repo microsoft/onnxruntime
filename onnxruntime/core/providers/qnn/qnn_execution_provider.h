@@ -153,6 +153,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
+  qnn::ModelSettings model_settings_ = {};
 
   class PerThreadContext final {
    public:
