@@ -25,6 +25,41 @@
 // The interleaved version is very similar but instead of swapping 2 halves, we swap every pair of adjacent elements and we swap
 // the sign of every adjacent element.
 
+// Here's a representation of what the graph looks like in DML, before getting fused together:
+/*
+                 Input                            CosCache   PositionIds     SinCache
+                   |                                 |           |              |
+                   |                                 |  +--------+-----------+  |
+                 Split                               |  |                    |  |
+                  |  |                              Gather                  Gather
+          +-------+  |                                |                        |
+          |          |                                |                        |
+          |     Identity----------+                   |                        |
+          |        |              |                   |                        |
+          |        |              |                   |                        |
+          |    --Split--          |                   |                        |
+          |    \       /          | +-----------------+                        |
+          |     \     /           | |                                          |
+          |      \   /            Mul                                          |
+          |       \ /              |                                           |
+          |        X               |                                           |
+          |       / \              |                                           |
+          |      /   \             |                                           |
+          |       Join             |                                           |
+          |        |               |                                           |
+          |        | +---------------------------------------------------------+
+          |        | |             |
+          |        Mul             |
+          |         |              |
+          |         +-----+ +------+
+          |               | |
+          |               Add
+          |                |
+          +-------------+  |
+                        |  |
+                        Join
+*/
+
 namespace Dml
 {
 class DmlOperatorRotaryEmbedding : public DmlOperator
