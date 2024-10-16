@@ -114,7 +114,7 @@ stages:
             - template: jobs/set-winenv.yml
               parameters:
                 EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true) }}:
+                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
                   DownloadCUDA: true
                 DownloadTRT: ${{ parameters.use_tensorrt }}
 
@@ -122,7 +122,7 @@ stages:
             - template: jobs/download_win_gpu_library.yml
               parameters:
                 CudaVersion: ${{ parameters.CudaVersion }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true) }}:
+                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
                   DownloadCUDA: true
                 DownloadTRT: ${{ parameters.use_tensorrt }}
 
