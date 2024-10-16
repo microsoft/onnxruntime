@@ -740,11 +740,12 @@ using namespace webgpu;
 
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
-                                                 const WebGpuExecutionProviderInfo& info)
+                                                 WebGpuExecutionProviderInfo&& info)
     : IExecutionProvider{kWebGpuExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{info.data_layout},
+      force_cpu_node_names_{std::move(info.force_cpu_node_names)},
       enable_graph_capture_{info.enable_graph_capture} {
 }
 
@@ -781,6 +782,14 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
     if (webgpu_kernel_def == nullptr) {
       LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: "
                                << node.OpType() << " node name: " << node.Name();
+      continue;
+    }
+
+    // TODO: currently this lookup is O(N). If the list becomes large we should optimize this.
+    if (std::find(force_cpu_node_names_.cbegin(),
+                  force_cpu_node_names_.cend(),
+                  node.Name()) != force_cpu_node_names_.cend()) {
+      LOGS(*GetLogger(), INFO) << "Force CPU execution for node: " << node.Name();
       continue;
     }
     candidates.push_back(node.Index());

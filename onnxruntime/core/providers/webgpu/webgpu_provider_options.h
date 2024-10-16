@@ -24,6 +24,8 @@ constexpr const char* kDefaultBufferCacheMode = "WebGPU:defaultBufferCacheMode";
 
 constexpr const char* kValidationMode = "WebGPU:validationMode";
 
+constexpr const char* kForceCpuNodeNames = "WebGPU:forceCpuNodeNames";
+
 // The following are the possible values for the provider options.
 
 constexpr const char* kPreferredLayout_NCHW = "NCHW";
