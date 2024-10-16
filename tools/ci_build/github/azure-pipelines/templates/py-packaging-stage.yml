@@ -460,7 +460,7 @@ stages:
       - template: py-linux.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -469,8 +469,8 @@ stages:
       - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241010.2
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241015.1
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           trt_version: '10.4.0.26-1.cuda11.8'

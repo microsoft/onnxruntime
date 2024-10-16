@@ -37,10 +37,10 @@ function GetFile {
 mkdir -p /tmp/src
 
 cd /tmp/src
-
+CPU_ARCH=$(uname -m)
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1-linux-`uname -m`.tar.gz /tmp/src/cmake-3.30.1-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.30.1-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile "https://github.com/Kitware/CMake/releases/download/v3.31.0-rc1/cmake-3.31.0-rc1-linux-$CPU_ARCH.tar.gz" "/tmp/src/cmake.tar.gz"
+tar -zxf /tmp/src/cmake.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz

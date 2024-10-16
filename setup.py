@@ -223,7 +223,7 @@ try:
                     "libcudnn_heuristic.so.9",
                     "libcudnn_ops.so.9",
                     "libnvJitLink.so.12",
-                    "libnvrtc.so.11",
+                    "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
                     "libnvrtc-builtins.so.11",
                     "libnvrtc-builtins.so.12",

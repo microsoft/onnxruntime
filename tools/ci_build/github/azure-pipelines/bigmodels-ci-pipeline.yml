@@ -42,7 +42,7 @@ parameters:
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241010.2
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241015.1
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
