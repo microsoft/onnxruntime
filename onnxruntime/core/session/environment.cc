@@ -4,6 +4,7 @@
 #include "core/session/environment.h"
 #include "core/session/allocator_adapters.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/cpu_allocator_utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 
@@ -117,19 +118,8 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   }
 
   // determine if arena should be used
-  const bool create_arena = [&]() -> bool {
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-    // We use these allocators instead of the arena
-    return false;
-#else
-    // Disable Arena allocator for 32-bit builds because it may run into infinite loop when integer overflow happens
-    if constexpr (sizeof(void*) == 4) {
-      return false;
-    } else {
-      return mem_info.alloc_type == OrtArenaAllocator;
-    }
-#endif
-  }();
+  const bool is_arena_requested = mem_info.alloc_type == OrtArenaAllocator;
+  const bool create_arena = ShouldCpuAllocatorUseArena(is_arena_requested);
 
   AllocatorPtr allocator_ptr;
   // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
