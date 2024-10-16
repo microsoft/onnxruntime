@@ -147,7 +147,7 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::vector<const char*> providers = {kCpuExecutionProvider,kDmlExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
