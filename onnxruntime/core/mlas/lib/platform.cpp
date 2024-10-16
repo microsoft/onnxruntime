@@ -677,9 +677,9 @@ MlasPlatformU8S8Overflow(
 
 #endif
 
-MLAS_THREAD_LOCAL size_t ThreadedBufSize = 0;
+thread_local size_t ThreadedBufSize = 0;
 #ifdef _MSC_VER
-MLAS_THREAD_LOCAL std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder(nullptr, &_aligned_free);
+thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder(nullptr, &_aligned_free);
 #else
-MLAS_THREAD_LOCAL std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder(nullptr, &free);
+thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder(nullptr, &free);
 #endif
