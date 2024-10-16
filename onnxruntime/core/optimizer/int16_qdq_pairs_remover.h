@@ -17,6 +17,8 @@ class Int16QDQPairsRemover : public GraphTransformer {
       : GraphTransformer("Int16QDQPairsRemover", compatible_execution_providers) {}
 
  private:
+  bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) const;
+
   Status ApplyImpl(
       Graph& graph,
       bool& modified,

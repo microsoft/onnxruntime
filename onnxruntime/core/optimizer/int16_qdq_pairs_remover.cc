@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) {
+bool Int16QDQPairsRemover::TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) const {
   const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
     return graph.GetConstantInitializer(initializer_name, true);
   };
@@ -20,6 +20,7 @@ static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) 
   Node* quantize_node = graph.GetNode(quantize_node_index);
 
   if (quantize_node == nullptr ||
+      !graph_utils::IsSupportedProvider(*quantize_node, GetCompatibleExecutionProviders()) ||
       quantize_node->OpType() != "QuantizeLinear" ||
       graph.NodeProducesGraphOutput(*quantize_node)) {
     return false;
