@@ -67,7 +67,7 @@ parameters:
 - name: runBrowserStackTests
   displayName: Run BrowserStack tests? (will run App Center tests if disabled)
   type: boolean
-  default: false
+  default: true
 
 resources:
   repositories:
