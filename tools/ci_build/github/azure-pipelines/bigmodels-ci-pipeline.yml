@@ -200,6 +200,10 @@ stages:
           nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c ' \
             set -ex; \
+            pip uninstall -y $(pip list --format=freeze | grep opencv); \
+            rm -rf /usr/local/lib/python3.8/dist-packages/cv2/; \
+            apt-get update; \
+            DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
