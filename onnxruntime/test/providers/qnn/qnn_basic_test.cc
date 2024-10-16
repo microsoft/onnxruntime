@@ -1027,9 +1027,8 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   // Returns a function that checks that the Q/DQ ops at the graph IO boundary are offloaded to CPU
   // if the corresponding provider option is enabled.
-  auto graph_checker_builder = [](bool offload_graph_input_quantization,
-                                  bool offload_graph_output_dequantization) -> std::function<void(const Graph&)> {
-    return [offload_graph_input_quantization, offload_graph_output_dequantization](const Graph& graph) {
+  auto graph_checker_builder = [](bool offload_graph_io_quantization) -> std::function<void(const Graph&)> {
+    return [offload_graph_io_quantization](const Graph& graph) {
       size_t num_q = 0;
       size_t num_dq = 0;
       size_t num_qnn_fused_node = 0;
@@ -1038,12 +1037,12 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
         const std::string& ep_name = node.GetExecutionProviderType();
         const std::string& op_type = node.OpType();
 
-        if (offload_graph_input_quantization && op_type == "QuantizeLinear") {
+        if (offload_graph_io_quantization && op_type == "QuantizeLinear") {
           const bool consumes_graph_input = graph.IsInputsIncludingInitializers(node.InputDefs()[0]);
           EXPECT_EQ(ep_name, kCpuExecutionProvider);
           EXPECT_TRUE(consumes_graph_input);
           num_q += 1;
-        } else if (offload_graph_output_dequantization && op_type == "DequantizeLinear") {
+        } else if (offload_graph_io_quantization && op_type == "DequantizeLinear") {
           const bool produces_graph_output = graph.IsOutput(node.OutputDefs()[0]);
           EXPECT_EQ(ep_name, kCpuExecutionProvider);
           EXPECT_TRUE(produces_graph_output);
@@ -1054,8 +1053,8 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
         }
       }
 
-      EXPECT_EQ(num_q, static_cast<size_t>(offload_graph_input_quantization));
-      EXPECT_EQ(num_dq, static_cast<size_t>(offload_graph_output_dequantization));
+      EXPECT_EQ(num_q, static_cast<size_t>(offload_graph_io_quantization));
+      EXPECT_EQ(num_dq, static_cast<size_t>(offload_graph_io_quantization));
       EXPECT_EQ(num_qnn_fused_node, 1);
     };
   };
@@ -1077,29 +1076,25 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   // Test various QDQ ops with all combinations of 'offload_graph_input_quantization' and
   // 'offload_graph_output_dequantization'.
   for (auto op_type : op_types) {
-    for (int offload_input_quant = 0; offload_input_quant <= 1; offload_input_quant++) {
-      for (int offload_output_dequant = 0; offload_output_dequant <= 1; offload_output_dequant++) {
-        provider_options["offload_graph_input_quantization"] = offload_input_quant ? "1" : "0";
-        provider_options["offload_graph_output_dequantization"] = offload_output_dequant ? "1" : "0";
-        auto graph_checker = graph_checker_builder(offload_input_quant, offload_output_dequant);
-        auto expected_ep_assignment = (offload_input_quant || offload_output_dequant) ? ExpectedEPNodeAssignment::Some
-                                                                                      : ExpectedEPNodeAssignment::All;
+    for (int offload_io_quant = 0; offload_io_quant <= 1; offload_io_quant++) {
+      provider_options["offload_graph_io_quantization"] = offload_io_quant ? "1" : "0";
+      auto graph_checker = graph_checker_builder(offload_io_quant);
+      auto expected_ep_assignment = offload_io_quant ? ExpectedEPNodeAssignment::Some : ExpectedEPNodeAssignment::All;
 
-        float min_val = (op_type == "Sqrt") ? 0.0f : -10.0f;
-        TestInputDef<float> input_def({1, 2, 2, 2}, false, GetFloatDataInRange(min_val, 10.0f, 8));
-        auto f32_model_build_fn = BuildOpTestCase<float>(op_type, {input_def}, {}, {});
-        auto qdq_model_build_fn = BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {});
-        TestQDQModelAccuracy<uint8_t>(f32_model_build_fn,
-                                      qdq_model_build_fn,
-                                      provider_options,
-                                      /*opset*/ 21,
-                                      expected_ep_assignment,
-                                      /*abs_err*/ QDQTolerance(),
-                                      logging::Severity::kERROR,
-                                      /*qnn_ctx_model_path*/ "",
-                                      /*session_option_pairs*/ {},
-                                      &graph_checker);
-      }
+      float min_val = (op_type == "Sqrt") ? 0.0f : -10.0f;
+      TestInputDef<float> input_def({1, 2, 2, 2}, false, GetFloatDataInRange(min_val, 10.0f, 8));
+      auto f32_model_build_fn = BuildOpTestCase<float>(op_type, {input_def}, {}, {});
+      auto qdq_model_build_fn = BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {});
+      TestQDQModelAccuracy<uint8_t>(f32_model_build_fn,
+                                    qdq_model_build_fn,
+                                    provider_options,
+                                    /*opset*/ 21,
+                                    expected_ep_assignment,
+                                    /*abs_err*/ QDQTolerance(),
+                                    logging::Severity::kERROR,
+                                    /*qnn_ctx_model_path*/ "",
+                                    /*session_option_pairs*/ {},
+                                    &graph_checker);
     }
   }
 }

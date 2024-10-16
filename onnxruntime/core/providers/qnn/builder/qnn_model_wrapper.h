@@ -30,8 +30,7 @@ struct TensorInfo {
 };
 
 struct ModelSettings {
-  bool offload_graph_input_quantization = false;
-  bool offload_graph_output_dequantization = false;
+  bool offload_graph_io_quantization = false;
 };
 
 class QnnModelWrapper {

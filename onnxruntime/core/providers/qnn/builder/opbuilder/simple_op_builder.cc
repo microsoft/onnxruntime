@@ -165,7 +165,7 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Inputs()[0], is_per_chan_quant, quant_axis));
     ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone DQ op with per-channel quantization");
 
-    if (qnn_model_wrapper.GetModelSettings().offload_graph_output_dequantization) {
+    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
       ORT_RETURN_IF(qnn_model_wrapper.IsGraphOutput(node_unit.Outputs()[0].node_arg.Name()),
                     "QNN EP is configured to not take DQ nodes that generate a graph output.");
     }
@@ -177,7 +177,7 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Outputs()[0], is_per_chan_quant, quant_axis));
     ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone Q op with per-channel quantization");
 
-    if (qnn_model_wrapper.GetModelSettings().offload_graph_input_quantization) {
+    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
       ORT_RETURN_IF(qnn_model_wrapper.IsGraphInput(node_unit.Inputs()[0].node_arg.Name()),
                     "QNN EP is configured to not take Q nodes that consume a graph input.");
     }
