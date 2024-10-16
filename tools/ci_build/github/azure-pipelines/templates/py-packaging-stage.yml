@@ -241,7 +241,7 @@ stages:
         continueOnError: true
 
       - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
          if ("$(ExtraParam)" -contains "--use_azure") {
