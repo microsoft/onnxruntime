@@ -144,7 +144,8 @@ stages:
           -workspace $(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace \
           -sdk iphoneos \
           -derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData \
-          -exportOptionsPlist ./DerivedData/Build/Products/Debug-iphoneos/ios_package_test.app/Info.plist
+          -exportOptionsPlist ./DerivedData/Build/Products/Debug-iphoneos/ios_package_test.app/Info.plist \
+          -scheme ios_package_test
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "Create .ipa file"
       env:
