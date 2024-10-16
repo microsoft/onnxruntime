@@ -350,7 +350,6 @@ if (onnxruntime_USE_ROCM)
   else()
     message(FATAL_ERROR "Cannot determine ROCm version string")
   endif()
-
   message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/.info/version ****\n")
   message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
   message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
