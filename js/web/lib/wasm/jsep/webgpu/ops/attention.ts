@@ -355,13 +355,13 @@ const createInPlaceSoftmaxProgramInfo = (
     let sequence_length = uniforms.sequence_length;
     ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
     let local_offset = local_id.x * uniforms.elements_per_thread;
-    let offset = (global_idx / ${WG}) * uniforms.total_sequence_length + local_offset;
-    let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + global_id.y + 1)' : 'total_sequence_length'};
+    let offset = global_idx * uniforms.total_sequence_length / ${WG} + local_offset;
+    let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + workgroup_id.y + 1)' : 'total_sequence_length'};
     var thread_max_vector = ${f32Type}(-3.402823e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
-    thread_max[local_idx] = ${(() => {
+    thread_max[local_id.x] = ${(() => {
       switch (components) {
         case 1:
           return 'thread_max_vector';
@@ -376,7 +376,7 @@ const createInPlaceSoftmaxProgramInfo = (
     workgroupBarrier();
 
     var max_value =  f32(-3.402823e+38f);
-    for (var i = 0u; i < ${WG} && i < seq_causal_length; i++) {
+    for (var i = 0u; i < ${WG}; i++) {
       max_value = max(thread_max[i], max_value);
     }
 
@@ -384,7 +384,7 @@ const createInPlaceSoftmaxProgramInfo = (
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
-    thread_sum[local_idx] = ${(() => {
+    thread_sum[local_id.x] = ${(() => {
       switch (components) {
         case 1:
           return 'sum_vector';
@@ -415,9 +415,10 @@ const createInPlaceSoftmaxProgramInfo = (
     }
       ${
         seqLens
-          ? `for (var i: u32 = seq_causal_length; i < uniforms.elements_per_thread && i + local_offset < uniforms.total_sequence_length; i++) {
-      x[offset + i] = ${inputHelper.type.value}(${elemValueType}(0));
-    }`
+          ? `
+        for (var i: u32 = seq_causal_length; i < uniforms.elements_per_thread && i + local_offset < total_sequence_length; i++) {
+          x[offset + i] = ${inputHelper.type.value}(${elemValueType}(0));
+        }`
           : ''
       };
   }`;
@@ -432,7 +433,7 @@ const createInPlaceSoftmaxProgramInfo = (
     getShaderSource,
     getRunData: () => ({
       outputs: [],
-      dispatchGroup: { x: 1, y: sequenceLength, z: batchSize * numHeads },
+      dispatchGroup: { x: Math.ceil(totalSequenceLength / WG), y: sequenceLength, z: batchSize * numHeads },
       programUniforms,
     }),
   };
@@ -583,7 +584,12 @@ const createAttentionProbsProgramInfo = (
         }
       })()}
       ${
-        presentKey ? 'present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];' : ''
+        presentKey
+          ? `
+          if (n + local_id.y < total_sequence_length) {
+        present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];
+      }`
+          : ''
       }
       }
       workgroupBarrier();
@@ -757,7 +763,14 @@ const createVxAttentionScoreProgramInfo = (
             }`;
           }
         })()}
-        ${presentValue ? 'present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];' : ''}
+        ${
+          presentValue
+            ? `
+            if (w + local_id.y < total_sequence_length) {
+          present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];
+        }`
+            : ''
+        }
       }
      workgroupBarrier();
      for (var k: u32 = 0u; k < TILE_SIZE && w+k < total_sequence_length; k++) {
