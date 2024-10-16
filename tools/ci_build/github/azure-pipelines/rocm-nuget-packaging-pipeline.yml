@@ -85,10 +85,10 @@ stages:
   - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
       clean: all
-    timeoutInMinutes: 240
+    timeoutInMinutes: 480
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     variables:
-      RocmVersion: '5.6'
+      RocmVersion: '6.2'
       RocmVersionPatchSuffix: ''
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
