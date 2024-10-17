@@ -40,6 +40,9 @@ This project is tested with [BrowserStack](https://www.browserstack.com/home).
 |---|---|---|
 |Linux|[![Build Status](https://github.com/Ascend/onnxruntime/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/Ascend/onnxruntime/actions/workflows/build-and-test.yaml)||
 
+## Releases
+For more information about ONNX Runtime releases, including release dates, announcements, planned features, and instructions for submitting feature requests, please refer to the ONNX Runtime Release Roadmap on our website: https://onnxruntime.ai/roadmap.
+
 ## Data/Telemetry
 
 Windows distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
