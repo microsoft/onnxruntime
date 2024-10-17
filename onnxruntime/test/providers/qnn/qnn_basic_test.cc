@@ -1023,6 +1023,53 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
                   &ep_graph_checker);
 }
 
+
+// Create a model with Clip + QuantizedLinear
+template <typename T>
+static void BuildClipQuantFusionTestCase(ModelTestBuilder& builder) {
+  // Creat Clip node
+  NodeArg* input = MakeTestInput(
+      builder,
+      TestInputDef<float>({8, 5}, false,
+                          {
+                              0.0f, 0.51f, -3.5f, 3.9f, 6.0f,                         // rand
+                              -0.6f, -0.4f, 0.0f, 0.4f, 0.6f,                         // uint8_t or uint16_t min round to difference values
+                              254.4f, 254.6f, 255.0f, 255.4f, 255.6f,                 // uint8_t max round to difference values
+                              65534.4f, 65534.6f, 65535.0f, 65535.4f, 65535.6f,       // uint16_t max round to difference values
+                              -128.6f, -128.4f, -128.0f, -127.6f, -127.4f,            // int8_t min round to difference values
+                              126.4f, 126.6f, 127.0f, 127.4f, 127.6f,                 // int8_t max round to difference values
+                              -32768.6f, -32768.4f, -32768.0f, -32767.6f, -32767.4f,  // int16_t min round to difference values
+                              32766.4f, 32766.6f, 32767.0f, 32767.4f, 32767.6f,       // int16_t max round to difference values
+                          }));
+  auto* dummy = builder.MakeScalarInitializer<float>(0.0f);
+  auto* clip_input = builder.MakeIntermediate();
+  builder.AddNode("Add", {input, dummy}, {clip_input});
+
+  auto* clip_min = builder.MakeScalarInitializer<float>(0.0f);
+  auto* clip_max = builder.MakeScalarInitializer<float>(6.0f);
+  auto* clip_output = builder.MakeIntermediate();
+  builder.AddNode("Clip", {clip_input, clip_min, clip_max}, {clip_output});
+
+  // Create QuantizeLinear node
+  NodeArg* output = builder.MakeOutput();
+  float scale = 0.023483455181121826f; // approx 6/255.499
+  builder.AddQuantizeLinearNode<T>(clip_output, scale, 0, output);
+}
+
+TEST_F(QnnHTPBackendTests, ClipQuantFusion) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildClipQuantFusionTestCase<int16_t>,
+                  provider_options,
+                  21,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

@@ -27,28 +27,22 @@ void VerifyOutput(const std::string& output_name,
   auto element_type = expected_tensor.GetElementType();
   switch (element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint32_t>(), tensor.DataAsSpan<uint32_t>()))
-          << " mismatch for " << output_name;
+      EXPECT_THAT(tensor.DataAsSpan<uint32_t>(), testing::ElementsAreArray(expected_tensor.DataAsSpan<uint32_t>()));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int32_t>(), tensor.DataAsSpan<int32_t>()))
-          << " mismatch for " << output_name;
+      EXPECT_THAT(tensor.DataAsSpan<int32_t>(), testing::ElementsAreArray(expected_tensor.DataAsSpan<int32_t>()));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int64_t>(), tensor.DataAsSpan<int64_t>()))
-          << " mismatch for " << output_name;
+      EXPECT_THAT(tensor.DataAsSpan<int64_t>(), testing::ElementsAreArray(expected_tensor.DataAsSpan<int64_t>()));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint16_t>(), tensor.DataAsSpan<uint16_t>()))
-          << " mismatch for " << output_name;
+      EXPECT_THAT(tensor.DataAsSpan<uint16_t>(), testing::ElementsAreArray(expected_tensor.DataAsSpan<uint16_t>()));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint8_t>(), tensor.DataAsSpan<uint8_t>()))
-          << " mismatch for " << output_name;
+      EXPECT_THAT(tensor.DataAsSpan<uint8_t>(), testing::ElementsAreArray(expected_tensor.DataAsSpan<uint8_t>()));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int8_t>(), tensor.DataAsSpan<int8_t>()))
-          << " mismatch for " << output_name;
+      EXPECT_THAT(tensor.DataAsSpan<int8_t>(), testing::ElementsAreArray(expected_tensor.DataAsSpan<int8_t>()));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<bool>(), tensor.DataAsSpan<bool>()))
@@ -105,7 +99,11 @@ void VerifyEPNodeAssignment(const Graph& graph, const std::string& provider_type
   const auto provider_node_count = CountAssignedNodes(graph, provider_type);
   if (assignment == ExpectedEPNodeAssignment::All) {
     // Verify the entire graph is assigned to the EP
-    ASSERT_EQ(provider_node_count, graph.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+    std::ostringstream oss;
+    for (const auto& node : graph.Nodes()) {
+      oss << " " << node.OpType() << node.GetExecutionProviderType() ;
+    }
+    ASSERT_EQ(provider_node_count, graph.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type << oss.str();
   } else if (assignment == ExpectedEPNodeAssignment::None) {
     // or none of the graph
     ASSERT_EQ(provider_node_count, 0) << "Some nodes were assigned to " << provider_type;
