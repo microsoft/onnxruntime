@@ -114,6 +114,15 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
       continue;
     }
 
+    const Node* p_dynamicquantize_node = graph_utils::FirstParentByType(*p_matmulinteger_node, "DynamicQuantizeLinear");
+
+    // Check MatMulInteger Nodes' input is coming from DynamicQuantizeLinear
+    // For larger tensors DynamicQuantizeLinear -> MatMulInteger is used to be resource efficient
+    // And we have better MatMulInteger Metacommand coverage in DML
+    if (is_dml_ep && p_dynamicquantize_node) {
+      continue;
+    }
+
     // Find bias node
     Node* p_add_node = nullptr;
     if (optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
