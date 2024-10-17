@@ -179,8 +179,8 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   const T* bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
-  size_t scale_size = scale ? scale->Shape().Size() : prepacked_scale_fp32_size_;
-  size_t bias_size = bias ? bias->Shape().Size() : prepacked_bias_fp32_size_;
+  size_t scale_size = scale ? static_cast<size_t>(scale->Shape().Size()) : prepacked_scale_fp32_size_;
+  size_t bias_size = bias ? static_cast<size_t>(bias->Shape().Size()) : prepacked_bias_fp32_size_;
   Tensor* Y = p_ctx->Output(0, x_shape);
   T* Y_data = Y->MutableData<T>();
 
