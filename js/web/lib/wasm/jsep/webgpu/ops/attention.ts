@@ -274,7 +274,7 @@ const initVarStub = (
       // let present_sequence_length = max(total_sequence_length_input, uniforms.past_sequence_length);
       let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length_input;
       let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length_input;
-      let total_sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')}) + 1;
+      total_sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')}) + 1;
       var past_sequence_length: u32 = 0;
       if (is_first_prompt == false) {
         past_sequence_length = total_sequence_length - sequence_length;
@@ -283,7 +283,6 @@ const initVarStub = (
   } else {
     return `
     ${initPastSequenceLength ? 'let past_sequence_length = uniforms.past_sequence_length' : ''};
-    let total_sequence_length = uniforms.total_sequence_length;
     // let present_sequence_length = total_sequence_length;
     `;
   }
@@ -298,7 +297,7 @@ const createInPlaceSoftmaxProgramInfo = (
   seqLens: TensorView | undefined,
   totalSequenceLengthInput: TensorView | undefined,
 ) => {
-  // Use no components if seqLens is specifie, i.e. GroupQueryAttention.
+  // Set components to 1 if seqLens is specified, i.e. GroupQueryAttention.
   const components = getMaxComponents(seqLens ? 1 : totalSequenceLength);
   let WG = 64;
   const totalSequenceLengthComp = totalSequenceLength / components;
@@ -353,6 +352,7 @@ const createInPlaceSoftmaxProgramInfo = (
     let batchIdx = global_id.z / uniforms.num_heads;
     let headIdx = global_id.z % uniforms.num_heads;
     let sequence_length = uniforms.sequence_length;
+    var total_sequence_length = uniforms.total_sequence_length;
     ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
     let local_offset = local_id.x * uniforms.elements_per_thread;
     let offset = global_idx * uniforms.total_sequence_length / ${WG} + local_offset;
@@ -416,8 +416,8 @@ const createInPlaceSoftmaxProgramInfo = (
       ${
         seqLens
           ? `
-        for (var i: u32 = seq_causal_length; i < uniforms.elements_per_thread && i + local_offset < total_sequence_length; i++) {
-          x[offset + i] = ${inputHelper.type.value}(${elemValueType}(0));
+        for (var total_seq_id: u32 = seq_causal_length; total_seq_id < uniforms.elements_per_thread && total_seq_id + local_offset < total_sequence_length; total_seq_id++) {
+          x[offset + total_seq_id] = ${inputHelper.type.value}(${elemValueType}(0));
         }`
           : ''
       };
@@ -479,7 +479,6 @@ const createAttentionProbsProgramInfo = (
     { type: DataType.uint32, data: pastSequenceLength },
     { type: DataType.uint32, data: parameters.kvSequenceLength },
     { type: DataType.uint32, data: nReps },
-    { type: DataType.uint32, data: totalSequenceLength },
   ];
   // Feed pastKey to the shader-code only if it is non-zero and presentKey is being produced
   const feedPastKey = presentKey && pastKey && ShapeUtil.size(pastKey.dims) > 0;
@@ -538,7 +537,6 @@ const createAttentionProbsProgramInfo = (
       { name: 'past_sequence_length', type: 'u32' },
       { name: 'kv_sequence_length', type: 'u32' },
       { name: 'n_reps', type: 'u32' },
-      { name: 'total_sequence_length', type: 'u32' },
     ];
     return `
   const TILE_SIZE = ${TILE_SIZE}u;
@@ -554,16 +552,17 @@ const createAttentionProbsProgramInfo = (
     let batchIdx = workgroup_id.z / uniforms.num_heads;
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
-    var sequence_length = uniforms.M;
+    let sequence_length = uniforms.M;
+    var total_sequence_length = uniforms.N;
     ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable, true)}
     let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx;
-    let qOffset = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
+    let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;
     ${feedPastKey && presentKey ? 'let pastKeyOffset = absKvHeadIdx * uniforms.past_sequence_length * uniforms.K;' : ''};
     let kOffset = absKvHeadIdx * uniforms.kv_sequence_length * uniforms.K;
     ${presentKey ? 'let presentKeyOffset = absKvHeadIdx * uniforms.N * uniforms.K;' : ''}
     var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (global_id.y < sequence_length && w + local_id.x < uniforms.K) {
+      if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
       }
       if (n + local_id.y < total_sequence_length && w + local_id.x < uniforms.K) {
@@ -585,8 +584,7 @@ const createAttentionProbsProgramInfo = (
       })()}
       ${
         presentKey
-          ? `
-          if (n + local_id.y < total_sequence_length) {
+          ? `if (n + local_id.y < uniforms.N) {
         present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];
       }`
           : ''
@@ -601,8 +599,8 @@ const createAttentionProbsProgramInfo = (
       workgroupBarrier();
     }
 
-    if (global_id.y < sequence_length && global_id.x < total_sequence_length) {
-      let headOffset = workgroup_id.z * sequence_length * uniforms.N;
+    if (global_id.y < uniforms.M && global_id.x < total_sequence_length) {
+      let headOffset = workgroup_id.z * uniforms.M * uniforms.N;
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
       var sum: f32 = ${(() => {
         switch (components) {
@@ -669,7 +667,6 @@ const createVxAttentionScoreProgramInfo = (
     { type: DataType.uint32, data: pastSequenceLength },
     { type: DataType.uint32, data: params.kvSequenceLength },
     { type: DataType.uint32, data: nReps },
-    { type: DataType.uint32, data: totalSequenceLength },
   ];
   // Feed pastValue to the shader-code only if it is non-empty and presentValue is being produced
   const feedPastValue = presentValue && pastValue && ShapeUtil.size(pastValue.dims) > 0;
@@ -719,7 +716,6 @@ const createVxAttentionScoreProgramInfo = (
       { name: 'past_sequence_length', type: 'u32' },
       { name: 'kv_sequence_length', type: 'u32' },
       { name: 'n_reps', type: 'u32' },
-      { name: 'total_sequence_length', type: 'u32' },
     ];
     return `
   const TILE_SIZE = ${TILE_SIZE}u;
@@ -733,16 +729,17 @@ const createVxAttentionScoreProgramInfo = (
    let kv_num_heads = ${nReps === 1 ? 'uniforms.num_heads' : 'uniforms.num_heads / uniforms.n_reps'};
    let m = global_id.y;
    let n = global_id.x;
-   var sequence_length = uniforms.M;
+   let sequence_length = uniforms.M;
+   var total_sequence_length = uniforms.K;
    ${initVarStub(seqLensInputVariable, totalSequenceLengthInputVariable, true)}
-   let offsetA = workgroup_id.z * sequence_length * uniforms.K + m * uniforms.K;
+   let offsetA = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;
    let absKvHeadIdx = batchIdx * kv_num_heads + kvHeadIdx; // kvHeadIdx is relative to the batch
    ${feedPastValue && presentValue ? 'let pastValueOffset = absKvHeadIdx * uniforms.N * uniforms.past_sequence_length + n;' : ''};
    let vOffset = absKvHeadIdx * uniforms.N * uniforms.kv_sequence_length + n;
    ${presentValue ? 'let presentValueOffset = absKvHeadIdx * uniforms.N * uniforms.K + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (m < sequence_length && w + local_id.x < total_sequence_length) {
+      if (m < uniforms.M && w + local_id.x < total_sequence_length) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
       }
       if (n < uniforms.N && w + local_id.y < total_sequence_length) {
@@ -780,8 +777,8 @@ const createVxAttentionScoreProgramInfo = (
    }
 
    // we need to transpose output from BNSH_v to BSND_v
-   if (m < sequence_length && n < uniforms.N) {
-     let outputIdx = batchIdx * sequence_length * uniforms.v_hidden_size + m * uniforms.v_hidden_size
+   if (m < uniforms.M && n < uniforms.N) {
+     let outputIdx = batchIdx * uniforms.M * uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + headIdx * uniforms.N + n;
      output[outputIdx] = value;
    }
