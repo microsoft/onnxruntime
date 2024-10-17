@@ -17,7 +17,6 @@
 #include "core/common/logging/macros.h"
 #include "core/common/logging/severity.h"
 #include "core/common/logging/sink_types.h"
-#include "core/platform/ort_mutex.h"
 #include "date/date.h"
 
 /*
@@ -259,7 +258,7 @@ class LoggingManager final {
 
   std::unique_ptr<ISink> sink_;
 #ifdef _WIN32
-  mutable OrtMutex sink_mutex_;
+  mutable std::mutex sink_mutex_;
 #endif
   Severity default_min_severity_;
   const bool default_filter_user_data_;

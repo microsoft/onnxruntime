@@ -5,7 +5,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 
@@ -42,7 +42,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
   void* Reserve(size_t size) override;
 
  private:
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
   ExternalAlloc alloc_;
   ExternalFree free_;
   ExternalEmptyCache empty_cache_;
