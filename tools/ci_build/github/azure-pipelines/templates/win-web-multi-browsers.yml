@@ -12,6 +12,9 @@ jobs:
   workspace:
     clean: all
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
   - checkout: self
     submodules: false
   - task: DownloadPipelineArtifact@2
@@ -95,6 +98,3 @@ jobs:
       npm test -- suite0 -b=wasm,webgl -e=edge --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\03
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Edge)'
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
