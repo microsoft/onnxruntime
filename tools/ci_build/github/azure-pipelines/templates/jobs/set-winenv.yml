@@ -40,6 +40,5 @@ steps:
     displayName: 'setup env'
     inputs:
       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-      arguments: ''
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
