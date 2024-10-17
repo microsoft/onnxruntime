@@ -39,8 +39,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
     QLinearMatMul);
 
-// int8_t kernel only supports weight being int8_t               
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+// int8_t kernel only supports weight being int8_t
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     QLinearMatMul,
     kOnnxDomain,
     10,
