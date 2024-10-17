@@ -13,7 +13,7 @@
       3
     ]
   },
-  "version": "1.20.0",
+  "version": "1.21.0",
   "dependencies": {
     "onnxruntime-common": "file:../common",
     "tar": "^7.0.1"
