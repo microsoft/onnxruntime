@@ -23,6 +23,7 @@ stages:
     pool: ${{ parameters.AgentPool }}
 
     variables:
+    - template: ../../templates/common-variables.yml
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
 
@@ -61,7 +62,7 @@ stages:
           ${{ if eq(parameters.CudaVersion, '12.2') }}:
             DockerBuildArgs: "
             --build-arg BASEIMAGE=nvidia/cuda:12.2.2-devel-ubuntu20.04
-            --build-arg TRT_VERSION=10.4.0.26-1+cuda12.6
+            --build-arg TRT_VERSION=${{ variables.linux_trt_version_cuda12 }}
             --build-arg BUILD_UID=$( id -u )
             "
           ${{ else }}:
