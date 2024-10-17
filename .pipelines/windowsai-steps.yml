@@ -16,8 +16,6 @@ parameters:
 
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
-  pool:
-    type: windows
 
   variables:
     ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
@@ -127,13 +125,11 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
         displayName: 'Build Microsoft.AI.MachineLearning.Interop.dll'
 
-    - task: onebranch.pipeline.signing@1
-      inputs:
-        command: 'sign'
-        signing_profile: 'external_distribution'
-        files_to_sign: '**/*.exe;**/*.dll'
-        search_root: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-      displayName: 'Sign runtime DLLs'
+    - template: ../tools/ci_build/github/azure-pipelines/templates/win-esrp-dll.yml@self
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        DisplayName: 'Sign runtime DLLs'
+        Pattern: '*.exe,*.dll'
 
     - ${{ if eq(parameters.BuildArch, 'x64') }}:
       - script: |
@@ -171,10 +167,8 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Create NuGet Package'
 
-    - task: onebranch.pipeline.signing@1
-      inputs:
-        command: 'sign'
-        signing_profile: 'external_distribution'
-        files_to_sign: '**/*.exe;**/*.dll'
-        search_root: '$(Build.ArtifactStagingDirectory)\test_artifact'
-      displayName: 'Sign test_artifact'
+    - template: ../tools/ci_build/github/azure-pipelines/templates/win-esrp-dll.yml@self
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
+        DisplayName: 'Sign test_artifact'
+        Pattern: '*.exe,*.dll'

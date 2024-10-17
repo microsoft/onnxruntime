@@ -13,36 +13,17 @@ variables:
 
 resources:
   repositories:
-    - repository: templates
+    - repository: 1esPipelines
       type: git
-      name: OneBranch.Pipelines/GovernedTemplates
-      ref: refs/heads/main
+      name: 1ESPipelineTemplates/1ESPipelineTemplates
+      ref: refs/tags/release
 
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@templates
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    nugetPublishing:
-      feeds:
-      - name: PublicPackages/ORT-Nightly
-        files_to_publish: '*.nupkg;!*.symbols.nupkg'
-        continueOnConflict: true
-    git:
-      submodules: false
-    globalSdl: # https://aka.ms/obpipelines/sdl
-      asyncSdl:
-        enabled: false
-      tsa:
-        enabled: true
-      prefast:
-        enabled: false
-      cg:
-        failOnAlert: false
-      policheck:
-        break: true # always break the build on policheck issues. You can disable it by setting to 'false'
-        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
-      # suppression:
-      #   suppressionFile: $(Build.SourcesDirectory)\.gdn\global.gdnsuppress
-
+    pool:
+      name: onnxruntime-Win-CPU-2022
+      os: windows
     stages:
     - stage: Windows_Build
       jobs:
@@ -75,10 +56,7 @@ extends:
           BuildArch: arm64
           Runtime: static
 
-
       - job: NuGet_Packaging
-        pool:
-          type: windows
         variables:
           ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
           ob_sdl_binskim_break: false
@@ -92,43 +70,28 @@ extends:
         - Windows_Packaging_x86_static
         - Windows_Packaging_arm64_static
         condition: succeeded()
+        templateContext:
+          inputs:
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_Windows_Packaging_x64_dynamic
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact-x64
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_Windows_Packaging_x86_dynamic
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact-x86
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_Windows_Packaging_arm64_dynamic
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact-arm64
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_Windows_Packaging_x64_static
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact-x64-static-runtime
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_Windows_Packaging_x86_static
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact-x86-static-runtime
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_Windows_Packaging_arm64_static
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime
+
         steps:
-        - task: DownloadPipelineArtifact@0
-          displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
-          inputs:
-            artifactName: 'drop_Windows_Build_Windows_Packaging_x64_dynamic'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
-
-        - task: DownloadPipelineArtifact@0
-          displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
-          inputs:
-            artifactName: 'drop_Windows_Build_Windows_Packaging_x86_dynamic'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
-
-        - task: DownloadPipelineArtifact@0
-          displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
-          inputs:
-            artifactName: 'drop_Windows_Build_Windows_Packaging_arm64_dynamic'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
-
-        - task: DownloadPipelineArtifact@0
-          displayName: 'Download Pipeline Artifact - NuGet DirectML x64 StaticRuntime'
-          inputs:
-            artifactName: 'drop_Windows_Build_Windows_Packaging_x64_static'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64-static-runtime'
-
-        - task: DownloadPipelineArtifact@0
-          displayName: 'Download Pipeline Artifact - NuGet DirectML x86 StaticRuntime'
-          inputs:
-            artifactName: 'drop_Windows_Build_Windows_Packaging_x86_static'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86-static-runtime'
-
-        - task: DownloadPipelineArtifact@0
-          displayName: 'Download Pipeline Artifact - NuGet DirectML arm64 StaticRuntime'
-          inputs:
-            artifactName: 'drop_Windows_Build_Windows_Packaging_arm64_static'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime'
-
         - task: PowerShell@2
           displayName: 'Bundle NuGet and other binaries'
           inputs:
@@ -328,8 +291,6 @@ extends:
                ]
 
       - job: NuGet_Publishing
-        pool:
-          type: windows
         variables:
           ob_outputDirectory: '$(Build.BinariesDirectory)'
           ob_sdl_binskim_enabled: false
@@ -339,15 +300,12 @@ extends:
         dependsOn:
         - NuGet_Packaging
         condition: succeeded()
-        steps:
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download Pipeline Artifact'
+        templateContext:
           inputs:
-            buildType: 'current'
-            artifactName: 'drop_Windows_Build_NuGet_Packaging'
-            itemPattern: 'merged/**'
-            targetPath: '$(Build.BinariesDirectory)'
-
+            - input: pipelineArtifact
+              artifactName: drop_Windows_Build_NuGet_Packaging
+              targetPath: $(Build.BinariesDirectory)/merged
+        steps:
         - powershell: |
            Rename-Item  -Path merged packages
 
