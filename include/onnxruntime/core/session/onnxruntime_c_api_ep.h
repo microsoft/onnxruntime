@@ -87,103 +87,103 @@ typedef struct OrtExecutionProviderFactory {
 } OrtExecutionProviderFactory;
 
 struct OrtGraphApi {
-const char*(ORT_API_CALL* OrtGraph_GetName)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtGraph_GetName, const OrtGraphViewer* graph, _Outptr_ const char** out);
 
-bool(ORT_API_CALL* OrtGraph_IsConstantInitializer)(const OrtGraphViewer* graph, const char* name, bool check_outer_scope)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* out);
 
-size_t(ORT_API_CALL* OrtGraph_GetNodesIndexInTopologicalOrder)(const OrtGraphViewer* graph, int execution_order, _Out_ const size_t** nodes_index_in_topological_order);
+ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ const size_t** nodes_index_in_topological_order, _Out_ size_t* num_nodes);
 
-bool(ORT_API_CALL* OrtGraph_IsSubgraph)(const OrtGraph* graph);
+ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out);
 
-const OrtGraph*(ORT_API_CALL* OrtGraph_GetParentGraph)(const OrtGraph* graph);
+ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
 
-const OrtNode*(ORT_API_CALL* OrtGraph_GetParenNode)(const OrtGraphViewer* graph);
+ORT_API2_STATUS(OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node);
 
-const void*(ORT_API_CALL* OrtGraph_GetModelPath)(const OrtGraphViewer* graph);
+ORT_API2_STATUS(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** model_path);
 
-const OrtGraph*(ORT_API_CALL* OrtGraph_GetOrtGraph)(const OrtGraphViewer* graph_viewer);
+ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
 
-size_t(ORT_API_CALL* OrtGraph_GetInputsIncludingInitializers)(const OrtGraphViewer* graph, _Outptr_ const char*** input_names);
+ORT_API2_STATUS(OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
 
-const OrtNode*(ORT_API_CALL* OrtGraph_GetOrtNode)(const OrtGraphViewer* graph, size_t node_index);
+ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
-size_t(ORT_API_CALL* OrtGraph_GetNodesConsumingInput)(const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers); // TODO(leca): ValueConsumers::comprehensive ?
+ORT_API2_STATUS(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers, _Out_ size_t* num_consumers); // TODO(leca): ValueConsumers::comprehensive ?
 
-const OrtNode*(ORT_API_CALL* OrtGraph_GetNodeProducingOutput)(const OrtGraphViewer* graph, const char* output_name);
+ORT_API2_STATUS(OrtGraph_GetNodeProducingOutput, const OrtGraphViewer* graph, const char* output_name, _Outptr_ const OrtNode** node);
 
-int(ORT_API_CALL* OrtGraph_NumberOfNodes)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtGraph_NumberOfNodes, const OrtGraphViewer* graph, _Out_ int* num_nodes);
 
-int(ORT_API_CALL* OrtGraph_MaxNodeIndex)(const OrtGraphViewer* graph);
+ORT_API2_STATUS(OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* max_node_index);
 
-size_t(ORT_API_CALL* OrtGraph_GetOutputSize)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtGraph_GetOutputSize, const OrtGraphViewer* graph, _Out_ size_t* output_len);
 
-const char*(ORT_API_CALL* OrtGraph_GetIthOutputName)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtGraph_GetIthOutputName, const OrtGraphViewer* graph, size_t i, _Outptr_ const char** out);
 
-int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i, _Out_ int32_t* out);
 
-bool(ORT_API_CALL* OrtGraph_GetInitializerTensor)(const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
+ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**, _Out_ bool* ret);
 
-bool(ORT_API_CALL* OrtGraph_GetValueInfo)(const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef**);
+ORT_API2_STATUS(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret);
 
-size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;  // TODO(leca): review and discuss
+ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);  // TODO(leca): review and discuss
 
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
 
 ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraphViewer* graph);
 
-const char*(ORT_API_CALL* OrtNode_GetName)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetDescription)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetDescription, const OrtNode* node, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetDomain)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetDomain, const OrtNode* node, _Outptr_ const char** out);
 
-int(ORT_API_CALL* OrtNode_SinceVersion)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_SinceVersion, const OrtNode* node, _Out_ int* out);
 
-const char*(ORT_API_CALL* OrtNode_GetExecutionProviderType)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetExecutionProviderType, const OrtNode* node, _Out_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetOpType)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetOpType, const OrtNode* node, _Outptr_ const char** out);
 
-size_t(ORT_API_CALL* OrtNode_GetImplicitInputSize)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetImplicitInputSize, const OrtNode* node, _Out_ size_t* out);
 
-const char*(ORT_API_CALL* OrtNode_GetIthImplicitInputName)(const OrtNode* node, size_t i);
+ORT_API2_STATUS(OrtNode_GetIthImplicitInputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-size_t(ORT_API_CALL* OrtNode_GetInputSize)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* out);
 
-const char*(ORT_API_CALL* OrtNode_GetIthInputName)(const OrtNode* node, size_t i);
+ORT_API2_STATUS(OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-size_t(ORT_API_CALL* OrtNode_GetOutputSize)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* out);
 
-const char*(ORT_API_CALL* OrtNode_GetIthOutputName)(const OrtNode* node, size_t i);
+ORT_API2_STATUS(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-size_t(ORT_API_CALL* OrtNode_GetIndex)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetAttributeNames)(const OrtNode*, _Out_ const char*** names);
+ORT_API2_STATUS(OrtNode_GetAttributeNames, const OrtNode* node, _Out_ const char*** names, _Out_ size_t* num);
 
-size_t(ORT_API_CALL* OrtNode_GetAttributeSize)(const OrtNode* node);
+ORT_API2_STATUS(OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* out);
 
-int(ORT_API_CALL* OrtNode_GetAttributeType)(const OrtNode* node, const char* attribute)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;  // AttributeProto_AttributeType
+ORT_API2_STATUS(OrtNode_GetAttributeType, const OrtNode* node, const char* attribute, _Out_ int* out); // AttributeProto_AttributeType
 
-size_t(ORT_API_CALL* OrtNode_GetAttributeKeyCount)(const OrtNode* node, const char* key);
+ORT_API2_STATUS(OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* out);
 
-int(ORT_API_CALL* OrtNode_GetAttributeIntSize)(const OrtNode* node, const char* key);
+ORT_API2_STATUS(OrtNode_GetAttributeIntSize, const OrtNode* node, const char* key, _Out_ int* out);
 
-int(ORT_API_CALL* OrtNode_GetAttributeFloatSize)(const OrtNode* node, const char* key);
+ORT_API2_STATUS(OrtNode_GetAttributeFloatSize, const OrtNode* node, const char* key, _Out_ int* out);
 
-int(ORT_API_CALL* OrtNode_GetAttributeStringSize)(const OrtNode* node, const char* key);
+ORT_API2_STATUS(OrtNode_GetAttributeStringSize, const OrtNode* node, const char* key, _Out_ int* out);
 
-int64_t(ORT_API_CALL* OrtNode_GetAttributeIthInt)(const OrtNode* node, const char* key, int i);
+ORT_API2_STATUS(OrtNode_GetAttributeIthInt, const OrtNode* node, const char* key, int i, _Out_ int64_t* out);
 
-float(ORT_API_CALL* OrtNode_GetAttributeIthFloat)(const OrtNode* node, const char* key, int i);
+ORT_API2_STATUS(OrtNode_GetAttributeIthFloat, const OrtNode* node, const char* key, int i, _Out_ float* out);
 
-const char*(ORT_API_CALL* OrtNode_GetAttributeIthStr)(const OrtNode* node, const char* key, int i);
+ORT_API2_STATUS(OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key, int i, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetAttributeStr)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtNode_GetAttributeStr, const OrtNode* node, const char* key, _Outptr_ const char** out);
 
-int64_t(ORT_API_CALL* OrtNode_GetAttributeInt)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtNode_GetAttributeInt, const OrtNode* node, const char* key, _Out_ int64_t* out);
 
-float(ORT_API_CALL* OrtNode_GetAttributeFloat)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+ORT_API2_STATUS(OrtNode_GetAttributeFloat, const OrtNode* node, const char* key, _Out_ float* out);
 
-size_t(ORT_API_CALL* OrtNode_GetSubgraphs)(const OrtNode* node, _Outptr_ const OrtGraphViewer*** subgraphs);
+ORT_API2_STATUS(OrtNode_GetSubgraphs, const OrtNode* node, _Outptr_ const OrtGraphViewer*** subgraphs, _Out_ size_t* num_subgraphs);
 
 ORT_API2_STATUS(OrtFreeMem, void* p);
 };
