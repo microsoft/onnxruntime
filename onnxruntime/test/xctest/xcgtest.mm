@@ -71,11 +71,24 @@ class XCTestListener : public testing::EmptyTestEventListener {
     int lineNumber = test_part_result.line_number();
     const char* fileName = test_part_result.file_name();
     NSString* path = fileName ? [@(fileName) stringByStandardizingPath] : nil;
+    NSString* summary = @(test_part_result.summary());
     NSString* description = @(test_part_result.message());
-    [_testCase recordFailureWithDescription:description
-                                     inFile:path
-                                     atLine:(lineNumber >= 0 ? (NSUInteger)lineNumber : 0)
-                                   expected:YES];
+
+    XCTSourceCodeLocation* sourceCodeLocation =
+        [[XCTSourceCodeLocation alloc] initWithFilePath:path
+                                             lineNumber:lineNumber];
+
+    XCTSourceCodeContext* sourceCodeContext =
+        [[XCTSourceCodeContext alloc] initWithLocation:sourceCodeLocation];
+
+    XCTIssue* issue = [[XCTIssue alloc] initWithType:XCTIssueTypeAssertionFailure
+                                  compactDescription:summary
+                                 detailedDescription:description
+                                   sourceCodeContext:sourceCodeContext
+                                     associatedError:nil
+                                         attachments:@[]];
+
+    [_testCase recordIssue:issue];
   }
 
  private:
