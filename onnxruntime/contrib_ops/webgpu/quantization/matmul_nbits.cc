@@ -53,7 +53,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
@@ -102,8 +102,12 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << "    // The default zero point is 8 for unsigned 4-bit quantization.\n"
                                    "    let zero_point = output_element_t(8.0);\n";
     }
-    shader.MainFunctionBody() << "    let scale = " << scales.GetByOffset("b_row * n_blocks_per_col + block") << ";\n"
-                              << "    let b_data = " << b.GetByIndices("input_b_indices_t(b_row, block, 0)") << ";\n"
+    shader.MainFunctionBody() << "    var scale = output_element_t(0);\n"
+                                 "    var b_data = input_b_value_t(0);\n"
+                              << "    if (block < n_blocks_per_col) {\n"
+                              << "      scale = " << scales.GetByOffset("b_row * n_blocks_per_col + block") << ";\n"
+                              << "      b_data = " << b.GetByIndices("input_b_indices_t(b_row, block, 0)") << ";\n"
+                              << "    }\n"
                               << "    var word_offset = local_id.x * " << block_size / a.NumComponents() << ";\n"
                               << "    for (var i: u32 = 0; i < " << components_b_ << "; i++) {\n";
     switch (a.NumComponents()) {
