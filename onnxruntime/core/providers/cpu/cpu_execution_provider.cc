@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include <absl/base/config.h>
+
+#include "core/framework/allocator_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/int4.h"
@@ -30,14 +31,8 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {}
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
-  bool create_arena = info_.create_arena;
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC) || defined(ABSL_HAVE_ADDRESS_SANITIZER)
-  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
-  create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
-  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-  create_arena = false;
-#endif
+  const bool is_arena_requested = info_.create_arena;
+  const bool create_arena = ShouldCpuAllocatorUseArena(is_arena_requested);
   AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                     DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
