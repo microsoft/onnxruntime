@@ -364,7 +364,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             UnrolledLoop<n_blk_dim>([&](int nn){
                 scales[nn] = scales_ptr[nn * BlockCountK];
             });
-            scale_vec = MlasLoadFloat16x8(reinterpret_cast<_mlas_fp16_*>(scales));
+            scale_vec = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(scales));
 
             if (QuantBZeroPoint) {
                 UnrolledLoop<n_blk_dim>([&](int nn){
@@ -441,12 +441,12 @@ PrepareAccumulator(
 ) {
     if constexpr (Initialize) {
         if constexpr (UseBias) {
-            return MlasLoadFloat16x8(Bias);
+            return MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(Bias));
         } else {
             return MlasZeroFloat16x8();
         }
     } else {
-        return MlasLoadFloat16x8(C);
+        return MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(C));
     }
 }
 
@@ -475,19 +475,19 @@ PrepareAccumulator(
     const MLAS_FP16* Bias,
     const MLAS_FP16* C
 ) {
+    float16x4_t v = MlasZeroFloat16x4();
+
     if constexpr (Initialize) {
         if constexpr (UseBias) {
-            float16x4_t v;
             v = vld1_lane_f16(Bias, v, 0);
             if constexpr (N == 2) {
                 v = vld1_lane_f16(Bias + 1, v, 1);
             }
             return v;
         } else {
-            return MlasZeroFloat16x4();
+            return v;
         }
     } else {
-        float16x4_t v;
         v = vld1_lane_f16(C, v, 0);
         if constexpr (N == 2) {
             v = vld1_lane_f16(C + 1, v, 1);
@@ -504,15 +504,15 @@ SQ4BitGemmMicroKernel(
     const MLAS_FP16* B,
     float16x8_t accumulator
 ) {
-    float16x8_t a0 = MlasLoadFloat16x8(A);
-    float16x8_t b0 = MlasLoadFloat16x8(B);
-    float16x8_t b1 = MlasLoadFloat16x8(B + 8);
-    float16x8_t b2 = MlasLoadFloat16x8(B + 16);
-    float16x8_t b3 = MlasLoadFloat16x8(B + 24);
-    float16x8_t b4 = MlasLoadFloat16x8(B + 32);
-    float16x8_t b5 = MlasLoadFloat16x8(B + 40);
-    float16x8_t b6 = MlasLoadFloat16x8(B + 48);
-    float16x8_t b7 = MlasLoadFloat16x8(B + 56);
+    float16x8_t a0 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(A));
+    float16x8_t b0 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B));
+    float16x8_t b1 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 8));
+    float16x8_t b2 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 16));
+    float16x8_t b3 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 24));
+    float16x8_t b4 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 32));
+    float16x8_t b5 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 40));
+    float16x8_t b6 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 48));
+    float16x8_t b7 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 56));
 
     float16x8_t c0 = vfmaq_laneq_f16(accumulator, b0, a0, 0);
     float16x8_t c01 = vfmaq_laneq_f16(c0, b1, a0, 1);
@@ -538,10 +538,10 @@ SQ4BitGemmMicroKernel(
     float16x8_t accumulator
 ) {
     float16x4_t a0 = vld1_f16(A);
-    float16x8_t b0 = MlasLoadFloat16x8(B);
-    float16x8_t b1 = MlasLoadFloat16x8(B + 8);
-    float16x8_t b2 = MlasLoadFloat16x8(B + 16);
-    float16x8_t b3 = MlasLoadFloat16x8(B + 24);
+    float16x8_t b0 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B));
+    float16x8_t b1 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 8));
+    float16x8_t b2 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 16));
+    float16x8_t b3 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 24));
 
     float16x8_t c0 = vfmaq_lane_f16(accumulator, b0, a0, 0);
     float16x8_t c01 = vfmaq_lane_f16(c0, b1, a0, 1);
@@ -559,11 +559,11 @@ SQ4BitGemmMicroKernel(
     const MLAS_FP16* B,
     float16x8_t accumulator
 ) {
-    float16x4_t a0;
+    float16x4_t a0 = MlasZeroFloat16x4();
     a0 = vld1_lane_f16(A, a0, 0);
     if constexpr (K == 2) a0 = vld1_lane_f16(A + 1, a0, 1);
-    float16x8_t b0 = MlasLoadFloat16x8(B), b1;
-    if constexpr (K == 2) b1 = MlasLoadFloat16x8(B + 8);
+    float16x8_t b0 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B)), b1;
+    if constexpr (K == 2) b1 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + 8));
 
     float16x8_t c0 = vfmaq_lane_f16(accumulator, b0, a0, 0), c01;
     if constexpr (K == 2) c01 = vfmaq_lane_f16(c0, b1, a0, 1);
@@ -584,12 +584,13 @@ MLAS_FORCEINLINE
         float16x4_t accumulator
     )
 {
-    float16x8_t a0 = MlasLoadFloat16x8(A);
+    float16x8_t a0 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(A));
 
-    float16x8_t b0, b1, b2, b3 b0 = MlasLoadFloat16x8(B);
-    if constexpr (N > 1) b1 = MlasLoadFloat16x8(B + ldb);
-    if constexpr (N > 2) b2 = MlasLoadFloat16x8(B + ldb * 2);
-    if constexpr (N > 3) b3 = MlasLoadFloat16x8(B + ldb * 3);
+    float16x8_t b0, b1, b2, b3;
+    b0 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B));
+    if constexpr (N > 1) b1 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + ldb));
+    if constexpr (N > 2) b2 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + ldb * 2));
+    if constexpr (N > 3) b3 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(B + ldb * 3));
 
     float16x8_t c00, c01, c02, c03;
     c00 = vmulq_f16(b0, a0);
@@ -630,6 +631,7 @@ MLAS_FORCEINLINE
     if constexpr (K == 4)
         a0 = vld1_f16(A);
     else {
+        a0 = MlasZeroFloat16x4();
         a0 = vld1_lane_f16(A, a0, 0);
         if constexpr (K >= 2) a0 = vld1_lane_f16(A + 1, a0, 1);
         if constexpr (K >= 3) a0 = vld1_lane_f16(A + 2, a0, 2);
@@ -678,7 +680,7 @@ MLAS_FORCEINLINE
     const size_t ldb_substep = ldb * 8;
     float16x8_t accu00, accu01, accu10, accu11;
     // if k == 0 load bias or zero, else load buffer, init register accumulator
-    auto* bias_1 = constexpr UseBias ? bias + 8 : nullptr;
+    auto* bias_1 = UseBias ? bias + 8 : nullptr;
     accu00 = PrepareAccumulator<Initialize, UseBias, 8, 1>(bias, buffer);
     if constexpr (N == 16) {
         accu01 = PrepareAccumulator<Initialize, UseBias, 8, 1>(bias_1, buffer + 8);
@@ -749,15 +751,15 @@ MLAS_FORCEINLINE
     }
 
     // save register to buffer
-    MlasStoreFloat16x8(buffer, accu00);
+    MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(buffer), accu00);
     if constexpr (N == 16) {
-        MlasStoreFloat16x8(buffer + 8, accu01);
+        MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(buffer + 8), accu01);
     }
     if constexpr (M == 2) {
-        MlasStoreFloat16x8(buffer + StrideN, accu10);
+        MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(buffer + StrideN), accu10);
     }
     if constexpr (M == 2 && N == 16) {
-        MlasStoreFloat16x8(buffer + StrideN + 8, accu11);
+        MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(buffer + StrideN + 8), accu11);
     }
 }
 
@@ -819,7 +821,7 @@ MLAS_FORCEINLINE
     if constexpr (M == 2) {
         if constexpr (N == 4) {
             vst1_f16(buffer, accu0);
-            MlasStoreFloat16x8(buffer + StrideN, accu1);
+            MlasStoreFloat16x4(reinterpret_cast<_mlas_fp16_*>(buffer + StrideN), accu1);
         } else {
             vst1_lane_f16(buffer, accu0, 0);
             vst1_lane_f16(buffer + StrideN, accu1, 0);
@@ -864,6 +866,8 @@ SQ4BitGemmKernel_CompFp16(
     assert(stride_N == StrideN);
     assert(StrideM >= CountM);
     assert(StrideN >= CountN);
+    MLAS_UNREFERENCED_PARAMETER(stride_M);
+    MLAS_UNREFERENCED_PARAMETER(stride_N);
 
     constexpr size_t StrideK = 128;
     constexpr size_t m_step = 2;
@@ -871,7 +875,6 @@ SQ4BitGemmKernel_CompFp16(
     constexpr size_t k_step = 8;
     const size_t lda_step = lda * m_step;
     const size_t ldb_step = ldb * n_step;
-    const size_t ldb_substep = ldb * 8;
     const size_t ldc_step = StrideN * m_step;
 
     MLAS_FP16 buffer[StrideM * StrideN];
@@ -881,7 +884,7 @@ SQ4BitGemmKernel_CompFp16(
     if (k < K) {
         CountK = std::min(K, StrideK);
         if (Bias) {
-            MLAS_FP16 *b = B, bias = Bias;
+            const MLAS_FP16 *b = B, *bias = Bias;
             size_t nn = 0, c = 0;
             for (; nn + n_step <= CountN; nn += n_step) {
                 const MLAS_FP16* a = A;
@@ -983,7 +986,7 @@ SQ4BitGemmKernel_CompFp16(
                 }
             }
         } else {
-            MLAS_FP16 *b = B, bias = nullptr;
+            const MLAS_FP16 *b = B, *bias = nullptr;
             size_t nn = 0, c = 0;
             for (; nn + n_step <= CountN; nn += n_step, b += ldb_step, c += n_step) {
                 const MLAS_FP16* a = A;
@@ -1090,7 +1093,7 @@ SQ4BitGemmKernel_CompFp16(
     // 2nd+ cache block K, accumulate to buffer.
     for (; k < K; k += CountK, A += CountK, B += CountK) {
         CountK = std::min(K - k, StrideK);
-        MLAS_FP16* b = B;
+        const MLAS_FP16* b = B;
         size_t nn = 0, c = 0;
         for (; nn + n_step <= CountN; nn += n_step) {
             const MLAS_FP16* a = A;
@@ -1185,14 +1188,14 @@ SQ4BitGemmKernel_CompFp16(
             size_t mm = 0, cc = c;
             for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                 // load buffer, init register accumulator
-                SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 2, 16>(
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 2, k_step>(
                     a, B, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
             // remaining 1M
             if (mm < CountM) {
-                SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 1, 16>(
+                SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 1, k_step>(
                     a, B, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
@@ -1204,33 +1207,33 @@ SQ4BitGemmKernel_CompFp16(
         size_t m = 0;
         MLAS_FP16* pbuffer = buffer;
         for (; m + 2 <= CountM; m += 2, C += ldc * 2, pbuffer += StrideN * 2) {
-            float16x8_t c00 = MlasLoadFloat16x8(pbuffer);
-            MlasStoreFloat16x8(C, c00);
-            float16x8_t c01 = MlasLoadFloat16x8(pbuffer + 8);
-            MlasStoreFloat16x8(C + 8, c01);
-            float16x8_t c02 = MlasLoadFloat16x8(pbuffer + 16);
-            MlasStoreFloat16x8(C + 16, c02);
-            float16x8_t c03 = MlasLoadFloat16x8(pbuffer + 24);
-            MlasStoreFloat16x8(C + 24, c03);
-            float16x8_t c10 = MlasLoadFloat16x8(pbuffer + StrideN);
-            MlasStoreFloat16x8(C + ldc, c10);
-            float16x8_t c11 = MlasLoadFloat16x8(pbuffer + StrideN + 8);
-            MlasStoreFloat16x8(C + ldc + 8, c11);
-            float16x8_t c12 = MlasLoadFloat16x8(pbuffer + StrideN + 16);
-            MlasStoreFloat16x8(C + ldc + 16, c12);
-            float16x8_t c13 = MlasLoadFloat16x8(pbuffer + StrideN + 24);
-            MlasStoreFloat16x8(C + ldc + 24, c13);
+            float16x8_t c00 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C), c00);
+            float16x8_t c01 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + 8));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + 8), c01);
+            float16x8_t c02 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + 16));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + 16), c02);
+            float16x8_t c03 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + 24));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + 24), c03);
+            float16x8_t c10 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + StrideN));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + ldc), c10);
+            float16x8_t c11 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + StrideN + 8));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + ldc + 8), c11);
+            float16x8_t c12 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + StrideN + 16));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + ldc + 16), c12);
+            float16x8_t c13 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + StrideN + 24));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + ldc + 24), c13);
         }
 
         if (m < CountM) {
-            float16x8_t c00 = MlasLoadFloat16x8(pbuffer);
-            MlasStoreFloat16x8(C, c00);
-            float16x8_t c01 = MlasLoadFloat16x8(pbuffer + 8);
-            MlasStoreFloat16x8(C + 8, c01);
-            float16x8_t c02 = MlasLoadFloat16x8(pbuffer + 16);
-            MlasStoreFloat16x8(C + 16, c02);
-            float16x8_t c03 = MlasLoadFloat16x8(pbuffer + 24);
-            MlasStoreFloat16x8(C + 24, c03);
+            float16x8_t c00 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C), c00);
+            float16x8_t c01 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + 8));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + 8), c01);
+            float16x8_t c02 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + 16));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + 16), c02);
+            float16x8_t c03 = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(pbuffer + 24));
+            MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + 24), c03);
         }
     } else {
         size_t m = 0;
@@ -1245,5 +1248,22 @@ SQ4BitGemmKernel_CompFp16(
         }
     }
 }
+
+template
+void
+SQ4BitGemmKernel_CompFp16<64, 32>(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* C,
+    size_t CountM,
+    size_t CountN,
+    size_t K,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const size_t stride_M,
+    const size_t stride_N
+);
 
 }  // namespace sqnbitgemm_neon
