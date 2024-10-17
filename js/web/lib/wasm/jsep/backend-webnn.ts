@@ -91,12 +91,12 @@ export class WebNNBackend {
       // Current session is not a WebNN session.
       return;
     }
+    this.tensorManager.releaseTensorsForSession(sessionId);
     this.mlContextBySessionId.delete(sessionId);
     const sessionIds = this.sessionIdsByMLContext.get(mlContext)!;
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
       this.sessionIdsByMLContext.delete(mlContext);
-      this.tensorManager.releaseTensorsForContext(mlContext);
     }
   }
 
