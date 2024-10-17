@@ -738,6 +738,13 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtFreeMem, void* p) {
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtFreeMem, void* p) {
+  if (p) {
+    free(p);
+  }
+  return nullptr;
+}
+
 static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetName,
     &OrtGraphApis::OrtGraph_IsConstantInitializer,
