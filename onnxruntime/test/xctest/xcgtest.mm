@@ -34,7 +34,8 @@ using testing::TestInfo;
 using testing::TestPartResult;
 using testing::UnitTest;
 
-void ortenv_setup();
+extern "C" void ortenv_setup();
+extern "C" void ortenv_teardown();
 
 static NSString* const GoogleTestDisabledPrefix = @"DISABLED_";
 
@@ -63,7 +64,7 @@ class XCTestListener : public testing::EmptyTestEventListener {
  public:
   XCTestListener(XCTestCase* testCase) : _testCase(testCase) {}
 
-  void OnTestPartResult(const TestPartResult& test_part_result) {
+  void OnTestPartResult(const TestPartResult& test_part_result) override {
     if (test_part_result.passed() || test_part_result.skipped())
       return;
 
@@ -79,6 +80,20 @@ class XCTestListener : public testing::EmptyTestEventListener {
 
  private:
   XCTestCase* _testCase;
+};
+
+/**
+ * A Google Test listener that manages the ORT env setup and teardown.
+ */
+class OrtEnvManagementListener : public testing::EmptyTestEventListener {
+ public:
+  void OnTestProgramStart(const UnitTest& unit_test) override {
+    ortenv_setup();
+  }
+
+  void OnTestProgramEnd(const UnitTest& unit_test) override {
+    ortenv_teardown();
+  }
 };
 
 /**
@@ -179,7 +194,6 @@ static void RunTest(id self, SEL _cmd) {
                                                     object:bundle
                                                      queue:nil
                                                 usingBlock:^(NSNotification* notification) {
-                                                  ortenv_setup();
                                                   [self registerTestClasses];
                                                 }];
 }
@@ -200,6 +214,8 @@ static void RunTest(id self, SEL _cmd) {
   testing::TestEventListeners& listeners = googleTest->listeners();
   delete listeners.Release(listeners.default_result_printer());
   free(argv);
+
+  listeners.Append(new OrtEnvManagementListener());
 
   BOOL runDisabledTests = GTEST_FLAG_GET(also_run_disabled_tests);
   NSMutableDictionary* testFilterMap = [NSMutableDictionary dictionary];
