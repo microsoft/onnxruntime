@@ -177,13 +177,14 @@ export class WebNNBackend {
       throw new Error('External mounted files are not available.');
     }
 
+    let filePath = externalFilePath;
     if (externalFilePath.startsWith('./')) {
-      externalFilePath = externalFilePath.substring(2);
+      filePath = externalFilePath.substring(2);
     }
-    const fileData = mountedFiles.get(externalFilePath);
+    const fileData = mountedFiles.get(filePath);
     if (!fileData) {
       throw new Error(
-        `File with name ${externalFilePath} not found in preloaded files.`,
+        `File with name ${filePath} not found in preloaded files.`,
       );
     }
 
