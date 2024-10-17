@@ -1726,5 +1726,204 @@ class TestQDQ4bit(TestQDQFormat):
         write_calibration_table(new_calibrate_tensors_range)
 
 
+class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.adj_int32_bias_")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def build_conv_test_model(
+        self,
+        input0_shape: list[int],
+        weight_shape: list[int],
+        onnx_float_type: onnx.TensorProto.DataType,
+    ):
+        np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input0_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
+
+        tiny_value = 1e-7 if np_float_type == np.float32 else 0.007782
+        # weight_scale = 2*tiny_value / 255.0 = 7.84313725490196e-10
+
+        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
+        with np.nditer(weight_data, op_flags=["readwrite"]) as it:
+            for i, x in enumerate(it):
+                if i % 2 == 0:
+                    x[...] = -x
+
+        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+
+        # if we set input_scale to 0.05, then normally bias_scale would be
+        # (input_scale * weight_scale) => (0.05 * 7.84314e-10) => 3.9215686274509805e-11
+        #
+        # If we quantize the f32 bias with this bias_scale, we get
+        # [5.0/bias_scale, 4.0/bias_scale] = [127500000000, 102000000000]. These quantized bias values exceed the
+        # range of int32.
+        #
+        # The ORT quantization tool will clamp these out-of-bounds values to int32::max(),
+        # which can be very inaccurate.
+        bias_shape = [weight_shape[0]]
+        bias_data = np.ones(bias_shape, dtype=np_float_type)
+        with np.nditer(bias_data, op_flags=["readwrite"]) as it:
+            for i, x in enumerate(it):
+                if i % 2 == 0:
+                    x[...] = 5.0 if np_float_type == np.float32 else 1400
+                else:
+                    x[...] = -4.5 if np_float_type == np.float32 else -1200
+
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        conv_node = onnx.helper.make_node("Conv", ["input_0", "weight", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph(
+            [conv_node],
+            "Convfloat",
+            [input_0],
+            [output_0],
+            initializer=[weight, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_adjust_weight_scale_for_int32_bias(self):
+        """
+        Test adjustment of weight input's scale to ensure int32 bias's scale is not too small.
+        """
+        test_configs = [
+            (onnx.TensorProto.FLOAT, True),
+            (onnx.TensorProto.FLOAT, False),
+            (onnx.TensorProto.FLOAT16, True),
+            (onnx.TensorProto.FLOAT16, False),
+        ]
+
+        for float_type, per_channel in test_configs:
+            with self.subTest(float_type=float_type, per_channel=per_channel):
+                label = f"_f{float_type}_perchannel{per_channel}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"conv{label}.float.onnx")
+                qdq_model_path = os.path.join(self._tmp_dir_path, f"conv{label}.qdq.onnx")
+
+                # Create float model with a Conv that has tiny weight values.
+                # This tiny weight scale would normally create a very small bias scale that will saturate
+                # bias's int32 range. But, the qdq_quantizer adjusts the weight's scale to ensure this doesn't happen.
+                input0_shape = [1, 2, 4, 4]
+                weight_shape = [2, 2, 2, 2]
+                float_model = self.build_conv_test_model(input0_shape, weight_shape, float_type)
+                onnx.save_model(float_model, float_model_path)
+
+                # Create a data reader
+                np_float_type = onnx.helper.tensor_dtype_to_np_dtype(float_type)
+                input0_rmin = 0.0
+                input0_scale = 0.05 if float_type == onnx.TensorProto.FLOAT else 0.01
+                input0_rmax = (input0_scale * 255.0) + input0_rmin
+                input_data_list = [
+                    {"input_0": np.full(input0_shape, input0_rmin, dtype=np_float_type)},
+                    {"input_0": np.full(input0_shape, (input0_rmax - input0_rmin) / 2.0, dtype=np_float_type)},
+                    {"input_0": np.full(input0_shape, input0_rmax, dtype=np_float_type)},
+                ]
+                data_reader = TestDataFeeds(input_data_list)
+
+                # quantize model to QDQ
+                quantize_static(
+                    float_model_path,
+                    qdq_model_path,
+                    data_reader,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
+                    per_channel=per_channel,
+                )
+
+                # Check correctness
+                data_reader.rewind()
+                check_model_correctness(self, float_model_path, qdq_model_path, data_reader.get_next())
+
+    def build_model_convs_share_bias(
+        self,
+        input0_shape: list[int],
+        weight_shape: list[int],
+        onnx_float_type: onnx.TensorProto.DataType,
+    ):
+        np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input0_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
+        output_1 = onnx.helper.make_tensor_value_info("output_1", onnx_float_type, None)
+
+        weight_0_data = np.ones(weight_shape, dtype=np_float_type)
+        weight_0 = onnx.numpy_helper.from_array(weight_0_data, "weight_0")
+
+        weight_1_data = np.full(weight_shape, 0.5, dtype=np_float_type)
+        weight_1 = onnx.numpy_helper.from_array(weight_1_data, "weight_1")
+
+        bias_shape = [weight_shape[0]]
+        bias_data = np.ones(bias_shape, dtype=np_float_type)
+        bias_shared = onnx.numpy_helper.from_array(bias_data, "bias_shared")
+
+        conv_0_node = onnx.helper.make_node("Conv", ["input_0", "weight_0", "bias_shared"], ["output_0"], name="Conv0")
+        conv_1_node = onnx.helper.make_node("Conv", ["input_0", "weight_1", "bias_shared"], ["output_1"], name="Conv1")
+        graph = onnx.helper.make_graph(
+            [conv_0_node, conv_1_node],
+            "ConvWithSharedBiasToDup",
+            [input_0],
+            [output_0, output_1],
+            initializer=[weight_0, weight_1, bias_shared],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_dup_shared_bias(self):
+        """
+        Test duplicating a bias that is shared by two nodes that want to quantize their bias to int32.
+        """
+        float_model_path = os.path.join(self._tmp_dir_path, "convs_share_bias.float.onnx")
+        qdq_model_path = os.path.join(self._tmp_dir_path, "convs_share_bias.qdq.onnx")
+
+        # Create float model with a Convs that share a bias input. The QDQ quantizer should add a
+        # duplicate bias so that each node has its own.
+        input0_shape = [1, 2, 4, 4]
+        weight_shape = [2, 2, 2, 2]
+        float_model = self.build_model_convs_share_bias(input0_shape, weight_shape, onnx.TensorProto.FLOAT)
+        onnx.save_model(float_model, float_model_path)
+
+        # Create a data reader
+        input0_rmin = 0.0
+        input0_scale = 0.05
+        input0_rmax = (input0_scale * 255.0) + input0_rmin
+        input_data_list = [
+            {"input_0": np.full(input0_shape, input0_rmin, dtype=np.float32)},
+            {"input_0": np.full(input0_shape, (input0_rmax - input0_rmin) / 2.0, dtype=np.float32)},
+            {"input_0": np.full(input0_shape, input0_rmax, dtype=np.float32)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        # quantize model to QDQ
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+        )
+
+        qdq_model = onnx.load_model(qdq_model_path)
+        bias_names = set()
+
+        for node in qdq_model.graph.node:
+            if node.op_type == "DequantizeLinear" and node.input[0].startswith("bias_shared"):
+                bias_names.add(node.input[0])
+
+        self.assertEqual(len(bias_names), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
