@@ -4,21 +4,15 @@ parameters:
   - name: DownloadCUDA
     type: boolean
     default: false
-  - name: DownloadTRT
-    type: boolean
-    default: false
   - name: PrimaryCUDAVersion
     type: string
     default: '12.2'
   - name: SecondaryCUDAVersion
     type: string
     default: '11.8'
-  - name: win_trt_folder_cuda11
+  - name: win_trt_folder
     type: string
-    default: 'TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8'
-  - name: win_trt_folder_cuda12
-    type: string
-    default: 'TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6'
+    default: ''
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
@@ -28,13 +22,10 @@ steps:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.SecondaryCUDAVersion }}" $(Agent.TempDirectory)
         displayName: 'Download Secondary CUDA SDK v${{ parameters.SecondaryCUDAVersion }}'
-  - ${{ if eq(parameters.DownloadTRT, 'true') }}:
+  - ${{ if ne(parameters.win_trt_folder, '') }}:
       - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/${{ parameters.win_trt_folder_cuda11 }}" $(Agent.TempDirectory)
-        displayName: 'Download ${{ parameters.win_trt_folder_cuda11 }}'
-      - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/${{ parameters.win_trt_folder_cuda12 }}" $(Agent.TempDirectory)
-        displayName: 'Download ${{ variables.win_trt_folder_cuda12 }}'
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/${{ parameters.win_trt_folder }}" $(Agent.TempDirectory)
+        displayName: 'Download ${{ parameters.win_trt_folder }}'
 
   - task: BatchScript@1
     displayName: 'setup env'
