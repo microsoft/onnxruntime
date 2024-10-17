@@ -234,10 +234,10 @@ Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 
   is_packed = false;
   if (input_idx == 1) {  // scale
-    prepacked_scale_fp32_size_ = tensor.Shape().Size();
+    prepacked_scale_fp32_size_ = static_cast<size_t>(tensor.Shape().Size());
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed);
   } else if (input_idx == 2) {  // bias
-    prepacked_bias_fp32_size_ = tensor.Shape().Size();
+    prepacked_bias_fp32_size_ = static_cast<size_t>(tensor.Shape().Size());
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
   }
 
