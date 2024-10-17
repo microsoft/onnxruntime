@@ -4,7 +4,6 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include <hip/hip_fp16.h>
 
 #include "core/providers/rocm/rocm_common.h"  // avoid provider_api.h ODR violation
 #include "core/framework/tunable.h"
@@ -22,7 +21,6 @@ template <typename ParamsT>
 using Op = Op<ParamsT>;
 
 class Timer;
-
 template <typename ParamsT>
 using TunableOp = TunableOp<ParamsT, Timer>;
 

@@ -97,12 +97,12 @@ class RocmKernel : public OpKernel {
     return stream->hipblas_handle_;
   }
 
-  tunable::RocmTuningContext* GetTuningContext() const {
-    return static_cast<tunable::RocmTuningContext*>(provider_->GetTuningContext());
-  }
-
   bool UseTF32() const {
     return false;
+  }
+
+  tunable::RocmTuningContext* GetTuningContext() const {
+    return static_cast<tunable::RocmTuningContext*>(provider_->GetTuningContext());
   }
 
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
@@ -175,6 +175,12 @@ class RocmKernel : public OpKernel {
 
   inline miopenHandle_t DefaultMiopenHandle() const {
     return provider_->PerThreadDefaultMiopenHandle();
+  }
+
+  inline hipStream_t DefaultHipStream() const {
+    // this will return the ROCM EP level stream which can differ from the actual compute tasks stream
+    // the compute task stream is supplied within OpKernelContext during inference
+    return provider_->ComputeStream();
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream& stream) const {

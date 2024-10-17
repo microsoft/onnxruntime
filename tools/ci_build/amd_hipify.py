@@ -21,7 +21,10 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("kCudaStreamCopyIn", "kHipStreamCopyIn")
     s = s.replace("kCudaStreamCopyOut", "kHipStreamCopyOut")
     s = s.replace("kTotalCudaStreams", "kTotalHipStreams")
-
+    # these should be "hip" but it's easier to just use rocm to avoid complicated file renaming
+    s = s.replace("CudaGraph", "RocmGraph")
+    s = s.replace("CUDAGraph", "ROCMGraph")
+    s = s.replace("cuda_graph", "rocm_graph")
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
     s = s.replace("CreateCudaAllocator", "CreateRocmAllocator")
