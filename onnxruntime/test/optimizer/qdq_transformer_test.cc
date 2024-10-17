@@ -1924,6 +1924,52 @@ TEST(QDQTransformerTests, Resize) {
   test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), true /*use_contrib_qdq*/);
 }
 
+// Regression test for a model with a Resize node using QDQ quantization.
+// Tests handling of rounding issue inconsistency between int Resize and Resize with QDQ quantization.
+// See https://github.com/microsoft/onnxruntime/issues/21319 for more details.
+TEST(QDQTransformerTests, RegressionTest_GitHubIssue21319) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/qdq_transformer/gh_issue_21319.onnx");
+
+  std::vector<int64_t> input0_dims{4};
+  std::vector<int64_t> input1_dims{1, 1, 1, 2};
+  std::vector<float> input0_data = {1.0, 1.0, 1.0, 2.0};
+  std::vector<float> input1_data = {0.0, 1.0};
+
+  OrtValue input0;
+  OrtValue input1;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input0_dims, input0_data, &input0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input1_dims, input1_data, &input1);
+
+  NameMLValMap feeds{{"Concat_output_0", input0}, {"Abs_output_0", input1}};
+
+  std::vector<std::string> output_names{"DequantizeLinear_2_output_0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  so.session_logid = "QDQTransformerTests.RegressionTest_GitHubIssue21319";
+
+  {
+    so.graph_optimization_level = TransformerLevel::Level1;
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    so.graph_optimization_level = TransformerLevel::Level2;  // enable qdq transformer
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
 TEST(QDQTransformerTests, Resize_No_Fusion) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape,
