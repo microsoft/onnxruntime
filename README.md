@@ -41,7 +41,7 @@ This project is tested with [BrowserStack](https://www.browserstack.com/home).
 |Linux|[![Build Status](https://github.com/Ascend/onnxruntime/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/Ascend/onnxruntime/actions/workflows/build-and-test.yaml)||
 
 ## Releases
-For more information about ONNX Runtime releases, including release dates, announcements, planned features, and instructions for submitting feature requests, please refer to the ONNX Runtime Release Roadmap on our website: https://onnxruntime.ai/roadmap.
+For details on the upcoming release, including release dates, announcements, features, and guidance on submitting feature requests, please visit the release roadmap: https://onnxruntime.ai/roadmap
 
 ## Data/Telemetry
 
