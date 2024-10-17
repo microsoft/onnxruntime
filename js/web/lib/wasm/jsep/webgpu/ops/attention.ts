@@ -267,11 +267,11 @@ const initVarStub = (
   totalSequenceLengthInput: IndicesHelper | undefined,
   initPastSequenceLength: boolean,
 ) => {
-  // In the case of GQA, redefine total_sequence_length and past_sequence_length based on seqlen_k input
+  // In the case of GQA, redefine total_sequence_length, present_sequence_length and past_sequence_length based on seqlen_k input
   if (totalSequenceLengthInput && seqLensInput) {
     return `
       let total_sequence_length_input = u32(${totalSequenceLengthInput.getByOffset('0')});
-      // let present_sequence_length = max(total_sequence_length_input, uniforms.past_sequence_length);
+      let present_sequence_length = max(total_sequence_length_input, uniforms.past_sequence_length);
       let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length_input;
       let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length_input;
       total_sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')}) + 1;
@@ -283,7 +283,7 @@ const initVarStub = (
   } else {
     return `
     ${initPastSequenceLength ? 'let past_sequence_length = uniforms.past_sequence_length' : ''};
-    // let present_sequence_length = total_sequence_length;
+    let present_sequence_length = total_sequence_length;
     `;
   }
 };
@@ -292,6 +292,7 @@ const createInPlaceSoftmaxProgramInfo = (
   input: TensorView,
   batchSize: number,
   numHeads: number,
+  pastSequenceLength: number,
   sequenceLength: number,
   totalSequenceLength: number,
   seqLens: TensorView | undefined,
@@ -308,6 +309,7 @@ const createInPlaceSoftmaxProgramInfo = (
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: batchSize },
     { type: DataType.uint32, data: numHeads },
+    { type: DataType.uint32, data: pastSequenceLength },
     { type: DataType.uint32, data: sequenceLength },
     { type: DataType.uint32, data: totalSequenceLengthComp },
     { type: DataType.uint32, data: elementsPerThread },
@@ -339,6 +341,7 @@ const createInPlaceSoftmaxProgramInfo = (
     const uniforms: UniformsArrayType = [
       { name: 'batch_size', type: 'u32' },
       { name: 'num_heads', type: 'u32' },
+      { name: 'past_sequence_length', type: 'u32' },
       { name: 'sequence_length', type: 'u32' },
       { name: 'total_sequence_length', type: 'u32' },
       { name: 'elements_per_thread', type: 'u32' },
@@ -349,8 +352,8 @@ const createInPlaceSoftmaxProgramInfo = (
   var<workgroup> thread_sum: array<f32, ${WG}>;
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputHelpers)}
   ${shaderHelper.mainStart([WG, 1, 1])}
-    let batchIdx = global_id.z / uniforms.num_heads;
-    let headIdx = global_id.z % uniforms.num_heads;
+    let batchIdx = workgroup_id.z / uniforms.num_heads;
+    let headIdx = workgroup_id.z % uniforms.num_heads;
     let sequence_length = uniforms.sequence_length;
     var total_sequence_length = uniforms.total_sequence_length;
     ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
@@ -565,7 +568,7 @@ const createAttentionProbsProgramInfo = (
       if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
       }
-      if (n + local_id.y < total_sequence_length && w + local_id.x < uniforms.K) {
+      if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
       ${(() => {
         if (feedPastKey && presentKey) {
@@ -584,7 +587,7 @@ const createAttentionProbsProgramInfo = (
       })()}
       ${
         presentKey
-          ? `if (n + local_id.y < uniforms.N) {
+          ? `if (n + local_id.y < present_sequence_length) {
         present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];
       }`
           : ''
@@ -739,10 +742,10 @@ const createVxAttentionScoreProgramInfo = (
    ${presentValue ? 'let presentValueOffset = absKvHeadIdx * uniforms.N * uniforms.K + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (m < uniforms.M && w + local_id.x < total_sequence_length) {
+      if (m < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
       }
-      if (n < uniforms.N && w + local_id.y < total_sequence_length) {
+      if (n < uniforms.N && w + local_id.y < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
         ${(() => {
           if (feedPastValue && presentValue) {
@@ -763,7 +766,7 @@ const createVxAttentionScoreProgramInfo = (
         ${
           presentValue
             ? `
-            if (w + local_id.y < total_sequence_length) {
+            if (w + local_id.y < present_sequence_length) {
           present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];
         }`
             : ''
@@ -852,6 +855,7 @@ export const applyAttention = (
       probs,
       parameters.batchSize,
       parameters.numHeads,
+      pastSequenceLength,
       parameters.sequenceLength,
       totalSequenceLength,
       seqLens,
