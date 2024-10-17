@@ -1202,6 +1202,8 @@ function(onnxruntime_set_compile_flags target_name)
       # because we may mix gcc and hipclang
       set(ORT_HIP_WARNING_FLAGS ${ORT_WARNING_FLAGS})
       list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-nonnull-compare)
+      # Unsupported by Clang 18 yet.
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-dangling-reference)
 
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
