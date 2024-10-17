@@ -17,7 +17,7 @@ struct RocmStream : Stream {
              bool release_cpu_buffer_on_rocm_stream,
              bool own_flag,
              miopenHandle_t external_miopen_handle,
-             rocblas_handle external_rocblas_handle);
+             hipblasHandle_t external_hipblas_handle);
 
   ~RocmStream();
 
@@ -33,7 +33,7 @@ struct RocmStream : Stream {
 
   miopenHandle_t miopen_handle_{};
 
-  rocblas_handle rocblas_handle_{};
+  hipblasHandle_t hipblas_handle_{};
 
   void* GetResource(int version, int id) const override;
 
@@ -52,5 +52,5 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                hipStream_t external_stream,
                                bool use_existing_stream,
                                miopenHandle_t external_miopen_handle,
-                               rocblas_handle external_rocblas_handle);
+                               hipblasHandle_t external_hipblas_handle);
 }  // namespace onnxruntime

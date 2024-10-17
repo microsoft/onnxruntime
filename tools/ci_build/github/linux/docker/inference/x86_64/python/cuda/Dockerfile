@@ -36,7 +36,7 @@ ENV PATH /usr/local/cuda/bin:$PATH
 ENV CUDA_MODULE_LOADING "LAZY"
 
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

@@ -106,7 +106,26 @@ namespace Dml
         // Release the cached command list references before closing the context
         m_capturedGraphs.clear();
 
-        m_context->Close();
+        // Close the allocator before clearing the command queue to stop it from
+        // appending resources to it in an attempt to keep them alive.
+        if (m_allocator)
+        {
+            m_allocator->Close();
+        }
+
+        // Destroy the allocators. We are closing the execution provider, so from now on the
+        // only thing it will be used for is doing copies via the DataTransfer, which doesn't
+        // require allocating any memory.
+        // TODO: Move the copy functions over to ExecutionContext so that we are able to cleanly
+        // destroy ExecutionProviderImpl, and instead have the DataTransfer keep the context alive.
+        m_allocator = nullptr;
+        m_cpuInputAllocator = nullptr;
+
+        // Wait for all pending commands to be done executing and empty the command queue. This will
+        // Force all kernels and resources in flight to get destroyed and, from this point forward,
+        // ExecutionProviderImpl will only be used to execute transfer between resources that are
+        // already existing via the DataTransfer;
+        m_context->WaitForSignalAndClearQueue();
     }
 
     void ExecutionProviderImpl::WaitForOutstandingWork()

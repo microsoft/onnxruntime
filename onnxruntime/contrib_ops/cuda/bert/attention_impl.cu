@@ -39,6 +39,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/lean_attention/lean_api.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
@@ -108,6 +109,7 @@ size_t GetAttentionWorkspaceSize(
     size_t total_sequence_length,
     void* fused_runner,
     bool use_flash_attention,
+    bool use_lean_attention,
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention,
     bool use_cudnn_flash_attention,
@@ -119,10 +121,18 @@ size_t GetAttentionWorkspaceSize(
 
 #if USE_FLASH_ATTENTION
   if (use_flash_attention) {
-    return qkv_bytes + onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, num_heads);
+    return qkv_bytes;
   }
 #else
   ORT_UNUSED_PARAMETER(use_flash_attention);
+#endif
+
+#if USE_LEAN_ATTENTION
+  if (use_lean_attention) {
+    return qkv_bytes;
+  }
+#else
+  ORT_UNUSED_PARAMETER(use_lean_attention);
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -301,10 +311,10 @@ Status FlashAttention(
 
   constexpr bool is_bf16 = false;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-      device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.scratch),
+      device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.softmax_lse),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
       parameters.sequence_length, parameters.total_sequence_length, scale, 0.0, parameters.is_unidirectional, is_bf16,
-      false, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+      false, data.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
 
   return Status::OK();
@@ -325,6 +335,81 @@ Status FlashAttention(
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "flash attention does not support float tensor");
 }
 #endif
+
+#if USE_LEAN_ATTENTION
+template <typename T>
+Status LeanAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<T>& data,
+    float scale) {
+  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+         data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+  assert(nullptr == data.mask_index);
+  assert(nullptr == data.attention_bias);
+  assert(parameters.head_size == parameters.v_head_size);
+
+  constexpr bool is_bf16 = false;
+
+  ORT_RETURN_IF_ERROR(onnxruntime::lean::mha_fwd_kvcache(
+    device_prop, stream,
+    data.q,
+    data.k, // k_cache
+    data.v, // v_cache
+    nullptr,  // new_k (we have appended new_k to k_cache)
+    nullptr,  // new_v (we have appended new_v to k_cache)
+    data.output,
+    reinterpret_cast<void*>(data.softmax_lse),
+    nullptr, // seqlens_k
+    nullptr, // cos_cache
+    nullptr, // sin_cache
+    nullptr, // block_table
+    parameters.batch_size,
+    parameters.num_heads,
+    parameters.num_heads, // num_heads_k
+    parameters.head_size,
+    parameters.sequence_length, // seqlen_q
+    parameters.total_sequence_length, // seqlen_k
+    0, // seqlen_k_new
+    0, // rotary_dim
+    scale, // softmax_scale
+    parameters.is_unidirectional,
+    is_bf16,
+    false, // past_bsnh
+    data.num_splits,
+    data.grid_dim_z,
+    data.max_tiles_per_tb,
+    data.high_load_tbs,
+    data.tiles_per_head,
+    reinterpret_cast<void*>(data.softmax_lse_accum),
+    reinterpret_cast<void*>(data.out_accum),
+    data.lean_sync_flag,
+    -1, // local_window_size
+    false, // is_rotary_interleaved
+    false // is_packed_qkv
+    ));
+
+  return Status::OK();
+}
+
+template <>
+Status LeanAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<float>& data,
+    float scale) {
+  ORT_UNUSED_PARAMETER(device_prop);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(parameters);
+  ORT_UNUSED_PARAMETER(data);
+  ORT_UNUSED_PARAMETER(scale);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "lean attention does not support float tensor");
+}
+#endif
+
+
 
 template <typename T>
 Status CudnnFlashAttention(
@@ -641,6 +726,11 @@ Status QkvToContext(
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                                : parameters.scale;
+#if USE_LEAN_ATTENTION
+  if (data.use_lean_attention) {
+    return LeanAttention(device_prop, stream, parameters, data, scale);
+  }
+#endif
 
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {

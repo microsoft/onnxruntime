@@ -16,6 +16,7 @@ class GetCapability {
   std::string device_type_;
   DataOps* data_ops_;
   bool is_wholly_supported_graph_ = false;
+  bool has_external_weights_ = false;
 
  public:
   GetCapability(const GraphViewer& graph_viewer_param,
@@ -24,6 +25,9 @@ class GetCapability {
   virtual std::vector<std::unique_ptr<ComputeCapability>> Execute();
   bool IsWhollySupportedGraph() {
     return is_wholly_supported_graph_;
+  }
+  bool HasExternalWeights() {
+    return has_external_weights_;
   }
 };
 

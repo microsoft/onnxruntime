@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <unordered_map>
 
 #include "core/framework/kernel_type_str_resolver.h"
@@ -310,9 +311,12 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "Failed to add kernel for " + key +
-                        ": Conflicting with a registered kernel with op versions.");
+      int since_version = i->second.kernel_def->SinceVersion().first;
+      std::string since_version_str = std::to_string(since_version);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Failed to add kernel for ", key,
+                             ": Conflicting with a registered kernel with op versions. the since version is: ",
+                             since_version_str);
     }
   }
 
