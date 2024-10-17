@@ -13,7 +13,6 @@ type MLPowerPreference = 'default'|'high-performance'|'low-power';
 interface MLContextOptions {
   deviceType?: MLDeviceType;
   powerPreference?: MLPowerPreference;
-  numThreads?: number;
 }
 interface ML {
   createContext(options?: MLContextOptions): Promise<MLContext>;
