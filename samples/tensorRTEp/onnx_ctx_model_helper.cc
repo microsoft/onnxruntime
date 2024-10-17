@@ -9,13 +9,16 @@ namespace onnxruntime {
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   const OrtGraphApi* graph_api = api->GetGraphApi(ORT_API_VERSION);
-  int maxNodeIndex = graph_api->OrtGraph_MaxNodeIndex(graph_viewer);
+  int maxNodeIndex = 0;
+  graph_api->OrtGraph_MaxNodeIndex(graph_viewer, &maxNodeIndex);
   for (int i = 0; i < maxNodeIndex; ++i) {
-    const OrtNode* node = graph_api->OrtGraph_GetOrtNode(graph_viewer, i);
+    const OrtNode* node = nullptr;
+    graph_api->OrtGraph_GetOrtNode(graph_viewer, i, &node);
     if (node == nullptr) {
       continue;
     }
-    const char* opType = graph_api->OrtNode_GetOpType(node);
+    const char* opType = nullptr;
+    graph_api->OrtNode_GetOpType(node, &opType);
     if (strcmp(opType, EPCONTEXT_OP.c_str()) == 0) {
       return true;
     }
@@ -116,12 +119,16 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
   if (!ValidateEPCtxNode(graph_viewer)) {
     return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "It's not a valid EP Context node");
   }
-  const OrtNode* node = graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0);
+  const OrtNode* node = nullptr;
+  graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0, &node);
 
-  const int64_t embed_mode = graph_api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str());
+  int64_t embed_mode = -1;
+  graph_api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str(), &embed_mode);
   if (embed_mode) {
     // Get engine from byte stream.
-    const std::string& context_binary(graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str()));
+    const char* context_binary_cstr = nullptr;
+    graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str(), &context_binary_cstr);
+    std::string context_binary(context_binary_cstr);
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
                                                                                                 static_cast<size_t>(context_binary.length())));
 //    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Read engine as binary data from \"ep_cache_context\" attribute of ep context node and deserialized it";
@@ -130,7 +137,9 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
     }
   } else {
     // Get engine from cache file.
-    std::string cache_path(graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str()));
+    const char* cache_path_cstr = nullptr;
+    graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str(), &cache_path_cstr);
+    std::string cache_path(cache_path_cstr);
 
     // For security purpose, in the case of running context model, TRT EP won't allow
     // engine cache path to be the relative path like "../file_path" or the absolute path.
@@ -182,7 +191,9 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
 //    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
 
     if (weight_stripped_engine_refit_) {
-      const std::string onnx_model_filename(graph_api_->OrtNode_GetAttributeStr(node, ONNX_MODEL_FILENAME.c_str()));
+      const char* onnx_model_filename_cstr = nullptr;
+      graph_api_->OrtNode_GetAttributeStr(node, ONNX_MODEL_FILENAME.c_str(), &onnx_model_filename_cstr);
+      const std::string onnx_model_filename(onnx_model_filename_cstr);
       std::string weight_stripped_engine_cache = engine_cache_path.string();
       auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
                                                            onnx_model_folder_path_,
@@ -200,15 +211,21 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
 }
 
 bool TensorRTCacheModelHandler::ValidateEPCtxNode(const OrtGraphViewer* graph_viewer) {
-  assert(graph_api_->OrtGraph_NumberOfNodes(graph_viewer) == 1);
-  const OrtNode* node = graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0);
-  const char* opType = graph_api_->OrtNode_GetOpType(node);
+  int node_count = 0;
+  graph_api_->OrtGraph_NumberOfNodes(graph_viewer, &node_count);
+  assert(node_count == 1);
+  const OrtNode* node = nullptr;
+  graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0, &node);
+  const char* opType = nullptr;
+  graph_api_->OrtNode_GetOpType(node, &opType);
   assert(strcmp(opType, EPCONTEXT_OP.c_str()) == 0);
 
-  size_t key_count = graph_api_->OrtNode_GetAttributeKeyCount(node, COMPUTE_CAPABILITY.c_str());
+  size_t key_count = 0;
+  graph_api_->OrtNode_GetAttributeKeyCount(node, COMPUTE_CAPABILITY.c_str(), &key_count);
   // Show the warning if compute capability is not matched
   if (key_count > 0) {
-    const char* model_compute_capability = graph_api_->OrtNode_GetAttributeStr(node, COMPUTE_CAPABILITY.c_str());
+    const char* model_compute_capability = nullptr;
+    graph_api_->OrtNode_GetAttributeStr(node, COMPUTE_CAPABILITY.c_str(), &model_compute_capability);
     // Verify if engine was compiled with ampere+ hardware compatibility enabled
     if (strcmp(model_compute_capability, "80+") == 0) {
 //      if (std::stoi(compute_capability_) < 80) {
@@ -222,12 +239,13 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const OrtGraphViewer* graph_vi
   }
 
   // "embed_mode" attr and "ep_cache_context" attr should be present
-  key_count = graph_api_->OrtNode_GetAttributeKeyCount(node, EMBED_MODE.c_str());
+  graph_api_->OrtNode_GetAttributeKeyCount(node, EMBED_MODE.c_str(), &key_count);
   assert(key_count > 0);
-  key_count = graph_api_->OrtNode_GetAttributeKeyCount(node, EP_CACHE_CONTEXT.c_str());
+  graph_api_->OrtNode_GetAttributeKeyCount(node, EP_CACHE_CONTEXT.c_str(), &key_count);
   assert(key_count > 0);
 
-  const int64_t embed_mode = graph_api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str());
+  int64_t embed_mode = -1;
+  graph_api_->OrtNode_GetAttributeInt(node, EMBED_MODE.c_str(), &embed_mode);
   if (embed_mode == 1) {
     // engine binary data
 //    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
