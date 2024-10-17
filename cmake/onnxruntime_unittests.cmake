@@ -1146,22 +1146,6 @@ if (NOT IOS)
             LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
             BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-    ## TODO: remove this when merging to main branch
-    #
-    #        should support better test runner
-    #
-    if (onnxruntime_USE_WEBGPU)
-      add_custom_command(
-        TARGET onnx_test_runner
-        POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${ONNXRUNTIME_ROOT}/test/providers/webgpu/test_webgpu.js"
-        "${ONNXRUNTIME_ROOT}/test/providers/webgpu/test_webgpu.bat"
-        "$<TARGET_FILE_DIR:onnx_test_runner>"
-        VERBATIM )
-    endif()
-
 endif()
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
