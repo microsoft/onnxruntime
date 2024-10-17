@@ -105,7 +105,7 @@ MlasIsSQNBitGemmAvailable<float>(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 template<>
 bool MLASCALL
 MlasIsSQNBitGemmAvailable<MLAS_FP16>(
@@ -132,7 +132,7 @@ MlasIsSQNBitGemmAvailable<MLAS_FP16>(
             return false;
     }
 }
-#else  // !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(MLAS_TARGET_AMD64)
+#else  // !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(MLAS_TARGET_ARM64)
 template
 bool MLASCALL
 MlasIsSQNBitGemmAvailable<MLAS_FP16>(

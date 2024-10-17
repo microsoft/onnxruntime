@@ -198,7 +198,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     }
     d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
     d.SQ4BitGemmPerGemmWorkspaceSize_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize<MLAS_FP16>;
     d.SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<MLAS_FP16>;
 
@@ -213,6 +213,6 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
         d.SQ4BitGemmKernel_Fp16_CompInt8 = nullptr;
     }
     d.QuantizeARow_Fp16_CompInt8 = nullptr;
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_AMD64
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
     return d;
 }();
