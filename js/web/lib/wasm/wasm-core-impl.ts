@@ -317,6 +317,8 @@ export const createSession = async (
       checkLastError("Can't create a session.");
     }
 
+    wasm.jsepOnCreateSession?.();
+
     // clear current MLContext after session creation
     if (wasm.currentContext) {
       wasm.jsepRegisterMLContext!(sessionHandle, wasm.currentContext);
