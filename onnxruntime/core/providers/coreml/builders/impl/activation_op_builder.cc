@@ -84,6 +84,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.activation
     std::string_view coreml_op_type;
     bool add_alpha = false;
+    bool add_gelu_mode = false;
     if (op_type == "Sigmoid") {
       coreml_op_type = "sigmoid";
     } else if (op_type == "Tanh") {
@@ -93,6 +94,9 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     } else if (op_type == "LeakyRelu") {
       coreml_op_type = "leaky_relu";
       add_alpha = true;
+    } else if (op_type == "Gelu") {
+      coreml_op_type = "gelu";
+      add_gelu_mode = true;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -111,6 +115,16 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       } else {
         AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
       }
+    }
+    if (add_gelu_mode) {
+      NodeAttrHelper helper(node);
+      std::string approximate = helper.Get("approximate", std::string("EXACT"));
+      if (approximate == "tanh") {
+        approximate = "TANH_APPROXIMATION";
+      } else if (approximate == "none") {
+        approximate = "EXACT";
+      }
+      AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(approximate)));
     }
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
@@ -212,6 +226,15 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
 bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                             const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
+#if !defined(COREML_ENABLE_MLPROGRAM)
+  if (op_type == "Gelu") {
+    return false;
+  }
+#endif
+
+  if (op_type == "Gelu" && !input_params.create_mlprogram) {
+    return false;
+  }
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
@@ -245,6 +268,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Relu",
           "PRelu",
           "LeakyRelu",
+          "Gelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());
