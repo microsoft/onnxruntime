@@ -40,9 +40,8 @@ docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:24.04-p
 ```
 
 #### Build onnxruntime from source
-The cuDNN in the container might not be compatible with official onnxruntime-gpu package, it is recommended to build from source instead.
+This step is optional. Please look at [install onnxruntime-gpu](https://onnxruntime.ai/docs/install/#python-installs) if you do not want to build from source.
 
-After launching the docker, you can build and install onnxruntime-gpu wheel like the following.
 ```
 export CUDACXX=/usr/local/cuda/bin/nvcc
 git config --global --add safe.directory '*'
@@ -60,6 +59,14 @@ If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line
 If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
 
 #### Install required packages
+First, remove older version of opencv to avoid error like `module 'cv2.dnn' has no attribute 'DictValue'`:
+```
+pip uninstall -y $(pip list --format=freeze | grep opencv)
+rm -rf /usr/local/lib/python3.10/dist-packages/cv2/
+apt-get update
+DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv
+```
+
 ```
 cd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion
 python3 -m pip install -r requirements-cuda12.txt

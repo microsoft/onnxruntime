@@ -1,7 +1,7 @@
 -r requirements.txt
 
-# Official onnxruntime-gpu 1.16.1 is built with CUDA 11.8.
-onnxruntime-gpu>=1.16.2
+# See https://onnxruntime.ai/docs/install/#python-installs for installation. The latest one in pypi is for cuda 12.
+# onnxruntime-gpu>=1.16.2
 
 py3nvml
 
