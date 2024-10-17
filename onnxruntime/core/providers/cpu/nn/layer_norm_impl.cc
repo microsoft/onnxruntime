@@ -24,16 +24,16 @@ void ComputeJob(
     const T* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
-    IAllocatorUniquePtr<float>& scale_float_uptr,
-    IAllocatorUniquePtr<float>& bias_float_uptr,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
     float epsilon,
     bool simplified,
     T* Y_data,
     U* mean_data,
     U* inv_std_dev_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(scale_float_uptr);  // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(bias_float_uptr);   // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(scale_float_ptr);  // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(bias_float_ptr);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(alloc);
 
   const T* p_input = X_data + task_idx * norm_size;
@@ -82,14 +82,17 @@ void ComputeJob(
     const MLFloat16* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
-    IAllocatorUniquePtr<float>& scale_float_uptr,
-    IAllocatorUniquePtr<float>& bias_float_uptr,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
     float epsilon,
     bool simplified,
     MLFloat16* Y_data,
     U* mean_data,
     U* inv_std_dev_data,
     AllocatorPtr alloc) {
+  ORT_UNUSED_PARAMETER(scale_data);  // only used in float/double overload
+  ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
+
   const MLFloat16* p_input = X_data + task_idx * norm_size;
   MLFloat16* p_output = Y_data + task_idx * norm_size;
 
@@ -117,22 +120,10 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  if (!scale_float_uptr) {
-    scale_float_uptr = std::move(input_float_uptr);  // overwrite input with scale values, since they have the same size
-    MlasConvertHalfToFloatBuffer(scale_data, scale_float_uptr.get(), num_elems);
-  }
-
-  if (bias_data && !bias_float_uptr) {
-    bias_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-    MlasConvertHalfToFloatBuffer(bias_data, bias_float_uptr.get(), num_elems);
-  }
-
-  const float* scale_float_ptr = scale_float_uptr.get();
-  const float* bias_float_ptr = bias_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
     if (simplified) {
       output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[h];
-    } else if (nullptr == bias_data) {
+    } else if (nullptr == bias_float_ptr) {
       output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h];
     } else {
       output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h] + bias_float_ptr[h];
@@ -183,7 +174,7 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
 
   const TensorShape& x_shape = X->Shape();
   const TensorShape& scale_shape = scale->Shape();
-  const TensorShape& bias_shape = bias->Shape();
+  const TensorShape* bias_shape = bias ? &bias->Shape() : nullptr;
   Tensor* Y = p_ctx->Output(0, x_shape);
   T* Y_data = Y->MutableData<T>();
 
@@ -252,7 +243,7 @@ Status LayerNormImpl::ComputeWithoutContext(
     const T* scale_data,
     const TensorShape& scale_shape,
     const T* bias_data,
-    const TensorShape& bias_shape,
+    const TensorShape* bias_shape,
     T* Y_data,
     U* mean_data,
     U* inv_std_dev_data,
@@ -265,7 +256,7 @@ Status LayerNormImpl::ComputeWithoutContext(
   int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
   const auto scale_size = scale_shape.Size();
-  const auto bias_size = (bias_data) ? bias_shape.Size() : 0;
+  const auto bias_size = bias_shape ? bias_shape->Size() : 0;
   if (scale_size != norm_size || (bias_data && bias_size != norm_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Size of X.shape()[axis:] == ", norm_size,
@@ -273,10 +264,27 @@ Status LayerNormImpl::ComputeWithoutContext(
                            scale_size, " and bias size of ", bias_size);
   }
 
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    if (scale_fp32_ == nullptr || (bias_fp32_ == nullptr && bias_data)) {
+      std::lock_guard<OrtMutex> lock(mutex_);
+
+      const size_t num_elems = static_cast<size_t>(norm_size);
+      if (scale_fp32_ == nullptr) {
+        scale_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+        MlasConvertHalfToFloatBuffer(scale_data, scale_fp32_.get(), num_elems);
+      }
+
+      if (bias_fp32_ == nullptr && bias_data) {
+        bias_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+        MlasConvertHalfToFloatBuffer(bias_data, bias_fp32_.get(), num_elems);
+      }
+    }
+  }
+
   concurrency::ThreadPool::TryBatchParallelFor(
       thread_pool, static_cast<int32_t>(norm_count),
       [&](ptrdiff_t task_idx) {
-        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_, bias_fp32_,
+        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_.get(), bias_fp32_.get(),
                    epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
       },
       0);
