@@ -88,8 +88,14 @@ stages:
     pool: 'onnxruntime-Win2022-GPU-A10'
     timeoutInMinutes: 60
     variables:
+    - template: ../templates/common-variables.yml
     - name: runCodesignValidationInjection
       value: false
+    - name: win_trt_folder
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
+        value: ${{ variables.win_trt_folder_cuda11 }}
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        value: ${{ variables.win_trt_folder_cuda12 }}
 
     steps:
     - template: ../templates/set-version-number-variables-step.yml
@@ -97,8 +103,8 @@ stages:
     - template: ../templates/jobs/download_win_gpu_library.yml
       parameters:
         CudaVersion: ${{ parameters.CudaVersion }}
-        DownloadCUDA: true
         DownloadTRT: true
+        win_trt_folder: ${{ variables.win_trt_folder }}
 
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:

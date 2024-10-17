@@ -26,16 +26,22 @@ stages:
     pool: ${{ parameters.AgentPool }}
 
     variables:
+    - template: ../../templates/common-variables.yml
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
     - name: SKIPNONPACKAGETESTS
       value: 'ON'
     - name: runCodesignValidationInjection
       value: false
-    - name: CUDA_MODULE_LOADINGL
+    - name: CUDA_MODULE_LOADING
       value: 'LAZY'
     - name: GRADLE_OPTS
       value: '-Dorg.gradle.daemon=false'
+    - name: win_trt_folder
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
+        value: ${{ variables.win_trt_folder_cuda11 }}
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        value: ${{ variables.win_trt_folder_cuda12 }}
 
     steps:
     - task: UsePythonVersion@0
@@ -51,9 +57,9 @@ stages:
     - ${{ if ne( parameters.CudaVersion, '') }}:
       - template: ../../templates/jobs/download_win_gpu_library.yml
         parameters:
-          DownloadCUDA: true
           DownloadTRT: true
           CudaVersion: ${{ parameters.CudaVersion }}
+          win_trt_folder: ${{ variables.win_trt_folder }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
