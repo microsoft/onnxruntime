@@ -64,7 +64,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       }
 #endif
 #ifdef USE_WEBGPU
-      for (auto& nameIter : obj.GetPropertyNames()) {
+      for (const auto& nameIter : obj.GetPropertyNames()) {
         Napi::Value nameVar = nameIter.second;
         std::string name = nameVar.As<Napi::String>().Utf8Value();
         if (name != "name") {
