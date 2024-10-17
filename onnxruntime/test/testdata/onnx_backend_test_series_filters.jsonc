@@ -693,7 +693,8 @@
         "^test_layer_normalization_4d_axis_negative_4_cpu",
         "^test_layer_normalization_default_axis_cpu",
         "^test_gelu_tanh_1_expanded_cpu",
-        "^test_gelu_tanh_2_expanded_cpu"
+        "^test_gelu_tanh_2_expanded_cpu",
+        "^test_dynamicquantizelinear_expanded_cpu"
     ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
