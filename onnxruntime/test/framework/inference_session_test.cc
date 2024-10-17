@@ -722,7 +722,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
-  bool has_api_info = false;
+  [[maybe_unused]] bool has_api_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
