@@ -18,9 +18,6 @@ parameters:
 - name: CudaVersion
   type: string
   default: '11.8'
-  values:
-    - 11.8
-    - 12.2
 
 - name: win_cuda_home
   type: string
@@ -92,15 +89,8 @@ stages:
         clean: all
       pool: 'onnxruntime-Win2022-GPU-A10'
       variables:
-      - template: ../templates/common-variables.yml
-      - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: ${{ variables.win_trt_folder_cuda11 }}
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: ${{ variables.win_trt_folder_cuda12 }}
         CUDA_MODULE_LOADINGL: 'LAZY'
         GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-      
       steps:
         - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
         - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
@@ -112,9 +102,9 @@ stages:
         - script: dir $(Build.SourcesDirectory)
         - template: ../templates/jobs/download_win_gpu_library.yml
           parameters:
+            DownloadCUDA: true
             DownloadTRT: true
             CudaVersion: ${{ parameters.CudaVersion }}
-            win_trt_folder: ${{ variables.win_trt_folder }}
 
         - template: ../templates/set-version-number-variables-step.yml
           parameters:

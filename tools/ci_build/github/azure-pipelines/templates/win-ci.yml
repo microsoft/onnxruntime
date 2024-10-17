@@ -85,7 +85,6 @@ stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   variables:
-  - template: common-variables.yml
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
     CUDA_MODULE_LOADING: 'LAZY'
@@ -97,11 +96,6 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-  - name: win_trt_folder
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: ${{ variables.win_trt_folder_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: ${{ variables.win_trt_folder_cuda12 }}
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -148,12 +142,14 @@ stages:
         - template: jobs/download_win_gpu_library.yml
           parameters:
             CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
             ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+              DownloadCUDA: true
               DownloadTRT: true
-              win_trt_folder: ${{ variables.win_trt_folder }}
       - powershell: |
           Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-        displayName: 'Append dotnet x86 Directory to PATH'
+        displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
 
       - template: download-deps.yml
@@ -377,9 +373,11 @@ stages:
           - template: jobs/download_win_gpu_library.yml
             parameters:
               CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+                DownloadCUDA: true
               ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+                DownloadCUDA: true
                 DownloadTRT: true
-                win_trt_folder: ${{ variables.win_trt_folder }}
 
         - powershell: |
             Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
