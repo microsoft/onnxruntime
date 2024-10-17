@@ -157,7 +157,13 @@ void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, I
 }  // namespace
 
 LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified, bool contrib_op)
-    : OpKernel(op_kernel_info), simplified_{simplified}, contrib_op_{contrib_op}, scale_fp32_(nullptr), bias_fp32_(nullptr) {
+    : OpKernel(op_kernel_info),
+      simplified_{simplified},
+      contrib_op_{contrib_op},
+      prepacked_scale_fp32_data_(nullptr),
+      prepacked_scale_fp32_size_(0),
+      prepacked_bias_fp32_data_(nullptr),
+      prepacked_bias_fp32_size_(0) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
@@ -166,15 +172,15 @@ template <typename T, typename U>
 Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) const {
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
-  const Tensor* scale = p_ctx->Input<Tensor>(1);
-  const Tensor* bias = p_ctx->Input<Tensor>(2);
+  const Tensor* scale = prepacked_scale_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(1);
+  const Tensor* bias = prepacked_bias_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(2);
   const T* X_data = X->Data<T>();
-  const T* scale_data = scale->Data<T>();
+  const T* scale_data = scale ? scale->Data<T>() : nullptr;
   const T* bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
-  const TensorShape& scale_shape = scale->Shape();
-  const TensorShape* bias_shape = bias ? &bias->Shape() : nullptr;
+  size_t scale_size = scale ? scale->Shape().Size() : prepacked_scale_fp32_size_;
+  size_t bias_size = bias ? bias->Shape().Size() : prepacked_bias_fp32_size_;
   Tensor* Y = p_ctx->Output(0, x_shape);
   T* Y_data = Y->MutableData<T>();
 
@@ -209,7 +215,7 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
-  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape, Y_data, mean_data,
+  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_size, bias_data, bias_size, Y_data, mean_data,
                                      inv_std_dev_data, thread_pool, axis, epsilon, simplified, alloc);
 }
 
@@ -228,9 +234,11 @@ Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 
   is_packed = false;
   if (input_idx == 1) {  // scale
-    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, scale_fp32_, is_packed);
+    prepacked_scale_fp32_size_ = tensor.Shape().Size();
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed);
   } else if (input_idx == 2) {  // bias
-    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, bias_fp32_, is_packed);
+    prepacked_bias_fp32_size_ = tensor.Shape().Size();
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
   }
 
   return Status::OK();
@@ -241,9 +249,9 @@ Status LayerNormImpl::ComputeWithoutContext(
     const T* X_data,
     const TensorShape& x_shape,
     const T* scale_data,
-    const TensorShape& scale_shape,
+    size_t scale_size,
     const T* bias_data,
-    const TensorShape* bias_shape,
+    size_t bias_size,
     T* Y_data,
     U* mean_data,
     U* inv_std_dev_data,
@@ -255,36 +263,34 @@ Status LayerNormImpl::ComputeWithoutContext(
   int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
   int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
-  const auto scale_size = scale_shape.Size();
-  const auto bias_size = bias_shape ? bias_shape->Size() : 0;
-  if (scale_size != norm_size || (bias_data && bias_size != norm_size)) {
+  if (static_cast<int64_t>(scale_size) != norm_size || (bias_data && static_cast<int64_t>(bias_size) != norm_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Size of X.shape()[axis:] == ", norm_size,
                            ". Size of scale and bias (if provided) must match this. Got scale size of ",
                            scale_size, " and bias size of ", bias_size);
   }
 
+  IAllocatorUniquePtr<float> scale_fp32;
+  IAllocatorUniquePtr<float> bias_fp32;
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    if (scale_fp32_ == nullptr || (bias_fp32_ == nullptr && bias_data)) {
-      std::lock_guard<OrtMutex> lock(mutex_);
-
+    if (prepacked_scale_fp32_data_ == nullptr) {
       const size_t num_elems = static_cast<size_t>(norm_size);
-      if (scale_fp32_ == nullptr) {
-        scale_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-        MlasConvertHalfToFloatBuffer(scale_data, scale_fp32_.get(), num_elems);
-      }
-
-      if (bias_fp32_ == nullptr && bias_data) {
-        bias_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-        MlasConvertHalfToFloatBuffer(bias_data, bias_fp32_.get(), num_elems);
-      }
+      scale_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+      MlasConvertHalfToFloatBuffer(scale_data, scale_fp32.get(), num_elems);
+    }
+    if (prepacked_bias_fp32_data_ == nullptr && bias_data) {
+      const size_t num_elems = static_cast<size_t>(norm_size);
+      bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+      MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
     }
   }
 
   concurrency::ThreadPool::TryBatchParallelFor(
       thread_pool, static_cast<int32_t>(norm_count),
       [&](ptrdiff_t task_idx) {
-        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, scale_fp32_.get(), bias_fp32_.get(),
+        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size,
+                   prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get() : scale_fp32.get(),
+                   prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
                    epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
       },
       0);
