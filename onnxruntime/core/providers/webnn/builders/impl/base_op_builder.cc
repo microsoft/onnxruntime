@@ -12,27 +12,6 @@
 
 namespace onnxruntime {
 namespace webnn {
-
-// Shared functions.
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
-                            const logging::Logger& logger) {
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    if (!Contains(initializers, input_name))
-      continue;
-
-    const auto& tensor = *initializers.at(input_name);
-    if (tensor.has_data_location() &&
-        tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS(logger, VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-
 // Add operator related.
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
@@ -56,10 +35,6 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
     return false;
 
   if (!HasSupportedOutputsImpl(node, wnn_limits, logger))
-    return false;
-
-  // We do not support external initializers for now.
-  if (HasExternalInitializer(initializers, node, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
