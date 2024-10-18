@@ -419,7 +419,7 @@ const createInPlaceSoftmaxProgramInfo = (
       ${
         seqLens
           ? `
-        for (var total_seq_id: u32 = seq_causal_length; total_seq_id < uniforms.elements_per_thread && total_seq_id + local_offset < total_sequence_length; total_seq_id++) {
+        for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length; total_seq_id++) {
           x[offset + total_seq_id] = ${inputHelper.type.value}(${elemValueType}(0));
         }`
           : ''
