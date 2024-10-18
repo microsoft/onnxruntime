@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.1
+    value: 6.2
   - name: RocmVersionPatchSuffix
     value: ".3"
 
@@ -100,6 +100,7 @@ jobs:
             set -ex; \
             env; \
             ccache -s; \
+            . /ort/env/bin/activate; \
             python tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -188,6 +189,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
+            . /ort/env/bin/activate; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -231,7 +233,9 @@ jobs:
           -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           -e CUPY_CACHE_DIR=/build/Release \
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
-            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
+          /bin/bash -c "set -ex; \
+            . /ort/env/bin/activate; \
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()
