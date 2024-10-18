@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { TensorView } from '../../tensor-view';
 import { createAttributeWithCacheKey } from '../attribute-with-cache-key';
 import { ComputeContext } from '../types';
@@ -223,14 +225,14 @@ export const parseGroupQueryAttentionAttributes = (attributes: GroupQueryAttenti
 
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({ perm: [0, 2, 1, 3] });
 
-const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params: AttentionParameters) => {
+const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params: AttentionParameters, idx = -1) => {
   let reshapedInput = input;
   const numHeads = params.kvNumHeads!;
   if (input.dims.length === 3 && params.kvSequenceLength !== 0) {
     reshapedInput = input.reshape([params.batchSize, params.kvSequenceLength, numHeads, params.headSize]);
     reshapedInput = context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
       inputs: [reshapedInput],
-      outputs: [-1],
+      outputs: [idx],
     })[0];
   }
 
@@ -278,11 +280,16 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     undefined,
     0,
   );
+
+  const K = maybeTransposeToBNSH(context, key, params);
+  const V = maybeTransposeToBNSH(context, value, params, 2);
+
+  // if (typeof document === 'number') {
   applyAttention(
     context,
     Q,
-    maybeTransposeToBNSH(context, key, params),
-    maybeTransposeToBNSH(context, value, params),
+    K,
+    V,
     undefined,
     undefined,
     pastKey,
@@ -292,4 +299,5 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     seqLens,
     totalSequenceLengthInput,
   );
+  // }
 };

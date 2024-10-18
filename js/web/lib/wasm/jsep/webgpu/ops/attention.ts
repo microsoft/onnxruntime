@@ -617,7 +617,7 @@ const createAttentionProbsProgramInfo = (
             throw new Error(`Unsupported components: ${components}`);
         }
       })()};
-        output[outputIdx] = ${output.type.value} (sum * uniforms.alpha) + ${
+        output[outputIdx] = ${output.type.value}(outputIdx);//${output.type.value} (sum * uniforms.alpha) + ${
           attentionBias ? 'attention_bias[outputIdx]' : '0.0'
         };
     }
@@ -846,51 +846,56 @@ export const applyAttention = (
       seqLens,
       totalSequenceLengthInput,
     ),
-    { inputs: inputsK, outputs: outputCount > 1 ? [-1, 1] : [-1] },
+    { inputs: inputsK, outputs: outputCount > 1 ? [0, 1] : [-1] },
   )[0];
 
-  // Run Softmax
-  context.compute(
-    createInPlaceSoftmaxProgramInfo(
-      probs,
-      parameters.batchSize,
-      parameters.numHeads,
-      pastSequenceLength,
-      parameters.sequenceLength,
-      totalSequenceLength,
-      seqLens,
-      totalSequenceLengthInput,
-    ),
-    { inputs: seqLens && totalSequenceLengthInput ? [probs, seqLens, totalSequenceLengthInput] : [probs], outputs: [] },
-  );
+  if (typeof document === 'number') {
+    // Run Softmax
+    context.compute(
+      createInPlaceSoftmaxProgramInfo(
+        probs,
+        parameters.batchSize,
+        parameters.numHeads,
+        pastSequenceLength,
+        parameters.sequenceLength,
+        totalSequenceLength,
+        seqLens,
+        totalSequenceLengthInput,
+      ),
+      {
+        inputs: seqLens && totalSequenceLengthInput ? [probs, seqLens, totalSequenceLengthInput] : [probs],
+        outputs: [],
+      },
+    );
 
-  // Run AttentionScore
-  const inputsV = [probs, v];
-  if (outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
-    inputsV.push(pastValue);
+    // Run AttentionScore
+    const inputsV = [probs, v];
+    if (outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
+      inputsV.push(pastValue);
+    }
+    if (seqLens) {
+      inputsV.push(seqLens);
+    }
+    if (totalSequenceLengthInput) {
+      inputsV.push(totalSequenceLengthInput);
+    }
+    context.compute(
+      createVxAttentionScoreProgramInfo(
+        outputCount,
+        probs,
+        v,
+        pastValue,
+        parameters,
+        pastSequenceLength,
+        seqLens,
+        totalSequenceLengthInput,
+      ),
+      {
+        inputs: inputsV,
+        outputs: outputCount > 1 ? [0, 2] : [0],
+      },
+    );
   }
-  if (seqLens) {
-    inputsV.push(seqLens);
-  }
-  if (totalSequenceLengthInput) {
-    inputsV.push(totalSequenceLengthInput);
-  }
-  context.compute(
-    createVxAttentionScoreProgramInfo(
-      outputCount,
-      probs,
-      v,
-      pastValue,
-      parameters,
-      pastSequenceLength,
-      seqLens,
-      totalSequenceLengthInput,
-    ),
-    {
-      inputs: inputsV,
-      outputs: outputCount > 1 ? [0, 2] : [0],
-    },
-  );
 };
 
 const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
