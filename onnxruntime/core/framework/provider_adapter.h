@@ -37,7 +37,7 @@ private:
 class ExecutionProviderAdapter : public IExecutionProvider {
 public:
   ExecutionProviderAdapter(OrtExecutionProvider* ep) : IExecutionProvider(ep->type, ep->default_device ? *(ep->default_device) : OrtDevice()), ep_impl_(ep) {
-    intree_ep = false;
+    builtin_ep_ = false;
     if (ep_impl_->RegisterKernels) {
       kernel_registry_ = std::make_shared<KernelRegistry>();
       ep_impl_->RegisterKernels(reinterpret_cast<OrtKernelRegistry*>(kernel_registry_.get()));
@@ -76,6 +76,8 @@ public:
 
         ret.push_back(std::make_unique<ComputeCapability>(std::move(sb)));
     }
+
+    if (indexed_subgraph && ep_impl_->ReleaseIndexedSubGraphs) ep_impl_->ReleaseIndexedSubGraphs(indexed_subgraph, cnt);
     return ret;
   }
 

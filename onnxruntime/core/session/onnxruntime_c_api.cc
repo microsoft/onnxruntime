@@ -99,8 +99,6 @@ using onnxruntime::common::Status;
 
 using namespace onnxruntime;
 
-typedef std::unordered_map<std::string, std::string> ModelMetaData;
-
 #ifndef ORT_STATUS_PTR
 #ifdef _WIN32
 #define ORT_STATUS_PTR _Check_return_ _Ret_maybenull_ OrtStatusPtr
@@ -2371,7 +2369,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateDevice, _In_ enum OrtMemoryInfoDeviceType dev
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::DeviceGetDeviceType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out) {
+ORT_API_STATUS_IMPL(OrtApis::DeviceGetType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out) {
   *out = static_cast<OrtMemoryInfoDeviceType>(device->Type());
   return nullptr;
 }
@@ -2381,7 +2379,7 @@ ORT_API_STATUS_IMPL(OrtApis::DeviceGetMemoryType, _In_ const OrtDevice* device, 
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::DeviceGetDeviceId, _In_ const OrtDevice* device, _Out_ int16_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::DeviceGetId, _In_ const OrtDevice* device, _Out_ int16_t* out) {
   *out = device->Id();
   return nullptr;
 }
@@ -2390,34 +2388,28 @@ ORT_API(void, OrtApis::ReleaseDevice, OrtDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterOrtExecutionProviderLibrary, _In_ const char* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterPluginExecutionProviderLibrary, _In_ const char* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name) {
   API_IMPL_BEGIN
   void* handle = nullptr;
   ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(ToPathString(lib_path), false, &handle));
   if (handle) {
     OrtExecutionProviderFactory* (*symbol)();
     ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle, "RegisterCustomEp", (void**)&symbol));
-    env->InsertCustomEp(ep_name, symbol());
+    env->InsertPluginEpFactory(ep_name, symbol());
     return nullptr;
   }
   return CreateStatus(ORT_RUNTIME_EXCEPTION, "cannot load the shared library for out-tree EP");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendPluginExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
-  OrtExecutionProviderFactory* ep_factory = env->GetOrtExecutionProviderFactory(ep_name);
+  OrtExecutionProviderFactory* ep_factory = env->GetPluginExecutionProviderFactory(ep_name);
   if (ep_factory) {
     std::shared_ptr<ExecutionProviderFactoryAdapter> factory = std::make_shared<ExecutionProviderFactoryAdapter>(ep_factory, provider_options_keys, provider_options_values, num_keys);
     options->provider_factories.push_back(std::move(factory));
   }
   return nullptr;
-}
-
-ORT_API_STATUS_IMPL(OrtApis::OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints) {
-  KernelRegistry* kr = reinterpret_cast<KernelRegistry*>(kernel_registry);
-  KernelCreateInfo kci = CreateKernelCreateInfo2("", custom_op, type_constraints);
-  return ToOrtStatus(kr->Register(std::move(kci)));
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints) {
@@ -2433,6 +2425,12 @@ ORT_API_STATUS_IMPL(OrtApis::AddTypeConstraint, _In_ OrtTypeConstraints* type_co
 
 ORT_API(void, OrtApis::ReleaseTypeConstraints, OrtTypeConstraints* type_constraints) {
   delete type_constraints;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints) {
+  KernelRegistry* kr = reinterpret_cast<KernelRegistry*>(kernel_registry);
+  KernelCreateInfo kci = CreateKernelCreateInfo2("", custom_op, type_constraints);
+  return ToOrtStatus(kr->Register(std::move(kci)));
 }
 
 ORT_API(const OrtGraphApi*, OrtApis::GetGraphApi, uint32_t version) {
@@ -2819,17 +2817,17 @@ static constexpr OrtApi ort_api_1_to_19 = {
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::CreateDevice,
-    &OrtApis::DeviceGetDeviceType,
+    &OrtApis::DeviceGetType,
     &OrtApis::DeviceGetMemoryType,
-    &OrtApis::DeviceGetDeviceId,
+    &OrtApis::DeviceGetId,
     &OrtApis::ReleaseDevice,
-    &OrtApis::RegisterOrtExecutionProviderLibrary,
-    &OrtApis::SessionOptionsAppendOrtExecutionProvider,
+    &OrtApis::RegisterPluginExecutionProviderLibrary,
+    &OrtApis::SessionOptionsAppendPluginExecutionProvider,
 
-    &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::CreateOrtTypeConstraints,
     &OrtApis::AddTypeConstraint,
     &OrtApis::ReleaseTypeConstraints,
+    &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::GetGraphApi,
 };
 

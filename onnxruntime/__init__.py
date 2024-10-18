@@ -46,6 +46,7 @@ try:
     from onnxruntime.capi._pybind_state import set_default_logger_severity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_verbosity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_seed  # noqa: F401
+    from onnxruntime.capi._pybind_state import register_plugin_execution_provider_library  # noqa: F401
 
     import_capi_exception = None
 except Exception as e:

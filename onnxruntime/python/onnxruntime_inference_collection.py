@@ -63,9 +63,10 @@ def check_and_normalize_provider_args(
         return [], []
 
     provider_name_to_options = collections.OrderedDict()
+    plugin_eps = C.get_available_plugin_providers()
 
     def set_provider_options(name, options):
-        if name not in available_provider_names:
+        if name not in plugin_eps and name not in available_provider_names:
             warnings.warn(
                 "Specified provider '{}' is not in available provider names."
                 "Available providers: '{}'".format(name, ", ".join(available_provider_names))

@@ -75,7 +75,7 @@ class IExecutionProvider {
   */
   const OrtDevice default_device_;
 
-  bool intree_ep = true;
+  bool builtin_ep_ = true;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -327,7 +327,7 @@ class IExecutionProvider {
     return InlinedVector<const Node*>();
   }
 
-  bool IsIntreeEp() const { return intree_ep; }
+  bool IsBuiltInEp() const { return builtin_ep_; }
 
  private:
   const std::string type_;

@@ -74,6 +74,7 @@ typedef struct OrtExecutionProvider {
   bool(ORT_API_CALL* CanCopy)(const OrtDevice* source, const OrtDevice* target);
   OrtStatusPtr(ORT_API_CALL* CopyTensor)(const void* src, OrtMemoryInfoDeviceType source_device_type, OrtMemoryType source_mem_type, void* dst, OrtMemoryInfoDeviceType target_device_type, size_t count, void* stream);
   int(ORT_API_CALL* CreatePreferredAllocators)(OrtExecutionProvider* this_, OrtAllocator*** ort_allocators);
+  void(ORT_API_CALL* ReleaseIndexedSubGraphs)(OrtIndexedSubGraph** indexed_sub_graphs, size_t num_sub_graph);
   const char* type;
   OrtCreateStream* create_stream;
   const OrtDevice* default_device;
@@ -86,100 +87,446 @@ typedef struct OrtExecutionProviderFactory {
 } OrtExecutionProviderFactory;
 
 struct OrtGraphApi {
-const char*(ORT_API_CALL* OrtGraph_GetName)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Get the graph name
+ *
+ * \param[in] graph The graph to query
+ * \param[out] out The name of the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetName, const OrtGraphViewer* graph, _Outptr_ const char** out);
 
-bool(ORT_API_CALL* OrtGraph_IsConstantInitializer)(const OrtGraphViewer* graph, const char* name, bool check_outer_scope)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Check if the name is a constant initializer of the graph
+ *
+ * \param[in] graph The graph to query
+ * \param[in] name The name to check
+ * \param[in] check_outer_scope If true and 'graph' is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
+ * \param[out] out True if the name is a constant initializer of the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* out);
 
-size_t(ORT_API_CALL* OrtGraph_GetNodesIndexInTopologicalOrder)(const OrtGraphViewer* graph, int execution_order, _Out_ const size_t** nodes_index_in_topological_order);
+/** \brief Get the NodeIndex values of the graph nodes sorted in topological order
+ *
+ * \param[in] graph The graph to query
+ * \param[in] execution_order The execution order can be 0, 1 or 2
+ *                           0 means the nodes are sorted in topological order.
+ *                           1 means the nodes are sorted in topological order with priority.
+ *                           2 means the nodes are sorted in memory efficient topological order.
+ * \param[out] nodes_index_in_topological_order The NodeIndex values of the graph nodes sorted in topological order
+ * \param[out] num_nodes The number of nodes
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ const size_t** nodes_index_in_topological_order, _Out_ size_t* num_nodes);
 
-bool(ORT_API_CALL* OrtGraph_IsSubgraph)(const OrtGraph* graph);
+/** \brief Check if the graph is a subgraph
+ *
+ * \param[in] graph The graph to query
+ * \param[out] out True if the graph is a subgraph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out);
 
-const OrtGraph*(ORT_API_CALL* OrtGraph_GetParentGraph)(const OrtGraph* graph);
+/** \brief Get the parent graph of the graph
+ *
+ * \param[in] graph The graph to query
+ * \param[out] parent_graph The parent graph of the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
 
-const OrtNode*(ORT_API_CALL* OrtGraph_GetParenNode)(const OrtGraphViewer* graph);
+/** \brief Get the parent node of the graph
+ *
+ * \param[in] graph The graph to query
+ * \param[out] parent_node The node containing this Graph if IsSubgraph is true. Returns nullptr otherwise.
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node);
 
-const void*(ORT_API_CALL* OrtGraph_GetModelPath)(const OrtGraphViewer* graph);
+/** \brief Gets the path of the owning model if any
+ *
+ * \param[in] graph The graph to query
+ * \param[out] model_path The path of the owning model if any
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** model_path);
 
-const OrtGraph*(ORT_API_CALL* OrtGraph_GetOrtGraph)(const OrtGraphViewer* graph_viewer);
+/** \brief Get the internal graph in the graph viewer
+ *
+ * \param[in] graph_viewer The graph viewer to query
+ * \param[out] graph The internal graph in the graph viewer
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
 
-size_t(ORT_API_CALL* OrtGraph_GetInputsIncludingInitializers)(const OrtGraphViewer* graph, _Outptr_ const char*** input_names);
+/** \brief Gets the Graph inputs including initializers, in the same order as defined in the GraphProto.
+ *
+ * \param[in] graph The graph to query
+ * \param[out] input_names The input names
+ * \param[out] input_len The number of inputs
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
 
-const OrtNode*(ORT_API_CALL* OrtGraph_GetOrtNode)(const OrtGraphViewer* graph, size_t node_index);
+/** \brief Get const Node given specific node index. May return nullptr if node as been freed.
+ *
+ * \param[in] graph The graph to query
+ * \param[in] node_index The index of the node
+ * \param[out] node The node
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
-size_t(ORT_API_CALL* OrtGraph_GetNodesConsumingInput)(const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers); // TODO(leca): ValueConsumers::comprehensive ?
+/** \brief Get the consumer nodes of a node arg with the given name
+ *
+ * \param[in] graph The graph to query
+ * \param[in] input_name The name of the node arg
+ * \param[out] consumers The consumer nodes of the node arg
+ * \param[out] num_consumers The number of consumer nodes
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers, _Out_ size_t* num_consumers); // TODO(leca): ValueConsumers::comprehensive ?
 
-const OrtNode*(ORT_API_CALL* OrtGraph_GetNodeProducingOutput)(const OrtGraphViewer* graph, const char* output_name);
+/** \brief Get the producer node of a node arg with the given name
+ *
+ * \param[in] graph The graph to query
+ * \param[in] output_name The name of the node arg
+ * \param[out] node The node producing the node arg
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetNodeProducingOutput, const OrtGraphViewer* graph, const char* output_name, _Outptr_ const OrtNode** node);
 
-int(ORT_API_CALL* OrtGraph_NumberOfNodes)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the number of valid Nodes in the Graph.
+ *
+ * \param[in] graph The graph to query
+ * \param[out] num_nodes The number of valid nodes in the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_NumberOfNodes, const OrtGraphViewer* graph, _Out_ int* num_nodes);
 
-int(ORT_API_CALL* OrtGraph_MaxNodeIndex)(const OrtGraphViewer* graph);
+/** \brief Gets the maximum NodeIndex value used in the Graph.
+ *
+ * \param[in] graph The graph to query
+ * \param[out] max_node_index The maximum NodeIndex value used by Nodes in the Graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* max_node_index);
 
-size_t(ORT_API_CALL* OrtGraph_GetOutputSize)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the number of outputs of the Graph.
+ *
+ * \param[in] graph The graph to query
+ * \param[out] output_len The number of outputs of the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetOutputSize, const OrtGraphViewer* graph, _Out_ size_t* output_len);
 
-const char*(ORT_API_CALL* OrtGraph_GetIthOutputName)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the name of the i-th output of the Graph.
+ *
+ * \param[in] graph The graph to query
+ * \param[in] i The index of the output
+ * \param[out] out The name of the i-th output of the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetIthOutputName, const OrtGraphViewer* graph, size_t i, _Outptr_ const char** out);
 
-int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the element type of the i-th output of the Graph.
+ *
+ * \param[in] graph The graph to query
+ * \param[in] i The index of the output
+ * \param[out] out The element type of the i-th output of the graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i, _Out_ int32_t* out);
 
-bool(ORT_API_CALL* OrtGraph_GetInitializerTensor)(const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
+/** \brief Gets the initializer tensor of the Graph.
+ *
+ * \param[in] graph The graph to query
+ * \param[in] initializer_name The name of the initializer tensor
+ * \param[out] out The initializer tensor
+ * \param[out] ret True if the initializer tensor is found
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**, _Out_ bool* ret);
 
-bool(ORT_API_CALL* OrtGraph_GetValueInfo)(const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef**);
+/** \brief Gets the value info of the node arg with the given name.
+ *
+ * \param[in] graph The graph to query
+ * \param[in] name The name of the node arg
+ * \param[out] out The value info
+ * \param[out] ret True if the value info is found
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret);
 
-size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;  // TODO(leca): review and discuss
+/** \brief Serialize the Graph to a byte array.
+ *
+ * \param[in] graph The graph to serialize
+ * \param[out] data The byte array
+ * \param[out] data_size The size of the byte array
+ *
+ * \remarks The caller is responsible for freeing the byte array using OrtFreeMem.
+ *
+ */
+ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);  // TODO(leca): review and discuss
 
+/** \brief Construct a subgraph from the Graph with the given node indices.
+ *
+ * \param[in] graph The graph to query
+ * \param[in] node_num The number of node indices
+ * \param[in] node_indices The indices of the nodes to include in the subgraph
+ * \param[out] subgraph The constructed subgraph
+ *
+ * \remarks The caller is responsible for releasing the subgraph using OrtGraph_ReleaseGraph.
+ *
+ */
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
 
-const char*(ORT_API_CALL* OrtNode_GetName)(const OrtNode* node);
+/** \brief Release the graph
+ *
+ * \param[in] graph The graph to release
+ *
+ */
+ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraphViewer* graph);
 
-const char*(ORT_API_CALL* OrtNode_GetDescription)(const OrtNode* node);
+/** \brief Gets the name of the node
+ *
+ * \param[in] node The node to query
+ * \param[out] out The name of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetDomain)(const OrtNode* node);
+/** \brief Gets the description of the node
+ *
+ * \param[in] node The node to query
+ * \param[out] out The description of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetDescription, const OrtNode* node, _Outptr_ const char** out);
 
-int(ORT_API_CALL* OrtNode_SinceVersion)(const OrtNode* node);
+/** \brief Gets the domain of the node
+ *
+ * \param[in] node The node to query
+ * \param[out] out The domain of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetDomain, const OrtNode* node, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetExecutionProviderType)(const OrtNode* node);
+/** \brief Gets the opset version that the Node's operator was first defined in.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The since version of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_SinceVersion, const OrtNode* node, _Out_ int* out);
 
-const char*(ORT_API_CALL* OrtNode_GetOpType)(const OrtNode* node);
+/** \brief Gets the execution ProviderType that this node will be executed by.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The execution ProviderType of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetExecutionProviderType, const OrtNode* node, _Out_ const char** out);
 
-size_t(ORT_API_CALL* OrtNode_GetImplicitInputSize)(const OrtNode* node);
+/** \brief Gets the Node's operator type.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The operator type of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetOpType, const OrtNode* node, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetIthImplicitInputName)(const OrtNode* node, size_t i);
+/** \brief Gets the number of implicit inputs of the node.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The number of implicit inputs of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetImplicitInputSize, const OrtNode* node, _Out_ size_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetInputSize)(const OrtNode* node);
+/** \brief Gets the i-th implicit input name of the node.
+ *
+ * \param[in] node The node to query
+ * \param[in] i The index of the implicit input
+ * \param[out] out The i-th implicit input name of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetIthImplicitInputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetIthInputName)(const OrtNode* node, size_t i);
+/** \brief Gets the number of inputs of the node.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The number of inputs of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetNumInputs, const OrtNode* node, _Out_ size_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetOutputSize)(const OrtNode* node);
+/** \brief Gets the i-th input name of the node.
+ *
+ * \param[in] node The node to query
+ * \param[in] i The index of the input
+ * \param[out] out The i-th input name of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-const char*(ORT_API_CALL* OrtNode_GetIthOutputName)(const OrtNode* node, size_t i);
+/** \brief Gets the number of outputs of the node.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The number of outputs of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetNumOutputs, const OrtNode* node, _Out_ size_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetIndex)(const OrtNode* node);
+/** \brief Gets the i-th output name of the node.
+ *
+ * \param[in] node The node to query
+ * \param[in] i The index of the output
+ * \param[out] out The i-th output name of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-size_t(ORT_API_CALL* OrtNode_GetAttributeNames)(const OrtNode*, _Out_ const char*** names);
+/** \brief Gets the Node's NodeIndex.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The Node's NodeIndex
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetAttributeSize)(const OrtNode* node);
+/** \brief Gets attribute names of the node.
+ *
+ * \param[in] node The node to query
+ * \param[out] names The attribute names of the node
+ * \param[out] num The number of attribute names
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeNames, const OrtNode* node, _Out_ const char*** names, _Out_ size_t* num);
 
-int(ORT_API_CALL* OrtNode_GetAttributeType)(const OrtNode* node, const char* attribute)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;  // AttributeProto_AttributeType
+/** \brief Gets the attribute size of the node.
+ *
+ * \param[in] node The node to query
+ * \param[out] out The attribute size of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetAttributeKeyCount)(const OrtNode* node, const char* key);
+/** \brief Gets the attribute type of the node.
+ *
+ * \param[in] node The node to query
+ * \param[in] attribute The attribute name
+ * \param[out] out The attribute type of the node
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeType, const OrtNode* node, const char* attribute, _Out_ int* out); // AttributeProto_AttributeType
 
-int(ORT_API_CALL* OrtNode_GetAttributeIntSize)(const OrtNode* node, const char* key);
+/** \brief Check if the attribute key exists in the node.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out 1 if the attribute key exists in the node, 0 otherwise
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* out);
 
-int(ORT_API_CALL* OrtNode_GetAttributeFloatSize)(const OrtNode* node, const char* key);
+/** \brief Gets how many ints are in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The number of ints in the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeIntSize, const OrtNode* node, const char* key, _Out_ int* out);
 
-int(ORT_API_CALL* OrtNode_GetAttributeStringSize)(const OrtNode* node, const char* key);
+/** \brief Gets how many floats are in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The number of floats in the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeFloatSize, const OrtNode* node, const char* key, _Out_ int* out);
 
-int64_t(ORT_API_CALL* OrtNode_GetAttributeIthInt)(const OrtNode* node, const char* key, int i);
+/** \brief Gets how many strings are in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The number of strings in the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeStringSize, const OrtNode* node, const char* key, _Out_ int* out);
 
-float(ORT_API_CALL* OrtNode_GetAttributeIthFloat)(const OrtNode* node, const char* key, int i);
+/** \brief Gets the i-th int in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[in] i The index of the int
+ * \param[out] out The i-th int in the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeIthInt, const OrtNode* node, const char* key, int i, _Out_ int64_t* out);
 
-const char*(ORT_API_CALL* OrtNode_GetAttributeIthStr)(const OrtNode* node, const char* key, int i);
+/** \brief Gets the i-th float in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[in] i The index of the float
+ * \param[out] out The i-th float in the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeIthFloat, const OrtNode* node, const char* key, int i, _Out_ float* out);
 
-const char*(ORT_API_CALL* OrtNode_GetAttributeStr)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the i-th string in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[in] i The index of the string
+ * \param[out] out The i-th string in the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key, int i, _Outptr_ const char** out);
 
-int64_t(ORT_API_CALL* OrtNode_GetAttributeInt)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the string value of the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The string value of the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeStr, const OrtNode* node, const char* key, _Outptr_ const char** out);
 
-float(ORT_API_CALL* OrtNode_GetAttributeFloat)(const OrtNode*, const char* key)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+/** \brief Gets the int value of the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The int value of the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeInt, const OrtNode* node, const char* key, _Out_ int64_t* out);
 
-size_t(ORT_API_CALL* OrtNode_GetSubgraphs)(const OrtNode* node, _Outptr_ const OrtGraphViewer*** subgraphs);
+/** \brief Gets the float value of the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The float value of the attribute
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeFloat, const OrtNode* node, const char* key, _Out_ float* out);
+
+/** \brief Gets the subgraphs of the given node.
+ *
+ * \param[in] node The node to query
+ * \param[out] subgraphs The subgraphs of the node
+ * \param[out] num_subgraphs The number of subgraphs
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetSubgraphs, const OrtNode* node, _Outptr_ const OrtGraphViewer*** subgraphs, _Out_ size_t* num_subgraphs);
+
+/** \brief Free the memory
+ *
+ * \param[in] p The memory to free
+ *
+ */
+ORT_API2_STATUS(OrtFreeMem, void* p);
 };
 typedef struct OrtGraphApi OrtGraphApi;

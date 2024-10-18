@@ -11,10 +11,13 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
         const OrtGraphApi* ort_graph_api = api->GetGraphApi(ORT_API_VERSION);
         std::vector<OrtIndexedSubGraph*> cache;
         const size_t* nodes_index = nullptr;
-        size_t nodes_count = ort_graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 0, &nodes_index);
+        size_t nodes_count = 0;
+        ort_graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 0, &nodes_index, &nodes_count);
         for (size_t i = 0; i < nodes_count; i++) {
-            const OrtNode* node = ort_graph_api->OrtGraph_GetOrtNode(graph, nodes_index[i]);
-            const char* node_op_type = ort_graph_api->OrtNode_GetOpType(node);
+            const OrtNode* node = nullptr;
+            ort_graph_api->OrtGraph_GetOrtNode(graph, nodes_index[i], &node);
+            const char* node_op_type = nullptr;
+            ort_graph_api->OrtNode_GetOpType(node, &node_op_type);
             if (!strcmp(node_op_type, "Relu")) {
                 OrtIndexedSubGraph* subgraph = new OrtIndexedSubGraph();
                 subgraph->node_index_len = 1;
@@ -24,17 +27,19 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
                 subgraph->meta_def = new OrtMetaDef();
                 subgraph->meta_def->name = "Relu_subgraph";
                 subgraph->meta_def->input_len = 0;
-                subgraph->meta_def->input_len = ort_graph_api->OrtNode_GetInputSize(node);
+                ort_graph_api->OrtNode_GetNumInputs(node, &subgraph->meta_def->input_len);
                 subgraph->meta_def->inputs = new char* [subgraph->meta_def->input_len];
                 for (size_t j = 0; j < subgraph->meta_def->input_len; j++) {
-                    const char* input_j = ort_graph_api->OrtNode_GetIthInputName(node, j);
+                    const char* input_j = nullptr;
+                    ort_graph_api->OrtNode_GetIthInputName(node, j, &input_j);
                     subgraph->meta_def->inputs[j] = const_cast<char*>(input_j);
                 }
 
-                subgraph->meta_def->output_len = ort_graph_api->OrtNode_GetOutputSize(node);
+                ort_graph_api->OrtNode_GetNumOutputs(node, &subgraph->meta_def->output_len);
                 subgraph->meta_def->outputs = new char* [subgraph->meta_def->output_len];
                 for (size_t j = 0; j < subgraph->meta_def->output_len; j++) {
-                    const char* output_j = ort_graph_api->OrtNode_GetIthOutputName(node, j);
+                    const char* output_j = nullptr;
+                    ort_graph_api->OrtNode_GetIthOutputName(node, j, &output_j);
                     subgraph->meta_def->outputs[j] = const_cast<char*>(output_j);
                 }
 
@@ -77,6 +82,17 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
             };
         }
         return nullptr;
+    };
+
+    OrtExecutionProvider::ReleaseIndexedSubGraphs = [](OrtIndexedSubGraph** indexed_sub_graphs, size_t num_sub_graph) {
+      if (indexed_sub_graphs == nullptr) return;
+      for (size_t i = 0; i < num_sub_graph; i++) {
+        OrtIndexedSubGraph* sub_graph = indexed_sub_graphs[i];
+        delete[] sub_graph->node_index;
+        delete sub_graph->meta_def;
+        delete sub_graph;
+      }
+      delete[] indexed_sub_graphs;
     };
 }
 

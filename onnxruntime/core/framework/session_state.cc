@@ -64,7 +64,7 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
 
 #ifdef ORT_ENABLE_STREAM
 static std::string ShouldPostPoneRegisterResourceFor(IExecutionProvider* ep, const ExecutionProviders& all_ep) {
-  if (ep->IsIntreeEp()) return "";  // TODO(leca): Or use dynamic_cast to check is it ExecutionProviderAdapter instance? Need to disable onnxruntime_DISABLE_RTTI
+  if (ep->IsBuiltInEp()) return "";  // TODO(leca): Or use dynamic_cast to check is it ExecutionProviderAdapter instance? Need to disable onnxruntime_DISABLE_RTTI
   for (auto& any_ep : all_ep) {
     if (any_ep->Type() != ep->Type() && any_ep->GetOrtDeviceByMemType(OrtMemTypeDefault) == ep->GetOrtDeviceByMemType(OrtMemTypeDefault)) return any_ep->Type();
   }

@@ -112,10 +112,10 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::stri
   return value_->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
 }
 
-void OrtEnv::InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory) {
-  value_->InsertCustomEp(ep_name, ep_factory);
+void OrtEnv::InsertPluginEpFactory(const char* ep_name, OrtExecutionProviderFactory* ep_factory) {
+  value_->InsertPluginEpFactory(ep_name, ep_factory);
 }
 
-OrtExecutionProviderFactory* OrtEnv::GetOrtExecutionProviderFactory(const char* ep_name) {
-  return value_->GetOrtExecutionProviderFactory(ep_name);
+OrtExecutionProviderFactory* OrtEnv::GetPluginExecutionProviderFactory(const char* ep_name) {
+  return value_->GetPluginExecutionProviderFactory(ep_name);
 }

@@ -272,11 +272,14 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   HashValue model_hash = 0;
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   const OrtGraphApi* graph_api = api->GetGraphApi(ORT_API_VERSION);
-  const OrtGraph* cur_graph = graph_api->OrtGraph_GetOrtGraph(graph_viewer);
-  bool is_subgraph = graph_api->OrtGraph_IsSubgraph(cur_graph);
+  const OrtGraph* cur_graph = nullptr;
+  graph_api->OrtGraph_GetOrtGraph(graph_viewer, &cur_graph);
+  bool is_subgraph = false;
+  graph_api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   while (is_subgraph) {
-    cur_graph = graph_api->OrtGraph_GetParentGraph(cur_graph);
-    is_subgraph = graph_api->OrtGraph_IsSubgraph(cur_graph);
+    graph_api->OrtGraph_GetParentGraph(cur_graph, &cur_graph);
+    is_subgraph = false;
+    graph_api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   }
 
   const OrtGraph* main_graph = cur_graph;
@@ -286,7 +289,8 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
     MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
   };
 
-  const std::filesystem::path* model_path = static_cast<const std::filesystem::path*>(graph_api->OrtGraph_GetModelPath(graph_viewer));
+  const std::filesystem::path* model_path = nullptr;
+  graph_api->OrtGraph_GetModelPath(graph_viewer, reinterpret_cast<const void**>(&model_path));
 
   // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
   if (model_path->has_filename()) {
@@ -308,22 +312,28 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   // fingerprint current graph by hashing graph inputs
   // const std::vector<const char*>& input_names = nullptr;
   const char** input_names = nullptr;
-  size_t input_count = graph_api->OrtGraph_GetInputsIncludingInitializers(graph_viewer, &input_names);
+  size_t input_count = 0;
+  graph_api->OrtGraph_GetInputsIncludingInitializers(graph_viewer, &input_names, &input_count);
   for (size_t i = 0; i < input_count; ++i) {
     hash_str(input_names[i]);
   }
 
   // hashing output of each node
-  const int number_of_ort_nodes = graph_api->OrtGraph_NumberOfNodes(graph_viewer);
+  int number_of_ort_nodes = 0;
+  graph_api->OrtGraph_NumberOfNodes(graph_viewer, &number_of_ort_nodes);
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   const size_t* nodes_index = nullptr;
-  size_t nodes_count = graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 0, &nodes_index);
+  size_t nodes_count = 0;
+  graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 0, &nodes_index, &nodes_count);
   for (const auto& index : nodes_vector) {
-    const OrtNode* node = graph_api->OrtGraph_GetOrtNode(graph_viewer, nodes_index[index]);
-    size_t output_size = graph_api->OrtNode_GetOutputSize(node);
+    const OrtNode* node = nullptr;
+    graph_api->OrtGraph_GetOrtNode(graph_viewer, nodes_index[index], &node);
+    size_t output_size = 0;
+    graph_api->OrtNode_GetNumOutputs(node, &output_size);
     for (size_t i = 0; i < output_size; ++i) {
-      const char* output_name = graph_api->OrtNode_GetIthOutputName(node, i);
+      const char* output_name = nullptr;
+      graph_api->OrtNode_GetIthOutputName(node, i, &output_name);
       if (output_name != nullptr) {
         hash_str(output_name);
       }
