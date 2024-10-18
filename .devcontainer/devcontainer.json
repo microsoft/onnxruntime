@@ -42,8 +42,8 @@
 	"remoteUser": "vscode",
 
 	"features": {
-		"git": "os-provided",
-		"python": "os-provided",
-		"powershell": "7.1"
+		"ghcr.io/devcontainers/features/git:1": {"version": "os-provided"},
+		"ghcr.io/devcontainers/features/python:1": {"version": "os-provided"},
+		"ghcr.io/devcontainers/features/powershell:1": {"version": "7.1"}
 	}
 }
