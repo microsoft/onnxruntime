@@ -211,18 +211,48 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
-  OpTester test("LayerNormalization");
-  test.AddAttribute<float>("epsilon", 1e-05f);
+  auto run_test = [](bool is_initializer) {
+    OpTester test("LayerNormalization");
+    test.AddAttribute<float>("epsilon", 1e-05f);
 
-  std::vector<int64_t> dims{1, 3, 2};
-  test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
-  test.AddInput<MLFloat16>("gamma", {2}, ToFloat16({-0.6953f, 5.1824f}));
-  test.AddInput<MLFloat16>("bias", {2}, ToFloat16({0.6435f, -0.3964f}));
-  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
-  // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
+    std::vector<int64_t> dims{1, 3, 2};
+    test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
+    test.AddInput<MLFloat16>("gamma", {2}, ToFloat16({-0.6953f, 5.1824f}), is_initializer);
+    test.AddInput<MLFloat16>("bias", {2}, ToFloat16({0.6435f, -0.3964f}), is_initializer);
+    test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
+    // TRT, DNNL, OpenVINO and NNAPI don't support this combination of datatypes
+    if (!is_initializer) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+               {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+                kNnapiExecutionProvider, kQnnExecutionProvider});
+    } else {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+      // coreml EP requires weight and bias to be initializers
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  };
+  run_test(false);
+#ifdef COREML_ENABLE_MLPROGRAM
+  // gamma as initialized will fail for CPUEP
+  run_test(true);
+#endif
+}
+
+template <typename T>
+class LayerNormTest : public ::testing::Test {
+};
+
+using LayerNormTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(LayerNormTest, LayerNormTestTypes);
+
+template <typename T>
+static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else {
+    return ToFloat16(inputs);
+  }
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializers) {
@@ -241,15 +271,31 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializer
 }
 
 // LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.
-TEST(LayerNormTest, LayerNorm17_float) {
-  OpTester test("LayerNormalization", 17);
-  test.AddAttribute<float>("epsilon", 1e-05f);
+TYPED_TEST(LayerNormTest, LayerNorm17_opset) {
+  auto run_test = [](bool is_initializer) {
+    OpTester test("LayerNormalization", 17);
+    test.AddAttribute<float>("epsilon", 1e-05f);
 
-  std::vector<int64_t> dims{1, 2, 3};
-  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
-  test.AddInput<float>("gamma", {3}, {1.0f, 1.0f, 1.0f});
-  test.AddOutput<float>("output", dims, {-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f});
-  test.Run();
+    std::vector<int64_t> dims{1, 2, 3};
+    test.AddInput<TypeParam>("x", dims, GetTypedArray<TypeParam>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+    test.AddInput<TypeParam>("gamma", {3}, GetTypedArray<TypeParam>({1.0f, 1.0f, 1.0f}), is_initializer);
+    test.AddOutput<TypeParam>("output", dims, GetTypedArray<TypeParam>({-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f}));
+    if (!is_initializer) {
+      test.Run();
+    } else if (std::is_same<TypeParam, MLFloat16>::value) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+      // coreml EP requires weight and bias to be initializers
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    } else {
+      test.Run();
+    }
+  };
+  run_test(false);
+#ifdef COREML_ENABLE_MLPROGRAM
+  // gamma as initialized will fail for CPUEP
+  run_test(true);
+#endif
 }
 
 TEST(LayerNormTest, LayerNorm17_double) {
