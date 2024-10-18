@@ -25,7 +25,8 @@ extends:
       name: onnxruntime-Win-CPU-2022
       os: windows
     stages:
-    - stage: Windows_Build
+    - stage: stage
+      displayName: Windows_Build
       jobs:
       - template: windowsai-steps.yml@self
         parameters:
