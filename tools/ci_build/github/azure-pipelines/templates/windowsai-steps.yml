@@ -26,7 +26,7 @@ jobs:
       inputs:
         version: '5.x'
 
-    - template: templates/telemetry-steps.yml@self
+    - template: templates/telemetry-steps.yml
 
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
@@ -125,7 +125,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
         displayName: 'Build Microsoft.AI.MachineLearning.Interop.dll'
 
-    - template: templates/win-esrp-dll.yml@self
+    - template: templates/win-esrp-dll.yml
       parameters:
         FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         DisplayName: 'Sign runtime DLLs'
@@ -167,7 +167,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Create NuGet Package'
 
-    - template: templates/win-esrp-dll.yml@self
+    - template: templates/win-esrp-dll.yml
       parameters:
         FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
         DisplayName: 'Sign test_artifact'
