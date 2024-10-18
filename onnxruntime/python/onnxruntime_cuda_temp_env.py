@@ -1,6 +1,6 @@
 import os
-import site
 import platform
+import site
 
 
 class TemporaryEnv:
@@ -16,12 +16,12 @@ class TemporaryEnv:
 def get_nvidia_dll_paths():
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[0]
-    nvidia_path = os.path.join(site_packages_path, 'nvidia')
+    nvidia_path = os.path.join(site_packages_path, "nvidia")
 
     # Collect all directories under site-packages/nvidia that contain .dll files (for Windows)
     dll_paths = []
     for root, dirs, files in os.walk(nvidia_path):
-        if any(file.endswith('.dll') for file in files):
+        if any(file.endswith(".dll") for file in files):
             dll_paths.append(root)
     return os.pathsep.join(dll_paths)
 
@@ -29,22 +29,21 @@ def get_nvidia_dll_paths():
 def get_nvidia_so_paths():
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[0]
-    nvidia_path = os.path.join(site_packages_path, 'nvidia')
+    nvidia_path = os.path.join(site_packages_path, "nvidia")
 
     # Collect all directories under site-packages/nvidia that contain .so files (for Linux)
     so_paths = []
     for root, dirs, files in os.walk(nvidia_path):
-        if any(file.endswith('.so') for file in files):
+        if any(file.endswith(".so") for file in files):
             so_paths.append(root)
     return os.pathsep.join(so_paths)
 
 
 def setup_temp_env_for_ort_cuda():
-        # Determine platform and set up the environment accordingly
-        if platform.system() == 'Windows':  # Windows
-            nvidia_dlls_path = get_nvidia_dll_paths()
-            return TemporaryEnv({"PATH": nvidia_dlls_path + os.pathsep + os.environ.get('PATH', '')})
-        elif platform.system() == 'Linux':
-            nvidia_so_paths = get_nvidia_so_paths()
-            return TemporaryEnv({"LD_LIBRARY_PATH": nvidia_so_paths + os.pathsep + os.environ.get(
-                'LD_LIBRARY_PATH', '')})
+    # Determine platform and set up the environment accordingly
+    if platform.system() == "Windows":  # Windows
+        nvidia_dlls_path = get_nvidia_dll_paths()
+        return TemporaryEnv({"PATH": nvidia_dlls_path + os.pathsep + os.environ.get("PATH", "")})
+    elif platform.system() == "Linux":
+        nvidia_so_paths = get_nvidia_so_paths()
+        return TemporaryEnv({"LD_LIBRARY_PATH": nvidia_so_paths + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")})

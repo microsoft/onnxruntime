@@ -7,10 +7,10 @@
 import datetime
 import logging
 import platform
+import re
 import shlex
 import subprocess
 import sys
-import re
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -66,7 +66,7 @@ if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
     if cuda_version is not None:
-        if not bool(re.match(r'^\d+\.\d+(\.\d+)?$', cuda_version)):
+        if not bool(re.match(r"^\d+\.\d+(\.\d+)?$", cuda_version)):
             logger.error("CUDA version must be in format 'x.y' or  'x.y.z'")
             sys.exit(1)
         cuda_version_major = cuda_version.split(".")[0]
@@ -610,9 +610,9 @@ if enable_training or enable_training_apis:
 
         disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
         disable_local_version = (
-                disable_local_version == "1"
-                or disable_local_version.lower() == "true"
-                or disable_local_version.lower() == "yes"
+            disable_local_version == "1"
+            or disable_local_version.lower() == "true"
+            or disable_local_version.lower() == "yes"
         )
         # local version should be disabled for internal feeds.
         if not disable_local_version:
@@ -799,5 +799,5 @@ setup(
         ]
     },
     classifiers=classifiers,
-    extras_require=extras_require
+    extras_require=extras_require,
 )
