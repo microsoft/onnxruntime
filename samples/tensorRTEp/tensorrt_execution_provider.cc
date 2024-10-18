@@ -1030,7 +1030,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
       }
 
       size_t input_count = 0;
-      graph_api_->OrtNode_GetInputSize(node, &input_count);
+      graph_api_->OrtNode_GetNumInputs(node, &input_count);
       for (size_t i = 0; i < input_count; ++i) {
         const char* input_name_char = nullptr;
         graph_api_->OrtNode_GetIthInputName(node, i, &input_name_char);
@@ -1046,7 +1046,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
       }
 
       size_t output_count = 0;
-      graph_api_->OrtNode_GetOutputSize(node, &output_count);
+      graph_api_->OrtNode_GetNumOutputs(node, &output_count);
       for (size_t i = 0; i < output_count; ++i) {
         const char* output_name_char = nullptr;
         graph_api_->OrtNode_GetIthOutputName(node, i, &output_name_char);
@@ -1196,7 +1196,7 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
     const OrtNode* node = nullptr;
     graph_api_->OrtGraph_GetOrtNode(graph, node_index[index], &node);
     size_t input_size = 0;
-    graph_api_->OrtNode_GetInputSize(node, &input_size);
+    graph_api_->OrtNode_GetNumInputs(node, &input_size);
     for (size_t j = 0; j < input_size; j++) {
       const char* input_name = nullptr;
       graph_api_->OrtNode_GetIthInputName(node, j, &input_name);
@@ -1248,7 +1248,7 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
     }
 
     size_t output_size = 0;
-    graph_api_->OrtNode_GetOutputSize(node, &output_size);
+    graph_api_->OrtNode_GetNumOutputs(node, &output_size);
     for (size_t j = 0; j < output_size; j++) {
       const char* output_name = nullptr;
       graph_api_->OrtNode_GetIthOutputName(node, j, &output_name);
@@ -1555,7 +1555,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         for (size_t j = 0; j < cnt; j++) {
             std::unordered_map<std::string, size_t> input_map, output_map;
             size_t input_size = 0;
-            graph_api_->OrtNode_GetInputSize(node[j], &input_size);
+            graph_api_->OrtNode_GetNumInputs(node[j], &input_size);
             for (size_t i = 0; i < input_size; i++) {
                 const char* ith_input_name = nullptr;
                 graph_api_->OrtNode_GetIthInputName(node[j], i, &ith_input_name);
@@ -1563,7 +1563,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
             }
 
             size_t output_size = 0;
-            graph_api_->OrtNode_GetOutputSize(node[j], &output_size);
+            graph_api_->OrtNode_GetNumOutputs(node[j], &output_size);
             for (size_t i = 0; i < output_size; i++) {
                 const char* ith_output_name = nullptr;
                 graph_api_->OrtNode_GetIthOutputName(node[j], i, &ith_output_name);
@@ -1586,8 +1586,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     OrtExecutionProvider::CanCopy = [](const OrtDevice* source, const OrtDevice* target) {
       const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
       OrtMemoryInfoDeviceType source_device_type, target_device_type;
-      api_->DeviceGetDeviceType(source, &source_device_type);
-      api_->DeviceGetDeviceType(target, &target_device_type);
+      api_->DeviceGetType(source, &source_device_type);
+      api_->DeviceGetType(target, &target_device_type);
       OrtMemoryType source_mem_type, target_mem_type;
       api_->DeviceGetMemoryType(source, &source_mem_type);
       api_->DeviceGetMemoryType(target, &target_mem_type);

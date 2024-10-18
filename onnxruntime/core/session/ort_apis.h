@@ -526,26 +526,26 @@ ORT_API_STATUS_IMPL(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_
 
 ORT_API_STATUS_IMPL(CreateDevice, _In_ enum OrtMemoryInfoDeviceType device_type, _In_ enum OrtMemoryType memory_type, _In_ int16_t device_id, _Outptr_ const OrtDevice** out);
 
-ORT_API_STATUS_IMPL(DeviceGetDeviceType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out);
+ORT_API_STATUS_IMPL(DeviceGetType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out);
 
 ORT_API_STATUS_IMPL(DeviceGetMemoryType, _In_ const OrtDevice* device, _Out_ OrtMemoryType* out);
 
-ORT_API_STATUS_IMPL(DeviceGetDeviceId, _In_ const OrtDevice* device, _Out_ int16_t* out);
+ORT_API_STATUS_IMPL(DeviceGetId, _In_ const OrtDevice* device, _Out_ int16_t* out);
 
 ORT_API(void, ReleaseDevice, _Frees_ptr_opt_ OrtDevice*);
 
-ORT_API_STATUS_IMPL(RegisterOrtExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
+ORT_API_STATUS_IMPL(RegisterPluginExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
 
-ORT_API_STATUS_IMPL(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
+ORT_API_STATUS_IMPL(SessionOptionsAppendPluginExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
-
-ORT_API_STATUS_IMPL(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints);
 
 ORT_API_STATUS_IMPL(CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints);
 
 ORT_API_STATUS_IMPL(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
 
 ORT_API(void, ReleaseTypeConstraints, _In_ OrtTypeConstraints* type_constraints);
+
+ORT_API_STATUS_IMPL(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints);
 
 ORT_API(const OrtGraphApi*, GetGraphApi, uint32_t version);
 }  // namespace OrtApis

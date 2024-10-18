@@ -330,7 +330,7 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
     const OrtNode* node = nullptr;
     graph_api->OrtGraph_GetOrtNode(graph_viewer, nodes_index[index], &node);
     size_t output_size = 0;
-    graph_api->OrtNode_GetOutputSize(node, &output_size);
+    graph_api->OrtNode_GetNumOutputs(node, &output_size);
     for (size_t i = 0; i < output_size; ++i) {
       const char* output_name = nullptr;
       graph_api->OrtNode_GetIthOutputName(node, i, &output_name);

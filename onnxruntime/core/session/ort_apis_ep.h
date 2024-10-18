@@ -63,11 +63,11 @@ ORT_API_STATUS_IMPL(OrtNode_GetImplicitInputSize, const OrtNode* node, _Out_ siz
 
 ORT_API_STATUS_IMPL(OrtNode_GetIthImplicitInputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-ORT_API_STATUS_IMPL(OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(OrtNode_GetNumInputs, const OrtNode* node, _Out_ size_t* out);
 
 ORT_API_STATUS_IMPL(OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 
-ORT_API_STATUS_IMPL(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(OrtNode_GetNumOutputs, const OrtNode* node, _Out_ size_t* out);
 
 ORT_API_STATUS_IMPL(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Outptr_ const char** out);
 

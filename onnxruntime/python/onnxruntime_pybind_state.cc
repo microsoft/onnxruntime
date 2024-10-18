@@ -1189,7 +1189,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         ->CreateProvider();
 #endif
   } else {
-    OrtExecutionProviderFactory* plugin_ep_factory = GetEnv()->GetOrtExecutionProviderFactory(type);
+    OrtExecutionProviderFactory* plugin_ep_factory = GetEnv()->GetPluginExecutionProviderFactory(type);
     if (plugin_ep_factory != nullptr) {
       std::vector<const char*> keys, values;
       const auto it = provider_options_map.find(type);
@@ -1490,7 +1490,7 @@ void addGlobalMethods(py::module& m) {
       OrtExecutionProviderFactory* (*symbol)();
       OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, "RegisterCustomEp", (void**)&symbol));
       auto env = GetEnv();
-      env->InsertCustomEp(provider_type, symbol());
+      env->InsertPluginEpFactory(provider_type, symbol());
       plugin_execution_providers.insert(std::string(provider_type));
     }
   });

@@ -27,7 +27,7 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
                 subgraph->meta_def = new OrtMetaDef();
                 subgraph->meta_def->name = "Relu_subgraph";
                 subgraph->meta_def->input_len = 0;
-                ort_graph_api->OrtNode_GetInputSize(node, &subgraph->meta_def->input_len);
+                ort_graph_api->OrtNode_GetNumInputs(node, &subgraph->meta_def->input_len);
                 subgraph->meta_def->inputs = new char* [subgraph->meta_def->input_len];
                 for (size_t j = 0; j < subgraph->meta_def->input_len; j++) {
                     const char* input_j = nullptr;
@@ -35,7 +35,7 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
                     subgraph->meta_def->inputs[j] = const_cast<char*>(input_j);
                 }
 
-                ort_graph_api->OrtNode_GetOutputSize(node, &subgraph->meta_def->output_len);
+                ort_graph_api->OrtNode_GetNumOutputs(node, &subgraph->meta_def->output_len);
                 subgraph->meta_def->outputs = new char* [subgraph->meta_def->output_len];
                 for (size_t j = 0; j < subgraph->meta_def->output_len; j++) {
                     const char* output_j = nullptr;

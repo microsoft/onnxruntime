@@ -601,7 +601,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetIthImplicitInputName, const OrtNode
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetNumInputs, const OrtNode* node, _Out_ size_t* out) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *out = n->InputDefs().size();
   return nullptr;
@@ -614,7 +614,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetIthInputName, const OrtNode* node, 
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetNumOutputs, const OrtNode* node, _Out_ size_t* out) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *out = n->OutputDefs().size();
   return nullptr;
@@ -769,9 +769,9 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtNode_GetOpType,
     &OrtGraphApis::OrtNode_GetImplicitInputSize,
     &OrtGraphApis::OrtNode_GetIthImplicitInputName,
-    &OrtGraphApis::OrtNode_GetInputSize,
+    &OrtGraphApis::OrtNode_GetNumInputs,
     &OrtGraphApis::OrtNode_GetIthInputName,
-    &OrtGraphApis::OrtNode_GetOutputSize,
+    &OrtGraphApis::OrtNode_GetNumOutputs,
     &OrtGraphApis::OrtNode_GetIthOutputName,
     &OrtGraphApis::OrtNode_GetIndex,
     &OrtGraphApis::OrtNode_GetAttributeNames,
