@@ -151,6 +151,8 @@ class TensorTracker {
       // Assign both shape and dimensions while transitioning to new API.
       dimensions: shape,
       usage,
+      readable: true,
+      writable: true,
     });
     this.tensorEntry = [tensor, dataType, shape];
     this.tensorCache.push(this.tensorEntry);
