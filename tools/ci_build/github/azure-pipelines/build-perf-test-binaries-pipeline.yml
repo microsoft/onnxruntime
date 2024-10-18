@@ -27,31 +27,31 @@ extends:
     stages:
     - stage: Windows_Build
       jobs:
-      - template: templates/windowsai-steps.yml@self
+      - template: onnxruntime/tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
 
-      - template: templates/windowsai-steps.yml@self
+      - template: onnxruntime/tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
 
-      - template: templates/windowsai-steps.yml@self
+      - template: onnxruntime/tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
 
-      - template: templates/windowsai-steps.yml@self
+      - template: onnxruntime/tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
           Runtime: static
 
-      - template: templates/windowsai-steps.yml@self
+      - template: onnxruntime/tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
           Runtime: static
 
-      - template: templates/windowsai-steps.yml@self
+      - template: onnxruntime/tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
           Runtime: static
