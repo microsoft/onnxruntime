@@ -14,7 +14,7 @@
 
 * **YouTube video tutorials**: [youtube.com/@ONNXRuntime](https://www.youtube.com/@ONNXRuntime)
 
-* [**Upcoming Release Roadmap**](https://github.com/microsoft/onnxruntime/wiki/Upcoming-Release-Roadmap)
+* [**Upcoming Release Roadmap**](https://onnxruntime.ai/roadmap)
 
 * **Companion sample repositories**:
   - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
@@ -39,6 +39,12 @@ This project is tested with [BrowserStack](https://www.browserstack.com/home).
 |System|Inference|Training|
 |---|---|---|
 |Linux|[![Build Status](https://github.com/Ascend/onnxruntime/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/Ascend/onnxruntime/actions/workflows/build-and-test.yaml)||
+
+## Releases
+
+The current release and past releases can be found here: https://github.com/microsoft/onnxruntime/releases.
+
+For details on the upcoming release, including release dates, announcements, features, and guidance on submitting feature requests, please visit the release roadmap: https://onnxruntime.ai/roadmap.
 
 ## Data/Telemetry
 
