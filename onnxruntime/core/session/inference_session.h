@@ -799,10 +799,10 @@ class InferenceSession {
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
-  mutable std::mutex session_mutex_;             // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
+  mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
+  bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
