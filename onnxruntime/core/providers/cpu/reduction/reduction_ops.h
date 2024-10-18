@@ -388,6 +388,15 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
   static inline FastReduceKind WhichFastReduce() {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK | FastReduceKind::kRKR;
   }
+  
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = static_cast<T>(0);
+    if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
+      ORT_NOT_IMPLEMENTED();
+    } else {
+      EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+    }
+  }
 
   static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
