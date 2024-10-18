@@ -34,7 +34,8 @@ using testing::TestInfo;
 using testing::TestPartResult;
 using testing::UnitTest;
 
-void ortenv_setup();
+extern "C" void ortenv_setup();
+extern "C" void ortenv_teardown();
 
 static NSString* const GoogleTestDisabledPrefix = @"DISABLED_";
 
@@ -63,22 +64,49 @@ class XCTestListener : public testing::EmptyTestEventListener {
  public:
   XCTestListener(XCTestCase* testCase) : _testCase(testCase) {}
 
-  void OnTestPartResult(const TestPartResult& test_part_result) {
+  void OnTestPartResult(const TestPartResult& test_part_result) override {
     if (test_part_result.passed() || test_part_result.skipped())
       return;
 
     int lineNumber = test_part_result.line_number();
     const char* fileName = test_part_result.file_name();
     NSString* path = fileName ? [@(fileName) stringByStandardizingPath] : nil;
+    NSString* summary = @(test_part_result.summary());
     NSString* description = @(test_part_result.message());
-    [_testCase recordFailureWithDescription:description
-                                     inFile:path
-                                     atLine:(lineNumber >= 0 ? (NSUInteger)lineNumber : 0)
-                                   expected:YES];
+
+    XCTSourceCodeLocation* sourceCodeLocation =
+        [[XCTSourceCodeLocation alloc] initWithFilePath:path
+                                             lineNumber:lineNumber];
+
+    XCTSourceCodeContext* sourceCodeContext =
+        [[XCTSourceCodeContext alloc] initWithLocation:sourceCodeLocation];
+
+    XCTIssue* issue = [[XCTIssue alloc] initWithType:XCTIssueTypeAssertionFailure
+                                  compactDescription:summary
+                                 detailedDescription:description
+                                   sourceCodeContext:sourceCodeContext
+                                     associatedError:nil
+                                         attachments:@[]];
+
+    [_testCase recordIssue:issue];
   }
 
  private:
   XCTestCase* _testCase;
+};
+
+/**
+ * A Google Test listener that manages the ORT env setup and teardown.
+ */
+class OrtEnvManagementListener : public testing::EmptyTestEventListener {
+ public:
+  void OnTestProgramStart(const UnitTest& unit_test) override {
+    ortenv_setup();
+  }
+
+  void OnTestProgramEnd(const UnitTest& unit_test) override {
+    ortenv_teardown();
+  }
 };
 
 /**
@@ -179,7 +207,6 @@ static void RunTest(id self, SEL _cmd) {
                                                     object:bundle
                                                      queue:nil
                                                 usingBlock:^(NSNotification* notification) {
-                                                  ortenv_setup();
                                                   [self registerTestClasses];
                                                 }];
 }
@@ -200,6 +227,8 @@ static void RunTest(id self, SEL _cmd) {
   testing::TestEventListeners& listeners = googleTest->listeners();
   delete listeners.Release(listeners.default_result_printer());
   free(argv);
+
+  listeners.Append(new OrtEnvManagementListener());
 
   BOOL runDisabledTests = GTEST_FLAG_GET(also_run_disabled_tests);
   NSMutableDictionary* testFilterMap = [NSMutableDictionary dictionary];

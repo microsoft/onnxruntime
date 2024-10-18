@@ -18,7 +18,12 @@ stages:
       vmImage: "macOS-13"
 
     variables:
+      # Note: Keep the Xcode version and iOS simulator version compatible.
+      # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
+      # https://developer.apple.com/support/xcode/
       xcodeVersion: "14.3.1"
+      iosSimulatorRuntimeVersion: "16.4"
+
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
@@ -62,6 +67,8 @@ stages:
         architecture: "x64"
 
     - template: ../use-xcode-version.yml
+      parameters:
+        xcodeVersion: $(xcodeVersion)
 
     - template: ../install-appcenter.yml
 
@@ -80,6 +87,8 @@ stages:
           --build-settings-file "${{ variables.buildSettingsFile }}" \
           ${{ variables.optionalIncludeOpsByConfigOption }}
       displayName: "Build macOS/iOS framework and assemble pod package files"
+      env:
+        ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: $(iosSimulatorRuntimeVersion)
 
     - script: |
         python tools/ci_build/github/apple/test_apple_packages.py \
