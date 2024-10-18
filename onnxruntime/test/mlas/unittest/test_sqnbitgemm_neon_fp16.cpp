@@ -77,17 +77,26 @@ class MlasNeonFp16CastTest : public MlasTestBase {
   }
 };
 
-class MlasNeonFp16PrepackTest : public MlasTestBase {
+class MlasNeonFp16PrepackDequantBTest : public MlasTestBase {
  private:
   std::random_device _rd;  // a seed source for the random number engine
   std::mt19937 _gen; // mersenne_twister_engine seeded with rd()
   std::uniform_int_distribution<> _distrib;
+  std::uniform_int_distribution<float> _distribFp;
 
-  template<size_t BufferSize>
   MLAS_FORCEINLINE
   void InitializeBuffer(std::vector<uint8_t>& buffer) {
-    for (size_t i = 0; i < BufferSize; i++) {
+    size_t count = buffer.size();
+    for (size_t i = 0; i < count; i++) {
       buffer[i] = static_cast<uint8_t>(_distrib(_gen));
+    }
+  }
+
+  MLAS_FORCEINLINE
+  void InitializeBuffer(std::vector<MLAS_FP16>& buffer) {
+    size_t count = buffer.size();
+    for (size_t i = 0; i < count; i++) {
+      buffer[i] = MLAS_FP16(_distribFp(_gen));
     }
   }
 
@@ -117,7 +126,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     }
   }
 
-  template<size_t Ldb, size_t N, size_t K>
+  template <size_t Ldb, size_t N, size_t K>
   MLAS_FORCEINLINE
   void Prepack(std::vector<uint8_t>& src, std::vector<uint8_t>& dst) {
     size_t n = 0;
@@ -134,6 +143,49 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     }
   }
 
+  template <size_t N, size_t K, size_t BlkLen, bool UseZeroPoints>
+  void DequantB(const std::vector<uint8_t>& src, std::vector<MLAS_FP16>& dst,
+                const std::vector<MLAS_FP16>& scales, const std::vector<uint8_t>& zero_points) {
+    constexpr size_t blkNum = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t ld_src = (blkNum * BlkLen + 1) / 2;
+    constexpr size_t ld_dst = blkNum * BlkLen;
+    constexpr size_t ld_zp = (blkNum + 1) / 2;
+    size_t n = 0;
+    for (; n + 8 <= N; n += 8) {
+      size_t i_src = n * ld_src, i_dst = n * ld_dst, i_scale = n * blkNum, i_zp = n * ld_zp;
+      for (size_t blk = 0; blk < blkNum; ++blk, ++i_scale, i_zp += (blk & 1)) {
+        for (size_t i = 0; i < BlkLen; i += 2, i_dst += 8) {
+          for (size_t j = 0; j < 8; ++j, ++i_src, ++i_dst) {
+            uint8_t v = src[i_src];
+            float v0 = static_cast<float>(GetInt4(v, 0));
+            float v1 = static_cast<float>(GetInt4(v, 1));
+            float zp = static_cast<float>(UseZeroPoints ? GetInt4(zero_points[i_zp + ld_zp * j], blk) : 8);
+            float scale = scales[i_scale + blkNum * j];
+            dst[i_dst] = MLAS_FP16((v0 - zp) * scale);
+            dst[i_dst + 8] = MLAS_FP16((v1 - zp) * scale);
+          }
+        }
+      }
+    }
+
+    for (; n < N; ++n) {
+      size_t i_src = n * ld_src, i_dst = n * ld_dst, i_scale = n * blkNum, i_zp = n * ld_zp;
+      for (size_t blk = 0; blk < blkNum; ++blk, ++i_scale, i_zp += (blk & 1)) {
+        float zp = static_cast<float>(UseZeroPoints ? GetInt4(zero_points[i_zp], blk) : 8);
+        float scale = scales[i_scale];
+        for (size_t i = 0; i < BlkLen; i += 16, i_dst += 8) {
+          for (size_t j = 0; j < 16; j += 2, ++i_src, ++i_dst) {
+            uint8_t v = src[i_src];
+            float v0 = static_cast<float>(GetInt4(v, 0));
+            float v1 = static_cast<float>(GetInt4(v, 1));
+            dst[i_dst] = MLAS_FP16((v0 - zp) * scale);
+            dst[i_dst + 8] = MLAS_FP16((v1 - zp) * scale);
+          }
+        }
+      }
+    }
+  }
+
   template<size_t Ldb, size_t N, size_t K>
   MLAS_FORCEINLINE
   void Check(std::vector<uint8_t>& packed, std::vector<uint8_t>& ref) {
@@ -141,7 +193,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     for (; n + 8 <= N; n += 8) {
       for (size_t i = 0; i < K; i += 2) {
         for (size_t j = 0; j < 8; ++j) {
-          ASSERT_EQ(packed[n * Ldb + (i >> 1) * 8 + j], ref[n * Ldb + (i >> 1) * 8 + j]) 
+          ASSERT_EQ(packed[n * Ldb + (i >> 1) * 8 + j], ref[n * Ldb + (i >> 1) * 8 + j])
               << " n " << n << " i " << i << " j " << j;
         }
       }
@@ -155,14 +207,35 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     }
   }
 
-  template<size_t N, size_t K, size_t BlkLen>
+  template<size_t Ldb, size_t N, size_t K>
+  MLAS_FORCEINLINE
+  void Check(std::vector<MLAS_FP16>& target, std::vector<MLAS_FP16>& ref) {
+    size_t n = 0;
+    for (; n + 8 <= N; n += 8) {
+      for (size_t i = 0; i < K; ++i) {
+        for (size_t j = 0; j < 8; ++j) {
+          ASSERT_EQ(target[n * Ldb + i * 8 + j], ref[n * Ldb + i * 8 + j])
+              << " n " << n << " i " << i << " j " << j;
+        }
+      }
+    }
+
+    for (; n < N; ++n) {
+      for (size_t i = 0; i < K; ++i) {
+        ASSERT_EQ(target[n * Ldb + i], ref[n * Ldb + i])
+            << " n " << n << " i " << i;
+      }
+    }
+  }
+
+  template <size_t N, size_t K, size_t BlkLen>
   void TestPrepack() {
     constexpr size_t Bits = 4;
     constexpr size_t Ldb = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t BufferSize = N * Ldb;
 
     std::vector<uint8_t> input(BufferSize), packed(BufferSize), ref(BufferSize);
-    InitializeBuffer<BufferSize>(input);
+    InitializeBuffer(input);
     MlasSQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_SQNBIT_GEMM_COMPUTE_TYPE::CompFp16, input.data(), packed.data(), nullptr
     );
@@ -170,9 +243,30 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     Check<Ldb, N, K>(packed, ref);
   }
 
+  template <size_t N, size_t K, size_t BlkLen, bool UseZeroPoints>
+  void TestDequant() {
+    constexpr size_t Bits = 4;
+    constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t BCount = BlkNum * BlkLen * N;
+    constexpr size_t ScaleCount = N * BlkNum;
+    constexpr size_t ZpSize = N * ((BlkNum + 1) / 2);
+
+    std::vector<uint8_t> input(BCount / 2), zero_points(ZpSize);
+    std::vector<MLAS_FP16> dequant(BCount), ref(BCount), scales(ScaleCount);
+    InitializeBuffer(input);
+    InitializeBuffer(zero_points);
+    InitializeBuffer(scales);
+    GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
+        BlkLen, dequant.data(), input.data(), scales.data(), UseZeroPoints ? zero_points.data() : nullptr,
+        N, K, BlkNum
+    );
+    DequantB<N, K, BlkLen, UseZeroPoints>(input, ref, scales, zero_points);
+    Check<BlkLen * BlkNum, N, K>(dequant, ref);
+  }
+
  public:
-  MlasNeonFp16PrepackTest()
-    : _gen(_rd()), _distrib(0, 255) {
+  MlasNeonFp16PrepackDequantBTest()
+    : _gen(_rd()), _distrib(0, 255), _distribFp(-2.0f, 2.0f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -190,6 +284,17 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     TestPrepack<15, 33, 16>();
     TestPrepack<17, 67, 16>();
     TestPrepack<17, 96, 128>();
+
+    TestDequant<1, 1, 16, false>();
+    TestDequant<1, 15, 16, true>();
+    TestDequant<1, 31, 16, false>();
+    TestDequant<8, 1, 16, true>();
+    TestDequant<8, 16, 16, false>();
+    TestDequant<9, 31, 16, true>();
+    TestDequant<9, 33, 32, false>();
+    TestDequant<15, 33, 16, true>();
+    TestDequant<17, 67, 16, false>();
+    TestDequant<17, 96, 128, true>();
   }
 };
 
@@ -197,7 +302,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasNeonFp16CastTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonFp16PrepackTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasNeonFp16PrepackDequantBTest>::RegisterShortExecute();
   }
   return count;
 });
