@@ -39,7 +39,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequestAdapterOptions req_adapter_options = {};
       wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       req_adapter_options.nextInChain = &adapter_toggles_desc;
-#ifdef WIN32
+#ifdef _WIN32
       req_adapter_options.backendType = wgpu::BackendType::D3D12;
 #endif
       req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
