@@ -20,3 +20,7 @@ std::optional<std::vector<onnxruntime::Node*>> create_ep_context_nodes(
 int vitisai_ep_on_run_start(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
     vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name));
+int vitisai_ep_set_ep_dynamic_options(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const char* const* keys,
+    const char* const* values, size_t kv_len);
