@@ -24,9 +24,9 @@ class LayerNormImpl : public OpKernel {
       const T* X_data,
       const TensorShape& x_shape,
       const T* scale_data,
-      const TensorShape& scale_shape,
+      size_t scale_size,
       const T* bias_data,
-      const TensorShape& bias_shape,
+      size_t bias_size,
       T* Y_data,
       U* mean_data,
       U* inv_std_dev,
@@ -63,8 +63,10 @@ class LayerNormImpl : public OpKernel {
   float epsilon_;
   const bool simplified_;
   const bool contrib_op_;
-  mutable IAllocatorUniquePtr<float> scale_fp32_;
-  mutable IAllocatorUniquePtr<float> bias_fp32_;
+  IAllocatorUniquePtr<float> prepacked_scale_fp32_data_;
+  size_t prepacked_scale_fp32_size_;
+  IAllocatorUniquePtr<float> prepacked_bias_fp32_data_;
+  size_t prepacked_bias_fp32_size_;
 };
 
 }  // namespace onnxruntime
