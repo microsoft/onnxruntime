@@ -20,9 +20,10 @@ bool Int16QDQPairsRemover::TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quanti
   Node* quantize_node = graph.GetNode(quantize_node_index);
 
   if (quantize_node == nullptr ||
-      !graph_utils::IsSupportedProvider(*quantize_node, GetCompatibleExecutionProviders()) ||
       quantize_node->OpType() != "QuantizeLinear" ||
-      graph.NodeProducesGraphOutput(*quantize_node)) {
+      quantize_node->GetInputEdgesCount() == 0 ||
+      graph.NodeProducesGraphOutput(*quantize_node) ||
+      !graph_utils::IsSupportedProvider(quantize_node->InputEdgesBegin()->GetNode(), GetCompatibleExecutionProviders())) {
     return false;
   }
 
@@ -44,9 +45,16 @@ bool Int16QDQPairsRemover::TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quanti
     NodeIndex dequantize_node_index = it->GetNode().Index();
     Node* dequantize_node = graph.GetNode(dequantize_node_index);
 
-    if (dequantize_node == nullptr || dequantize_node->OpType() != "DequantizeLinear") {
+    if (dequantize_node == nullptr ||
+        dequantize_node->OpType() != "DequantizeLinear") {
       // Child is not a DQ op.
       return false;
+    }
+
+    for (auto dequantize_output_iter = dequantize_node->OutputEdgesBegin(); dequantize_output_iter != dequantize_node->OutputEdgesEnd(); dequantize_output_iter++) {
+      if (!graph_utils::IsSupportedProvider(dequantize_output_iter->GetNode(), GetCompatibleExecutionProviders())) {
+        return false;
+      }
     }
 
     // The Q2 and DQ2 nodes must have equal zero-point and scale values (scalar/constant).
