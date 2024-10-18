@@ -23,7 +23,7 @@ public:
     DmlOperatorDynamicQuantizeMatMul(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        DmlOperator::Initialize(kernelCreationContext);
+        DmlOperator::Initialize(kernelCreationContext, NchwDimensionCount);
 
         const bool hasBias = kernelCreationContext.IsInputValid(OnnxInputIndex::Bias);
         const bool hasBZP = kernelCreationContext.IsInputValid(OnnxInputIndex::B_zero_point);
@@ -37,7 +37,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0)
+                kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0),
+                NchwDimensionCount
             );
         }
         MLOperatorTensorDataType ADatatype = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::A).tensorDataType;
