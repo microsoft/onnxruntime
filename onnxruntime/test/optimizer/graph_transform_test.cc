@@ -2471,6 +2471,68 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_MissingShape) {
   ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
+TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_1D) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{16}});
+    auto* weight_arg = builder.MakeInput<float>({{16, 768}});
+    auto* bias_arg = builder.MakeInput<float>({{768}});
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("MatMul", {input_arg, weight_arg}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias_arg}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<MatMulAddFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_3D) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{8, 16, 32}});
+    auto* weight_arg = builder.MakeInput<float>({{32, 768}});
+    auto* bias_arg = builder.MakeInput<float>({{1, 768}});
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("MatMul", {input_arg, weight_arg}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias_arg}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<MatMulAddFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
