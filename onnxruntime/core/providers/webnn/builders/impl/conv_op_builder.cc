@@ -133,7 +133,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   const auto out_t = dims[0], in_t = dims[1],
              h_t = dims[2], w_t = dims[3];
   std::vector<uint32_t> dest_shape;
-  if (is_conv == 1)
+  if (is_conv)
     dest_shape = {out_t, h_t, w_t, in_t};  // L_0231
   else
     dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv and convTranspose weight
@@ -265,7 +265,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       options.set("inputLayout", emscripten::val("nhwc"));
       options.set("filterLayout", emscripten::val("ohwi"));
       if (is_constant_weight) {
-        ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, true, is_conv1d));
+        ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, false, is_conv1d));
       }
     }
   }
