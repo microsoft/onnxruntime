@@ -1,96 +1,77 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=6.0
+ARG ROCM_VERSION=6.2
 ARG AMDGPU_VERSION=${ROCM_VERSION}
-ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
+# Default to 1 so that we can share the layers between docker images for ROCm and MIGraphX builds to reduce storage.
+ARG USE_MIGRAPHX=1
 
-CMD ["/bin/bash"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
-RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
+RUN echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' > /etc/apt/preferences.d/rocm-pin-600
 
-ENV DEBIAN_FRONTEND noninteractive
-
+# Install necessary system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
-    curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
-    printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
-    printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    wget \
+    libnuma-dev \
+    gnupg \
     sudo \
     libelf1 \
     kmod \
     file \
+    libstdc++6 \
     python3 \
     python3-pip \
-    rocm-dev \
-    rocm-libs \
-    build-essential && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    python3.10-dev \
+    python3.10-venv \
+    build-essential \
+    locales \
+    git
 
-RUN groupadd -g 109 render
+RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
-# Upgrade to meet security requirements
-RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
-    apt-get install  -y locales cifs-utils wget half libnuma-dev lsb-release && \
-    apt-get clean -y
+# Add ROCm repository and install ROCm and optional MIGraphX
+RUN curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
+    echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list && \
+    echo "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list && \
+    migraphx=$( [ "$USE_MIGRAPHX" -eq 1 ] && echo "migraphx" || echo "" ) && \
+    apt-get update && apt-get install -y rocm-dev rocm-libs $migraphx && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN locale-gen en_US.UTF-8
-RUN update-locale LANG=en_US.UTF-8
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
+# Install CMake
+ENV CMAKE_VERSION=3.30.5
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+    tar -zxf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip-components=1 -C /usr && \
+    rm cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz
 
-WORKDIR /stage
+# Install ccache
+ENV CCACHE_VERSION=4.10.2
+RUN wget -q https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64.tar.xz && \
+    tar -xf ccache-${CCACHE_VERSION}-linux-x86_64.tar.xz && \
+    cp ccache-${CCACHE_VERSION}-linux-x86_64/ccache /usr/bin && \
+    rm -rf ccache-${CCACHE_VERSION}-linux-x86_64*
 
-# Cmake
-ENV CMAKE_VERSION=3.30.1
-RUN cd /usr/local && \
-    wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
-    tar -zxf /usr/local/cmake-3.30.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+# Set up virtual environment for Python and install dependencies
+WORKDIR /ort
+COPY scripts/requirements.txt /ort/
+RUN python3 -m venv /ort/env && . /ort/env/bin/activate && \
+    pip install --upgrade pip && \
+    pip install -r /ort/requirements.txt && \
+    pip install psutil ml_dtypes pytest-xdist pytest-rerunfailures scipy
 
-# ccache
-RUN mkdir -p /tmp/ccache && \
-    cd /tmp/ccache && \
-    wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
-    cp /tmp/ccache/ccache /usr/bin && \
-    rm -rf /tmp/ccache
-
-# Install Conda
-ENV PATH /opt/miniconda/bin:${PATH}
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
-    conda init bash && \
-    conda config --set auto_activate_base false && \
-    conda update --all && \
-    rm ~/miniconda.sh && conda clean -ya
-
-# Create rocm-ci environment
-ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
-ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
-ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
-
-# Enable rocm-ci environment
-SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
-
-# ln -sf is needed to make sure that version `GLIBCXX_3.4.30' is found
-RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
-
-RUN pip install packaging \
-                ml_dtypes==0.3.0 \
-                pytest==7.4.4 \
-                pytest-xdist \
-                pytest-rerunfailures \
-                scipy==1.10.0 \
-                numpy==1.24.1
-
-RUN apt install -y git
-
-# Install Cupy to decrease CPU utilization
-RUN git clone https://github.com/ROCm/cupy && cd cupy && \
+# Clone and install CuPy with ROCm support
+RUN git clone https://github.com/ROCm/cupy.git && cd cupy && \
     git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
     export CUPY_INSTALL_USE_HIP=1 && \
     export ROCM_HOME=/opt/rocm && \
     export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
     git submodule update --init && \
-    pip install -e . --no-cache-dir -vvvv
+    pip install -e . --no-cache-dir -vvvv && \
+    cd .. && rm -rf cupy
+
+CMD ["/bin/bash"]
