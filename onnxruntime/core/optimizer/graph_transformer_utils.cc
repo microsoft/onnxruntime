@@ -24,6 +24,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/cast_graph_io_to_fp16_transformer.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
@@ -333,6 +334,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                  intra_op_thread_pool,
                                                                                  p_buffered_tensors));
       }
+
+      transformers.emplace_back(std::make_unique<CastGraphIOToFp16Transformer>(dml_ep));
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
