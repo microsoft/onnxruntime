@@ -10,6 +10,7 @@ import platform
 import shlex
 import subprocess
 import sys
+import re
 from glob import glob, iglob
 from os import environ, getcwd, path, popen, remove
 from pathlib import Path
@@ -54,6 +55,7 @@ if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
+cuda_version_major = None
 rocm_version = None
 is_migraphx = False
 is_rocm = False
@@ -63,6 +65,11 @@ is_qnn = False
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
+    if cuda_version is not None:
+        if not bool(re.match(r'^\d+\.\d+(\.\d+)?$', cuda_version)):
+            logger.error("CUDA version must be in format 'x.y' or  'x.y.z'")
+            sys.exit(1)
+        cuda_version_major = cuda_version.split(".")[0]
 elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
     is_rocm = True
     rocm_version = parse_arg_remove_string(sys.argv, "--rocm_version=")
@@ -603,9 +610,9 @@ if enable_training or enable_training_apis:
 
         disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
         disable_local_version = (
-            disable_local_version == "1"
-            or disable_local_version.lower() == "true"
-            or disable_local_version.lower() == "yes"
+                disable_local_version == "1"
+                or disable_local_version.lower() == "true"
+                or disable_local_version.lower() == "yes"
         )
         # local version should be disabled for internal feeds.
         if not disable_local_version:
@@ -705,11 +712,20 @@ if local_version:
     version_number = version_number + local_version
     if is_rocm and enable_rocm_profiling:
         version_number = version_number + ".profiling"
-
+extras_require = {}
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
         # for training packages, local version is used to indicate device types
         package_name = f"{package_name}-{wheel_name_suffix}"
+    if wheel_name_suffix == "gpu" and cuda_version_major is not None:
+        extras_require = {
+            # Optional 'cuda_dlls' dependencies
+            "cuda_dlls": [
+                f"nvidia-cudnn-cu{cuda_version_major}",
+                f"nvidia-cufft-cu{cuda_version_major}",
+                f"nvidia-cuda-nvrtc-cu{cuda_version_major}",
+            ]
+        }
 
 cmd_classes = {}
 if bdist_wheel is not None:
@@ -783,4 +799,5 @@ setup(
         ]
     },
     classifiers=classifiers,
+    extras_require=extras_require
 )
