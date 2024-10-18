@@ -27,31 +27,31 @@ extends:
     stages:
     - stage: Windows_Build
       jobs:
-      - template: windowsai-steps.yml@self
+      - template: ./windowsai-steps.yml@self
         parameters:
           BuildArch: x64
 
-      - template: windowsai-steps.yml@self
+      - template: ./windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
 
-      - template: windowsai-steps.yml@self
+      - template: ./windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
 
-      - template: windowsai-steps.yml@self
+      - template: ./windowsai-steps.yml@self
         parameters:
           BuildArch: x64
           Runtime: static
 
-      - template: windowsai-steps.yml@self
+      - template: ./windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
           Runtime: static
 
-      - template: windowsai-steps.yml@self
+      - template: ./windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
           Runtime: static
