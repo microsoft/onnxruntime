@@ -65,10 +65,17 @@ export interface GpuDataManager {
   dispose(): void;
 
   /**
+   * create session related data.
+   */
+  onCreateSession(): void;
+
+  /**
    * release session related data.
    * @param sessionId - specify the session ID.
    */
   onReleaseSession(sessionId: number): void;
+
+  sessionCount: number;
 }
 
 interface StorageCacheValue {
@@ -214,6 +221,7 @@ class GpuDataManagerImpl implements GpuDataManager {
       this.freeUniformBuffers.set(key, []);
     }
   }
+  sessionCount = 0;
 
   upload(id: GpuDataId, data: Uint8Array): void {
     const srcArrayBuffer = data.buffer;
@@ -460,6 +468,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.capturedPendingBuffers = new Map();
   }
 
+  onCreateSession() {
+    this.sessionCount += 1;
+  }
+
   onReleaseSession(sessionId: number) {
     // release the captured pending buffers.
     const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
@@ -468,6 +480,15 @@ class GpuDataManagerImpl implements GpuDataManager {
         buffer.destroy();
       });
       this.capturedPendingBuffers.delete(sessionId);
+    }
+
+    // release the storage cache if no active sessions.
+    this.sessionCount -= 1;
+    if (this.sessionCount === 0) {
+      this.storageCache.forEach((storage) => {
+        storage.gpuData.buffer.destroy();
+      });
+      this.storageCache = new Map();
     }
   }
 }
