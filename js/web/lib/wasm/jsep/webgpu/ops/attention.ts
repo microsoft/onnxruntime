@@ -429,10 +429,7 @@ const createInPlaceSoftmaxProgramInfo = (
 
   return {
     name: 'AttentionProbsSoftmax',
-    shaderCache: {
-      hint: `${batchSize};${numHeads};${sequenceLength};${totalSequenceLength};${dataType};${components}`,
-      inputDependencies,
-    },
+    shaderCache: { hint: `${WG};${dataType};${components}`, inputDependencies },
     getShaderSource,
     getRunData: () => ({
       outputs: [],
@@ -790,10 +787,7 @@ const createVxAttentionScoreProgramInfo = (
 
   return {
     name: 'AttentionScore',
-    shaderCache: {
-      hint: `${pastValue !== undefined};${outputCount};${presentValue !== undefined};${outputCount}`,
-      inputDependencies,
-    },
+    shaderCache: { hint: `${pastValue !== undefined};${outputCount}`, inputDependencies },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
     getShaderSource,
   };
