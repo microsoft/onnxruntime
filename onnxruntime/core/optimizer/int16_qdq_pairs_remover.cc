@@ -12,45 +12,7 @@
 
 namespace onnxruntime {
 
-/// <summary>
-/// Returns the zero-point type from the given QuantizeLinear node.
-/// </summary>
-/// <param name="graph">Graph</param>
-/// <param name="q_node">QuantizeLinear node</param>
-/// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
-/// <returns>True if successfully extracted the zero-point data type</returns>
-static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
-                                  /*out*/ ONNX_NAMESPACE::TensorProto_DataType& zp_data_type) {
-  assert(q_node.OpType() == "QuantizeLinear");
-  const auto input_defs = q_node.InputDefs();
-
-  if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
-    // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
-    // The "output_dtype" attribute was added in ONNX opset 21.
-    const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
-    zp_data_type = attr != nullptr ? static_cast<ONNX_NAMESPACE::TensorProto_DataType>(attr->i())
-                                   : ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-    return true;
-  }
-
-  const auto* zp_proto = graph.GetConstantInitializer(input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
-  if (zp_proto == nullptr) {
-    return false;
-  }
-
-  zp_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(zp_proto->data_type());
-  return true;
-}
-
-/// <summary>
-/// Tries to reduce a double QDQ sequence (Q1 -> DQ1 -> Q2 -> DQ2*) beginning with the provided Q1 node index.
-/// The scale/zero-point values of the outer Q1 and DQ2* nodes may need to be recomputed.
-/// Supports multiple identical DQ2 nodes.
-/// </summary>
-/// <param name="graph">Graph to modify</param>
-/// <param name="q1_index">Index of potential Q1 node</param>
-/// <returns>True if the double QDQ sequence was reduced</returns>
-static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) {
+bool Int16QDQPairsRemover::TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) const {
   const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
     return graph.GetConstantInitializer(initializer_name, true);
   };
@@ -59,12 +21,14 @@ static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) 
 
   if (quantize_node == nullptr ||
       quantize_node->OpType() != "QuantizeLinear" ||
-      graph.NodeProducesGraphOutput(*quantize_node)) {
+      quantize_node->GetInputEdgesCount() == 0 ||
+      graph.NodeProducesGraphOutput(*quantize_node) ||
+      !graph_utils::IsSupportedProvider(quantize_node->InputEdgesBegin()->GetNode(), GetCompatibleExecutionProviders())) {
     return false;
   }
 
   auto quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  if (!GetQNodeZeroPointType(graph, *quantize_node, quant_type)) {
+  if (!QDQ::GetQNodeZeroPointType(graph, *quantize_node, quant_type)) {
     return false;
   }
 
@@ -81,9 +45,16 @@ static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) 
     NodeIndex dequantize_node_index = it->GetNode().Index();
     Node* dequantize_node = graph.GetNode(dequantize_node_index);
 
-    if (dequantize_node == nullptr || dequantize_node->OpType() != "DequantizeLinear") {
+    if (dequantize_node == nullptr ||
+        dequantize_node->OpType() != "DequantizeLinear") {
       // Child is not a DQ op.
       return false;
+    }
+
+    for (auto dequantize_output_iter = dequantize_node->OutputEdgesBegin(); dequantize_output_iter != dequantize_node->OutputEdgesEnd(); dequantize_output_iter++) {
+      if (!graph_utils::IsSupportedProvider(dequantize_output_iter->GetNode(), GetCompatibleExecutionProviders())) {
+        return false;
+      }
     }
 
     // The Q2 and DQ2 nodes must have equal zero-point and scale values (scalar/constant).
