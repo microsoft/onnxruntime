@@ -19,7 +19,8 @@ Abstract:
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
-#include "sqnbitgemm.h"
+#include "core/mlas/lib/sqnbitgemm.h"
+#include "mlas_qnbit.h"
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
@@ -76,18 +77,17 @@ class MlasNeonFp16CastTest : public MlasTestBase {
   }
 };
 
-template <size_t N, size_t K, size_t BlkLen>
 class MlasNeonFp16PrepackTest : public MlasTestBase {
  private:
-  std::random_device rd;  // a seed source for the random number engine
-  std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
-  std::uniform_int_distribution<> distrib(0, 255);
+  std::random_device _rd;  // a seed source for the random number engine
+  std::mt19937 _gen; // mersenne_twister_engine seeded with rd()
+  std::uniform_int_distribution<> _distrib;
 
   template<size_t BufferSize>
   MLAS_FORCEINLINE
-  void InitializeBuffer(vector<uint8_t>& buffer) {
+  void InitializeBuffer(std::vector<uint8_t>& buffer) {
     for (size_t i = 0; i < BufferSize; i++) {
-      buffer[i] = distrib(gen);
+      buffer[i] = static_cast<uint8_t>(_distrib(_gen));
     }
   }
 
@@ -97,7 +97,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     for (size_t c = 0; c < 8; c++) {
       for (size_t r = 0; r < 8; r++) {
         size_t i = (n + c) * Ldb + r + k;
-        size_t j = (r + n) * Ldb + c + k;
+        size_t j = n * Ldb + (r + k) * 8 + c;
         dst[j] = src[i];
       }
     }
@@ -117,29 +117,40 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     }
   }
 
-  template<size_t Ldb>
+  template<size_t Ldb, size_t N, size_t K>
   MLAS_FORCEINLINE
   void Prepack(std::vector<uint8_t>& src, std::vector<uint8_t>& dst) {
-    int n = 0;
+    size_t n = 0;
     for (; n + 8 <= N; n += 8) {
-      for (int k = 0; k < K; k += 8) {
-        Transpose8x8<Ldb>(src, n, k, dst, Ldb);
+      for (size_t k = 0; k < Ldb; k += 8) {
+        Transpose8x8<Ldb>(src, n, k, dst);
       }
     }
 
     for (; n < N; ++n) {
-      for (int k = 0; k < K; k += 8) {
+      for (int k = 0; k < Ldb; k += 8) {
         PrepackSlice(src, n * Ldb + k, dst);
       }
     }
   }
 
-  template<size_t Ldb>
+  template<size_t Ldb, size_t N, size_t K>
   MLAS_FORCEINLINE
   void Check(std::vector<uint8_t>& packed, std::vector<uint8_t>& ref) {
-    for (size_t i = 0; i < N; i++) {
-      for (size_t j = 0; j < K; j++) {
-        ASSERT_EQ(packed[i * Ldb + j], ref[i * Ldb + j]);
+    size_t n = 0;
+    for (; n + 8 <= N; n += 8) {
+      for (size_t i = 0; i < K; i += 2) {
+        for (size_t j = 0; j < 8; ++j) {
+          ASSERT_EQ(packed[n * Ldb + (i >> 1) * 8 + j], ref[n * Ldb + (i >> 1) * 8 + j]) 
+              << " n " << n << " i " << i << " j " << j;
+        }
+      }
+    }
+
+    for (; n < N; ++n) {
+      for (size_t i = 0; i < K; i += 2) {
+        ASSERT_EQ(packed[n * Ldb + (i >> 1)], ref[n * Ldb + (i >> 1)])
+            << " n " << n << " i " << i;
       }
     }
   }
@@ -153,13 +164,17 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     std::vector<uint8_t> input(BufferSize), packed(BufferSize), ref(BufferSize);
     InitializeBuffer<BufferSize>(input);
     MlasSQNBitGemmPackQuantBData(
-        N, K, Bits, BlkLen, MlasComputeType::CompFp16, input.data(), packed.data(), nullptr
+        N, K, Bits, BlkLen, MLAS_SQNBIT_GEMM_COMPUTE_TYPE::CompFp16, input.data(), packed.data(), nullptr
     );
-    Prepack<Ldb>(input, ref);
-    Check<Ldb>(packed, ref);
+    Prepack<Ldb, N, K>(input, ref);
+    Check<Ldb, N, K>(packed, ref);
   }
 
  public:
+  MlasNeonFp16PrepackTest()
+    : _gen(_rd()), _distrib(0, 255) {
+  }
+
   static const char* GetTestSuiteName() {
     return "NeonFp16Prepack";
   }
@@ -168,10 +183,13 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     TestPrepack<1, 1, 16>();
     TestPrepack<1, 15, 16>();
     TestPrepack<1, 31, 16>();
+    TestPrepack<8, 1, 16>();
     TestPrepack<8, 16, 16>();
     TestPrepack<9, 31, 16>();
     TestPrepack<9, 33, 32>();
     TestPrepack<15, 33, 16>();
+    TestPrepack<17, 67, 16>();
+    TestPrepack<17, 96, 128>();
   }
 };
 
