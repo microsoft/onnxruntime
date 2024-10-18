@@ -25,6 +25,7 @@ class QLinearConv : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
@@ -360,6 +361,7 @@ REGISTER_QLINEARCONV_INT8_KERNEL(kMSDomain, 1);
 
 template <typename ActType>
 Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     bool /*save_prepacked_initializers*/,
                                      /*out*/ bool& is_packed,
                                      /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
