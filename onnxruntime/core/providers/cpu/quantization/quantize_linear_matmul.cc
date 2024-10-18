@@ -34,6 +34,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
+        .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
@@ -60,6 +61,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     int8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
+        .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>()),
