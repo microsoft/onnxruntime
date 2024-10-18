@@ -304,7 +304,6 @@ export interface OrtInferenceAPIs {
 export interface OrtWasmModule
   extends EmscriptenModule,
     OrtInferenceAPIs,
-    Partial<OrtTrainingAPIs>,
     Partial<JSEP.Module> {
   PTR_SIZE: number;
   // #region emscripten functions
