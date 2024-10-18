@@ -1,7 +1,6 @@
 -r requirements.txt
 
-# For CUDA 12.*, you will need build onnxruntime-gpu from source and install the wheel. See README.md for detail.
-# onnxruntime-gpu>=1.16.2
+onnxruntime-gpu>=1.19.2
 
 py3nvml
 
