@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "/contrib_ops/cpu/bert/gqa_attention_base.h"
+#include "contrib_ops/cpu/bert/gqa_attention_base.h"
 #include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
