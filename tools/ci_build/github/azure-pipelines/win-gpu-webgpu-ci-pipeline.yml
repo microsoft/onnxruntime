@@ -43,8 +43,9 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
-        # add --enable_pybind and --build_java if necessary
+        # add --build_java if necessary
         additionalBuildFlags: >-
+          --enable_pybind
           --build_nodejs
           --use_webgpu
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON

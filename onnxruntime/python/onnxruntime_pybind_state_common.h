@@ -24,7 +24,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -109,6 +109,12 @@ struct OrtStatus {
 #define BACKEND_CANN "-CANN"
 #else
 #define BACKEND_CANN ""
+#endif
+
+#if USE_WEBGPU
+#define BACKEND_WEBGPU "-WEBGPU"
+#else
+#define BACKEND_WEBGPU ""
 #endif
 
 #ifdef USE_CUDA
