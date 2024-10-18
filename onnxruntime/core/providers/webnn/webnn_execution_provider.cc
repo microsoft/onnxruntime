@@ -291,7 +291,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       // performed, to block other threads to perform Predict on the same model.
       // TODO, investigate concurrent runs for different executions from the same model.
       {
-        std::unique_lock<OrtMutex> lock(model->GetMutex());
+        std::unique_lock<std::mutex> lock(model->GetMutex());
         InlinedHashMap<std::string, webnn::OnnxTensorData> outputs;
         outputs.reserve(model_outputs.size());
         for (size_t i = 0; i < model_outputs.size(); i++) {

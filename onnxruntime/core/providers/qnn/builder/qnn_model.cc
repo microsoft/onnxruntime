@@ -247,7 +247,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
   {
     // Acquire mutex before calling graphExecute and profiling APIs to support calling session.Run()
     // from multiple threads.
-    std::lock_guard<OrtMutex> lock(graph_exec_mutex_);
+    std::lock_guard<std::mutex> lock(graph_exec_mutex_);
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),

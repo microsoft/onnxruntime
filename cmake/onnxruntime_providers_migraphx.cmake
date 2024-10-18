@@ -57,7 +57,7 @@
   endif()
   if(UNIX)
     set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
-    target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync::nsync_cpp stdc++fs)
+    target_link_libraries(onnxruntime_providers_migraphx PRIVATE  stdc++fs)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_OPS)

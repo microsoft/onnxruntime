@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #include <core/common/common.h>
-#include <core/platform/ort_mutex.h>
+#include <mutex>
 
 struct OnnxRuntimeEvent {
  public:
-  onnxruntime::OrtMutex finish_event_mutex;
-  onnxruntime::OrtCondVar finish_event_data;
+  std::mutex finish_event_mutex;
+  std::condition_variable finish_event_data;
   bool finished = false;
   OnnxRuntimeEvent() = default;
 

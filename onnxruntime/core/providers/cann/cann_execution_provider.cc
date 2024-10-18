@@ -28,7 +28,7 @@ using onnxruntime::common::Status;
 namespace onnxruntime {
 
 // Models can only be parsed and built serially in the same process
-OrtMutex g_mutex;
+std::mutex g_mutex;
 
 class Memcpy final : public OpKernel {
  public:
@@ -1389,7 +1389,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       if (modelIDs_.find(filename) != modelIDs_.end()) {
         modelID = modelIDs_[filename];
       } else {
-        std::lock_guard<OrtMutex> lock(g_mutex);
+        std::lock_guard<std::mutex> lock(g_mutex);
 
         if (cann::FileExist(filename_with_suffix)) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));

@@ -12,7 +12,7 @@
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_viewer.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 struct KernelCreateInfo;

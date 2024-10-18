@@ -258,7 +258,7 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
     compute_info.compute_func =
         [graph_ep, this](FunctionState /*state*/, const OrtApi* /* api */,
                          OrtKernelContext* context) {
-          std::lock_guard<OrtMutex> lock(this->GetMutex());
+          std::lock_guard<std::mutex> lock(this->GetMutex());
           Status res = ComputeStateFunc(graph_ep.get(), context);
           return res;
         };

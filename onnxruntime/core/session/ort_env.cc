@@ -19,7 +19,7 @@ using namespace onnxruntime::logging;
 
 std::unique_ptr<OrtEnv> OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
-onnxruntime::OrtMutex OrtEnv::m_;
+std::mutex OrtEnv::m_;
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
@@ -35,7 +35,7 @@ OrtEnv::~OrtEnv() {
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
                             onnxruntime::common::Status& status,
                             const OrtThreadingOptions* tp_options) {
-  std::lock_guard<onnxruntime::OrtMutex> lock(m_);
+  std::lock_guard<std::mutex> lock(m_);
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
@@ -76,7 +76,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   if (!env_ptr) {
     return;
   }
-  std::lock_guard<onnxruntime::OrtMutex> lock(m_);
+  std::lock_guard<std::mutex> lock(m_);
   ORT_ENFORCE(env_ptr == p_instance_.get());  // sanity check
   --ref_count_;
   if (ref_count_ == 0) {

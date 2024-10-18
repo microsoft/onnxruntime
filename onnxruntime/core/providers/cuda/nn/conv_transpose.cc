@@ -450,7 +450,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
 template <typename T, bool Layout>
 Status ConvTranspose<T, Layout>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
-  std::lock_guard<OrtMutex> lock(s_.mutex);
+  std::lock_guard<std::mutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context, dynamic_padding));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();

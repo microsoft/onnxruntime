@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <utility>
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 
@@ -57,7 +57,7 @@ class PhiloxGenerator {
    * Resets the seed and offset.
    */
   void SetSeed(uint64_t seed) {
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     seed_ = seed;
     offset_ = 0;
   }
@@ -66,7 +66,7 @@ class PhiloxGenerator {
    * Gets the seed and offset pair, incrementing the offset by the specified count.
    */
   std::pair<uint64_t, uint64_t> NextPhiloxSeeds(uint64_t count) {
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     auto seeds = std::make_pair(seed_, offset_);
     offset_ += count;
     return seeds;
@@ -79,7 +79,7 @@ class PhiloxGenerator {
   static PhiloxGenerator& Default();
 
  private:
-  OrtMutex mutex_;
+  std::mutex mutex_;
   uint64_t seed_;
   uint64_t offset_;
 };
