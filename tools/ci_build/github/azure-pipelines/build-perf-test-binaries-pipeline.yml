@@ -22,36 +22,36 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     pool:
-      name: onnxruntime-Win-CPU-2022
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
     stages:
     - stage: Windows_Build
       jobs:
-      - template: ./windowsai-steps.yml@self
+      - template: templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
 
-      - template: ./windowsai-steps.yml@self
+      - template: templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
 
-      - template: ./windowsai-steps.yml@self
+      - template: templates/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
 
-      - template: ./windowsai-steps.yml@self
+      - template: templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
           Runtime: static
 
-      - template: ./windowsai-steps.yml@self
+      - template: templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
           Runtime: static
 
-      - template: ./windowsai-steps.yml@self
+      - template: templates/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
           Runtime: static
