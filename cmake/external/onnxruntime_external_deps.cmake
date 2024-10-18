@@ -677,6 +677,8 @@ if (onnxruntime_USE_WEBGPU)
 
     # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
     set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+    # We are currently always using the D3D12 backend.
+    set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
   endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
