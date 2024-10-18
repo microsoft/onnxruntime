@@ -85,7 +85,7 @@
     },
     "./wasm": {
       "node": null,
-      "import": "./dist/ort.wasm.min.mjs",
+      "import": "./dist/ort.wasm.bundle.min.mjs",
       "require": "./dist/ort.wasm.min.js",
       "types": "./types.d.ts"
     },
