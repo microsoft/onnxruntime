@@ -72,8 +72,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                  "  let batch = output_indices[0];\n"
                                  "  let n_blocks_per_col = uniforms.input_b_shape[1];\n"
                               << "  let num_tiles =  (n_blocks_per_col - 1) / " << blocks_per_tile << " + 1;\n"
-                              << "  // Loop over shared dimension.\n"
-                                 "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
+                              // Loop over shared dimension.
+                              << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
                               << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
                               << "    // load one tile A data into shared memory.\n"
                               << "    for (var a_offset = local_idx; a_offset < " << a_length_per_tile << "; a_offset += " << workgroup_size << ") {\n"
@@ -85,7 +85,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                  "      }\n"
                                  "    }\n"
                                  "    workgroupBarrier();\n"
-                                 "    // each thread process one block\n"
+                                 // Each thread processes one block.
                                  "    let b_row = col + local_id.y;\n"
                               << "    let block = tile * " << blocks_per_tile << " + local_id.x;\n";
     if (has_zero_points_) {
@@ -99,8 +99,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                 << "    let zero_point_word = " << zero_points.GetByOffset("zero_point_word_index") << " >> zero_point_bits_offset;\n"
                                 << "    let zero_point = output_element_t((zero_point_word) & 0xFu);\n";
     } else {
-      shader.MainFunctionBody() << "    // The default zero point is 8 for unsigned 4-bit quantization.\n"
-                                   "    let zero_point = output_element_t(8.0);\n";
+      // The default zero point is 8 for unsigned 4-bit quantization.
+      shader.MainFunctionBody() << "    let zero_point = output_element_t(8.0);\n";
     }
     shader.MainFunctionBody() << "    var scale = output_element_t(0);\n"
                                  "    var b_data = input_b_value_t(0);\n"
