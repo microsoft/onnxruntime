@@ -151,7 +151,8 @@ def main():
         default=os.environ.get(requested_runtime_version_environment_variable_name, None),
         help="The requested runtime version. "
         f"This may also be specified with the {requested_runtime_version_environment_variable_name} "
-        "environment variable. The command line option value takes precedence.",
+        "environment variable. The command line option takes precedence. "
+        "An unspecified value means the latest available runtime version.",
     )
     args = parser.parse_args()
 

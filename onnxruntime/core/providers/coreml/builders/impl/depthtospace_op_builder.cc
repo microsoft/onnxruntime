@@ -148,10 +148,7 @@ bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderI
 
     if (mode == "DCR" && input_params.coreml_version < 7) {
       int32_t input_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-      if (!GetType(*input_defs[0], input_type, logger)) {
-        LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Get Input type failed";
-        return false;
-      }
+      GetType(*input_defs[0], input_type, logger);
 
       if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         // In CoreML version 6 (e.g., on an iOS 16 simulator) with DCR mode and float16 input, the output is all zeros
