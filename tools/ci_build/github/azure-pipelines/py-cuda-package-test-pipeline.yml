@@ -12,12 +12,13 @@ stages:
   - stage: Linux_Test_GPU_x86_64_stage
     dependsOn:
     jobs:
-      - template: stages/jobs/py-linux-cuda-package-test-job.yml
+      - template: templates/py-packaging-linux-test-cuda.yml
         parameters:
-          CudaVersion: '12.2'
+          arch: 'x86_64'
           machine_pool: 'Onnxruntime-Linux-GPU'
+          python_wheel_suffix: '_gpu'
           timeout: 480
-          build_id: ${{ parameters.build_id }}
-          project: ${{ parameters.project }}
-          pipeline: ${{ parameters.pipeline }}
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241015.1
+          trt_version: '10.4.0.26-1.cuda12.6'
+          cuda_version: '12.2'
 

@@ -129,8 +129,6 @@ class MachineInfo:
         related_packages = [
             "onnxruntime-gpu",
             "onnxruntime",
-            "ort-nightly-gpu",
-            "ort-nightly",
             "onnx",
             "transformers",
             "protobuf",
