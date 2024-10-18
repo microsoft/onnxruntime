@@ -36,9 +36,16 @@ jobs:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    # Note: Keep the Xcode version and iOS simulator version compatible.
+    # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
+    # https://developer.apple.com/support/xcode/
+    XCODE_VERSION: 14.3.1
+    IOS_SIMULATOR_RUNTIME_VERSION: 16.4
   timeoutInMinutes: 150
   steps:
     - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: $(XCODE_VERSION)
 
     - template: templates/mac-build-step-with-cache.yml
       parameters:
@@ -71,3 +78,4 @@ jobs:
               CCACHE_DEPEND: 1
               CCACHE_SLOPPINESS: modules
               CCACHE_DIR: $(ORT_CACHE_DIR)
+              ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: $(IOS_SIMULATOR_RUNTIME_VERSION)
