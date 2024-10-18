@@ -23,7 +23,7 @@ class Resize : public JsKernel, public UpsampleBase {
     std::transform(axes_.begin(), axes_.end(), std::back_inserter(axes), [](auto& axis) { return gsl::narrow_cast<int32_t>(axis); });
     JSEP_INIT_KERNEL_ATTRIBUTE(Resize, ({
                                  "antialias" : $1,
-                                 "axes" : $2 ? Array.from(HEAP32.subarray($2, $3)) : [],
+                                 "axes" : $2 ? Array.from(HEAP32.subarray(Number($2), Number($3))) : [],
                                  "coordinateTransformMode" : UTF8ToString($4),
                                  "cubicCoeffA" : $5,
                                  "excludeOutside" : $6,
