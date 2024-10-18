@@ -142,9 +142,9 @@ SQ4BitGemmPackQuantBData_CompFp16(
 
     const size_t k_blk_num = MlasDivRoundup(K, k_blk_dim);
     const size_t n_blk_num = MlasDivRoundup(N, n_blk_dim);
-    const size_t k_blk_bytes = MlasQNBitBlkDataSizeInBytes(nbits, BlkLen);
+    constexpr size_t k_blk_bytes = MlasQNBitBlkDataSizeInBytes(nbits, k_blk_dim);
     const size_t iterations = k_blk_num * n_blk_num; // one iteration per block
-    const size_t ld = k_blk_num * k_blk_bytes;
+    const size_t ld = MlasDivRoundup(K, BlkLen) * MlasQNBitBlkDataSizeInBytes(nbits, BlkLen);
 
     //
     // For blocks 16_K * 8_N, transpose bytes in 8x8 blocks like this:
@@ -181,11 +181,12 @@ SQ4BitGemmPackQuantBData_CompFp16(
             const size_t n_blk = tid / k_blk_num;
             const size_t k_blk = tid % k_blk_num;
             size_t n = n_blk * n_blk_dim;
+            const size_t src_offset = n * ld + k_blk * k_blk_bytes;
 
             if (n + n_blk_dim <= N) {
-                const size_t data_offset = n * ld + k_blk * k_blk_bytes * n_blk_dim;
-                const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + data_offset;
-                uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + data_offset;
+                const size_t dst_offset = n * ld + k_blk * k_blk_bytes * n_blk_dim;
+                const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + src_offset;
+                uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + dst_offset;
 
                 uint8x8_t v0 = vld1_u8(src);
                 uint8x8_t v1 = vld1_u8(src + ld);
@@ -207,9 +208,8 @@ SQ4BitGemmPackQuantBData_CompFp16(
                 vst1_u8(dst + 48, v6);
                 vst1_u8(dst + 56, v7);
             } else {
-                const size_t data_offset = n * ld + k_blk * k_blk_bytes;
-                const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + data_offset;
-                uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + data_offset;
+                const uint8_t* src = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + src_offset;
+                uint8_t* dst = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + src_offset;
 
                 for (; n < N; ++n, src += ld, dst += ld) {
                     uint8x8_t v0 = vld1_u8(src);
