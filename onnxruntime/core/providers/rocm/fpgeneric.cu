@@ -53,29 +53,29 @@ __global__ void CopyVectorBFloat16(const onnxruntime::BFloat16* x, int incx, onn
 
 }  // namespace
 
-rocblas_status rocblasTransposeHelper(hipStream_t stream, rocblas_handle, rocblas_operation , rocblas_operation , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
+hipblasStatus_t hipblasTransposeHelper(hipStream_t stream, hipblasHandle_t, hipblasOperation_t , hipblasOperation_t , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
   if (C != A) {
     dim3 dimGrid((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
     dim3 dimBlock(TRANS_TILE_DIM, BLOCK_ROWS, 1);
 
     transposeNoOverlap<<<dim3(dimGrid), dim3(dimBlock), 0, stream>>>(C, A, n, m);
   } else {
-    return rocblas_status_not_implemented;
+    return HIPBLAS_STATUS_NOT_SUPPORTED;
   }
-  return rocblas_status_success;
+  return HIPBLAS_STATUS_SUCCESS;
 }
 
-rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, const half* x, int incx, half* y, int incy) {
+hipblasStatus_t hipblasCopyHelper(hipStream_t stream, hipblasHandle_t, int n, const half* x, int incx, half* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
   CopyVectorHalf<<<dimGrid, dimBlock, 0, stream>>>(x, incx, y, incy, n);
-  return rocblas_status_success;
+  return HIPBLAS_STATUS_SUCCESS;
 }
 
-rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, const onnxruntime::BFloat16* x, int incx,
+hipblasStatus_t hipblasCopyHelper(hipStream_t stream, hipblasHandle_t, int n, const onnxruntime::BFloat16* x, int incx,
                                 onnxruntime::BFloat16* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
   CopyVectorBFloat16<<<dimGrid, dimBlock, 0, stream>>>(x, incx, y, incy, n);
-  return rocblas_status_success;
+  return HIPBLAS_STATUS_SUCCESS;
 }

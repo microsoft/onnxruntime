@@ -24,7 +24,7 @@ struct GemmFastGeluParams : OpParams {
     bool has_bias = (nullptr != bias) ? 0 : 1;
     return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k, '_', has_bias);
   }
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   BlasOp opa;
   BlasOp opb;
   int64_t m;

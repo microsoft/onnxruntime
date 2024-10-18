@@ -291,14 +291,9 @@ export class ModelTestContext {
       if (['ml-tensor', 'ml-location'].includes(modelTest.ioBinding)) {
         const webnnOptions = executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption;
         const deviceType = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.deviceType;
-        const numThreads = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.numThreads;
         const powerPreference = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.powerPreference;
 
-        mlContext = await navigator.ml.createContext({
-          deviceType,
-          numThreads,
-          powerPreference,
-        });
+        mlContext = await navigator.ml.createContext({ deviceType, powerPreference });
         (executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption).context = mlContext;
         if (!deviceType) {
           (executionProviderConfig as ort.InferenceSession.WebNNContextOptions).deviceType = deviceType;

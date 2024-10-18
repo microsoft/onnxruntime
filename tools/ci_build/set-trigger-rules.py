@@ -40,6 +40,7 @@ skip_js_changes = [
     "win-gpu-training-ci-pipeline.yml",
     "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
+    "win-gpu-webgpu-ci-pipeline.yml",
     "win-qnn-arm64-ci-pipeline.yml",
     "win-qnn-ci-pipeline.yml",
 ]
