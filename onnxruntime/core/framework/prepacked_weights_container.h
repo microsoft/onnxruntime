@@ -11,7 +11,7 @@
 #include "core/framework/buffer_deleter.h"
 
 #include "core/framework/allocator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "prepacked_weights.h"
 
 namespace onnxruntime {
@@ -53,7 +53,7 @@ class PrepackedWeightsContainer final {
   // PrePack() methods and does the read/write into the pre-packed weights' container.
   // We only want to invoke PrePack() on a kernel that doesn't have a cached version
   // of its pre-packed weight.
-  OrtMutex mutex_;
+  std::mutex mutex_;
 
   // Define allocators ahead of the container containing tensors because the allocators
   // needs to destructed after the container containing the pre-packed cached tensors

@@ -20,7 +20,7 @@ limitations under the License.
 #include "core/common/safeint.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/allocation_planner.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 // MemPatternPlanner is used to trace allocation/free steps
@@ -68,7 +68,7 @@ class MemPatternPlanner {
   void TraceAllocation(int ml_value_idx, const AllocPlanPerValue::ProgramCounter& counter, size_t size) {
     ORT_ENFORCE(using_counters_);
 
-    std::lock_guard<OrtMutex> lock(lock_);
+    std::lock_guard<std::mutex> lock(lock_);
 
     if (size == 0) {
       allocs_.emplace_back(ml_value_idx, MemoryBlock(0, 0));
@@ -133,7 +133,7 @@ class MemPatternPlanner {
   void TraceAllocation(int ml_value_idx, size_t size) {
     ORT_ENFORCE(!using_counters_);
 
-    std::lock_guard<OrtMutex> lock(lock_);
+    std::lock_guard<std::mutex> lock(lock_);
 
     if (size == 0) {
       allocs_.emplace_back(ml_value_idx, MemoryBlock(0, 0));
@@ -190,7 +190,7 @@ class MemPatternPlanner {
   }
 
   void TraceFree(int ml_value_index) {
-    std::lock_guard<OrtMutex> lock(lock_);
+    std::lock_guard<std::mutex> lock(lock_);
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].index_ == ml_value_index) {
@@ -201,7 +201,7 @@ class MemPatternPlanner {
   }
 
   MemoryPattern GenerateMemPattern() const {
-    std::lock_guard<OrtMutex> lock(lock_);
+    std::lock_guard<std::mutex> lock(lock_);
 
 #ifdef ENABLE_TRAINING
     if (using_counters_) {
@@ -261,7 +261,7 @@ class MemPatternPlanner {
   std::list<int> blocks_;
   SafeInt<size_t> buffer_size_{0};
   bool using_counters_;
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
 };
 
 }  // namespace onnxruntime
