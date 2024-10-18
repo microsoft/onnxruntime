@@ -302,9 +302,12 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel() {
-  auto ort_log_level = logger_->GetSeverity();
-  LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
-  return UpdateQnnLogLevel(ort_log_level);
+  if (logger_ != nullptr && backend_initialized_) {
+    auto ort_log_level = logger_->GetSeverity();
+    LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
+    return UpdateQnnLogLevel(ort_log_level);
+  }
+  return Status::OK();
 }
 
 Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
