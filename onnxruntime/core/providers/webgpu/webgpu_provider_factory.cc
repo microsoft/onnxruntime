@@ -177,12 +177,19 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
                 std::from_chars(webgpu_device_str.data(), webgpu_device_str.data() + webgpu_device_str.size(), webgpu_device).ec);
   }
 
+  size_t dawn_proc_table = 0;
+  std::string dawn_proc_table_str;
+  if (config_options.TryGetConfigEntry(kDawnProcTable, dawn_proc_table_str)) {
+    ORT_ENFORCE(std::errc{} ==
+                std::from_chars(dawn_proc_table_str.data(), dawn_proc_table_str.data() + dawn_proc_table_str.size(), dawn_proc_table).ec);
+  }
+
   auto& context = webgpu::WebGpuContextFactory::CreateContext(context_id,
                                                               reinterpret_cast<WGPUInstance>(webgpu_instance),
                                                               reinterpret_cast<WGPUAdapter>(webgpu_adapter),
                                                               reinterpret_cast<WGPUDevice>(webgpu_device),
                                                               validation_mode);
-  context.Initialize(webgpu_ep_info);
+  context.Initialize(webgpu_ep_info, reinterpret_cast<const void*>(dawn_proc_table));
 
   return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_info));
 }

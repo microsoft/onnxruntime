@@ -21,11 +21,12 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info) {
-  std::call_once(init_flag_, [this, &webgpu_ep_info]() {
+void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info, const void* dawn_proc_table) {
+  std::call_once(init_flag_, [this, &webgpu_ep_info, dawn_proc_table]() {
     // Initialization.Step.1 - Create wgpu::Instance
     if (instance_ == nullptr) {
-      dawnProcSetProcs(&dawn::native::GetProcs());
+      dawnProcSetProcs(dawn_proc_table ? reinterpret_cast<const DawnProcTable*>(dawn_proc_table)
+                                       : &dawn::native::GetProcs());
 
       wgpu::InstanceDescriptor instance_desc{};
       instance_desc.features.timedWaitAnyEnable = true;
