@@ -346,6 +346,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
     const size_t ld_zp = (BlockCountK + 1) / 2;
     const size_t ld_blk_zp = ld_zp * n_blk_dim;
     const float16x8_t zp_mid_point_vec = MlasBroadcastFloat16x8(MLAS_FP16(8.0f).val);
+    const bool has_zp = QuantBZeroPoint != nullptr;
 
     int n = 0;
     for (; n + n_blk_dim <= CountN; n += n_blk_dim) {
@@ -366,7 +367,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             });
             scale_vec = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(scales));
 
-            if (QuantBZeroPoint) {
+            if (has_zp) {
                 UnrolledLoop<n_blk_dim>([&](int nn){
                     uint8_t zp = zero_points_ptr[nn * ld_zp];
                     zp = (k_blk_i & 1) ? (zp >> 4) : (zp & 0x0F);
@@ -387,7 +388,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
             }
 
             ++scales_ptr;
-            if (QuantBZeroPoint) {
+            if (has_zp) {
                 zero_points_ptr += k_blk_i & 1;
             }
         }
@@ -395,18 +396,20 @@ Q4BitBlkDequantBForSgemm_CompFp16(
         QuantBData += ld_blk_src;
         FpData += ld_blk_dst;
         QuantBScale += ld_blk_scale;
-        QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + ld_blk_zp : nullptr;
+        QuantBZeroPoint = has_zp ? QuantBZeroPoint + ld_blk_zp : nullptr;
     }
 
     // remaining N
     for (; n < CountN; ++n) {
+        const MLAS_FP16* scales_ptr = QuantBScale;
+        const std::uint8_t* zero_points_ptr = reinterpret_cast<const uint8_t*>(QuantBZeroPoint);
         for (int k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
-            MLAS_FP16 scale = QuantBScale[0];
+            MLAS_FP16 scale = scales_ptr[0];
             float16x8_t scale_vec = MlasBroadcastFloat16x8(scale.val);
             float16x8_t neg_scaled_zp_vec;
 
-            if (QuantBZeroPoint) {
-                uint8_t zero_point = static_cast<uint8_t>(QuantBZeroPoint[0]);
+            if (has_zp) {
+                uint8_t zero_point = static_cast<uint8_t>(zero_points_ptr[0]);
                 zero_point = (k_blk_i & 1) ? (zero_point >> 4) : (zero_point & 0x0F);
                 uint16x8_t zp_u16_vec = vdupq_n_u16(static_cast<uint16_t>(zero_point));
                 neg_scaled_zp_vec = vcvtq_f16_u16(zp_u16_vec);
@@ -424,10 +427,15 @@ Q4BitBlkDequantBForSgemm_CompFp16(
                 FpData += kk_blk_dim;
             }
 
-            ++QuantBScale;
-            if (QuantBZeroPoint) {
-                QuantBZeroPoint += k_blk_i & 1;
+            ++scales_ptr;
+            if (has_zp) {
+                zero_points_ptr += k_blk_i & 1;
             }
+        }
+
+        QuantBScale += BlockCountK;
+        if (has_zp) {
+            QuantBZeroPoint += ld_zp;
         }
     }
 }
