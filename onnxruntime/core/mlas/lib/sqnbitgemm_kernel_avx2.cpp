@@ -87,6 +87,46 @@ load_float_n_avx2(const float* data, int n)
     return _mm256_maskload_ps(data, load_mask);
 }
 
+MLAS_FORCEINLINE
+__m256
+load_float16_8_avx2(const void* data, int n)
+{
+    assert(n <= 8);
+    if (n <= 0) {
+        return _mm256_setzero_ps();
+    }
+
+    __m128i float16_avx = _mm_loadu_si128((const __m128i*)(data));
+    __m256 float32_avx = _mm256_cvtph_ps(float16_avx);
+
+    return float32_avx;
+}
+
+MLAS_FORCEINLINE
+__m256
+load_float16_n_avx2(const void* data, int n)
+{
+    assert(n <= 8);
+    if (n <= 0) {
+        return _mm256_setzero_ps();
+    }
+
+    // there is no _mm_maskload_epi16 so I have to duplicate the data and do unmasked load
+    int16_t temp[8] = {0};
+    int16_t* data_h = (int16_t*)data;
+    for (int i = 0; i < n; i++) {
+        temp[i] = data_h[i];
+    }
+
+    // Load the float32 data using the mask
+    __m128i float16_avx = _mm_loadu_si128((const __m128i*)(temp));
+
+    // Convert the loaded float16 data to float32
+    __m256 float32_avx = _mm256_cvtph_ps(float16_avx);
+
+    return float32_avx;
+}
+
 MLAS_FORCEINLINE void
 Q4BitBlkDequantBForSgemmBlkLen16_CompFp32_avx2(
     float* FpData,
@@ -639,11 +679,11 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
     return CountM;
 }
 
-template <size_t NCols, bool HasZeroPoint>
+template <typename AType, size_t NCols, bool HasZeroPoint>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkLen16_CompFp32_avx2(
     size_t BlkLen,
-    const float* ARowPtr,
+    const AType* ARowPtr,
     const std::byte* QuantBDataColPtr,
     const float* QuantBScaleColPtr,
     const std::byte* QuantBZeroPointColPtr,
@@ -708,9 +748,19 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
 
             // Load A row vectors
             int n_to_read = std::min(kklen, 8);
-            __m256 av_lo = load_float_n_avx2(ARowPtr + k + kk, n_to_read);
+            __m256 av_lo;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                av_lo = load_float16_n_avx2(ARowPtr + k + kk, n_to_read);
+            } else {
+                av_lo = load_float_n_avx2(ARowPtr + k + kk, n_to_read);
+            }
             n_to_read = std::min(kklen - 8, 8);
-            __m256 av_hi = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
+            __m256 av_hi;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                av_hi = load_float16_n_avx2(ARowPtr + k + kk + 8, n_to_read);
+            } else {
+                av_hi = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
+            }
 
             UnrolledLoop<NCols>([&](size_t i) {
                 // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
@@ -790,10 +840,10 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
 }
 
 // TODO: flow MlasQ4GemmKernelBlkLen16Avx512f to improve perf
-template <bool HasZeroPoint>
+template <typename AType, bool HasZeroPoint>
 void
 SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2(
-    const float* A,
+    const AType* A,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -808,7 +858,7 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2(
     constexpr size_t BlkBitWidth4 = 4;
     constexpr size_t NCols4 = 4;
 
-    const float* ARowPtr = A;
+    const AType* ARowPtr = A;
     float* CRowPtr = C;
 
     const size_t BlockCountK = BlockStrideQuantB;
@@ -828,7 +878,7 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2(
     int64_t nblk = static_cast<int64_t>(CountN) - NCols4;
 
     while (nblk >= 0) {
-        ComputeDotProducts_BlkLen16_CompFp32_avx2<NCols4, HasZeroPoint>(
+        ComputeDotProducts_BlkLen16_CompFp32_avx2<AType, NCols4, HasZeroPoint>(
             BlkLen16,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
@@ -852,7 +902,7 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2(
     // left over columns less than `NCols`?
     nblk += NCols4;
     for (int64_t n = 0; n < nblk; ++n) {
-        ComputeDotProducts_BlkLen16_CompFp32_avx2<1, HasZeroPoint>(
+        ComputeDotProducts_BlkLen16_CompFp32_avx2<AType, 1, HasZeroPoint>(
             BlkLen16,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
@@ -873,11 +923,11 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2(
 }
 
 // TODO: flow MlasQ4GemmKernelBlkLen32PlusAvx512f to improve perf
-template <size_t NCols, bool HasZeroPoint, bool IsBlkLen64Layout>
+template <typename AType, size_t NCols, bool HasZeroPoint, bool IsBlkLen64Layout>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
     size_t BlkLen,
-    const float* ARowPtr,
+    const AType* ARowPtr,
     const std::byte* QuantBDataColPtr,
     const float* QuantBScaleColPtr,
     const std::byte* QuantBZeroPointColPtr,
@@ -945,16 +995,36 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
 
             // Load 4 float8 from A
             int n_to_read = std::min(kklen, 8);
-            __m256 av0_8_ps = load_float_n_avx2(ARowPtr + k + kk, n_to_read);
+            __m256 av0_8_ps;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                av0_8_ps = load_float16_n_avx2(ARowPtr + k + kk, n_to_read);
+            } else {
+                av0_8_ps = load_float_n_avx2(ARowPtr + k + kk, n_to_read);
+            }
 
             n_to_read = std::min(kklen - 8, 8);
-            __m256 av1_8_ps = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
+            __m256 av1_8_ps;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                av1_8_ps = load_float16_n_avx2(ARowPtr + k + kk + 8, n_to_read);
+            } else {
+                av1_8_ps = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
+            }
 
             n_to_read = std::min(kklen - 16, 8);
-            __m256 av2_8_ps = load_float_n_avx2(ARowPtr + k + kk + 16, n_to_read);
+            __m256 av2_8_ps;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                av2_8_ps = load_float16_n_avx2(ARowPtr + k + kk + 16, n_to_read);
+            } else {
+                av2_8_ps = load_float_n_avx2(ARowPtr + k + kk + 16, n_to_read);
+            }
 
             n_to_read = std::min(kklen - 24, 8);
-            __m256 av3_8_ps = load_float_n_avx2(ARowPtr + k + kk + 24, n_to_read);
+            __m256 av3_8_ps;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                av3_8_ps = load_float16_n_avx2(ARowPtr + k + kk + 24, n_to_read);
+            } else {
+                av3_8_ps = load_float_n_avx2(ARowPtr + k + kk + 24, n_to_read);
+            }
 
             if constexpr (IsBlkLen64Layout) {
                 count_half_4 = 4 * (int)((kk % (2 * SubBlkLen32)) / SubBlkLen32);
@@ -1050,11 +1120,11 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
 }
 
 // TODO: flow MlasQ4GemmKernelBlkLen16Avx512f to improve perf
-template <bool HasZeroPoint>
+template <typename AType, bool HasZeroPoint>
 void
 SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
     size_t BlkLen,
-    const float* A,
+    const AType* A,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -1068,7 +1138,7 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
     constexpr size_t BlkBitWidth4 = 4;
     constexpr size_t NCols4 = 4;
 
-    const float* ARowPtr = A;
+    const AType* ARowPtr = A;
     float* CRowPtr = C;
 
     const size_t BlockCountK = BlockStrideQuantB;
@@ -1088,14 +1158,14 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
     int64_t nblk = static_cast<int64_t>(CountN) - NCols4;
     while (nblk >= 0) {
         if (BlkLen >= 64) {
-            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<NCols4, HasZeroPoint, true>(
+            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<AType, NCols4, HasZeroPoint, true>(
                 BlkLen,
                 ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
                 StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
                 BiasPtr
             );
         } else {
-            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<NCols4, HasZeroPoint, false>(
+            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<AType, NCols4, HasZeroPoint, false>(
                 BlkLen,
                 ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
                 StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
@@ -1121,14 +1191,14 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
     nblk += NCols4;
     for (int64_t n = 0; n < nblk; ++n) {
         if (BlkLen >= 64) {
-            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<1, HasZeroPoint, true>(
+            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<AType, 1, HasZeroPoint, true>(
                 BlkLen,
                 ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
                 StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
                 BiasPtr
             );
         } else {
-            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<1, HasZeroPoint, false>(
+            ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<AType, 1, HasZeroPoint, false>(
                 BlkLen,
                 ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
                 StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
@@ -1149,10 +1219,11 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
     }
 }
 
+template<typename AType>
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32_avx2(
     size_t BlkLen,
-    const float* A,
+    const AType* A,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -1165,7 +1236,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
 {
     if (BlkLen == 16) {
         if (QuantBZeroPoint != nullptr) {
-            SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2<true>(
+            SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2<AType, true>(
                 A,
                 QuantBData,
                 QuantBScale,
@@ -1177,7 +1248,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
                 Bias
             );
         } else {
-            SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2<false>(
+            SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2<AType, false>(
                 A,
                 QuantBData,
                 QuantBScale,
@@ -1191,7 +1262,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
         }
     } else {
         if (QuantBZeroPoint != nullptr) {
-            SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<true>(
+            SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<AType, true>(
                 BlkLen,
                 A,
                 QuantBData,
@@ -1204,7 +1275,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
                 Bias
             );
         } else {
-            SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<false>(
+            SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<AType, false>(
                 BlkLen,
                 A,
                 QuantBData,
@@ -1220,10 +1291,11 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
     }
 }
 
+template<typename AType>
 void MLASCALL
 QuantizeARow_CompInt8_avx2(
     size_t BlkLen,
-    const float* A,
+    const AType* A,
     size_t CountK,
     std::byte* QuantA,
     float* QuantAScale,
@@ -1244,7 +1316,12 @@ QuantizeARow_CompInt8_avx2(
         for (size_t kk = 0; kk < step; kk += 8) {
             const int klen = std::min(8, (int)(step - kk));
 
-            __m256 v0 = load_float_n_avx2(A + k + kk, klen);
+            __m256 v0;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                v0 = load_float16_n_avx2(A + k + kk, klen);
+            } else {
+                v0 = load_float_n_avx2(A + k + kk, klen);
+            }
 
             // Compute max(abs(e)) for the block
             maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v0));
@@ -1269,7 +1346,12 @@ QuantizeARow_CompInt8_avx2(
             const int klen = std::min(16, (int)(step - kk));
 
             int n_to_read = std::min(klen, 8);
-            __m256 v0 = load_float_n_avx2(A + k + kk, n_to_read);
+            __m256 v0;
+            if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                v0 = load_float16_n_avx2(A + k + kk, n_to_read);
+            } else {
+                v0 = load_float_n_avx2(A + k + kk, n_to_read);
+            }
             v0 = _mm256_mul_ps(v0, mul);
             v0 = _mm256_round_ps(v0, _MM_ROUND_NEAREST);
 
@@ -1278,7 +1360,11 @@ QuantizeARow_CompInt8_avx2(
             if (n_to_read <= 0) {
                 v1 = _mm256_setzero_ps();
             } else {
-                v1 = load_float_n_avx2(A + k + kk + 8, n_to_read);
+                if constexpr (std::is_same<AType, MLAS_FP16>::value) {
+                    v1 = load_float16_n_avx2(A + k + kk + 8, n_to_read);
+                } else {
+                    v1 = load_float_n_avx2(A + k + kk + 8, n_to_read);
+                }
                 v1 = _mm256_mul_ps(v1, mul);
                 v1 = _mm256_round_ps(v1, _MM_ROUND_NEAREST);
             }
@@ -1340,11 +1426,13 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitGemmPerGemmWorkspaceSize = SQ4BitGemmPerGemmWorkspaceSize;
     d.SQ4BitGemmPerGemmWorkspaceAlignment = SQ4BitGemmPerGemmWorkspaceAlignment;
 
-    d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2;
+    d.SQ4BitGemmM1Kernel_CompFp32_ATypeFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2<float>;
+    d.SQ4BitGemmM1Kernel_CompFp32_ATypeFp16 = SQ4BitGemmM1Kernel_CompFp32_avx2<MLAS_FP16>;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
-    d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
+    d.QuantizeARowComputeBlkSum_CompInt8_ATypeFp32 = QuantizeARow_CompInt8_avx2<float>;
+    d.QuantizeARowComputeBlkSum_CompInt8_ATypeFp16 = QuantizeARow_CompInt8_avx2<MLAS_FP16>;
 
     return d;
 }();
@@ -1359,11 +1447,13 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmPerGemmWorkspaceSize = SQ4BitGemmPerGemmWorkspaceSize;
     d.SQ4BitGemmPerGemmWorkspaceAlignment = SQ4BitGemmPerGemmWorkspaceAlignment;
 
-    d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2;
+    d.SQ4BitGemmM1Kernel_CompFp32_ATypeFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2<float>;
+    d.SQ4BitGemmM1Kernel_CompFp32_ATypeFp16 = SQ4BitGemmM1Kernel_CompFp32_avx2<MLAS_FP16>;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
-    d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
+    d.QuantizeARowComputeBlkSum_CompInt8_ATypeFp32 = QuantizeARow_CompInt8_avx2<float>;
+    d.QuantizeARowComputeBlkSum_CompInt8_ATypeFp16 = QuantizeARow_CompInt8_avx2<MLAS_FP16>;
 
     return d;
 }();
