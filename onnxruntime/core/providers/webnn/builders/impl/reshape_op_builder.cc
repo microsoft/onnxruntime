@@ -104,7 +104,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
 
   // WebNN reshape does not support 0 as dimension.
   NodeAttrHelper helper(node);
-  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
   if (allow_zero && !perm_dims.empty()) {
     for (int64_t i = 0; i < perm_dims[0]; i++) {
       if (raw_new_shape[i] == 0) {
