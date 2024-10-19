@@ -129,16 +129,17 @@ std::conditional_t<THRW, void, Status> RocmCall(
                libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
                hostname,
                file, line, exprString, msg);
+
+      LOGS_DEFAULT(ERROR) << str;
       if constexpr (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);
       } else {
-        LOGS_DEFAULT(ERROR) << str;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, str);
       }
     } catch (const std::exception& e) {  // catch, log, and rethrow since ROCM code sometimes hangs in destruction, so we'd never get to see the error
       if constexpr (THRW) {
-        ORT_THROW(e.what());
+        ORT_RETHROW;
       } else {
         LOGS_DEFAULT(ERROR) << e.what();
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());

@@ -15,10 +15,42 @@
 
 namespace onnxruntime {
 
-class NotImplementedException : public std::logic_error {
+inline std::string FormatErrorMessage(const CodeLocation& location, const char* failed_condition, const std::string& msg) {
+    std::ostringstream ss;
+
+    ss << location.ToString(CodeLocation::kFilenameAndPath);  // output full path in case just the filename is ambiguous
+    if (failed_condition != nullptr) {
+      ss << " " << failed_condition << " was false.";
+    }
+
+    ss << " " << msg << "\n";
+    if (!location.stacktrace.empty()) {
+      ss << "Stacktrace:\n";
+      // skip the first entry in the stacktrace as we have that information from location.ToString()
+      std::copy(std::next(location.stacktrace.begin()), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
+    }
+
+    return ss.str();
+}
+
+inline std::string FormatErrorMessage(const CodeLocation& location, const std::string& msg) {
+    return FormatErrorMessage(location, nullptr, msg);
+}
+
+class NotImplementedException : public std::exception {
  public:
-  explicit NotImplementedException(const char* _Message = "Function not yet implemented") noexcept : std::logic_error(_Message) {};
-  explicit NotImplementedException(const std::string& _Message = "Function not yet implemented") noexcept : std::logic_error(_Message) {};
+  explicit NotImplementedException(const CodeLocation& location, const std::string& msg) noexcept
+    : location_{location} {
+    what_ = FormatErrorMessage(location, msg);
+  }
+
+  const char* what() const noexcept override {
+    return what_.c_str();
+  }
+
+ private:
+  const CodeLocation location_;
+  std::string what_;
 };
 
 class TypeMismatchException : public std::logic_error {
@@ -41,21 +73,7 @@ class OnnxRuntimeException : public std::exception {
   */
   OnnxRuntimeException(const CodeLocation& location, const char* failed_condition, const std::string& msg)
       : location_{location} {
-    std::ostringstream ss;
-
-    ss << location.ToString(CodeLocation::kFilenameAndPath);  // output full path in case just the filename is ambiguous
-    if (failed_condition != nullptr) {
-      ss << " " << failed_condition << " was false.";
-    }
-
-    ss << " " << msg << "\n";
-    if (!location.stacktrace.empty()) {
-      ss << "Stacktrace:\n";
-      // skip the first entry in the stacktrace as we have that information from location.ToString()
-      std::copy(std::next(location.stacktrace.begin()), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
-    }
-
-    what_ = ss.str();
+    what_ = FormatErrorMessage(location, failed_condition, msg);
   }
 
   const char* what() const noexcept override {
@@ -64,7 +82,6 @@ class OnnxRuntimeException : public std::exception {
 
  private:
   const CodeLocation location_;
-  const std::vector<std::string> stacktrace_;
   std::string what_;
 };
 
