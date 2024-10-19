@@ -570,9 +570,9 @@ static Status SaveModel(Model& model, const T& file_path) {
              window.open(url, '_blank');
            }
          }),
-         reinterpret_cast<int32_t>(buffer),
-         static_cast<int32_t>(buffer_size),
-         reinterpret_cast<int32_t>(file_path.c_str()));
+         buffer,
+         buffer_size,
+         file_path.c_str());
 
   free(buffer);
   return Status::OK();
