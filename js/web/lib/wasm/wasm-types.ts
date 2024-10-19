@@ -301,10 +301,7 @@ export interface OrtInferenceAPIs {
 /**
  * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
  */
-export interface OrtWasmModule
-  extends EmscriptenModule,
-    OrtInferenceAPIs,
-    Partial<JSEP.Module> {
+export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<JSEP.Module> {
   PTR_SIZE: number;
   // #region emscripten functions
   stackSave(): number;
