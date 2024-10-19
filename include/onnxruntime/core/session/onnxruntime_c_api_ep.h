@@ -158,14 +158,32 @@ ORT_API2_STATUS(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ con
  */
 ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
 
-/** \brief Gets the Graph inputs including initializers, in the same order as defined in the GraphProto.
+/** \brief Gets the Graph inputs with no matching initializers, in the same order as defined in the GraphProto.
  *
  * \param[in] graph The graph to query
  * \param[out] input_names The input names
  * \param[out] input_len The number of inputs
  *
  */
-ORT_API2_STATUS(OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
+ORT_API2_STATUS(OrtGraph_GetRequiredInputs, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
+
+/** \brief Gets the Graph inputs with matching initializers, in the same order as defined in the GraphProto.
+ *
+ * \param[in] graph The graph to query
+ * \param[out] input_names The input names
+ * \param[out] input_len The number of inputs
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetAllInputs, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
+
+/** \brief Gets all the Graph initializers' name
+ *
+ * \param[in] graph The graph to query
+ * \param[out] initializer_names The initializer names
+ * \param[out] initializer_len The number of initializers
+ *
+ */
+ORT_API2_STATUS(OrtGraph_GetAllInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** initializer_names, _Out_ size_t* initializer_len);
 
 /** \brief Get const Node given specific node index. May return nullptr if node as been freed.
  *
@@ -280,7 +298,11 @@ ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ vo
  */
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
 
-/** \brief Release the graph
+/** \brief Release the graph.
+ *
+ * NOTE!!: Invoke this function after the use of OrtGraph_GetSubGraph. As OrtGraph_GetSubGraph allocate model instead of
+ * graph, this API release graph's owning_model explicitly which in turn will release the graph
+ * (because graph is hosted in an unique_ptr in Model class)
  *
  * \param[in] graph The graph to release
  *

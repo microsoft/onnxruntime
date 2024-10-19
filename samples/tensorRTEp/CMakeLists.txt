@@ -1,6 +1,6 @@
 # usage:
 # cd build/
-# cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DTENSORRT_HOME=/home/leca/TensorRT-10.4.0.26 (see the result of "nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits")
+# cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DTENSORRT_HOME=/home/leca/TensorRT-10.3.0.26 (see the result of "nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits")
 # cmake --build ./
 cmake_minimum_required(VERSION 3.26)
 project(TensorRTEp VERSION 1.0)
@@ -24,7 +24,7 @@ target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
                                              "../../build/tensorrt/Debug/_deps/protobuf-src/src")
 
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
-target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/tensorrt/Debug/libonnxruntime.so"
+target_link_libraries(TensorRTEp PUBLIC "/home/leca/code/onnxruntime/build/tensorrt/Debug/libonnxruntime.so"
                                      ${TENSORRT_HOME}/lib/libnvinfer.so
                                      ${TENSORRT_HOME}/lib/libnvinfer_plugin.so
                                      ${TENSORRT_HOME}/lib/libnvonnxparser.so
@@ -33,4 +33,5 @@ target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/tens
                                     "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/onnx-build/libonnx.a"
                                     "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/onnx-build/libonnx_proto.a"
                                     "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/protobuf-build/libprotobufd.a"
-                                    "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/protobuf-build/libprotocd.a")
+                                    "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/protobuf-build/libprotocd.a"
+                                    )

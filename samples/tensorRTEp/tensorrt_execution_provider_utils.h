@@ -313,7 +313,7 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   // const std::vector<const char*>& input_names = nullptr;
   const char** input_names = nullptr;
   size_t input_count = 0;
-  graph_api->OrtGraph_GetInputsIncludingInitializers(graph_viewer, &input_names, &input_count);
+  graph_api->OrtGraph_GetAllInputs(graph_viewer, &input_names, &input_count);
   for (size_t i = 0; i < input_count; ++i) {
     hash_str(input_names[i]);
   }

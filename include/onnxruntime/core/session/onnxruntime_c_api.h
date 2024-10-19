@@ -4672,29 +4672,114 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
 
+  /** \brief Create OrtDevice object.
+   *
+   * \param[in] device_type
+   * \param[in] memory_type
+   * \param[in] device_id
+   * \param[out] out OrtDevice object
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(CreateDevice, _In_ enum OrtMemoryInfoDeviceType device_type, _In_ enum OrtMemoryType memory_type, _In_ int16_t device_id, _Outptr_ const OrtDevice** out);
 
+  /** \brief Get OrtMemoryInfoDeviceType property from OrtDevice object.
+   *
+   * \param[in] device OrtDevice object
+   * \param[out] out OrtMemoryInfoDeviceType property
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(DeviceGetType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out);
 
+  /** \brief Get OrtMemoryType property from OrtDevice object.
+   *
+   * \param[in] device OrtDevice object
+   * \param[out] out OrtMemoryType property
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(DeviceGetMemoryType, _In_ const OrtDevice* device, _Out_ OrtMemoryType* out);
 
+  /** \brief Get device id property from OrtDevice object.
+   *
+   * \param[in] device OrtDevice object
+   * \param[out] out device id property
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(DeviceGetId, _In_ const OrtDevice* device, _Out_ int16_t* out);
 
+  /** \brief Release OrtDevice object.
+   *
+   * \since Version 1.xx.
+   */
   ORT_CLASS_RELEASE(Device);
 
+  /** \brief Register the plugin ExecutionProvider library
+   *
+   * The plugin ExecutionProvider library will be loaded and EP factory object will be created and saved in OrtEnv object
+   *
+   * \param[in] lib_path the path of the plugin ExecutionProvider library
+   * \param[in] env OrtEnv object
+   * \param[in] ep_name the plugin ExecutionProvider name
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(RegisterPluginExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
 
+  /** \brief Append the plugin ExecutionProvider factory into the session option with provider options
+   *
+   * \param[in] options OrtSessionOptions object
+   * \param[in] ep_name the plugin ExecutionProvider name
+   * \param[in] env OrtEnv object
+   * \param[in] provider_options_keys provider options' keys
+   * \param[in] provider_options_values provider options' values
+   * \param[in] num_keys the number of the provider options' key-value pairs
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(SessionOptionsAppendPluginExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
+  /** \brief Create OrtTypeConstraints object
+   *
+   * \param[out] OrtTypeConstraints object
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints);
 
+  /** \brief Add a specific type constraint into OrtTypeConstraints object
+   *
+   * \param[in] type_constraints OrtTypeConstraints object
+   * \param[in] type_symbol symbol string to represent a specific type
+   * \param[in] type a specific type
+   *
+   * \since Version 1.xx.
+   */
   ORT_API2_STATUS(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
 
+  /** \brief Release OrtTypeConstraints object.
+   *
+   * \since Version 1.xx.
+   */
   ORT_CLASS_RELEASE(TypeConstraints);
 
-  ORT_API2_STATUS(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints);
+  /** \brief Create KernelCreateInfo with custom op and type constraints, and register it
+   *
+   * \param[in] kernel_registry Opaque pointer of KernelRegistry object
+   * \param[in] custom_op Custom Op where the kernel compute function is defined
+   * \param[in] type_constraints
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(OrtKernelRegistry_RegisterKernel, _In_ OrtKernelRegistry* kernel_registry, _In_ OrtCustomOp* custom_op, _In_ OrtTypeConstraints* type_constraints);
 
+  /** \brief Get Graph API
+   *
+   * \since Version 1.xx.
+   */
   const OrtGraphApi*(ORT_API_CALL* GetGraphApi)(uint32_t version)NO_EXCEPTION;
 };  // struct OrtApi
 
@@ -4725,11 +4810,13 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  */
 struct OrtCustomOp {
 #ifdef __cplusplus
-  // TODO(leca): initialize all member function pointers to nullptr?
-  OrtCustomOp() : CreateKernel{nullptr}, KernelCompute{nullptr}, KernelDestroy{nullptr}, GetInputCharacteristic{nullptr},
-                  GetOutputCharacteristic{nullptr}, GetVariadicInputMinArity{nullptr}, GetVariadicOutputMinArity{nullptr},
-                  GetStartVersion{nullptr}, GetEndVersion{nullptr}, GetMayInplace{nullptr}, ReleaseMayInplace{nullptr},
-                  GetAliasMap{nullptr}, ReleaseAliasMap{nullptr} {}
+  OrtCustomOp() : CreateKernel{nullptr}, GetName{nullptr}, GetExecutionProviderType{nullptr}, GetInputType{nullptr},
+                  GetInputTypeCount{nullptr}, GetOutputType{nullptr}, GetOutputTypeCount{nullptr}, KernelCompute{nullptr},
+                  KernelDestroy{nullptr}, GetInputCharacteristic{nullptr}, GetOutputCharacteristic{nullptr},
+                  GetInputMemoryType{nullptr}, GetVariadicInputMinArity{nullptr}, GetVariadicInputHomogeneity{nullptr},
+                  GetVariadicOutputMinArity{nullptr}, GetVariadicOutputHomogeneity{nullptr}, CreateKernelV2{nullptr},
+                  KernelComputeV2{nullptr}, InferOutputShapeFn{nullptr}, GetStartVersion{nullptr}, GetEndVersion{nullptr},
+                  GetMayInplace{nullptr}, ReleaseMayInplace{nullptr}, GetAliasMap{nullptr}, ReleaseAliasMap{nullptr} {}
 #endif
   uint32_t version;  // Must be initialized to ORT_API_VERSION
 

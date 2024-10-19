@@ -61,12 +61,31 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetOrtGraph, const OrtGraphViewer* gr
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetRequiredInputs, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const auto& inputs = graph_viewer->GetInputs();
+  *input_len = inputs.size();
+  *input_names = new const char*[*input_len];   // TODO(leca): release
+  for (size_t i = 0; i < *input_len; i++) (*input_names)[i] = inputs[i]->Name().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetAllInputs, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const auto& inputs = graph_viewer->GetInputsIncludingInitializers();
   *input_len = inputs.size();
-  *input_names = new const char*[*input_len];
+  *input_names = new const char*[*input_len];   // TODO(leca): release
   for (size_t i = 0; i < *input_len; i++) (*input_names)[i] = inputs[i]->Name().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetAllInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** initializer_names, _Out_ size_t* initializer_len) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const auto& initializers = graph_viewer->GetAllInitializedTensors();
+  *initializer_len = initializers.size();
+  *initializer_names = new const char*[*initializer_len];   // TODO(leca): release
+  int i = 0;
+  for (const auto& [key, value] : initializers) (*initializer_names)[i++] = key.c_str();
   return nullptr;
 }
 
@@ -129,7 +148,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphV
     *ret = false;
     return nullptr;
   }
-  *out = new OrtTensorRef();  // TODO(leca): release
+  *out = new OrtTensorRef();  // TODO(leca): 1. release, 2. other datatypes in the following switch
   (*out)->shape_len = initializer->dims_size();
   (*out)->shape = new int64_t [initializer->dims_size()];
   for (size_t i = 0; i < (*out)->shape_len; i++) {
@@ -182,7 +201,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_SerializeToArray, const OrtGraphViewe
   onnx::ModelProto model_proto = model.ToProto();
   GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true, ExecutionOrder::PRIORITY_BASED);
   *data_size = model_proto.ByteSizeLong();
-  *data = malloc(*data_size);    // TODO(leca): release
+  *data = malloc(*data_size);
   model_proto.SerializeToArray(*data, *data_size);
   return nullptr;
 }
@@ -432,7 +451,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
   for (const auto* output_arg : graph_viewer->GetOutputs()) {
     graph_output_names.insert(output_arg->Name());
   }
-  // TODO(leca): cannot use unique_ptr here, otherwise when this function exits, sub_graph_viewer->graph_->graph_proto_, which is from model_build->model_proto_, will be nullptr.
+  // NOTE!!: cannot use unique_ptr here, otherwise when this function exits, sub_graph_viewer->graph_->graph_proto_, which is from model_build->model_proto_, will be nullptr.
   // Pay special attention when Graph object is releasing. We need to release model_build seperately then.
   Model* model_build = new Model (graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
@@ -511,7 +530,6 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
   // TODO:yang
   // Only if the newly built graph has control flow op as well as it has parent node,
   // it needs to handle outer scope values before calling graph.Resolve().
-  // TODO(leca): Is local variable enough? Do we need to make it EP class variable?
   std::unordered_map<std::string, std::unique_ptr<SubGraphContext2>> subgraph_context_map;
   if (has_control_flow_op && graph_viewer->ParentNode()) {
   //   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
@@ -547,7 +565,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraph, const OrtGraphViewer* graph) {
   if (graph) {
     const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-    delete graph_viewer;
+    delete &(graph_viewer->GetGraph()).GetModel();
   }
   return nullptr;
 }
@@ -747,7 +765,9 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetParenNode,
     &OrtGraphApis::OrtGraph_GetModelPath,
     &OrtGraphApis::OrtGraph_GetOrtGraph,
-    &OrtGraphApis::OrtGraph_GetInputsIncludingInitializers,
+    &OrtGraphApis::OrtGraph_GetRequiredInputs,
+    &OrtGraphApis::OrtGraph_GetAllInputs,
+    &OrtGraphApis::OrtGraph_GetAllInitializers,
     &OrtGraphApis::OrtGraph_GetOrtNode,
     &OrtGraphApis::OrtGraph_GetNodesConsumingInput,
     &OrtGraphApis::OrtGraph_GetNodeProducingOutput,
