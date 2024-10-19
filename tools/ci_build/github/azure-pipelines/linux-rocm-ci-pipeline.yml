@@ -100,6 +100,7 @@ jobs:
             set -ex; \
             . /ort/env/bin/activate; \
             env; \
+            pip list; \
             ccache -s; \
             python tools/ci_build/build.py \
               --config Release \
@@ -192,6 +193,7 @@ jobs:
             . /ort/env/bin/activate; \
             env; \
             ccache -s; \
+            pip list; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -238,8 +240,8 @@ jobs:
           /bin/bash -c "set -ex; \
             . /ort/env/bin/activate; \
             env; \
-            ldd /ort/env/lib/python3.10/site-packages/onnxruntime/capi/libonnxruntime_providers_rocm.so; \
             sudo ldconfig -v; \
+            pip list; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
