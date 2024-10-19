@@ -234,6 +234,9 @@ Module['jsepInit'] = (name, params) => {
     }
     Module['jsepRegisterMLTensor'] = (tensor, dataType, shape) => {
       return backend['registerMLTensor'](tensor, dataType, shape);
-    }
+    };
+    Module['jsepCreateMLContext'] = (optionsOrGpuDevice) => {
+      return backend['createMLContext'](optionsOrGpuDevice);
+    };
   }
 };

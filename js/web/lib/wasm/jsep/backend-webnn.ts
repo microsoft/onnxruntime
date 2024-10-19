@@ -30,6 +30,33 @@ const onnxDataTypeToWebnnDataType = new Map<DataType, MLOperandDataType>([
   [DataType.bool, 'uint8'],
 ]);
 
+type MLContextEntry = {
+  gpuDevice?: GPUDevice;
+  options?: MLContextOptions;
+  mlContext: MLContext;
+};
+
+const compareMLContextOptions = (a?: MLContextOptions, b?: MLContextOptions): boolean => {
+  if (a === b) {
+    return true;
+  }
+  if (a === undefined || b === undefined) {
+    return false;
+  }
+  const aKeys = Object.keys(a).sort();
+  const bKeys = Object.keys(b).sort();
+  if (aKeys.length !== bKeys.length) {
+    return false;
+  }
+  type GeneticObject = { [key: string]: object };
+  for (const key of aKeys) {
+    if ((a as GeneticObject)[key] !== (b as GeneticObject)[key]) {
+      return false;
+    }
+  }
+  return true;
+};
+
 /**
  * WebNN backend implementation. This class is used to keep track of the MLTensors created by the backend and keep track
  * of the current MLContext being used by the sessions.
@@ -48,6 +75,10 @@ export class WebNNBackend {
    */
   private sessionIdsByMLContext = new Map<MLContext, Set<number>>();
   /**
+   * Cache of MLContexts.
+   */
+  private mlContextCache: MLContextEntry[] = [];
+  /**
    * Current session id.
    */
   private activeSessionId?: number;
@@ -65,6 +96,41 @@ export class WebNNBackend {
 
   public onRunStart(sessionId: number): void {
     this.activeSessionId = sessionId;
+  }
+
+  public async createMLContext(optionsOrDevice?: MLContextOptions | GPUDevice): Promise<MLContext> {
+    if (optionsOrDevice instanceof GPUDevice) {
+      const mlContextIndex = this.mlContextCache.findIndex((entry) => entry.gpuDevice === optionsOrDevice);
+      if (mlContextIndex !== -1) {
+        return this.mlContextCache[mlContextIndex].mlContext;
+      } else {
+        const mlContext = await navigator.ml.createContext(optionsOrDevice);
+        this.mlContextCache.push({ gpuDevice: optionsOrDevice, mlContext });
+        return mlContext;
+      }
+    } else if (optionsOrDevice === undefined) {
+      const mlContextIndex = this.mlContextCache.findIndex(
+        (entry) => entry.options === undefined && entry.gpuDevice === undefined,
+      );
+      if (mlContextIndex !== -1) {
+        return this.mlContextCache[mlContextIndex].mlContext;
+      } else {
+        const mlContext = await navigator.ml.createContext();
+        this.mlContextCache.push({ mlContext });
+        return mlContext;
+      }
+    }
+
+    const mlContextIndex = this.mlContextCache.findIndex((entry) =>
+      compareMLContextOptions(entry.options, optionsOrDevice),
+    );
+    if (mlContextIndex !== -1) {
+      return this.mlContextCache[mlContextIndex].mlContext;
+    } else {
+      const mlContext = await navigator.ml.createContext(optionsOrDevice);
+      this.mlContextCache.push({ options: optionsOrDevice, mlContext });
+      return mlContext;
+    }
   }
 
   public get currentContext(): MLContext {
@@ -97,6 +163,10 @@ export class WebNNBackend {
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
       this.sessionIdsByMLContext.delete(mlContext);
+      const mlContextIndex = this.mlContextCache.findIndex((entry) => entry.mlContext === mlContext);
+      if (mlContextIndex !== -1) {
+        this.mlContextCache.splice(mlContextIndex, 1);
+      }
     }
   }
 
