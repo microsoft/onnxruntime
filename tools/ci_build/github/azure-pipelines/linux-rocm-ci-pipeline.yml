@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.1
+    value: 6.2
   - name: RocmVersionPatchSuffix
     value: ".3"
 
@@ -64,7 +64,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
       Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
@@ -98,6 +98,7 @@ jobs:
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
+            . /ort/env/bin/activate; \
             env; \
             ccache -s; \
             python tools/ci_build/build.py \
@@ -164,7 +165,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
       Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
@@ -188,6 +189,9 @@ jobs:
           /bin/bash -c "
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
+            . /ort/env/bin/activate; \
+            env; \
+            ccache -s; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -231,7 +235,12 @@ jobs:
           -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           -e CUPY_CACHE_DIR=/build/Release \
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
-            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
+          /bin/bash -c "set -ex; \
+            . /ort/env/bin/activate; \
+            env; \
+            ldd /ort/env/lib/python3.10/site-packages/onnxruntime/capi/libonnxruntime_providers_rocm.so; \
+            sudo ldconfig -v; \
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()
