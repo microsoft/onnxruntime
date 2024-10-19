@@ -23,6 +23,9 @@ export const validateInputs = (
   inputs: readonly TensorView[],
   attributes: GroupQueryAttentionAttrs,
 ): AttentionParameters => {
+  if (attributes.doRotary && inputs.length <= 7) {
+    throw new Error('cos_cache and sin_cache inputs are required if do_rotary is specified');
+  }
   const query = inputs[0];
   const key = inputs[1];
   const value = inputs[2];
@@ -33,9 +36,6 @@ export const validateInputs = (
   }
   if (attributes.softcap !== 0) {
     throw new Error('Softcap is not supported');
-  }
-  if (attributes.doRotary !== 0) {
-    throw new Error('Rotary is not supported');
   }
   if (attributes.rotaryInterleaved !== 0) {
     throw new Error('Rotary interleaved is not supported');
