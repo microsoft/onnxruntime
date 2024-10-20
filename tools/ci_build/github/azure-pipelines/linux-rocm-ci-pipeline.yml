@@ -240,8 +240,8 @@ jobs:
           /bin/bash -c "set -ex; \
             . /ort/env/bin/activate; \
             env; \
-            sudo ldconfig -v; \
             pip list; \
+            ldconfig -v; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
