@@ -1028,10 +1028,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"quantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
       {"quantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}},
       {"qlinearmatmul_2D_int8_float16", "fp16 type ont supported by CPU EP", {}},
-      {"qlinearmatmul_2D_int8_float32", "fp32 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_2D_int8_float32", "result diff", {}},
       {"qlinearmatmul_2D_uint8_float16", "fp16 type ont supported by CPU EP", {}},
       {"qlinearmatmul_3D_int8_float16", "fp16 type ont supported by CPU EP", {}},
-      {"qlinearmatmul_3D_int8_float32", "fp32 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_3D_int8_float32", "result diff", {}},
       {"qlinearmatmul_3D_uint8_float16", "fp16 type ont supported by CPU EP", {}}});
 
   // Some EPs may fail to pass some specific testcases.
