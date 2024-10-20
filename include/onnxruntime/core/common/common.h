@@ -69,7 +69,6 @@ using TimePoint = std::chrono::high_resolution_clock::time_point;
 #define ORT_ATTRIBUTE_UNUSED
 #endif
 
-
 // #ifdef ORT_NO_EXCEPTIONS
 // Print the given final message, the message must be a null terminated char*
 // ORT will abort after printing the message.
@@ -114,38 +113,38 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_THROW(...)                                                    \
-  do {                                                                    \
+#define ORT_THROW(...)                                                                              \
+  do {                                                                                              \
     ::onnxruntime::PrintErrorMessage(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__)); \
-    abort();                                                              \
+    abort();                                                                                        \
   } while (false)
 
 // Just in order to mark things as not implemented. Do not use in final code.
-#define ORT_NOT_IMPLEMENTED(...)                                                       \
-  do {                                                                                 \
-    ::onnxruntime::PrintErrorMessage(ORT_WHERE_WITH_STACK,                        \
-                                     ::onnxruntime::MakeString(__VA_ARGS__));    \
-    abort();                                                                           \
+#define ORT_NOT_IMPLEMENTED(...)                                              \
+  do {                                                                        \
+    ::onnxruntime::PrintErrorMessage(ORT_WHERE_WITH_STACK,                    \
+                                     ::onnxruntime::MakeString(__VA_ARGS__)); \
+    abort();                                                                  \
   } while (false)
 
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                                   \
-  do {                                                                                \
-    if (!(condition)) {                                                               \
-      ::onnxruntime::PrintErrorMessage(ORT_WHERE_WITH_STACK, #condition,             \
-                                          ::onnxruntime::MakeString(__VA_ARGS__));   \
-      abort();                                                                        \
-    }                                                                                 \
+#define ORT_ENFORCE(condition, ...)                                             \
+  do {                                                                          \
+    if (!(condition)) {                                                         \
+      ::onnxruntime::PrintErrorMessage(ORT_WHERE_WITH_STACK, #condition,        \
+                                       ::onnxruntime::MakeString(__VA_ARGS__)); \
+      abort();                                                                  \
+    }                                                                           \
   } while (false)
 
-#define ORT_THROW_EX(ex, ...)                                                                         \
-  do {                                                                                                \
-      ::onnxruntime::PrintErrorMessage(                                                              \
-          ORT_WHERE_WITH_STACK,                                                                       \
-          ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")"));         \
-    abort();                                                                                          \
+#define ORT_THROW_EX(ex, ...)                                                              \
+  do {                                                                                     \
+    ::onnxruntime::PrintErrorMessage(                                                      \
+        ORT_WHERE_WITH_STACK,                                                              \
+        ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")")); \
+    abort();                                                                               \
   } while (false)
 
 #else
@@ -177,12 +176,12 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                                                                    \
   } while (false)
 
-#define ORT_THROW_EX(ex, ...) \
-  do {                                                                                                \
-     ::onnxruntime::PrintErrorMessage(                                                                \
-          ORT_WHERE_WITH_STACK,                                                                       \
-          ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")"));          \
-    throw ex(__VA_ARGS__);                                                                            \
+#define ORT_THROW_EX(ex, ...)                                                              \
+  do {                                                                                     \
+    ::onnxruntime::PrintErrorMessage(                                                      \
+        ORT_WHERE_WITH_STACK,                                                              \
+        ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")")); \
+    throw ex(__VA_ARGS__);                                                                 \
   } while (false)
 
 #endif

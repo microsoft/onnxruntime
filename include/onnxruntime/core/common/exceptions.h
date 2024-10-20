@@ -16,31 +16,31 @@
 namespace onnxruntime {
 
 inline std::string FormatErrorMessage(const CodeLocation& location, const char* failed_condition, const std::string& msg) {
-    std::ostringstream ss;
+  std::ostringstream ss;
 
-    ss << location.ToString(CodeLocation::kFilenameAndPath);  // output full path in case just the filename is ambiguous
-    if (failed_condition != nullptr) {
-      ss << " " << failed_condition << " was false.";
-    }
+  ss << location.ToString(CodeLocation::kFilenameAndPath);  // output full path in case just the filename is ambiguous
+  if (failed_condition != nullptr) {
+    ss << " " << failed_condition << " was false.";
+  }
 
-    ss << " " << msg << "\n";
-    if (!location.stacktrace.empty()) {
-      ss << "Stacktrace:\n";
-      // skip the first entry in the stacktrace as we have that information from location.ToString()
-      std::copy(std::next(location.stacktrace.begin()), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
-    }
+  ss << " " << msg << "\n";
+  if (!location.stacktrace.empty()) {
+    ss << "Stacktrace:\n";
+    // skip the first entry in the stacktrace as we have that information from location.ToString()
+    std::copy(std::next(location.stacktrace.begin()), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
+  }
 
-    return ss.str();
+  return ss.str();
 }
 
 inline std::string FormatErrorMessage(const CodeLocation& location, const std::string& msg) {
-    return FormatErrorMessage(location, nullptr, msg);
+  return FormatErrorMessage(location, nullptr, msg);
 }
 
 class NotImplementedException : public std::exception {
  public:
   explicit NotImplementedException(const CodeLocation& location, const std::string& msg) noexcept
-    : location_{location} {
+      : location_{location} {
     what_ = FormatErrorMessage(location, msg);
   }
 

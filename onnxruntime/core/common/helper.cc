@@ -8,13 +8,13 @@
 #include <assert.h>
 #endif
 
-//#ifdef ORT_NO_EXCEPTIONS
+// #ifdef ORT_NO_EXCEPTIONS
 #if defined(__ANDROID__)
 #include <android/log.h>
 #else
 #include <iostream>
 #endif
-//#endif
+// #endif
 
 namespace onnxruntime {
 #ifdef _WIN32
@@ -68,8 +68,6 @@ void PrintFinalMessage(const std::string& msg) {
   std::cerr << msg << std::endl;
 #endif
 }
-
-
 
 void PrintErrorMessage(const CodeLocation& location, const char* failed_condition, const std::string& msg) {
   PrintFinalMessage(FormatErrorMessage(location, failed_condition, msg));
