@@ -36,7 +36,7 @@
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/common/string_helper.h"
 
 #include "core/session/lora_adapters.h"
