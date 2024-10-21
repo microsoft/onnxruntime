@@ -7,7 +7,9 @@
 #include <iostream>
 #include <codecvt>
 #include <fstream>
-
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 #include "./vai_assert.h"
 
 #include "core/common/exceptions.h"
