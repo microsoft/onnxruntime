@@ -130,7 +130,8 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       k = dim_k.dim_value();
       n = dim_n.dim_value();
       ORT_ENFORCE(shape_values.back() == k);
-      m = std::accumulate(shape_values.begin(), shape_values.end() - 1, 1, std::multiplies<int64_t>());
+      m = std::accumulate(shape_values.begin(), shape_values.end() - 1, static_cast<int64_t>(1),
+                          std::multiplies<int64_t>());
     }
 
     const auto& matmul_output = *matmul_node.OutputDefs()[0];
