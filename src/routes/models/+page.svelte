@@ -82,6 +82,6 @@
 	</p>
 	<div class="my-4 mockup-code bg-slate-300 dark:bg-primary">
 		<pre data-prefix="$" class="text-black"><code>pip install olive-ai onnxruntime optimum</code></pre>
-		<pre data-prefix=">" class="text-success"><code>olive auto-opt -m microsoft/Phi-3-mini-4k-instruct -o models/phi3-mini-4k</code></pre>
+		<pre data-prefix=">" class="text-success dark:text-info"><code>olive auto-opt -m microsoft/Phi-3-mini-4k-instruct -o models/phi3-mini-4k</code></pre>
 	</div>
 </div>
