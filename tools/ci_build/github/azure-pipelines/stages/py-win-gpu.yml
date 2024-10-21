@@ -28,16 +28,6 @@ parameters:
     - 11.8
     - 12.2
 
-- name: SpecificArtifact
-  displayName: Use Specific Artifact
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Specific Artifact's BuildId
-  type: string
-  default: '0'
-
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -243,13 +233,11 @@ stages:
             addToPath: true
             architecture: 'x64'
 
-        - template: flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         - task: PowerShell@2
           displayName: 'Install ONNX'

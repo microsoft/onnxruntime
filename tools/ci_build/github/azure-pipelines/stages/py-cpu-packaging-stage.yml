@@ -10,18 +10,8 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_linux_gpu
-  displayName: 'Whether Linux GPU package is built.'
-  type: boolean
-  default: true
-
 - name: enable_windows_cpu
   displayName: 'Whether Windows CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_gpu
-  displayName: 'Whether Windows GPU package is built.'
   type: boolean
   default: true
 
@@ -64,10 +54,6 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-
-- name: publish_symbols
-  type: boolean
-  default: false
 
 # Only applies to QNN packages.
 - name: qnn_sdk_version
@@ -281,87 +267,6 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-- ${{ if eq(parameters.enable_windows_gpu, true) }}:
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.11'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.12'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.13'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.11'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.12'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.13'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
     dependsOn: []
@@ -463,18 +368,6 @@ stages:
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-
-
-  - ${{ if eq(parameters.enable_linux_gpu, true) }}:
-      - template: py-linux-gpu.yml
-        parameters:
-          arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          trt_version: '10.4.0.26-1.cuda11.8'
-          cuda_version: '11.8'
 
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
     - stage: Python_Packaging_Windows_ARM64_QNN

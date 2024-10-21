@@ -4,7 +4,7 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_linux_gpu
+- name: enable_linux_cuda
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
   default: true
@@ -14,7 +14,12 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_windows_gpu
+- name: enable_windows_cuda
+  displayName: 'Whether Windows GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_dml
   displayName: 'Whether Windows GPU package is built.'
   type: boolean
   default: true
@@ -71,15 +76,20 @@ parameters:
   displayName: 'QNN SDK version. Only for QNN packages.'
   default: 2.27.0.240926
 
+- name: cuda_version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
+
 trigger: none
 
 stages:
-- template: templates/py-packaging-stage.yml
+- template: stages/py-cpu-packaging-stage.yml
   parameters:
-    enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
     enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
     enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
-    enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
     enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
@@ -90,3 +100,17 @@ stages:
     cmake_build_type: ${{ parameters.cmake_build_type }}
     qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
     publish_symbols: true
+
+- template: stages/py-cuda-packaging-stage.yml
+  parameters:
+    enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
+    enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
+    cmake_build_type: ${{ parameters.cmake_build_type }}
+    cuda_version: ${{ parameters.cuda_version }}
+
+- ${{ if eq(parameters.enable_windows_dml, true) }}:
+  - template: stages/py-dml-packaging-stage.yml
+    parameters:
+      cmake_build_type: ${{ parameters.cmake_build_type }}
+      publish_symbols: true
+

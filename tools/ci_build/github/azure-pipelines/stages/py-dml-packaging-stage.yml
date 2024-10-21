@@ -1,0 +1,36 @@
+parameters:
+- name: publish_symbols
+  type: boolean
+  default: false
+
+# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: PythonVersions
+  type: object
+  displayName: 'Python versions to build'
+  default:
+    - '3.10'
+    - '3.11'
+    - '3.12'
+    - '3.13'
+
+stages:
+- ${{ each python_version in parameters.PythonVersions }}:
+  - template: py-win-gpu.yml
+    parameters:
+      MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+      PYTHON_VERSION: ${{ python_version }}
+      EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+      ENV_SETUP_SCRIPT: setup_env.bat
+      EP_NAME: directml
+      publish_symbols: ${{ parameters.publish_symbols }}
+      cmake_build_type: ${{ parameters.cmake_build_type }}

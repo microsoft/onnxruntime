@@ -5,12 +5,12 @@ parameters:
   type: string
   default: ''
 
-- name: enable_linux_gpu
+- name: enable_linux_cuda
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
   default: true
 
-- name: enable_windows_gpu
+- name: enable_windows_cuda
   displayName: 'Whether Windows GPU package is built.'
   type: boolean
   default: true
@@ -34,16 +34,7 @@ parameters:
    - 11.8
    - 12.2
 
-- name: SpecificArtifact
-  displayName: Use Specific Artifact
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Specific Artifact's BuildId
-  type: string
-  default: '0'
-
+- name: Build
 - name: PythonVersions
   type: object
   displayName: 'Python versions to build'
@@ -54,22 +45,20 @@ parameters:
     - '3.13'
 
 stages:
-  - ${{ if eq(parameters.enable_windows_gpu, true) }}:
+  - ${{ if eq(parameters.enable_windows_cuda, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
-      - template: ../templates/py-win-gpu.yml
+      - template: py-win-gpu-stage.yml
         parameters:
           PYTHON_VERSION: ${{ python_version }}
           EP_NAME: gpu
           CudaVersion: ${{ parameters.cuda_version }}
-          SpecificArtifact: ${{ parameters.SpecificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
             EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ${{ if eq(parameters.cuda_version, '12.2') }}:
             EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
 
-  - ${{ if eq(parameters.enable_linux_gpu, true) }}:
-      - template: ../templates/py-linux-gpu.yml
+  - ${{ if eq(parameters.enable_linux_cuda, true) }}:
+      - template: py-linux-gpu-stage.yml
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
