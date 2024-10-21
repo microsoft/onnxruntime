@@ -15,6 +15,9 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  std::unordered_set<const Node*> attn_ln_nodes;
+  std::unordered_set<const Node*> attn_add_nodes;
+
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
     if (!node_ptr)
@@ -74,6 +77,38 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     std::vector<int64_t> shape_values;
     int64_t m = 0, k = 0, n = 0;
     if (need_reshape) {
+      // Skip Attention pattern, AttentionFusion will handle it. In such case, there are 4 MatMul-Add pairs,
+      // 3 of them are following LN, the other one produces output which is added by LN's output.
+      const Node* parent_node = graph.GetProducerNode(matmul_input_defs[0]->Name());
+      if (attn_ln_nodes.count(parent_node) > 0 || attn_add_nodes.count(&next_node) > 0) {
+        continue;
+      }
+      if (parent_node && parent_node->OpType() == "LayerNormalization") {
+        unsigned int add_count = 0;
+        unsigned int matmul_count = 0;
+        unsigned int shape_count = 0;
+        const Node* ln_add_node = nullptr;
+        for (auto it = parent_node->OutputNodesBegin(); it != parent_node->OutputNodesEnd(); ++it) {
+          std::string op_type = (*it).OpType();
+          if (op_type == "Add") {
+            ln_add_node = &(*it);
+            add_count++;
+          } else if (op_type == "MatMul") {
+            matmul_count++;
+          } else if (op_type == "Shape") {
+            shape_count++;
+          }
+        }
+        if (add_count == 1 && matmul_count == 3 && shape_count == parent_node->GetOutputEdgesCount() - 4) {
+          const Node* attn_add_node = graph.GetProducerNode(ln_add_node->InputDefs()[0]->Name());
+          if (attn_add_node && attn_add_node->OpType() == "Add") {
+            attn_ln_nodes.insert(parent_node);
+            attn_add_nodes.insert(attn_add_node);
+            continue;
+          }
+        }
+      }
+
       // Logically we can use Shape-Concat to produce shape input for Reshape, to keep it simple, we require
       // both inputs have concrete shape for now, we can add dynamic shape support in future.
       bool is_concrete_shape = true;
@@ -121,10 +156,9 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     };
 
     bool valid = ((bias_shape.dim_size() == 1 && bias_shape.dim(0) == dim_n) ||
-                  (bias_shape.dim_size() == 2 && dim_has_value_1(bias_shape.dim(0)) && bias_shape.dim(1) == dim_n) ||
-                  (bias_shape.dim_size() == 2 &&
-                   ((!need_reshape && bias_shape.dim(0) == matmul_a_shape->dim(0)) ||
-                    (need_reshape && utils::HasDimValue(bias_shape.dim(0)) && bias_shape.dim(0).dim_value() == m)) &&
+                  (!need_reshape && bias_shape.dim_size() == 2 && dim_has_value_1(bias_shape.dim(0)) &&
+                   bias_shape.dim(1) == dim_n) ||
+                  (!need_reshape && bias_shape.dim_size() == 2 && bias_shape.dim(0) == matmul_a_shape->dim(0) &&
                    (dim_has_value_1(bias_shape.dim(1)) || bias_shape.dim(1) == dim_n)));
     if (!valid) {
       continue;
