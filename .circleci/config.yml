@@ -47,10 +47,15 @@ jobs:
           name: archive the build results
           command: |
             tar -cvf /Users/distiller/project/onnxruntime_xcf.tar -C $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out .
+            zip -r /Users/distiller/project/onnxruntime_xcframework.zip $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime_xcframework/
 
       - store_artifacts:
           path: /Users/distiller/project/onnxruntime_xcf.tar
           destination: onnxruntime_xcf.tar
+
+      - store_artifacts:
+          path: /Users/distiller/project/onnxruntime_xcframework.zip
+          destination: onnxruntime_xcframework.zip
 workflows:
   version: 2
   build-and-test-xcframework:
