@@ -32,7 +32,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: '3.10'
+          versionSpec: '3.12'
           addToPath: true
 
       - template: jobs/download_win_qnn_sdk.yml
