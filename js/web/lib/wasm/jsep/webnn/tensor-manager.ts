@@ -157,7 +157,7 @@ class TensorIdTracker {
 
     // eslint-disable-next-line no-bitwise
     const usage = MLTensorUsage.READ | MLTensorUsage.WRITE;
-    this.wrapper = await this.tensorManager.getCachedTensor(dataType, shape, usage);
+    this.wrapper = await this.tensorManager.getCachedTensor(dataType, shape, usage, true, true);
 
     if (copyOld && this.activeUpload) {
       this.wrapper.write(this.activeUpload);
@@ -306,6 +306,8 @@ class TensorManagerImpl implements TensorManager {
     dataType: MLOperandDataType,
     shape: readonly number[],
     usage: MLTensorUsageFlags,
+    writable: boolean,
+    readable: boolean,
   ): Promise<TensorWrapper> {
     const sessionId = this.backend.currentSessionId;
     for (const [index, tensor] of this.freeTensors.entries()) {
@@ -322,6 +324,8 @@ class TensorManagerImpl implements TensorManager {
       shape,
       dimensions: shape,
       usage,
+      writable,
+      readable,
     });
     return new TensorWrapper({ sessionId, context, tensor, dataType, shape });
   }
