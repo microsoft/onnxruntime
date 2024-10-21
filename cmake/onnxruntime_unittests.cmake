@@ -1068,7 +1068,22 @@ if (NOT IOS)
       endif()
     endif()
 
-    target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    if(onnxruntime_BUILD_SHARED_LIB)
+      target_link_libraries(onnx_test_runner PRIVATE 
+      onnx_test_runner_common 
+      ${GETOPT_LIB_WIDE} 
+      onnxruntime 
+      onnxruntime_flatbuffers 
+      onnxruntime_common 
+      ${SYS_PATH_LIB} 
+      ${CMAKE_DL_LIBS} 
+      Threads::Threads 
+      ${onnxruntime_EXTERNAL_LIBRARIES} 
+      nlohmann_json::nlohmann_json
+     ) # Link dynamically
+    else()
+      target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    endif()
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
     if (onnxruntime_USE_ROCM)
       target_include_directories(onnx_test_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
@@ -1227,7 +1242,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       endif()
       if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
         list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
-    endif()
+      endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if(WIN32)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
