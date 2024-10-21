@@ -16,7 +16,7 @@ cd ../../
 
 cd tensorRTEp && rm -r build && mkdir -p build && cd build
 # Download TensorRT with correct cuda version selected
-cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DTENSORRT_HOME=/home/yifanl/TensorRT-10.4.0.26/ -DORT_HOME=/home/yifanl/onnxruntime/
+cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DTENSORRT_HOME=/home/yifanl/TensorRT-10.5.0.18/ -DORT_HOME=/home/yifanl/onnxruntime/
 cmake --build ./
 cd ../../
 

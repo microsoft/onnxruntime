@@ -107,11 +107,11 @@ inline void THROW_ON_ERROR(OrtStatus* status) {
 }
 
 void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so, int device_id) {
-  THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+  THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
   std::vector<const char*> keys{"device_id", "str_property"};
   std::string device_id_str = std::to_string(device_id);
   std::vector<const char*> values{device_id_str.c_str(), "strvalue"};
-  THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+  THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 }
 
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
