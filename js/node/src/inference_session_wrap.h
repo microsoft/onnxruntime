@@ -12,9 +12,22 @@
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
  public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
+  static Napi::FunctionReference& GetTensorConstructor();
+
   InferenceSessionWrap(const Napi::CallbackInfo& info);
 
  private:
+  /**
+   * [sync] initialize ONNX Runtime once.
+   *
+   * This function must be called before any other functions.
+   *
+   * @param arg0 a number specifying the log level.
+   *
+   * @returns undefined
+   */
+  static Napi::Value InitOrtOnce(const Napi::CallbackInfo& info);
+
   /**
    * [sync] list supported backend list
    * @returns array with objects { "name": "cpu", requirementsInstalled: true }
@@ -63,10 +76,19 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    */
   Napi::Value Dispose(const Napi::CallbackInfo& info);
 
+  /**
+   * [sync] end the profiling.
+   * @param nothing
+   * @returns nothing
+   * @throw nothing
+   */
+  Napi::Value EndProfiling(const Napi::CallbackInfo& info);
+
   // private members
 
   // persistent constructor
-  static Napi::FunctionReference constructor;
+  static Napi::FunctionReference wrappedSessionConstructor;
+  static Napi::FunctionReference ortTensorConstructor;
 
   // session objects
   bool initialized_;
@@ -81,4 +103,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   std::vector<std::string> outputNames_;
   std::vector<ONNXType> outputTypes_;
   std::vector<ONNXTensorElementDataType> outputTensorElementDataTypes_;
+
+  // preferred output locations
+  std::vector<int> preferredOutputLocations_;
+  std::unique_ptr<Ort::IoBinding> ioBinding_;
 };

@@ -62,6 +62,8 @@ static void RunOneTest(
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
   auto cpu_ep = DefaultCpuExecutionProvider();
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
@@ -95,10 +97,14 @@ static void RunOneTest(
     if (cpu_ep != nullptr) {
       execution_providers.push_back(DefaultCpuExecutionProvider());
     }
+    if (webgpu_ep != nullptr) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
-             rocm_ep != nullptr) {
+             rocm_ep != nullptr ||
+             webgpu_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
@@ -132,7 +138,9 @@ static void RunOneTest(
                                 ToFloat16(sum_output_data));
     }
 
-    if (dml_ep != nullptr) {
+    if (webgpu_ep != nullptr) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    } else if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else if (rocm_ep != nullptr) {
       execution_providers.push_back(DefaultRocmExecutionProvider());

@@ -29,6 +29,8 @@ const ONNXRUNTIME_GENERATOR = buildArgs['onnxruntime-generator'];
 const REBUILD = !!buildArgs.rebuild;
 // --use_dml
 const USE_DML = !!buildArgs.use_dml;
+// --use_webgpu
+const USE_WEBGPU = !!buildArgs.use_webgpu;
 // --use_cuda
 const USE_CUDA = !!buildArgs.use_cuda;
 // --use_tensorrt
@@ -64,6 +66,9 @@ if (ONNXRUNTIME_GENERATOR && typeof ONNXRUNTIME_GENERATOR === 'string') {
 }
 if (USE_DML) {
   args.push('--CDUSE_DML=ON');
+}
+if (USE_WEBGPU) {
+  args.push('--CDUSE_WEBGPU=ON');
 }
 if (USE_CUDA) {
   args.push('--CDUSE_CUDA=ON');
