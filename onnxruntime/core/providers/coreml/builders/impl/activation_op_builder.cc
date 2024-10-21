@@ -40,6 +40,27 @@ void ActivationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, con
 }
 
 namespace {
+
+template <typename T>
+void HandlePReluWeight(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger,
+                       std::vector<T>& alpha_values) {
+  // add slope initializer as alpha weight
+  const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
+  const auto slope_tensor_num_elements = narrow<size_t>(Product(slope_tensor.dims()));
+  Initializer unpacked_tensor(slope_tensor);
+
+  std::vector<int64_t> x_shape;
+  GetShape(*node.InputDefs()[0], x_shape, logger);
+  // channel nums
+  if (slope_tensor_num_elements == 1) {
+    T value = unpacked_tensor.DataAsSpan<T>()[0];
+    alpha_values.resize(x_shape[x_shape.size() - 3], value);
+  } else {
+    const auto alpha_v = unpacked_tensor.DataAsSpan<T>();
+    alpha_values.assign(alpha_v.begin(), alpha_v.end());
+  }
+}
+
 Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
                       const logging::Logger& logger,
                       COREML_SPEC::ActivationPReLU& prelu) {
@@ -97,6 +118,9 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     } else if (op_type == "Gelu") {
       coreml_op_type = "gelu";
       add_gelu_mode = true;
+    } else if (op_type == "PRelu") {
+      coreml_op_type = "prelu";
+      add_alpha = true;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -106,14 +130,27 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
 
     if (add_alpha) {
-      NodeAttrHelper helper(node);
-      const auto alpha = helper.Get("alpha", 0.01f);
-
       auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+
+      if ("PRelu" == op_type) {
+        if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          std::vector<float> alpha_values;
+          HandlePReluWeight(model_builder, node, logger, alpha_values);
+          AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
+        } else {
+          std::vector<MLFloat16> alpha_values;
+          HandlePReluWeight(model_builder, node, logger, alpha_values);
+          AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
+        }
       } else {
-        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+        NodeAttrHelper helper(node);
+        const auto alpha = helper.Get("alpha", 0.01f);
+
+        if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+        } else {
+          AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+        }
       }
     }
     if (add_gelu_mode) {
@@ -236,17 +273,8 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
     return false;
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram) {
-    if (op_type == "PRelu") {  // TODO: ML Program supports this so should be easy to enable
-      return false;
-    }
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
-    if (op_type == "PRelu") {
-      return IsPReluOpSupported(node, input_params, logger);
-    }
+  if (op_type == "PRelu") {
+    return IsPReluOpSupported(node, input_params, logger);
   }
 
   return true;
