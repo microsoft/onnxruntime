@@ -303,7 +303,7 @@ Return Value:
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(ORT_DISABLE_SSE4)
 
     //
     // Check if the processor supports SSE 4.1 instructions.
@@ -329,6 +329,7 @@ Return Value:
 
         if ((xcr0 & 0x6) == 0x6) {
 
+#if !defined(ORT_DISABLE_AVX)
             this->GemmFloatKernel = MlasGemmFloatKernelAvx;
 
 #if defined(MLAS_TARGET_AMD64)
@@ -361,6 +362,7 @@ Return Value:
             __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
 #endif
 
+#if !defined(ORT_DISABLE_AVX2)
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
@@ -422,6 +424,7 @@ Return Value:
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_DISABLE_AVX512)
                 //
                 // Check if the processor supports AVX512F features and the
                 // operating system supports saving AVX512F state.
@@ -475,6 +478,7 @@ Return Value:
                         }
                     }
                 }
+#endif // !defined(ORT_DISABLE_AVX512)
 
                 //
                 // Check if the processor supports AVX-VNNI-INT8
@@ -487,7 +491,7 @@ Return Value:
                     this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
                 }
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(ORT_DISABLE_AMX)
 #if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
                 //
                 // Check if the processor supports AVX NE CONVERT.
@@ -510,13 +514,16 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // __APPLE__
+#endif // !defined(__APPLE__) && !defined(ORT_DISABLE_AMX)
 
 #endif // ORT_MINIMAL_BUILD
 
             }
+#endif // !defined(ORT_DISABLE_AVX2)
 
 #endif // MLAS_TARGET_AMD64
+#endif  // !defined(ORT_DISABLE_AVX)
+
 
         }
     }
