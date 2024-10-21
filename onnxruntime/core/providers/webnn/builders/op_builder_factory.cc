@@ -98,6 +98,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherOpBuilder("Gather", op_registrations);
   }
 
+  {  // GatherND
+    CreateGatherNDOpBuilder("GatherND", op_registrations);
+  }
+
   {  // Flatten
     CreateFlattenOpBuilder("Flatten", op_registrations);
   }
@@ -168,6 +172,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // ScatterND
+    CreateScatterNDOpBuilder("ScatterND", op_registrations);
   }
 
   {  // Shape
