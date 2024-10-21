@@ -55,29 +55,23 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
   const auto& scale_tensor = *initializers.at(input_defs[1]->Name());
 
   const auto eps = helper.Get("epsilon", 1e-5f);
-  int64_t axis = helper.Get("axis", -1);  // layer_norm
 
   std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Get input shape failed");
-  }
+  // GetShape will never fail as we have already verified the input shape in IsOpSupportedImpl
+  GetShape(*input_defs[0], input_shape, logger);
 
-  const auto input_size = input_shape.size();
-  if (axis < 0) {
-    axis += input_size;
-  }
-  std::vector<int64_t> axes(input_size - axis);
+  const auto rank = input_shape.size();
+  auto axis = static_cast<size_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
+
+  std::vector<int64_t> axes(rank - axis);
   std::iota(axes.begin(), axes.end(), axis);
   auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     std::string_view layer_input_name_x = node.InputDefs()[0]->Name();
-    std::string op_name = "layer_norm";
+    std::string_view op_name = (node.OpType() == "InstanceNormalization") ? "instance_norm" : "layer_norm";
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.normalization.layer_norm
-    if (node.OpType() == "InstanceNormalization") {
-      op_name = "instance_norm";
-    }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, op_name);
     AddOperationInput(*op, "x", layer_input_name_x);
@@ -99,11 +93,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLProgram is not enabled in this build, but LN is supported");
   }
+#endif  // (COREML_ENABLE_MLPROGRAM)
 
   return Status::OK();
 }
@@ -194,7 +185,7 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
   } else
 #endif  // (COREML_ENABLE_MLPROGRAM)
   {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLProgram is not enabled in this build, but LN is supported");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLProgram is not enabled in this build, but LayerNormazition is supported");
   }
 
   return Status::OK();
@@ -203,7 +194,7 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
 bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                const logging::Logger& logger) const {
 #if !defined(COREML_ENABLE_MLPROGRAM)
-  if (node.OpType() == "Normalization" || node.OpType() == "InstanceNormalization" ||
+  if (node.OpType() == "LayerNormalization" || node.OpType() == "InstanceNormalization" ||
       node.OpType() == "GroupNormalization") {
     return false;
   }
@@ -214,8 +205,8 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   }
 
   if (node.OutputDefs().size() != 1) {
-    LOGS(logger, VERBOSE) << "Your onnx model may be in training mode, please export "
-                             "it in test mode.";
+    LOGS(logger, VERBOSE) << "Your onnx model (with LayerNormalization) may be in training mode,"
+                          << " please export it for inferencing.";
     return false;
   }
   const auto& input_defs = node.InputDefs();
@@ -226,21 +217,20 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   NodeAttrHelper helper(node);
   const auto stash_type = helper.Get("stash_type", 1);
   if (stash_type != 1) {
-    LOGS(logger, VERBOSE) << "stash_type != 1 LN is not supported";
+    LOGS(logger, VERBOSE) << "stash_type != 1 for " << node.OpType() << " is not supported";
     return false;
   }
 
   const auto& scale_name = input_defs[1]->Name();
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  if (!Contains(initializers, scale_name)) {
-    LOGS(logger, VERBOSE) << "Scale of LN must be a constant initializer";
+  if (!input_params.graph_viewer.GetConstantInitializer(scale_name)) {
+    LOGS(logger, VERBOSE) << "Scale of LayerNormazition must be a constant initializer";
     return false;
   }
 
   if (input_defs.size() > 2) {
     const auto& b_name = input_defs[2]->Name();
-    if (!Contains(initializers, b_name)) {
-      LOGS(logger, VERBOSE) << "B of LN must be a constant initializer";
+    if (!input_params.graph_viewer.GetConstantInitializer(b_name)) {
+      LOGS(logger, VERBOSE) << "B of LayerNormazition must be a constant initializer";
       return false;
     }
   }

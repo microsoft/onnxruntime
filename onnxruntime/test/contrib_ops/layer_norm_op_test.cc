@@ -246,15 +246,6 @@ class LayerNormTest : public ::testing::Test {
 using LayerNormTestTypes = ::testing::Types<float, MLFloat16>;
 TYPED_TEST_SUITE(LayerNormTest, LayerNormTestTypes);
 
-template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else {
-    return ToFloat16(inputs);
-  }
-}
-
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializers) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);

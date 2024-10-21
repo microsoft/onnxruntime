@@ -16,8 +16,8 @@ class CastOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
-  bool IsOpSupportedFused(const Node& node, const OpBuilderInputParams& input_params,
-                          const logging::Logger& logger) const;
+  bool is_support_fused(const Node& node, const OpBuilderInputParams& input_params,
+                        const logging::Logger& logger) const;
 
   bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
                               const logging::Logger& logger) const override;
@@ -38,7 +38,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram() && !fused_into_prev_) {
     using namespace CoreML::Specification::MILSpec;
-    // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.reduction
+    // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.cast
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "cast");
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
@@ -68,7 +68,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 
 bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
-  bool is_supported = IsOpSupportedFused(node, input_params, logger);
+  bool is_supported = is_support_fused(node, input_params, logger);
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
@@ -81,7 +81,8 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     if (!is_supported && input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       return false;
     }
-    // In CoreML version 6 (e.g., on an iOS 16 simulator) , "can't infer output dtype" error is thrown
+    // In CoreML version 6 (e.g., on an iOS 16 simulator)
+    // "Error: Unable to parse ML Program: Failed to find type of output." error is thrown
     if (input_params.coreml_version >= 7) {
       return true;
     }
@@ -90,8 +91,8 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   return is_supported;
 }
 
-bool CastOpBuilder::IsOpSupportedFused(const Node& node, const OpBuilderInputParams& input_params,
-                                       const logging::Logger& logger) const {
+bool CastOpBuilder::is_support_fused(const Node& node, const OpBuilderInputParams& input_params,
+                                     const logging::Logger& logger) const {
   if (node.GetInputEdgesCount() == 0) {
     LOGS(logger, VERBOSE) << "Cast has no preceding nodes.";
     return false;

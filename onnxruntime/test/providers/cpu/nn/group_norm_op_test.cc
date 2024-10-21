@@ -17,18 +17,9 @@ class GroupNormalizationOpTest : public ::testing::Test {
 using GroupNormalizationOpTestTypes = ::testing::Types<float, MLFloat16>;
 TYPED_TEST_SUITE(GroupNormalizationOpTest, GroupNormalizationOpTestTypes);
 
-template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else {
-    return ToFloat16(inputs);
-  }
-}
-
+// GroupSize = channel_dims to simulate InstanceNorm
 // Disable TensorRT on some of the tests because its parser doesn't support weight as input
-
-TYPED_TEST(GroupNormalizationOpTest, InstanceNorm) {
+TYPED_TEST(GroupNormalizationOpTest, Equivalent_InstanceNorm_G_C) {
   OpTester test("GroupNormalization", 18);
   test.AddAttribute("epsilon", 0.3F);
   test.AddAttribute("num_groups", int64_t(3));
@@ -67,7 +58,8 @@ TYPED_TEST(GroupNormalizationOpTest, InstanceNorm) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TYPED_TEST(GroupNormalizationOpTest, LayerNorm17_opset) {
+// GroupSize = 1 to simulate LayerNorm, (LayerNorm)
+TYPED_TEST(GroupNormalizationOpTest, Equivalent_LayerNorm_G_1) {
   auto run_test = [](bool is_initializer) {
     OpTester test("GroupNormalization", 18);
     test.AddAttribute<float>("epsilon", 1e-5f);
@@ -89,7 +81,7 @@ TYPED_TEST(GroupNormalizationOpTest, LayerNorm17_opset) {
   run_test(true);
 }
 
-TYPED_TEST(GroupNormalizationOpTest, groupsizen) {
+TYPED_TEST(GroupNormalizationOpTest, GroupSize_N) {
   OpTester test("GroupNormalization", 18);
   test.AddAttribute("epsilon", 0.3F);
   test.AddAttribute("num_groups", int64_t(2));
