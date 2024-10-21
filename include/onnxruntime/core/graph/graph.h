@@ -26,7 +26,6 @@
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/tensor.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
@@ -1133,19 +1132,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return domain_to_version_;
   }
 
-  // Data structure stores prepacked initializers in format of Tensor.
-  struct PrePackInitializers {
-    // Since one constant initializer could be used by different kernels
-    // and prepacked differently, use an unordered_map to store prepacked
-    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
-
-    // This InlinedHashSet is used during model load with prepacked initializer saved in ONNX data file.
-    // ORT reads prepacked initializers and store them into this set so we could skip PrePack
-    // process later to save heap memory.
-    std::unordered_set<std::string> pre_packed_initializers_name_set;
-  };
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /**
   Create a single Node that will be the result of the a fusion of multiple nodes in this Graph.
@@ -1190,6 +1176,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     int64_t allocation_granularity = 65536;
   };
 
+  // Data structure stores prepacked initializers in format of TensorProto.
+  struct PrePackInitializersTensorProto {
+    // Since one constant initializer could be used by different kernels
+    // and prepacked differently, use an unordered_map to store prepacked
+    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
+    std::unordered_map<std::string, std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto>> pre_packed_initializers_name_map;
+  };
+
   /** Gets the GraphProto representation of this Graph
   @param external_file_path File path of the binary file to use for initializers.
   @param model_file_path path of the model file.
@@ -1197,7 +1191,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   in the external file. Initializer smaller than this threshold are included in the onnx file.
   @param align_info offset alignment info.
   @param save_prepacked_constant_initializers whether to save prepacked initializer into onnx data file.
-  @param pre_packed_initializers_name_map hashmap used to store all the prepacked initializers.
+  @param pre_packed_initializers struct used to store all the prepacked initializers.
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
@@ -1205,13 +1199,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                                   size_t initializer_size_threshold,
                                                                   const OffsetAlignmentInfo& align_info,
                                                                   bool save_prepacked_constant_initializers,
-                                                                  PrePackInitializers& pre_packed_initializers) const;
+                                                                  PrePackInitializersTensorProto& pre_packed_initializers) const;
 
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold) const {
     OffsetAlignmentInfo default_options;
-    Graph::PrePackInitializers pre_packed_initializers;
+    PrePackInitializersTensorProto pre_packed_initializers;
     return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options,
                                                 false, pre_packed_initializers);
   }
@@ -1534,7 +1528,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        size_t tensor_bytes_size,
                                        int64_t& external_offset,
                                        std::ofstream& external_stream,
-                                       const std::vector<uint8_t>& raw_data,
+                                       gsl::span<const uint8_t> raw_data,
                                        ONNX_NAMESPACE::TensorProto& output_proto,
                                        const std::filesystem::path& external_file_path,
                                        const ONNX_NAMESPACE::TensorProto& initializer,

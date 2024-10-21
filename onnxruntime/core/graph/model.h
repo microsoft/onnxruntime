@@ -193,13 +193,13 @@ class Model {
                                                                   size_t initializer_size_threshold,
                                                                   const Graph::OffsetAlignmentInfo& align_info,
                                                                   bool save_prepacked_constant_initializers,
-                                                                  Graph::PrePackInitializers& pre_packed_initializers) const;
+                                                                  Graph::PrePackInitializersTensorProto& pre_packed_initializers) const;
 
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                                   const std::filesystem::path& file_path,
                                                                   size_t initializer_size_threshold) const {
     Graph::OffsetAlignmentInfo default_align_info;
-    Graph::PrePackInitializers pre_packed_initializers;
+    Graph::PrePackInitializersTensorProto pre_packed_initializers;
     return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info,
                                                 false, pre_packed_initializers);
   }
@@ -216,14 +216,14 @@ class Model {
                                                      size_t initializer_size_threshold,
                                                      const Graph::OffsetAlignmentInfo& align_info,
                                                      bool save_prepacked_constant_initializers,
-                                                     Graph::PrePackInitializers& pre_packed_initializers);
+                                                     Graph::PrePackInitializersTensorProto& pre_packed_initializers);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
                                                      size_t initializer_size_threshold) {
     Graph::OffsetAlignmentInfo default_align_info;
-    Graph::PrePackInitializers pre_packed_initializers;
+    Graph::PrePackInitializersTensorProto pre_packed_initializers;
     return SaveWithExternalInitializers(model, file_path, external_file_path, initializer_size_threshold, default_align_info,
                                         false, pre_packed_initializers);
   }
@@ -235,7 +235,7 @@ class Model {
                                                      size_t initializer_size_threshold,
                                                      const Graph::OffsetAlignmentInfo& align_info,
                                                      bool save_prepacked_constant_initializers,
-                                                     Graph::PrePackInitializers& pre_packed_initializers);
+                                                     Graph::PrePackInitializersTensorProto& pre_packed_initializers);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
@@ -243,7 +243,7 @@ class Model {
                                                      const std::filesystem::path& external_file_path,
                                                      size_t initializer_size_threshold) {
     Graph::OffsetAlignmentInfo default_align_info;
-    Graph::PrePackInitializers pre_packed_initializers;
+    Graph::PrePackInitializersTensorProto pre_packed_initializers;
     return SaveWithExternalInitializers(model, fd, file_path, external_file_path, initializer_size_threshold, default_align_info,
                                         false, pre_packed_initializers);
   }

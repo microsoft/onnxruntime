@@ -2027,7 +2027,8 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    Graph::PrePackInitializers pre_packed_initializers;
+    SessionState::PrePackInitializers pre_packed_initializers;
+    Graph::PrePackInitializersTensorProto pre_packed_initializers_tensor_proto;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
@@ -2079,6 +2080,18 @@ common::Status InferenceSession::Initialize() {
                                             << "   With save_prepacked_constant_initializers option, prepacked initializer will be serialized into data file."
                                             << "2. Load optimized model and external data file in same device, no prepack is need."
                                             << "3. Run inference with optimized model.";
+
+            // convert pre_packed_initializers to tensorproto format and save to external data file
+            for (const auto& name_item_pair : pre_packed_initializers.pre_packed_initializers_name_map) {
+              auto initializer_name = name_item_pair.first;
+
+              for (const auto& kernel_name_initializer_item_pair : name_item_pair.second) {
+                auto kernel_name = kernel_name_initializer_item_pair.first;
+                auto prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer_name, kernel_name);
+
+                pre_packed_initializers_tensor_proto.pre_packed_initializers_name_map[initializer_name][kernel_name] = utils::TensorToTensorProto(kernel_name_initializer_item_pair.second, prepacked_initializer_name);
+              }
+            }
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
@@ -2086,7 +2099,7 @@ common::Status InferenceSession::Initialize() {
                                                                              optimized_model_external_initializers_min_size_in_bytes,
                                                                              align_info,
                                                                              save_prepacked_constant_initializers,
-                                                                             pre_packed_initializers));
+                                                                             pre_packed_initializers_tensor_proto));
         }
       }
     }

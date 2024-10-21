@@ -107,9 +107,9 @@ class MatMulNBits final : public OpKernel {
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors() override;
+  std::optional<Tensor> GetPrePackTensor(int /*input_idx*/) override;
 
-  Status SetPrePackTensors(int input_idx, Tensor& pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, Tensor& pre_packed_tensor) override;
 
  private:
   const size_t K_;
@@ -275,16 +275,22 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 }
 
 template <typename T1>
-Tensor* MatMulNBits<T1>::GetPrePackTensors() {
+std::optional<Tensor> MatMulNBits<T1>::GetPrePackTensor(int input_idx) {
+  // For this kernel, prepack is performed on input_B, and possibly scales, zeros_points.
+  // During compute process, scales and zeros_points will keep as it is and only use prepacked
+  // buffer to replace input_B.
+  // Inorder to cope with this logic, we need to return latest prepacked buffer and only serialize
+  // the latest one. So, we need to always return packed_tensor_ here not only for input_B.
+  ORT_UNUSED_PARAMETER(input_idx);
   if (!packed_tensor_.has_value()) {
-    return nullptr;
+    return std::nullopt;
   }
 
-  return &(packed_tensor_.value());
+  return std::move(packed_tensor_.value());
 }
 
 template <typename T1>
-Status MatMulNBits<T1>::SetPrePackTensors(int input_idx, Tensor& pre_packed_tensor) {
+Status MatMulNBits<T1>::SetPrePackTensor(int input_idx, Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
     packed_b_ = BufferUniquePtr(pre_packed_tensor.MutableDataRaw());
   }

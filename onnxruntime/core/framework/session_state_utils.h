@@ -51,7 +51,7 @@ common::Status SaveInitializedTensors(
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
-    Graph::PrePackInitializers& pre_packed_initializers);
+    std::unordered_set<std::string>& pre_packed_initializers_name_set);
 
 common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,

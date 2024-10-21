@@ -134,9 +134,10 @@ class OpKernel {
   // Override this function to get pre-packed tensors from this kernel.
   // Only useful for models run on PC with CPU so ORT could load prepacked weights directly from
   // ONNX data file with mmap and no need to do prepacking on fly to save a lot of heap memory.
+  // @param input_idx : The index of input we prepacked before and intend to get packed tensor back.
   // Please refer to matmul_nbits kernel for a complete example.
-  virtual Tensor* GetPrePackTensors() {
-    return nullptr;
+  virtual std::optional<Tensor> GetPrePackTensor(int /*input_idx*/) {
+    return std::nullopt;
   }
 
   // Override this function to set pre-packed tensors to this kernel and restore prepacked weight buffer.
@@ -146,7 +147,7 @@ class OpKernel {
   // @param input_idx : The input index of the tensor in this kernel.
   // @param pre_packed_tensor: The prepacked tensor read from onnx data file and use the prepacked tensor
   // to restore prepacked weight buffer.
-  virtual Status SetPrePackTensors(int /*input_idx*/, Tensor& /*pre_packed_tensor*/) {
+  virtual Status SetPrePackTensor(int /*input_idx*/, Tensor& /*pre_packed_tensor*/) {
     return Status::OK();
   }
 

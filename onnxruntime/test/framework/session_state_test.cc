@@ -394,12 +394,13 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Tensor* GetPrePackTensors() override {
+  std::optional<Tensor> GetPrePackTensor(int input_idx) override {
+    ORT_UNUSED_PARAMETER(input_idx);
     ++get_prepack_tensors_count;
 
     TensorShape shape = {2};
     packed_tensor = Tensor(DataTypeImpl::GetType<float>(), shape, std::make_shared<CPUAllocator>());
-    return &packed_tensor;
+    return std::move(packed_tensor);
   }
 
   int prepack_calls_count = 0;
@@ -611,7 +612,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
-  Graph::PrePackInitializers pre_packed_initializers;
+  SessionState::PrePackInitializers pre_packed_initializers;
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager,
                                                       pre_packed_initializers));
