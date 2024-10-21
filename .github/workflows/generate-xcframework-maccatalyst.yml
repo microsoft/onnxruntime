@@ -6,15 +6,19 @@ on:
   #workflow_dispatch:
   #  branches: [main, develop]
 
+env:
+  python_version: 3.11
 
 jobs:
   build_macabi_xcf:
-    runs-on: macos-latest
+    runs-on: macos-14
+    env:
+      xcode_version: 15
     steps:
       - name: install Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ env.python_version }}
 
       - name: check Xcode version and Python 3
         run: |
@@ -23,34 +27,83 @@ jobs:
           python --version
           which python3
 
-      - name: checkout repository
-        uses: actions/checkout@v3
+      # - name: Use Xcode ${{ env.xcode_version }}
+      #   shell: bash
+      #   run: |
+      #     XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
+      #     sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
-      - name: install protoc
-        run : |
-          mkdir -p $HOME/Downloads
-          cd $HOME/Downloads
-          curl -LJO https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-osx-universal_binary.zip
-          unzip protoc-21.12-osx-universal_binary.zip -d protoc-21.12-osx-universal_binary
-          mv protoc-21.12-osx-universal_binary/bin/protoc /usr/local/bin/protoc-3.21.12.0
-          mv protoc-21.12-osx-universal_binary/include/* /usr/local/include/
- 
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      # - name: install protoc
+      #   run : |
+      #     mkdir -p $HOME/Downloads
+      #     cd $HOME/Downloads
+      #     curl -LJO https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-osx-universal_binary.zip
+      #     unzip protoc-21.12-osx-universal_binary.zip -d protoc-21.12-osx-universal_binary
+      #     mv protoc-21.12-osx-universal_binary/bin/protoc /usr/local/bin/protoc-3.21.12.0
+      #     mv protoc-21.12-osx-universal_binary/include/* /usr/local/include/
+
       - name: create directory to store the library
         run: mkdir -p $HOME/onnxlibrary/macabi_release_v20230327_2320
 
-      - name: create release build
+      # - name: create release build
+      #   run: |
+      #     # Since Python 3.12, distutils is removed
+      #     # pip3 install setuptools
+      #     export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+      #     cd ${{ github.workspace }}/tools/python
+      #     ls ${{ github.workspace }}/tools/python
+      #     # pip install -r ${{ github.workspace }}/requirements-dev.txt
+      #     # pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
+      #     #Deal with lSystem
+      #     export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+      #     export LIBRARY_PATH="$LIBRARY_PATH:$SDKROOT/usr/lib"
+      #     #Build command
+      #     python tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dir /Users/goodnotesci/onnxlibrary/ios_release_v20240405_onnx116 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+
+      #     python ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
+      #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+      #       --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
+
+      - name: create releae build
         run: |
-          # Since Python 3.12, distutils is removed
-          # pip3 install setuptools
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
-          cd ${{ github.workspace }}/tools/python
-          ls ${{ github.workspace }}/tools/python
           pip install -r ${{ github.workspace }}/requirements-dev.txt
-          pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
-          #Deal with lSystem
-          export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
-          export LIBRARY_PATH="$LIBRARY_PATH:$SDKROOT/usr/lib"
-          #Build command
-          python ${{ github.workspace }}/tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
+          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+
+      #     python ./tools/ci_build/build.py \
+      #       --build_dir $HOME/onnxlibrary/macabi_release_v20230327_2320 \
+      #       --update \
+      #       --build --parallel \
+      #       --test \
+      #       --build_shared_lib \
+      #       --build_objc \
+      #       --use_coreml \
+      #       --use_xnnpack \
+      #       --use_binskim_compliant_compile_flags \
+      #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+
+
+      - name: create release build 2
+        run: |
+          python ./tools/ci_build/build.py \
+            --build_dir $HOME/onnxlibrary/macabi_release_v20230327_2320 \
+            --update \
+            --build --parallel \
+            --skip_tests \
+            --build_apple_framework \
+            --use_xcode \
+            --use_coreml \
+            --use_xnnpack \
+            --use_binskim_compliant_compile_flags \
+            --ios \
+            --apple_deploy_target=16.0 \
+            --apple_sysroot=iphonesimulator \
+            --osx_arch=x86_64 \
+            --cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF \
+            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
+

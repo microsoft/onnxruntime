@@ -66,7 +66,11 @@ def _build_for_apple_sysroot(
         framework_dir = os.path.join(
             build_dir_current_arch,
             build_config,
-            build_config + "-" + sysroot,
+            (
+                ''
+                if sysroot == "macabi"
+                else build_config + "-" + sysroot
+            ),
             (
                 "onnxruntime.framework"
                 if build_dynamic_framework
