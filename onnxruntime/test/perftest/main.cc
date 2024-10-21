@@ -8,6 +8,11 @@
 #include "performance_runner.h"
 #include <google/protobuf/stubs/common.h>
 
+#ifdef USE_TENSORRT
+#include <vector>
+#include "core/session/onnxruntime_c_api_ep.h"
+#endif
+
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
 

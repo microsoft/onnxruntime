@@ -17,7 +17,6 @@
 #include "TestResultStat.h"
 #include "TestCase.h"
 #include "testenv.h"
-#include "providers.h"
 
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
