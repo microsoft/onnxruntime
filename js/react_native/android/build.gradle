@@ -1,5 +1,4 @@
 import java.nio.file.Paths
-
 buildscript {
   repositories {
     google()
@@ -7,7 +6,7 @@ buildscript {
   }
 
   dependencies {
-    classpath 'com.android.tools.build:gradle:4.1.2'
+    classpath 'com.android.tools.build:gradle:7.4.2'
     // noinspection DifferentKotlinGradleVersion
   }
 }
@@ -227,7 +226,6 @@ dependencies {
   implementation "junit:junit:4.12"
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
-
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
   // By default it will just include onnxruntime full aar package
