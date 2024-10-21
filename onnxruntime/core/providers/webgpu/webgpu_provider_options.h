@@ -12,6 +12,8 @@ namespace options {
 constexpr const char* kPreferredLayout = "WebGPU:preferredLayout";
 constexpr const char* kEnableGraphCapture = "WebGPU:enableGraphCapture";
 
+constexpr const char* kDawnProcTable = "WebGPU:dawnProcTable";
+
 constexpr const char* kDeviceId = "WebGPU:deviceId";
 constexpr const char* kWebGpuInstance = "WebGPU:webgpuInstance";
 constexpr const char* kWebGpuAdapter = "WebGPU:webgpuAdapter";

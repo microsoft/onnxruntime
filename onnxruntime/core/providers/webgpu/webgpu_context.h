@@ -45,7 +45,7 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info);
+  void Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info, const void* dawn_proc_table);
 
   Status Wait(wgpu::Future f);
 
