@@ -100,7 +100,8 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           }
         }
         if (add_count == 1 && matmul_count == 3 && shape_count == parent_node->GetOutputEdgesCount() - 4) {
-          const Node* attn_add_node = graph.GetProducerNode(ln_add_node->InputDefs()[0]->Name());
+          size_t index = ln_add_node->InputDefs()[0]->Name() == parent_node->OutputDefs()[0]->Name() ? 1 : 0;
+          const Node* attn_add_node = graph.GetProducerNode(ln_add_node->InputDefs()[index]->Name());
           if (attn_add_node && attn_add_node->OpType() == "Add") {
             attn_ln_nodes.insert(parent_node);
             attn_add_nodes.insert(attn_add_node);
