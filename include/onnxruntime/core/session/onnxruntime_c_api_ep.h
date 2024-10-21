@@ -160,6 +160,8 @@ ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outpt
 
 /** \brief Gets the Graph inputs with no matching initializers, in the same order as defined in the GraphProto.
  *
+ *  NOTE!!: The caller is responsible for releasing the char array using ReleaseCharArray.
+ *
  * \param[in] graph The graph to query
  * \param[out] input_names The input names
  * \param[out] input_len The number of inputs
@@ -168,6 +170,8 @@ ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outpt
 ORT_API2_STATUS(OrtGraph_GetRequiredInputs, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
 
 /** \brief Gets the Graph inputs with matching initializers, in the same order as defined in the GraphProto.
+ *
+ *  NOTE!!: The caller is responsible for releasing the char array using ReleaseCharArray.
  *
  * \param[in] graph The graph to query
  * \param[out] input_names The input names
@@ -178,12 +182,23 @@ ORT_API2_STATUS(OrtGraph_GetAllInputs, const OrtGraphViewer* graph, _Outptr_ con
 
 /** \brief Gets all the Graph initializers' name
  *
+ *  NOTE!!: The caller is responsible for releasing the char array using ReleaseCharArray.
+ *
  * \param[in] graph The graph to query
  * \param[out] initializer_names The initializer names
  * \param[out] initializer_len The number of initializers
  *
  */
 ORT_API2_STATUS(OrtGraph_GetAllInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** initializer_names, _Out_ size_t* initializer_len);
+
+/** \brief Release the char array
+ *
+ *  NOTE!!: Invoke this function after the use of OrtGraph_GetRequiredInputs, OrtGraph_GetAllInputs, OrtGraph_GetAllInitializers.
+ *
+ * \param[in] char_array The char array to release
+ *
+ */
+ORT_API2_STATUS(ReleaseCharArray, const char** char_array);
 
 /** \brief Get const Node given specific node index. May return nullptr if node as been freed.
  *
@@ -257,6 +272,8 @@ ORT_API2_STATUS(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i, 
 
 /** \brief Gets the initializer tensor of the Graph.
  *
+ *  NOTE!!: The caller is responsible for releasing the initializer tensor using OrtGraph_ReleaseInitializerTensor.
+ *
  * \param[in] graph The graph to query
  * \param[in] initializer_name The name of the initializer tensor
  * \param[out] out The initializer tensor
@@ -265,7 +282,18 @@ ORT_API2_STATUS(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i, 
  */
 ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**, _Out_ bool* ret);
 
+/** \brief Release the initializer tensor.
+ *
+ *  NOTE!!: Invoke this function after the use of OrtGraph_GetInitializerTensor.
+ *
+ * \param[in] tensor The initializer tensor to release
+ *
+ */
+ORT_API2_STATUS(OrtGraph_ReleaseInitializerTensor, OrtTensorRef* tensor);
+
 /** \brief Gets the value info of the node arg with the given name.
+ *
+ * NOTE!!: The caller is responsible for releasing the value info using OrtGraph_ReleaseValueInfo.
  *
  * \param[in] graph The graph to query
  * \param[in] name The name of the node arg
@@ -274,6 +302,15 @@ ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, cons
  *
  */
 ORT_API2_STATUS(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret);
+
+/** \brief Release the value info.
+ *
+ *  NOTE!!: Invoke this function after the use of OrtGraph_GetValueInfo.
+ *
+ * \param[in] value_info The value info to release
+ *
+ */
+ORT_API2_STATUS(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
 
 /** \brief Serialize the Graph to a byte array.
  *

@@ -65,7 +65,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetRequiredInputs, const OrtGraphView
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const auto& inputs = graph_viewer->GetInputs();
   *input_len = inputs.size();
-  *input_names = new const char*[*input_len];   // TODO(leca): release
+  *input_names = new const char*[*input_len];  // Should be released by the caller using OrtGraphApis::ReleaseCharArray
   for (size_t i = 0; i < *input_len; i++) (*input_names)[i] = inputs[i]->Name().c_str();
   return nullptr;
 }
@@ -74,7 +74,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetAllInputs, const OrtGraphViewer* g
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const auto& inputs = graph_viewer->GetInputsIncludingInitializers();
   *input_len = inputs.size();
-  *input_names = new const char*[*input_len];   // TODO(leca): release
+  *input_names = new const char*[*input_len];   // Should be released by the caller using OrtGraphApis::ReleaseCharArray
   for (size_t i = 0; i < *input_len; i++) (*input_names)[i] = inputs[i]->Name().c_str();
   return nullptr;
 }
@@ -83,9 +83,17 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetAllInitializers, const OrtGraphVie
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const auto& initializers = graph_viewer->GetAllInitializedTensors();
   *initializer_len = initializers.size();
-  *initializer_names = new const char*[*initializer_len];   // TODO(leca): release
+  *initializer_names = new const char*[*initializer_len];   // Should be released by the caller using OrtGraphApis::ReleaseCharArray
   int i = 0;
   for (const auto& [key, value] : initializers) (*initializer_names)[i++] = key.c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::ReleaseCharArray, const char** char_array) {
+  if (!char_array) {
+    return nullptr;
+  }
+  delete[] char_array;
   return nullptr;
 }
 
@@ -148,7 +156,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphV
     *ret = false;
     return nullptr;
   }
-  *out = new OrtTensorRef();  // TODO(leca): 1. release, 2. other datatypes in the following switch
+  *out = new OrtTensorRef();  // TODO(leca): other datatypes in the following switch
   (*out)->shape_len = initializer->dims_size();
   (*out)->shape = new int64_t [initializer->dims_size()];
   for (size_t i = 0; i < (*out)->shape_len; i++) {
@@ -167,6 +175,17 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphV
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseInitializerTensor, OrtTensorRef* tensor) {
+  if (!tensor) {
+    return nullptr;
+  }
+  if (tensor->shape) {
+    delete[] tensor->shape;
+  }
+  delete tensor;
+  return nullptr;
+}
+
 static ONNXTensorElementDataType GetDataTypeFromTypeProto(const onnx::TypeProto* type) {  // onnxruntime\core\optimizer\transpose_optimization\ort_optimizer_api_impl.cc
   if (!type || !utils::HasTensorType(*type) || !utils::HasElementType(*type)) return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
 
@@ -177,7 +196,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetValueInfo, const OrtGraphViewer* g
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const NodeArg* node_arg = graph_viewer->GetNodeArg(name);
 
-  *out = new OrtValueInfoRef(); // TODO(leca): release
+  *out = new OrtValueInfoRef();
   const onnx::TypeProto* type = node_arg->TypeAsProto();
   (*out)->data_type = GetDataTypeFromTypeProto(type);
   const auto& dims = utils::TryGetShape(*type)->dim();
@@ -186,6 +205,17 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetValueInfo, const OrtGraphViewer* g
   for (size_t i = 0; i < (*out)->shape_len; i++) ((*out)->shape)[i] = utils::HasDimValue(dims[i]) ? dims[i].dim_value() : -1;
 
   *ret = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info) {
+  if (!value_info) {
+    return nullptr;
+  }
+  if (value_info->shape) {
+    delete[] value_info->shape;
+  }
+  delete value_info;
   return nullptr;
 }
 
@@ -768,6 +798,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetRequiredInputs,
     &OrtGraphApis::OrtGraph_GetAllInputs,
     &OrtGraphApis::OrtGraph_GetAllInitializers,
+    &OrtGraphApis::ReleaseCharArray,
     &OrtGraphApis::OrtGraph_GetOrtNode,
     &OrtGraphApis::OrtGraph_GetNodesConsumingInput,
     &OrtGraphApis::OrtGraph_GetNodeProducingOutput,
@@ -777,7 +808,9 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetIthOutputName,
     &OrtGraphApis::OrtGraph_GetIthOutputElemType,
     &OrtGraphApis::OrtGraph_GetInitializerTensor,
+    &OrtGraphApis::OrtGraph_ReleaseInitializerTensor,
     &OrtGraphApis::OrtGraph_GetValueInfo,
+    &OrtGraphApis::OrtGraph_ReleaseValueInfo,
     &OrtGraphApis::OrtGraph_SerializeToArray,
     &OrtGraphApis::OrtGraph_GetSubGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraph,
