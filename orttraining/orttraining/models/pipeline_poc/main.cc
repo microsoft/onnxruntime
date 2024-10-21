@@ -89,6 +89,7 @@ int main(int argc, char* argv[]) {
       ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
       ExecutionOrder::DEFAULT,           // execution_order
       false,                             // enable_profiling
+      false,                             // save prepacked initializer
       ORT_TSTR(""),                      // optimized_model_filepath
       true,                              // enable_mem_pattern
       true,                              // enable_mem_reuse
