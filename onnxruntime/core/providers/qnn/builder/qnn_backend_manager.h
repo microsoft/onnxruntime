@@ -233,6 +233,7 @@ class QnnBackendManager {
 
  private:
   const std::string backend_path_;
+  OrtMutex logger_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
