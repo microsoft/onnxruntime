@@ -449,6 +449,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_Size = 21;
         static const int sc_sinceVer_CastLike = 21;
         static const int sc_sinceVer_ConstantOfShape = 21;
+        static const int sc_sinceVer_Flatten = 21;
+        static const int sc_sinceVer_Pad = 21;
+        static const int sc_sinceVer_Transpose = 21;
     }
 
     namespace MsftOperatorSet1
