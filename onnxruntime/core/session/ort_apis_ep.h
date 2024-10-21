@@ -25,6 +25,8 @@ ORT_API_STATUS_IMPL(OrtGraph_GetAllInputs, const OrtGraphViewer* graph, _Outptr_
 
 ORT_API_STATUS_IMPL(OrtGraph_GetAllInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
 
+ORT_API_STATUS_IMPL(ReleaseCharArray, const char** char_array);
+
 ORT_API_STATUS_IMPL(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers, _Out_ size_t* num_consumers);
@@ -43,7 +45,11 @@ ORT_API_STATUS_IMPL(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t
 
 ORT_API_STATUS_IMPL(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef** tensor, _Out_ bool* ret);
 
+ORT_API_STATUS_IMPL(OrtGraph_ReleaseInitializerTensor, OrtTensorRef* tensor);
+
 ORT_API_STATUS_IMPL(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret);
+
+ORT_API_STATUS_IMPL(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
 
 ORT_API_STATUS_IMPL(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);
 
