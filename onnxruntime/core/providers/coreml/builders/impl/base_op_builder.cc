@@ -17,9 +17,10 @@ namespace coreml {
 // filter suppported ones.
 static std::set<std::string> Float16Ops = {
     "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
-    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
-    "Clip", "DepthToSpace", "Resize", "Slice", "Conv",
-    "ConvTranspose", "GlobalMaxPool", "Gemm", "MatMul",
+    "Sigmoid", "Tanh", "Relu", "PRelu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
+    "Clip", "DepthToSpace", "Resize", "Slice", "Conv", "Cast", "BatchNormalization",
+    "ConvTranspose", "GlobalMaxPool", "Gemm", "MatMul", "ArgMax", "Gelu",
+    "LayerNormalization", "InstanceNormalization", "GroupNormalization",
     "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
 
 namespace {

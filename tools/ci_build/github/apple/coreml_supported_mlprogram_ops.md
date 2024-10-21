@@ -4,7 +4,9 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |Operator|Note|
 |--------|------|
 |ai.onnx:Add||
+|ai.onnx:Argmax||
 |ai.onnx:AveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:Cast||
 |ai.onnx:Clip||
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
@@ -12,14 +14,19 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:DepthToSpace|If 'mode' is 'CRD' the input must have a fixed shape.|
 |ai.onnx:Div||
 |ai.onnx:Gemm|Input B must be constant.|
+|ai.onnx:Gelu||
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:GridSample|4D input.<br/>'mode' of 'linear' or 'zeros'.<br/>(mode==linear && padding_mode==reflection && align_corners==0) is not supported.|
+|ai.onnx:GroupNormalization||
+|ai.onnx:InstanceNormalization||
+|ai.onnx:LayerNormalization||
 |ai.onnx:LeakyRelu||
 |ai.onnx:MatMul|Only support for transA == 0, alpha == 1.0 and beta == 1.0 is currently implemented.|
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Mul||
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
+|ai.onnx:PRelu||
 |ai.onnx:Reciprocal|this ask for a `epislon` (default 1e-4) where onnx don't provide|
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
