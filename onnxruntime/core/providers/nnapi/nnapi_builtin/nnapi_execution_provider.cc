@@ -380,7 +380,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       // TODO, investigate concurrent runs for different executions from the same model
       {
         std::unique_ptr<nnapi::Execution> execution;
-        std::unique_lock<OrtMutex> lock(model->GetMutex());
+        std::unique_lock<std::mutex> lock(model->GetMutex());
         ORT_RETURN_IF_ERROR(model->PrepareForExecution(execution));
 
         ORT_RETURN_IF_ERROR(execution->SetInputBuffers(inputs));

@@ -7,3 +7,4 @@ onnx==1.16.1
 protobuf==4.21.12
 sympy==1.12
 flatbuffers
+psutil

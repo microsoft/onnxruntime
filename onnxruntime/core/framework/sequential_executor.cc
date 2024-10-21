@@ -339,12 +339,6 @@ class KernelScope {
     if (session_state_.Profiler().IsEnabled()) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-      auto& profiler = session_state_.Profiler();
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_before",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
       kernel_begin_time_ = session_state_.Profiler().Start();
@@ -381,11 +375,6 @@ class KernelScope {
                                          {"thread_scheduling_stats",
                                           concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
                                      });
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_after",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
     }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
