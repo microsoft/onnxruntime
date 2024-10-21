@@ -142,6 +142,12 @@ export declare namespace JSEP {
      */
     jsepOnRunStart: (sessionId: number) => void;
     /**
+     * [exported from pre-jsep.js] Create a session. This function will be called after _OrtCreateSession() is
+     * called.
+     * @returns
+     */
+    jsepOnCreateSession: () => void;
+    /**
      * [exported from pre-jsep.js] Release a session. This function will be called before _OrtReleaseSession() is
      * called.
      * @param sessionId - specify the session ID.

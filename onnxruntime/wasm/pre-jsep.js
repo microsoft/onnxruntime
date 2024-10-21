@@ -192,6 +192,9 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
       return backend['createDownloader'](gpuBuffer, size, type);
     };
+    Module['jsepOnCreateSession'] = sessionId => {
+      backend['onCreateSession'](sessionId);
+    };
     Module['jsepOnReleaseSession'] = sessionId => {
       backend['onReleaseSession'](sessionId);
     };
