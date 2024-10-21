@@ -21,6 +21,11 @@
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
+#ifdef USE_TENSORRT
+#include <vector>
+#include "core/session/onnxruntime_c_api_ep.h"
+#endif
+
 #ifdef _WIN32
 #define strdup _strdup
 #endif
@@ -28,6 +33,21 @@ extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
+
+inline void THROW_ON_ERROR(OrtStatus* status) {
+  if (status != nullptr) {
+    std::cout << "ErrorMessage:" << g_ort->GetErrorMessage(status) << "\n";
+    abort();
+  }
+}
+
+void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so, int device_id) {
+  THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+  std::vector<const char*> keys{"device_id", "str_property"};
+  std::string device_id_str = std::to_string(device_id);
+  std::vector<const char*> values{device_id_str.c_str(), "strvalue"};
+  THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+}
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
@@ -211,8 +231,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
                 "\nSupported options are:\n", options);
     }
-
-    session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
+    g_ort = &api;
+    TestTensorRTEp(g_ort, env, session_options, tensorrt_options->device_id);
 
     OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id = tensorrt_options->device_id;
