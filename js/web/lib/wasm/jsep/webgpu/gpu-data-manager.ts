@@ -469,6 +469,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   onCreateSession() {
+    LOG_DEBUG('verbose', () => '[WebGPU] Incrementing session count');
     this.sessionCount += 1;
   }
 
@@ -482,9 +483,11 @@ class GpuDataManagerImpl implements GpuDataManager {
       this.capturedPendingBuffers.delete(sessionId);
     }
 
+    LOG_DEBUG('verbose', () => '[WebGPU] Decrementing session count');
     // release the storage cache if no active sessions.
     this.sessionCount -= 1;
     if (this.sessionCount === 0) {
+      LOG_DEBUG('verbose', () => '[WebGPU] Clearing cache');
       this.storageCache.forEach((storage) => {
         storage.gpuData.buffer.destroy();
       });
