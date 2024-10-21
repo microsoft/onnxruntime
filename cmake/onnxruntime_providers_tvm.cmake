@@ -56,7 +56,7 @@
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_providers_tvm
+    install(TARGETS onnxruntime_providers_tvm EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
