@@ -52,6 +52,18 @@ pip install onnxruntime
 pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime
 ```
 
+### Install ONNX Runtime GPU (DirectML)
+
+```bash
+pip install onnxruntime-directml
+```
+
+#### Install nightly
+
+```bash
+pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-directml
+```
+
 ### Install ONNX Runtime GPU (CUDA 12.x)
 
 The default CUDA version for [onnxruntime-gpu in pypi](https://pypi.org/project/onnxruntime-gpu) is 12.x since 1.19.0.
@@ -68,18 +80,6 @@ pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/Public
 
 For previous versions, you can download here: [1.18.1](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.1), [1.18.0](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.0)
 
-### Install ONNX Runtime GPU (DirectML)
-
-```bash
-pip install onnxruntime-directml
-```
-
-#### Install nightly
-
-```bash
-pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-directml
-```
-
 
 ### Install ONNX Runtime GPU (CUDA 11.x)
 
@@ -93,8 +93,6 @@ For previous versions, you can download here: [1.18.1](https://pypi.org/project/
 
 
 ### Install ONNX Runtime QNN
-
-### Install ONNX Runtime GPU (DirectML)
 
 ```bash
 pip install onnxruntime-qnn
