@@ -35,7 +35,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Floor | ai.onnx(7-12, 13+) | floor | ✓ | ✓ | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | ✓ | ✓ | |
-| GatherND | ai.onnx(11, 12, 13+) | gatherND | ✗ | ✓ | Only supports 'batch_dims' == 0 |
+| GatherND | ai.onnx(11, 12, 13+) | gatherND | ✓ | ✓ | Only supports 'batch_dims' == 0 |
 | Gelu | ai.onnx(20+) | gelu | ✓ | ✓ | |
 | Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | ✓ | ✓ | Only supports 1-D 'C' input |
 | GlobalAveragePool | ai.onnx(7+) | averagePool2d | ✓ | ✓ | Only supports 4-D input |
