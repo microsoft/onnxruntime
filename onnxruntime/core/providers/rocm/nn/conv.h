@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
@@ -158,7 +158,7 @@ struct MiopenConvState {
   TensorShapeVector slice_axes;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
-  OrtMutex mutex;
+  std::mutex mutex;
   IAllocatorUniquePtr<void> memory_for_miopen_conv_results;
 
   ~MiopenConvState() {

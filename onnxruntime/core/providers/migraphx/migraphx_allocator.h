@@ -5,7 +5,7 @@
 
 #include <unordered_set>
 #include "core/framework/allocator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 
@@ -42,7 +42,7 @@ class MIGraphXExternalAllocator : public MIGraphXAllocator {
   void* Reserve(size_t size) override;
 
  private:
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
   ExternalAlloc alloc_;
   ExternalFree free_;
   ExternalEmptyCache empty_cache_;

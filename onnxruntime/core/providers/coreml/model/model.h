@@ -11,7 +11,7 @@
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 #if defined(__OBJC__)
 @class MLMultiArray;
@@ -73,7 +73,7 @@ class Model {
   }
 
   // Mutex for exclusive lock to this model object
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
   // Input and output names in the ORT fused node's order.
   // Names may have been adjusted from the originals due to CoreML naming rules.
@@ -101,7 +101,7 @@ class Model {
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 };
 
 }  // namespace coreml

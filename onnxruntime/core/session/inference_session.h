@@ -29,7 +29,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -129,7 +129,7 @@ class InferenceSession {
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
-  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
   static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
@@ -799,10 +799,10 @@ class InferenceSession {
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
-  mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
+  mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
+  bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;

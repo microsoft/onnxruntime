@@ -276,7 +276,7 @@ void* BFCArena::Reserve(size_t size) {
   if (size == 0)
     return nullptr;
 
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
 
   LOGS_DEFAULT(INFO) << "Reserving memory in BFCArena for " << device_allocator_->Info().name << " size: " << size;
 
@@ -293,7 +293,7 @@ void* BFCArena::Reserve(size_t size) {
 }
 
 size_t BFCArena::RequestedSize(const void* ptr) {
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
   ORT_ENFORCE(h != kInvalidChunkHandle);
   BFCArena::Chunk* c = ChunkFromHandle(h);
@@ -301,7 +301,7 @@ size_t BFCArena::RequestedSize(const void* ptr) {
 }
 
 size_t BFCArena::AllocatedSize(const void* ptr) {
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
   ORT_ENFORCE(h != kInvalidChunkHandle);
   BFCArena::Chunk* c = ChunkFromHandle(h);
@@ -325,7 +325,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   // search for a valid chunk
   auto* chunk = FindChunkPtr(bin_num,
                              rounded_bytes,
@@ -377,7 +377,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
 }
 
 void BFCArena::GetStats(AllocatorStats* stats) {
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   *stats = stats_;
 }
 
@@ -496,7 +496,7 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(it->first);
@@ -509,7 +509,7 @@ void BFCArena::Free(void* p) {
 }
 
 Status BFCArena::Shrink() {
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   auto num_regions = region_manager_.regions().size();
   std::vector<void*> region_ptrs;
   std::vector<size_t> region_sizes;
@@ -807,7 +807,7 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
 }
 #ifdef ORT_ENABLE_STREAM
 void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag) {
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
 
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());

@@ -11,7 +11,7 @@
 
 #include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 
@@ -130,7 +130,7 @@ class Profiler {
   static std::atomic<size_t> global_max_num_events_;
 
   // Mutex controlling access to profiler data
-  OrtMutex mutex_;
+  std::mutex mutex_;
   bool enabled_{false};
 #if defined(__wasm__)
   /*

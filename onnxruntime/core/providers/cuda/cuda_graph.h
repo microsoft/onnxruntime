@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 #include "core/common/common.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
