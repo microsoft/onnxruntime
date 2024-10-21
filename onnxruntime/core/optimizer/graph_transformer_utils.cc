@@ -47,6 +47,7 @@
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/int16_qdq_pairs_remover.h"
 #include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
@@ -317,6 +318,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #else
       const bool avx2_precision_mode = false;
 #endif
+
+      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0") {
+        // DML doesn't support int16 QDQ, so we remove all pairs that cancel eachother to avoid falling back to the CPU
+        transformers.emplace_back(std::make_unique<Int16QDQPairsRemover>(dml_ep));
+      }
+
       if (!disable_quant_qdq) {
         // currently we don't support QDQS8ToU8Transformer in a minimal build and if supported, this needs to run in
         // Level 1 during export and not Level 2 at runtime as it would result in overlapping optimizations which
