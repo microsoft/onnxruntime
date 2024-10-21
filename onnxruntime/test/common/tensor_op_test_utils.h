@@ -202,7 +202,7 @@ std::vector<T> GetTypedArray(std::vector<float> inputs) {
   if constexpr (std::is_same<T, float>::value) {
     return inputs;
   } else if constexpr (std::is_integral_v<T> || std::is_same<T, double>::value) {
-    std::vector<T> result;
+    std::vector<T> result(inputs.size());
     for (size_t i = 0; i < inputs.size(); i++) {
       result[i] = static_cast<T>(inputs[i]);
     }
