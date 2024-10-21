@@ -286,41 +286,49 @@ stages:
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        CudaVersion: 11.8
+        EP_BUILD_FLAGS: --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.11'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        CudaVersion: 11.8
+        EP_BUILD_FLAGS: --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.12'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        CudaVersion: 11.8
+        EP_BUILD_FLAGS: --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.13'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+        CudaVersion: 11.8
+        EP_BUILD_FLAGS: --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        use_tensorrt: True
 
     - template: py-win-gpu.yml
       parameters:
@@ -473,7 +481,6 @@ stages:
           docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241015.1
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          trt_version: '10.4.0.26-1.cuda11.8'
           cuda_version: '11.8'
 
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
