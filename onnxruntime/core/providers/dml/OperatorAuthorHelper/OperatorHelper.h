@@ -1865,6 +1865,7 @@ using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CastLike19 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CastLike21 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
 using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;
