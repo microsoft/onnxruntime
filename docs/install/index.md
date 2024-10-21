@@ -40,15 +40,19 @@ For ONNX Runtime GPU package, it is required to install [CUDA](https://developer
 
 ## Python Installs
 
-### Install ONNX Runtime
-
-#### Install ONNX Runtime CPU
+### Install ONNX Runtime CPU
 
 ```bash
 pip install onnxruntime
 ```
 
-#### Install ONNX Runtime GPU (CUDA 12.x)
+#### Install nightly
+
+```bash
+pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime
+```
+
+### Install ONNX Runtime GPU (CUDA 12.x)
 
 The default CUDA version for [onnxruntime-gpu in pypi](https://pypi.org/project/onnxruntime-gpu) is 12.x since 1.19.0.
 
@@ -56,10 +60,28 @@ The default CUDA version for [onnxruntime-gpu in pypi](https://pypi.org/project/
 pip install onnxruntime-gpu
 ```
 
+#### Install nightly
+
+```bash
+pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-gpu
+```
+
 For previous versions, you can download here: [1.18.1](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.1), [1.18.0](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.0)
 
+### Install ONNX Runtime GPU (DirectML)
 
-#### Install ONNX Runtime GPU (CUDA 11.x)
+```bash
+pip install onnxruntime-directml
+```
+
+#### Install nightly
+
+```bash
+pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-directml
+```
+
+
+### Install ONNX Runtime GPU (CUDA 11.x)
 
 For Cuda 11.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview) for 1.19.2 or later.
 
@@ -69,28 +91,31 @@ pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.
 
 For previous versions, you can download here: [1.18.1](https://pypi.org/project/onnxruntime-gpu/1.18.1/), [1.18.0](https://pypi.org/project/onnxruntime-gpu/1.18.0/)
 
-#### Install ONNX Runtime GPU (ROCm)
+
+### Install ONNX Runtime QNN
+
+### Install ONNX Runtime GPU (DirectML)
+
+```bash
+pip install onnxruntime-qnn
+```
+
+#### Install nightly
+
+```bash
+pip install --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-qnn
+```
+
+### Install ONNX Runtime GPU (ROCm)
 
 For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.0.0. 
 
 To build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm).
 
-### Install ONNX to export the model
 
-```bash
-## ONNX is built into PyTorch
-pip install torch
-```
 
-```bash
-## tensorflow
-pip install tf2onnx
-```
 
-```bash
-## sklearn
-pip install skl2onnx
-```
+
 
 ## C#/C/C++/WinML Installs
 
