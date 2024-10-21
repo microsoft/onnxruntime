@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.1
+    value: 6.2
   - name: RocmVersionPatchSuffix
     value: ".3"
 
@@ -64,9 +64,9 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix) --build-arg USE_MIGRAPHX=1 --build-arg USE_CUPY=0"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -98,6 +98,7 @@ jobs:
           onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
+            . /ort/env/bin/activate; \
             env; \
             ccache -s; \
             python tools/ci_build/build.py \
@@ -163,9 +164,9 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix) --build-arg USE_MIGRAPHX=1 --build-arg USE_CUPY=0"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
