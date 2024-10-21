@@ -640,6 +640,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["rpc_polling_time"] = "8888";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -665,6 +666,10 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
     auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
     ASSERT_TRUE(rt.IsOK());
     rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnRpcControlLatency, "1200");
+    ASSERT_TRUE(rt.IsOK());
+    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnRpcPollingTime, "1000");
     ASSERT_TRUE(rt.IsOK());
 
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
