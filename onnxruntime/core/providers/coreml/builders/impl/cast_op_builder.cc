@@ -70,12 +70,12 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
                                       const logging::Logger& logger) const {
   bool is_supported = IsOpSupportedFused(node, input_params, logger);
 
-#if defined(COREML_ENABLE_MLPROGRAM1)
+#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     if (is_supported) {
       fused_into_prev_ = true;
     }
-    return true;
+    // return true;
   }
 #endif
   return is_supported;
