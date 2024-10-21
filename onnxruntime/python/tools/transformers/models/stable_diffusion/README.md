@@ -40,9 +40,8 @@ docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:24.04-p
 ```
 
 #### Build onnxruntime from source
-The cuDNN in the container might not be compatible with official onnxruntime-gpu package, it is recommended to build from source instead.
+This step is optional. Please look at [install onnxruntime-gpu](https://onnxruntime.ai/docs/install/#python-installs) if you do not want to build from source.
 
-After launching the docker, you can build and install onnxruntime-gpu wheel like the following.
 ```
 export CUDACXX=/usr/local/cuda/bin/nvcc
 git config --global --add safe.directory '*'
@@ -60,9 +59,17 @@ If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line
 If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
 
 #### Install required packages
+First, remove older version of opencv to avoid error like `module 'cv2.dnn' has no attribute 'DictValue'`:
+```
+pip uninstall -y $(pip list --format=freeze | grep opencv)
+rm -rf /usr/local/lib/python3.10/dist-packages/cv2/
+apt-get update
+DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv
+```
+
 ```
 cd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion
-python3 -m pip install -r requirements-cuda12.txt
+python3 -m pip install -r requirements/cuda12/requirements.txt
 python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 ```
 
@@ -136,15 +143,18 @@ conda activate py310
 
 ### Setup Environment (CUDA) without docker
 
-First, we need install CUDA 11.8 or 12.1, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html) 8.5 or above, and [TensorRT 8.6.1](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
+First, we need install CUDA 11.8 or 12.x, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html), and [TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
+
+The verison of CuDNN can be found in https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements.
+The version of TensorRT can be found in https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements.
 
 #### CUDA 11.8:
 
-In the Conda environment, install PyTorch 2.1 or above, and other required packages like the following:
+In the Conda environment, install PyTorch 2.1 up to 2.3.1, and other required packages like the following:
 ```
-pip install torch --index-url https://download.pytorch.org/whl/cu118
+pip install torch>=2.1,<2.4 --index-url https://download.pytorch.org/whl/cu118
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements-cuda11.txt
+pip install -r requirements/cuda11/requirements.txt
 ```
 
 For Windows, install nvtx like the following:
@@ -157,76 +167,39 @@ We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com
 For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead. Like `pip install tensorrt-8.6.1.6.windows10.x86_64.cuda-11.8\tensorrt-8.6.1.6\python\tensorrt-8.6.1-cp310-none-win_amd64.whl`.
 
 #### CUDA 12.*:
-The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CUDA 12.*, you will need [build onnxruntime from source](https://onnxruntime.ai/docs/build/inferencing.html).
-
+The official package of onnxruntime-gpu 1.19.x is built for CUDA 12.x. You can install it and other python packages like the following:
 ```
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-cd onnxruntime
-pip install cmake
-pip install -r requirements-dev.txt
-```
-Follow [example script for A100 in Ubuntu](https://github.com/microsoft/onnxruntime/blob/26a7b63716e3125bfe35fe3663ba10d2d7322628/build_release.sh)
-or [example script for RTX 4090 in Windows](https://github.com/microsoft/onnxruntime/blob/8df5f4e0df1f3b9ceeb0f1f2561b09727ace9b37/build_trt.cmd) to build and install onnxruntime-gpu wheel.
-
-Then install other python packages like the following:
-```
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install onnxruntime-gpu
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements-cuda12.txt
+pip install -r requirements/cuda12/requirements.txt
 ```
 Finally, `pip install tensorrt` for Linux. For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead.
 
 ### Setup Environment (ROCm)
 
-It is recommended that the users run the model with ROCm 5.4 or newer and Python 3.10.
+It is recommended that the users run the model with ROCm 6.2 or newer and Python 3.10. You can follow the following to install ROCm 6.x: https://rocmdocs.amd.com/projects/install-on-linux/en/latest/install/quick-start.html
 Note that Windows is not supported for ROCm at the moment.
 
 ```
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/torch-1.12.1%2Brocm5.4-cp38-cp38-linux_x86_64.whl
-pip install torch-1.12.1+rocm5.4-cp38-cp38-linux_x86_64.whl
-pip install -r requirements-rocm.txt
+pip install -r requirements/rocm/requirements.txt
 ```
 
-AMD GPU version of PyTorch can be installed from [pytorch.org](https://pytorch.org/get-started/locally/) or [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/).
+AMD GPU version of PyTorch can be installed from [pytorch.org](https://pytorch.org/get-started/locally/) or [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/).
 
 #### Install onnxruntime-rocm
 
-Here is an example to build onnxruntime from source with Rocm 5.4.2 in Ubuntu 20.04, and install the wheel.
-
-(1) Install [ROCm 5.4.2](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4.2/page/How_to_Install_ROCm.html). Note that the version is also used in PyTorch 2.0 ROCm package.
-
-(2) Install some tools used in build:
+One option is to install prebuilt wheel from https://repo.radeon.com/rocm/manylinux like:
 ```
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends \
-        wget \
-        zip \
-        ca-certificates \
-        build-essential \
-        curl \
-        libcurl4-openssl-dev \
-        libssl-dev \
-        python3-dev
-pip install numpy packaging "wheel>=0.35.1"
-wget --quiet https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-x86_64.tar.gz
-tar zxf cmake-3.26.3-linux-x86_64.tar.gz
-export PATH=${PWD}/cmake-3.26.3-linux-x86_64/bin:${PATH}
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl
+pip install onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl
 ```
 
-(3) Build and Install ONNX Runtime
-```
-git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime
-sh build.sh --config Release --use_rocm --rocm_home /opt/rocm --rocm_version 5.4.2 --build_wheel
-pip install build/Linux/Release/dist/*.whl
-```
-
-You can also follow the [official docs](https://onnxruntime.ai/docs/build/eps.html#amd-rocm) to build with docker.
+If you want to use latest version of onnxruntime, you can build from source with Rocm 6.x following https://onnxruntime.ai/docs/build/eps.html#amd-rocm.
+When the build is finished, you can install the wheel:`pip install build/Linux/Release/dist/*.whl`.
 
 ### Export ONNX pipeline
 This step will export stable diffusion 1.5 to ONNX model in float32 using script from diffusers.
-
-It is recommended to use PyTorch 1.12.1 or 1.13.1 in this step. Using PyTorch 2.0 will encounter issue in exporting onnx.
 
 ```
 curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py > convert_sd_onnx.py
