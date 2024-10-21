@@ -77,7 +77,6 @@ TYPED_TEST(GroupNormalizationOpTest, Equivalent_LayerNorm_G_1) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   };
 
-  // gamma as initialized will fail for CPUEP
   run_test(true);
 }
 
