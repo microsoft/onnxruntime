@@ -75,7 +75,16 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     if (is_supported) {
       fused_into_prev_ = true;
     }
-    // return true;
+    // cast only support int64 input when the prec_node is ArgMax
+    int32_t input_type;
+    GetType(*node.InputDefs()[0], input_type, logger);
+    if (!is_supported && input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      return false;
+    }
+    // In CoreML version 6 (e.g., on an iOS 16 simulator) , "can't infer output dtype" error is thrown
+    if (input_params.coreml_version >= 7) {
+      return true;
+    }
   }
 #endif
   return is_supported;
@@ -131,7 +140,7 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
   if (!GetType(output, output_type, logger))
     return false;
 
-#if defined(COREML_ENABLE_MLPROGRAM1)
+#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
