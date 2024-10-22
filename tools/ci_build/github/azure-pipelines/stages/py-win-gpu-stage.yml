@@ -143,7 +143,7 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
 
           # Esrp signing
-          - template: win-esrp-dll.yml
+          - template: ../templates/win-esrp-dll.yml
             parameters:
               FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
               DisplayName: 'ESRP - Sign Native dlls'
