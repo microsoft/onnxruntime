@@ -571,17 +571,18 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
-  // When profiling is disabled, should never run into this function.
-  ORT_ENFORCE(query_type_ != TimestampQueryType::None, "Timestamp query is not enabled.");
+  if (query_type_ != TimestampQueryType::None) {
+    // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
+    ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
-  // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
-  ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
+    events.insert(events.end(),
+                  std::make_move_iterator(cached_events.begin()),
+                  std::make_move_iterator(cached_events.end()));
 
-  events.insert(events.end(),
-                std::make_move_iterator(cached_events.begin()),
-                std::make_move_iterator(cached_events.end()));
-
-  cached_events.clear();
+    cached_events.clear();
+  } else {
+    LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
+  }
 }
 
 void WebGpuContext::Flush() {
