@@ -4,9 +4,11 @@ parameters:
   - name: enable_linux_cuda
     type: boolean
     default: true
+
   - name: enable_windows_cuda
     type: boolean
     default: true
+
   - name: cmake_build_type
     type: string
     default: 'Release'
@@ -23,7 +25,7 @@ parameters:
       - 12.2
 
 stages:
-  - template: stages/py-cuda-packaging-stage.yml
+  - template: stages/py-gpu-packaging-stage.yml
     parameters:
       enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
       enable_windows_cuda: ${{ parameters.enable_windows_cuda }}

@@ -15,6 +15,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_dml
+  displayName: 'Whether Windows CUDA package is built.'
+  type: boolean
+  default: false
+
 # TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
   type: string
@@ -43,6 +48,10 @@ parameters:
     - '3.12'
     - '3.13'
 
+- name: publish_symbols
+  type: boolean
+  default: false
+
 stages:
   - ${{ if eq(parameters.enable_windows_cuda, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
@@ -70,3 +79,15 @@ stages:
           ${{ if eq(parameters.cuda_version, '12.2') }}:
             docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241020.1
             trt_version: 10.4.0.26-1.cuda12.6
+
+  - $ - ${{ if eq(parameters.enable_windows_dml, true) }}:
+    - ${{ each python_version in parameters.PythonVersions }}:
+      - template: py-win-gpu-stage.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+          PYTHON_VERSION: ${{ python_version }}
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+          ENV_SETUP_SCRIPT: setup_env.bat
+          EP_NAME: directml
+          publish_symbols: ${{ parameters.publish_symbols }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}

@@ -101,16 +101,12 @@ stages:
     qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
     publish_symbols: true
 
-- template: stages/py-cuda-packaging-stage.yml
+- template: stages/py-gpu-packaging-stage.yml
   parameters:
     enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
     enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
     cmake_build_type: ${{ parameters.cmake_build_type }}
+    enable_windows_dml: ${ parameters.enable_windows_dml}}
     cuda_version: ${{ parameters.cuda_version }}
-
-- ${{ if eq(parameters.enable_windows_dml, true) }}:
-  - template: stages/py-dml-packaging-stage.yml
-    parameters:
-      cmake_build_type: ${{ parameters.cmake_build_type }}
-      publish_symbols: true
+    publish_symbols: true
 
