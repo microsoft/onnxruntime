@@ -97,7 +97,6 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
-      
       ${PROTOBUF_LIB}
       onnx
       onnx_proto
@@ -175,7 +174,6 @@ else()
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
-    
     ${PROTOBUF_LIB}
     onnx
     onnx_proto
@@ -194,11 +192,7 @@ else()
     onnxruntime_util
     re2::re2
   )
-  if (onnxruntime_USE_JSEP)
-    set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','getValue','setValue'")
-  else()
-    set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
-  endif()
+  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','getValue','setValue'")
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
     string(APPEND EXPORTED_RUNTIME_METHODS ",'addFunction'")
