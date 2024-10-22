@@ -908,7 +908,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(9,
                "cache_indirection",
-               // This input is useful for CUDA EP only.
                "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
                "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
@@ -920,7 +919,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "3D output tensor with shape (batch_size, num_heads, v_hidden_size)",
                 "T")
         .Output(1,
                 "present_key",
