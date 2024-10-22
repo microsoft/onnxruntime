@@ -105,7 +105,7 @@ stages:
         PackageNodeJS: false
 
   # Nuget Packaging
-  - template: stages/nuget-combine-gpu-stage.yml
+  - template: stages/nuget-combine-cuda-stage.yml
     parameters:
       DoCompliance: ${{ parameters.DoCompliance }}
       CudaVersion: ${{ parameters.CudaVersion }}

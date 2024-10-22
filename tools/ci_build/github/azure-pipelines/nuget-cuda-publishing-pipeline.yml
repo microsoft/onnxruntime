@@ -22,7 +22,7 @@ variables:
       value: onnxruntime-cuda-12
 
 stages:
-  - template: stages/nuget-gpu-publishing-stage.yml
+  - template: stages/nuget-cuda-publishing-stage.yml
     parameters:
       artifact_feed: $(ArtifactFeed)
 

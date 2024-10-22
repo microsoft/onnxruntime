@@ -33,7 +33,7 @@ stages:
         - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
   # Publish CUDA 11 Nuget/Java pkgs to ADO feed
-  - template: stages/nuget-gpu-publishing-stage.yml
+  - template: stages/nuget-cuda-publishing-stage.yml
     parameters:
       artifact_feed: $(ArtifactFeed)
 
