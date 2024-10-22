@@ -10,7 +10,7 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
-#if __APPLE__
+#ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
 

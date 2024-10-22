@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
@@ -106,6 +107,8 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
 #if defined(COREML_ENABLE_MLPROGRAM)
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
+  // uncomment it when this bugs was fixed.
+  // "failed to infer output detype"
   // const auto& initializers(model_builder.GetInitializerTensors());
   // const auto& scale_tensor = *initializers.at(input_defs[1]->Name());
   // const auto& bias_tensor = *initializers.at(input_defs[2]->Name());
@@ -114,9 +117,7 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
   int64_t num_groups = helper.Get("num_groups", 1);  // GroupNorm
 
   std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Get input shape failed");
-  }
+  GetShape(*input_defs[0], input_shape, logger);
 
   const auto input_size = input_shape.size();
   int64_t axis = 2;
@@ -146,7 +147,7 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
 
     std::unique_ptr<Operation> layer_norm = model_builder.CreateOperation(node, "layer_norm");
     AddOperationInput(*layer_norm, "x", layer_input_name_x);
-    AddOperationInput(*layer_norm, "axes", model_builder.AddConstant(layer_norm->type(), input_defs[0]->Name() + "axes", axes));
+    AddOperationInput(*layer_norm, "axes", model_builder.AddConstant(layer_norm->type(), "axes", axes));
 
     if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       MLFloat16 epsilon_fp16(eps);
@@ -221,17 +222,58 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     return false;
   }
 
+  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const auto& scale_name = input_defs[1]->Name();
-  if (!input_params.graph_viewer.GetConstantInitializer(scale_name)) {
-    LOGS(logger, VERBOSE) << "Scale of LayerNormazition must be a constant initializer";
+  const auto* scale_tensor = input_params.graph_viewer.GetConstantInitializer(scale_name);
+  if (!scale_tensor) {
+    LOGS(logger, VERBOSE) << "Scale of Normazition must be a constant initializer";
     return false;
+  } else if (node.OpType() == "GroupNormalization") {
+    Initializer unpacked_tensor(*scale_tensor);
+    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      const auto src_data = unpacked_tensor.DataAsSpan<MLFloat16>();
+      for (size_t i = 0; i < src_data.size(); i++) {
+        if (fabs(src_data[i].ToFloat() - 1.0f) > 1e-6) {
+          LOGS(logger, VERBOSE) << "GroupNorm only support scale == 1.0";
+          return false;
+        }
+      }
+    } else {
+      const auto src_data = unpacked_tensor.DataAsSpan<float>();
+      for (size_t i = 0; i < src_data.size(); i++) {
+        if (fabs(src_data[i] - 1.0f) > 1e-6) {
+          LOGS(logger, VERBOSE) << "GroupNorm only support scale == 1.0";
+          return false;
+        }
+      }
+    }
   }
 
   if (input_defs.size() > 2) {
     const auto& b_name = input_defs[2]->Name();
-    if (!input_params.graph_viewer.GetConstantInitializer(b_name)) {
-      LOGS(logger, VERBOSE) << "B of LayerNormazition must be a constant initializer";
+    const auto& b_tensor = input_params.graph_viewer.GetConstantInitializer(b_name);
+    if (!b_tensor) {
+      LOGS(logger, VERBOSE) << "B of Normazition must be a constant initializer";
       return false;
+    } else if (node.OpType() == "GroupNormalization") {
+      Initializer unpacked_tensor(*b_tensor);
+      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        const auto src_data = unpacked_tensor.DataAsSpan<MLFloat16>();
+        for (size_t i = 0; i < src_data.size(); i++) {
+          if (fabs(src_data[i].ToFloat() - .0f) > 1e-6) {
+            LOGS(logger, VERBOSE) << "GroupNorm only support bias == 0.0";
+            return false;
+          }
+        }
+      } else {
+        const auto src_data = unpacked_tensor.DataAsSpan<float>();
+        for (size_t i = 0; i < src_data.size(); i++) {
+          if (fabs(src_data[i] - .0f) > 1e-6) {
+            LOGS(logger, VERBOSE) << "GroupNorm only support bias == 0.0";
+            return false;
+          }
+        }
+      }
     }
   }
 
