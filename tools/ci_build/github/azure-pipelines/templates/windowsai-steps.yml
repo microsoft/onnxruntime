@@ -26,17 +26,18 @@ jobs:
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:
+        command: restore
         feedsToUse: config
-        nugetConfigPath: NuGet.config
+        nugetConfigPath: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\nuget.config
         restoreDirectory: '$(Build.BinariesDirectory)'
         ${{ if eq(parameters.BuildArch, 'x64') }}:
-          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'x86') }}:
-          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x86\packages.config
+          restoreSolution: $(Build.SourcesDirectory)\.tools\ci_build\github\azure-pipelines\nuget\nuget_config\x86\packages.config
         ${{ if eq(parameters.BuildArch, 'arm') }}:
-          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'arm64') }}:
-          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
 
     - script: |
         @echo off
