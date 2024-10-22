@@ -76,7 +76,7 @@ def get_ep(use_tensorrt=True, use_fp16=True):
             ]
 
 """
-This hacky fix is required to fix onnx model graph.
+This hacky fix is required to fix onnx model graph. Github issue: https://github.com/pytorch/pytorch/issues/138637
 Some slice nodes are missing starts/end attributes after onnx.export
 """
 def fix_phi35_model(onnx_model_filename):
