@@ -16,7 +16,7 @@ parameters:
   default: true
 
 - name: enable_windows_dml
-  displayName: 'Whether Windows CUDA package is built.'
+  displayName: 'Whether Windows DML package is built.'
   type: boolean
   default: false
 
