@@ -50,12 +50,12 @@ android {
 		}
 	}
 	sourceSets {
-        main {
-            if (System.properties['qnnVersion'] != null) {
-                manifest.srcFile 'src/main/AndroidManifestQnn.xml'  // Use QNN manifest
-            }
-        }
-    }
+		main {
+			if (System.properties['qnnVersion'] != null) {
+				manifest.srcFile 'src/main/AndroidManifestQnn.xml'  // Use QNN manifest
+			}
+		}
+	}
 	namespace 'ai.onnxruntime.example.javavalidator'
 }
 
@@ -77,7 +77,7 @@ dependencies {
 
 	// QNN only dependencies
 	if (qnnVersion != null) {
-	implementation "com.qualcomm.qti:qnn-runtime:$qnnVersion"
+		implementation "com.qualcomm.qti:qnn-runtime:$qnnVersion"
 	}
 
 }

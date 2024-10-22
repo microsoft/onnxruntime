@@ -48,10 +48,6 @@ parameters:
   type: string
   default: '0'
 
-- name: QnnSDKVersion
-  type: string
-  default: '2.26.0.240828'
-
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -101,7 +97,6 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
       packageName: 'onnxruntime-android-qnn'
-      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
 - stage: iOS_Full_xcframework
   dependsOn: []

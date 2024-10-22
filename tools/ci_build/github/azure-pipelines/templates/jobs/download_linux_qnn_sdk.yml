@@ -17,6 +17,7 @@ steps:
     displayName: 'Print QnnSDKRootDir after downloading QNN SDK'
 
   - script: |
+      set -x
       sdk_file="$(QnnSDKRootDir)/sdk.yaml"
       qnn_sdk_version=$(grep '^version:' "$sdk_file" | head -n 1 | cut -d':' -f2 | xargs | cut -d'.' -f1-3)
       if [[ -n "$qnn_sdk_version" ]]; then

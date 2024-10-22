@@ -112,6 +112,7 @@ class SimpleTest {
                         output.use {
                             @Suppress("UNCHECKED_CAST")
                             val rawOutput = output[0].value as Array<Array<FloatArray>>
+                            // QNN EP will run the Sigmoid float32 op with fp16 precision
                             val precision = if (useQNN) 1e-3 else 1e-6
                             for (i in 0..2) {
                                 for (j in 0..3) {

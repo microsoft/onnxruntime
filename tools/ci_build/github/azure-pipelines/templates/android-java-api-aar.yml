@@ -94,12 +94,14 @@ jobs:
 
          # Mount qnn volume if building qnn android package
         if [[ ${{ parameters.packageName }} == *qnn* ]]; then
-          echo $(QnnSDKVersionYaml)
+          echo QNN Version: $(QnnSDKVersionYaml)
           QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
           USE_QNN="1"
+          QNN_VERSION=$(QnnSDKVersionYaml)
         else
           QNN_VOLUME=""
           USE_QNN="0"
+          QNN_VERSION="" # explicitly set to empty to avoid unbound variables
         fi
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -115,6 +117,7 @@ jobs:
           -e ORT_VERSION=$(OnnxRuntimeVersion) \
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
+          -e QNN_VERSION=$QNN_VERSION \
           onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
