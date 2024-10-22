@@ -106,7 +106,7 @@ jobs:
     - script: |
         set -e -x
         mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} $(Build.BinariesDirectory)/dist .
-        find . -name \*.whl -exec unzip {} \;
+        find . -name \*.whl -exec unzip -qq -o {} \;
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
       displayName: 'Move files'
 

@@ -457,13 +457,15 @@ DEF_QUANTIZE_VALUES_INT4_FUNC(UInt4x2, ParQuantizeLinearStdU4)
  * \param output_vals Initialized to the inference results.
  * \param is_qnn_ep Ture: QNN EP is used. False: CPU EP is used (default).
  * \param session_option_pairs extra session options.
+ * \param graph_checker Function called on the Graph.
  */
 void InferenceModel(const std::string& model_data, const char* log_id,
                     const ProviderOptions& provider_options,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
                     std::vector<OrtValue>& output_vals,
                     bool is_qnn_ep = false,
-                    const std::unordered_map<std::string, std::string>& session_option_pairs = {});
+                    const std::unordered_map<std::string, std::string>& session_option_pairs = {},
+                    std::function<void(const Graph&)>* graph_checker = nullptr);
 
 /**
  * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
@@ -515,6 +517,8 @@ struct QDQTolerance {
  * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model
  *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
+ * \param ep_graph_checker Function called on the Graph generated for the QNN EP's session. Used to check node
+ *                         EP assignment.
  */
 template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
@@ -523,7 +527,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                                  QDQTolerance tolerance = QDQTolerance(),
                                  logging::Severity log_severity = logging::Severity::kERROR,
                                  const std::string& qnn_ctx_model_path = "",
-                                 const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
+                                 const std::unordered_map<std::string, std::string>& session_option_pairs = {},
+                                 std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -607,7 +612,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
     // Run QDQ model on QNN EP and collect outputs.
     // Only need to apply the extra session options to this QDQ model inference on QNN EP
     InferenceModel(qdq_model_data, "qdq_model_logger", qnn_options, expected_ep_assignment,
-                   qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs);
+                   qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs, qnn_ep_graph_checker);
   }
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {

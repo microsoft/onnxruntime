@@ -8,6 +8,7 @@ import argparse
 import functools
 import itertools
 import json
+import os
 import subprocess
 
 
@@ -37,7 +38,7 @@ class Version:
 def get_simulator_device_info(
     requested_runtime_platform: str = "iOS",
     requested_device_type_product_family: str = "iPhone",
-    max_runtime_version_str: str | None = None,
+    requested_runtime_version_str: str | None = None,
 ) -> dict[str, str]:
     """
     Retrieves simulator device information from Xcode.
@@ -45,11 +46,13 @@ def get_simulator_device_info(
 
     :param requested_runtime_platform: The runtime platform to select.
     :param requested_device_type_product_family: The device type product family to select.
-    :param max_runtime_version_str: The maximum runtime version to allow.
+    :param requested_runtime_version_str: The runtime version to select. If unspecified, selects the latest one.
 
     :return: A dictionary containing information about the selected simulator device.
     """
-    max_runtime_version = Version(max_runtime_version_str) if max_runtime_version_str is not None else None
+    requested_runtime_version = (
+        Version(requested_runtime_version_str) if requested_runtime_version_str is not None else None
+    )
 
     simctl_proc = subprocess.run(
         ["xcrun", "simctl", "list", "--json", "--no-escape-slashes"],
@@ -73,7 +76,7 @@ def get_simulator_device_info(
         if runtime["platform"] != requested_runtime_platform:
             return False
 
-        if max_runtime_version is not None and Version(runtime["version"]) > max_runtime_version:
+        if requested_runtime_version is not None and Version(runtime["version"]) != requested_runtime_version:
             return False
 
         return True
@@ -108,6 +111,9 @@ def get_simulator_device_info(
     ):
         runtime_id_and_device_pairs.extend((runtime_id, device) for device in filter(device_filter, device_list))
 
+    if len(runtime_id_and_device_pairs) == 0:
+        raise ValueError("Failed to find requested simulator device info.")
+
     # sort key - tuple of (runtime version, device type min runtime version)
     # the secondary device type min runtime version value is to treat more recent device types as greater
     def runtime_id_and_device_pair_key(runtime_id_and_device_pair):
@@ -137,13 +143,20 @@ def get_simulator_device_info(
 
 
 def main():
+    requested_runtime_version_environment_variable_name = "ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION"
+
     parser = argparse.ArgumentParser(description="Gets simulator info from Xcode and prints it in JSON format.")
-    parser.add_argument("--max-runtime-version", help="The maximum runtime version to allow.")
+    parser.add_argument(
+        "--requested-runtime-version",
+        default=os.environ.get(requested_runtime_version_environment_variable_name, None),
+        help="The requested runtime version. "
+        f"This may also be specified with the {requested_runtime_version_environment_variable_name} "
+        "environment variable. The command line option takes precedence. "
+        "An unspecified value means the latest available runtime version.",
+    )
     args = parser.parse_args()
 
-    info = get_simulator_device_info(
-        max_runtime_version_str=args.max_runtime_version,
-    )
+    info = get_simulator_device_info(requested_runtime_version_str=args.requested_runtime_version)
 
     print(json.dumps(info, indent=2))
 

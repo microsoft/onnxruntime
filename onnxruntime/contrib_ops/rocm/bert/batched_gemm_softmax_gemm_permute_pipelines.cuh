@@ -388,7 +388,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     return {m, n, k, o, batch};
   }
 
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   const RocmAttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 

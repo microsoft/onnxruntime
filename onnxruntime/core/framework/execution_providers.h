@@ -12,6 +12,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #ifdef _WIN32
+#include <Windows.h>
 #include <winmeta.h>
 #include <evntrace.h>
 #include "core/platform/tracing.h"

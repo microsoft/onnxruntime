@@ -25,6 +25,7 @@ BOOL ORTIsCoreMLExecutionProviderAvailable() {
   try {
     const uint32_t flags =
         (options.useCPUOnly ? COREML_FLAG_USE_CPU_ONLY : 0) |
+        (options.useCPUAndGPU ? COREML_FLAG_USE_CPU_AND_GPU : 0) |
         (options.enableOnSubgraphs ? COREML_FLAG_ENABLE_ON_SUBGRAPH : 0) |
         (options.onlyEnableForDevicesWithANE ? COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE : 0) |
         (options.onlyAllowStaticInputShapes ? COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES : 0) |

@@ -53,7 +53,7 @@ jobs:
         mv "$(Pipeline.Workspace)/drop-linux-cpu-${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
         mv "$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -qq -o "${1%.*}" "$1"' _ {} \;
   # The private ADO project
   - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
     - download: build   # pipeline resource identifier.
@@ -68,7 +68,7 @@ jobs:
         mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
         mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+        find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -qq -o "${1%.*}" "$1"' _ {} \;
 
   # The BinSkim task uses a dotnet program which doesn't support ARM CPUs yet
   - ${{ if eq(parameters.arch, 'x86_64') }}:

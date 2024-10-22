@@ -26,7 +26,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.26.0.240828
+  default: 2.27.0.240926
 
 jobs:
 - job: Linux_py_qnn_Wheels_x64
@@ -104,7 +104,7 @@ jobs:
     - script: |
         set -e -x
         mv $(Build.BinariesDirectory)/dist .
-        find . -name \*.whl -exec unzip {} \;
+        find . -name \*.whl -exec unzip -qq -o {} \;
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
       displayName: 'Move files'
 

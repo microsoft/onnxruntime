@@ -1,0 +1,10 @@
+numpy==2.1.2
+mypy
+pytest
+setuptools>=68.2.2
+wheel
+onnx==1.16.1
+protobuf==4.21.12
+sympy==1.12
+flatbuffers
+psutil

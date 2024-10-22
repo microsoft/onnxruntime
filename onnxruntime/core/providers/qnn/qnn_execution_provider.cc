@@ -36,8 +36,8 @@ constexpr const char* QNN = "QNN";
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {
-  static OrtMutex mutex;
-  std::lock_guard<OrtMutex> guard(mutex);
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> guard(mutex);
   if (!s_run_on_unload_) {
     s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
   }
@@ -159,6 +159,23 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
   } else {
     LOGS_DEFAULT(WARNING) << "Invalid HTP architecture: " << htp_arch_string;
   }
+}
+
+static bool ParseBoolOption(const std::string& key, bool default_value,
+                            const std::unordered_map<std::string, std::string>& options) {
+  bool result = default_value;
+  auto it = options.find(key);
+  if (it != options.end()) {
+    if ("1" == it->second) {
+      result = true;
+    } else if ("0" == it->second) {
+      result = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid value for " << key << " (" << it->second << "). Only 0 or 1 allowed.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "Using " << key << ": " << result;
+  }
+  return result;
 }
 
 qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned char level) {
@@ -403,6 +420,15 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
   }
 
+  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
+                                                                  provider_options_map);
+
+  if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
+    LOGS_DEFAULT(WARNING) << "Fallback to CPU EP is disabled, but user configured QNN EP to offload graph I/O "
+                          << "quantization/dequantization to another EP. Session creation will fail if the CPU EP "
+                          << "handles the graph I/O quantization/dequantization.";
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
@@ -418,7 +444,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
 QNNExecutionProvider::~QNNExecutionProvider() {
   // clean up thread local context caches
-  std::lock_guard<OrtMutex> lock(context_state_.mutex);
+  std::lock_guard<std::mutex> lock(context_state_.mutex);
   for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
     const auto cache = cache_weak.lock();
     if (!cache) continue;
@@ -499,7 +525,8 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 model_input_index_map,
                                                 model_output_index_map,
                                                 initializer_input_lookup,
-                                                qnn_backend_manager_->GetQnnBackendType());
+                                                qnn_backend_manager_->GetQnnBackendType(),
+                                                model_settings_);
 
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
@@ -845,7 +872,8 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, logger, graph_configs_builder.GetQnnConfigs()));
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
+                                                graph_configs_builder.GetQnnConfigs()));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
@@ -1022,7 +1050,7 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
   // get context and update cache
   std::shared_ptr<PerThreadContext> context;
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
@@ -1056,7 +1084,7 @@ void QNNExecutionProvider::ReleasePerThreadContext() const {
   ORT_ENFORCE(cached_context);
 
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
     context_state_.active_contexts.erase(cached_context);
     context_state_.retired_context_pool.push_back(cached_context);
   }

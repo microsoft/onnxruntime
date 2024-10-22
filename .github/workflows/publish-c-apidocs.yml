@@ -9,7 +9,7 @@ on:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
 concurrency:

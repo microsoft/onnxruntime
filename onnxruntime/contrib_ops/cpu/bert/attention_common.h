@@ -48,6 +48,7 @@ enum AttentionKernelType {
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
   AttentionKernel_CudnnFlashAttention,
+  AttentionKernel_LeanAttention,
   AttentionKernel_Default
 };
 
@@ -65,7 +66,6 @@ struct AttentionParameters {
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
-  int num_splits;
   int rotary_embedding;
   bool is_unidirectional;
   bool past_present_share_buffer;
@@ -77,6 +77,45 @@ struct AttentionParameters {
   bool use_tf32;
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
+};
+
+struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
+  int beam_width = 1;
+
+  // Only NeoX style rotary embedding is supported
+  int rotary_embedding_dim = 0;
+  int t_step = 0;
+
+  // Whether to use multihead attention(excludes matmul and bias)
+  bool is_mha = false;
+  bool is_cross_attention = false;
+  bool is_packed_qkv = false;
+
+  // Useful to better use global memory bandwidth on certain CUDA architectures.
+  // Turned off by default for now until we fully understand performance implications
+  // for all types of workloads.
+  // Can be turned on by appropriate environment variable (see attention_common.h).
+  bool kv_data_in_flight = false;
+
+  void* q = nullptr;
+  void* q_bias = nullptr;
+
+  void* k = nullptr;
+  void* k_bias = nullptr;
+
+  void* v = nullptr;
+  void* v_bias = nullptr;
+
+  void* attention_bias = nullptr;
+
+  void* k_cache = nullptr;
+  void* v_cache = nullptr;
+
+  void* out = nullptr;
+  void* out_qk = nullptr;
+
+  const int32_t* cache_indir = nullptr;
+  const int32_t* mask = nullptr;  // [B, total_sequence_length]
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
@@ -169,10 +208,13 @@ enum class AttentionBackend : int {
   CUDNN_FLASH_ATTENTION = 8,  // reserved for cuDNN flash attention.
   MATH = 16,                  // unfused kernel cannot be disabled right now.
 
-  // The following kernels might be deprecated in the future.
+  // The following TRT kernels might be deprecated in the future.
   TRT_FLASH_ATTENTION = 32,
   TRT_CROSS_ATTENTION = 64,
   TRT_CAUSAL_ATTENTION = 128,
+
+  // Experimental kernels
+  LEAN_ATTENTION = 256,
 };
 
 // Environment variable to enable debug information of attention kernel to be printed. Default is 0 (disabled).
@@ -199,6 +241,9 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
+// Environment variable to enable or disable lean attention. Default is 0 (disabled).
+constexpr const char* kEnableLeanAttention = "ORT_ENABLE_LEAN_ATTENTION";
 
 // Minimum sequence length to perfer memory efficient attention when data type is float32
 constexpr const char* kMinSeqLenForEfficientAttentionFp32 = "ORT_MIN_SEQ_LEN_EFFICIENT_ATTENTION_FP32";
