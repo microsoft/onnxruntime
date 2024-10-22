@@ -10,8 +10,8 @@ namespace js {
 
 class ExternalDataLoader : public IExternalDataLoader {
  public:
-  ExternalDataLoader() {};
-  ~ExternalDataLoader() {};
+  ExternalDataLoader(){};
+  ~ExternalDataLoader(){};
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
 

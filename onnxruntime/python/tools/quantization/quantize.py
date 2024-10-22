@@ -290,8 +290,8 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
 
 
 def quantize_static(
-    model_input: Union[str, Path, onnx.ModelProto],
-    model_output: Union[str, Path],
+    model_input: str | Path | onnx.ModelProto,
+    model_output: str | Path,
     calibration_data_reader: CalibrationDataReader,
     quant_format=QuantFormat.QDQ,
     op_types_to_quantize=None,
@@ -590,8 +590,8 @@ def quantize_static(
 
 
 def quantize_dynamic(
-    model_input: Union[str, Path, onnx.ModelProto],
-    model_output: Union[str, Path],
+    model_input: str | Path | onnx.ModelProto,
+    model_output: str | Path,
     op_types_to_quantize=None,
     per_channel=False,
     reduce_range=False,
@@ -690,8 +690,8 @@ def quantize_dynamic(
 
 
 def quantize(
-    model_input: Union[str, Path, onnx.ModelProto],
-    model_output: Union[str, Path],
+    model_input: str | Path | onnx.ModelProto,
+    model_output: str | Path,
     quant_config: QuantConfig,
 ):
     """Quantize a model with QuantConfig.

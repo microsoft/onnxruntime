@@ -105,7 +105,7 @@ def _stop_process_with_pid(pid: int):
 
 
 def start_emulator(
-    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None
+    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Sequence[str] | None = None
 ) -> subprocess.Popen:
     with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
@@ -208,7 +208,7 @@ def start_emulator(
         return emulator_process
 
 
-def stop_emulator(emulator_proc_or_pid: typing.Union[subprocess.Popen, int]):
+def stop_emulator(emulator_proc_or_pid: subprocess.Popen | int):
     if isinstance(emulator_proc_or_pid, subprocess.Popen):
         _stop_process(emulator_proc_or_pid)
     elif isinstance(emulator_proc_or_pid, int):

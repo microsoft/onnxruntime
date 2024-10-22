@@ -111,10 +111,10 @@ class FusionAttention(Fusion):
         model: OnnxModel,
         hidden_size: int,
         num_heads: int,
-        attention_mask: Optional[AttentionMask] = None,
+        attention_mask: AttentionMask | None = None,
         use_multi_head_attention: bool = False,
         disable_multi_head_attention_bias: bool = False,
-        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
+        search_op_types: list[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
         super().__init__(model, attention_op_name, search_op_types)
@@ -132,7 +132,7 @@ class FusionAttention(Fusion):
         self.shape_infer = None
         self.shape_infer_done = True
 
-    def get_num_heads_and_hidden_size_from_concat(self, concat: NodeProto) -> Tuple[int, int]:
+    def get_num_heads_and_hidden_size_from_concat(self, concat: NodeProto) -> tuple[int, int]:
         """
         Detect num_heads and hidden_size from Concat node in the following subgraph:
 
@@ -163,7 +163,7 @@ class FusionAttention(Fusion):
 
         return self.num_heads, self.hidden_size
 
-    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
+    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> tuple[int, int]:
         """Detect num_heads and hidden_size from a reshape node.
 
         Args:
@@ -441,10 +441,10 @@ class FusionAttention(Fusion):
     def create_combined_qkv_bias(
         self,
         q_add: NodeProto,
-        k_add: Union[NodeProto, None],
-        v_add: Union[NodeProto, None],
+        k_add: NodeProto | None,
+        v_add: NodeProto | None,
         name_prefix: str,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
         qb = NumpyHelper.to_array(q_bias)
         kb = np.zeros_like(qb)
@@ -474,10 +474,10 @@ class FusionAttention(Fusion):
         k_matmul: NodeProto,
         v_matmul: NodeProto,
         q_add: NodeProto,
-        k_add: Union[NodeProto, None],
-        v_add: Union[NodeProto, None],
+        k_add: NodeProto | None,
+        v_add: NodeProto | None,
         num_heads: int,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         """Create packed QKV MatMul node before MultiHeadAttention node.
            This is for the scenario where an Attention node should be created but cannot be created
            because past_key and past_value are separate inputs and not one concatenated input.
@@ -614,11 +614,11 @@ class FusionAttention(Fusion):
     def create_multihead_attention_node(
         self,
         q_matmul: NodeProto,
-        k_matmul: Union[NodeProto, str, None],
-        v_matmul: Union[NodeProto, str, None],
+        k_matmul: NodeProto | str | None,
+        v_matmul: NodeProto | str | None,
         q_add: NodeProto,
-        k_add: Union[NodeProto, None],
-        v_add: Union[NodeProto, None],
+        k_add: NodeProto | None,
+        v_add: NodeProto | None,
         num_heads: int,
         hidden_size: int,
         output: str,
@@ -629,7 +629,7 @@ class FusionAttention(Fusion):
         present_k: str = "",
         present_v: str = "",
         packed_qkv: bool = False,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         """Create a MultiHeadAttention node.
 
         Args:
@@ -740,9 +740,9 @@ class FusionAttention(Fusion):
         past_v: str = "",
         present_k: str = "",
         present_v: str = "",
-        scale: Optional[float] = None,
+        scale: float | None = None,
         causal: bool = False,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         """Create an Attention node.
 
         Args:

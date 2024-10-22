@@ -251,9 +251,9 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
 
             top_data[index] = output_val;
           }  // for pw
-        }  // for ph
-      }  // for c
-    }  // for n
+        }    // for ph
+      }      // for c
+    }        // for n
   });
 }
 }  // namespace

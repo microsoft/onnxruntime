@@ -104,7 +104,7 @@ class TestOrtValue(unittest.TestCase):
             vect.push_back(ortvalue._ortvalue)
         self.assertEqual(len(vect.bool_tensor_indices()), 0)
         self.assertEqual(len(vect), 2)
-        for i, (ov, ar) in enumerate(zip(vect, narrays)):
+        for i, (ov, ar) in enumerate(zip(vect, narrays, strict=False)):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
             self.assertEqual(ov.element_type(), vect.element_type_at(i))
@@ -120,7 +120,7 @@ class TestOrtValue(unittest.TestCase):
             vect.push_back(ortvalue._ortvalue)
         self.assertEqual(vect.bool_tensor_indices(), [0, 1])
         self.assertEqual(len(vect), 2)
-        for ov, ar in zip(vect, narrays):
+        for ov, ar in zip(vect, narrays, strict=False):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
 
@@ -152,7 +152,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual(cf, cf2)  # it should be [3, 3]
 
         ptr2 = []
-        for av1, v2 in zip(narrays, converted_values):
+        for av1, v2 in zip(narrays, converted_values, strict=False):
             ptr2.append(v2.data_ptr())
             if hasattr(v2, "cpu"):
                 av2 = v2.cpu().numpy()

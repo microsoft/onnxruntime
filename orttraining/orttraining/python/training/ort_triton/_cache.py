@@ -73,7 +73,7 @@ class ModuleCache:
     clear = staticmethod(cache.clear)
 
     @classmethod
-    def load(cls, key_func, mod_func, *args) -> Tuple[str, ModuleType]:
+    def load(cls, key_func, mod_func, *args) -> tuple[str, ModuleType]:
         key = key_func(*args)
         if key not in cls.cache:
             func_name, mod = mod_func(*args)

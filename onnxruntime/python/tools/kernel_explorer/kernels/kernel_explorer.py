@@ -13,11 +13,11 @@ import os
 import sys
 from abc import abstractmethod
 from argparse import Action, ArgumentParser
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from functools import wraps
-from typing import Callable
 
 build_dir = os.environ.get("KERNEL_EXPLORER_BUILD_DIR", None)
 if build_dir is None:

@@ -39,11 +39,11 @@ class Sam2OnnxModel(BertOnnxModel):
         fusion = FusionLayerNormalizationNCHW(self)
         fusion.apply()
 
-    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
+    def fuse_multi_head_attention(self, options: FusionOptions | None = None):
         mha_fusion = FusionMultiHeadAttentionSam2(self, self.hidden_size, self.num_heads)
         mha_fusion.apply()
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         if is_installed("tqdm"):
             import tqdm
             from tqdm.contrib.logging import logging_redirect_tqdm
@@ -56,7 +56,7 @@ class Sam2OnnxModel(BertOnnxModel):
             logger.info("tqdm is not installed. Run optimization without progress bar")
             self._optimize(options, None)
 
-    def _optimize(self, options: Optional[FusionOptions] = None, progress_bar=None):
+    def _optimize(self, options: FusionOptions | None = None, progress_bar=None):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 

@@ -2,7 +2,8 @@ import argparse
 import os  # noqa: F401
 import sys
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast  # noqa: F401
+from collections.abc import Callable, Sequence  # noqa: F401
+from typing import Any, Dict, List, Optional, Text, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import onnx

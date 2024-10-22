@@ -30,7 +30,7 @@ class DecomposeDispatch:
     def __init__(self):
         self.count = 0
 
-    def __call__(self, node: NodeProto, graph: GraphProto, **kwargs) -> List[NodeProto]:
+    def __call__(self, node: NodeProto, graph: GraphProto, **kwargs) -> list[NodeProto]:
         op_type = node.op_type
         if not hasattr(self, op_type):
             raise NotImplementedError(f"Not implemented for op type: {op_type}")

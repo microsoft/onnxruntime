@@ -13,7 +13,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 
 # Adapted from bert_model_generator.py
-def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False):
+def get_tensor_and_weight(name: str, shape: list[int], random=False, zeros=False):
     low = 0.0
     high = 1.0
     total_elements = 1

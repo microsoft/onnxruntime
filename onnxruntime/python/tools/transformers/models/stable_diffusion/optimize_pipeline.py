@@ -49,9 +49,9 @@ def has_external_data(onnx_model_path):
 def _optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
-    use_external_data_format: Optional[bool],
+    use_external_data_format: bool | None,
     float16: bool,
-    force_fp32_ops: List[str],
+    force_fp32_ops: list[str],
     enable_runtime_optimization: bool,
     args,
 ):
@@ -227,7 +227,7 @@ def optimize_stable_diffusion_pipeline(
     input_dir: str,
     output_dir: str,
     overwrite: bool,
-    use_external_data_format: Optional[bool],
+    use_external_data_format: bool | None,
     float16: bool,
     enable_runtime_optimization: bool,
     args,
@@ -255,7 +255,7 @@ def optimize_stable_diffusion_pipeline(
     )
 
 
-def parse_arguments(argv: Optional[List[str]] = None):
+def parse_arguments(argv: list[str] | None = None):
     """Parse arguments
 
     Returns:
@@ -337,7 +337,7 @@ def parse_arguments(argv: Optional[List[str]] = None):
     return args
 
 
-def main(argv: Optional[List[str]] = None):
+def main(argv: list[str] | None = None):
     args = parse_arguments(argv)
     logger.info("Arguments: %s", str(args))
     optimize_stable_diffusion_pipeline(

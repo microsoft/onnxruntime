@@ -29,7 +29,7 @@ class ArgBase {
   ArgBase(OrtKernelContext* ctx,
           size_t indice,
           bool is_input) : ctx_(ctx), indice_(indice), is_input_(is_input) {}
-  virtual ~ArgBase() {};
+  virtual ~ArgBase(){};
 
  protected:
   struct KernelContext ctx_;

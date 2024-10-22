@@ -366,8 +366,7 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
   wgdx::Direct3D11::IDirect3DSurface spOutputSurface = pDestVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spOutputSoftwareBitmap == nullptr && spOutputSurface == nullptr) ||
-      (spOutputSoftwareBitmap != nullptr && spOutputSurface != nullptr)) {
+  if ((spOutputSoftwareBitmap == nullptr && spOutputSurface == nullptr) || (spOutputSoftwareBitmap != nullptr && spOutputSurface != nullptr)) {
     WINML_THROW_HR(E_INVALIDARG);
   }
   if (spOutputSoftwareBitmap) {
@@ -383,10 +382,7 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
   if (_winmli::NeedsVideoFrameConversion(
         pDestVideoFrame, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight
       )) {
-    if (converted_video_frame_ == nullptr ||
-        _winmli::NeedsVideoFrameConversion(
-          converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight
-        )) {
+    if (converted_video_frame_ == nullptr || _winmli::NeedsVideoFrameConversion(converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
       converted_video_frame_ = wm::VideoFrame::CreateWithSoftwareBitmap(
         wgi::SoftwareBitmap(wgi::BitmapPixelFormat::Bgra8, tensorWidth, tensorHeight)
       );

@@ -67,7 +67,7 @@ class WhisperEncoderInputs:
         )
         return WhisperEncoderInputs(input_features)
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         if self.input_ids is None:
             return []
         return [self.input_ids]

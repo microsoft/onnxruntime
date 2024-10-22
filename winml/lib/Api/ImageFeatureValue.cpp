@@ -221,9 +221,7 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(
     THROW_HR(E_NOTIMPL);
   }
 
-  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 &&
-      pixelRange != winml::LearningModelPixelRange::ZeroToOne &&
-      pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
+  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 && pixelRange != winml::LearningModelPixelRange::ZeroToOne && pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
     THROW_HR(E_NOTIMPL);
   }
 

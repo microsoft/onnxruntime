@@ -63,7 +63,7 @@ def onnx_compile(
     net_feed_input_names = list(set(all_input_names) - set(all_initializer))
 
     # Match names and input shapes
-    all_input_mapping = [(name, shape) for (name, shape) in zip(all_input_names, input_shapes)]
+    all_input_mapping = [(name, shape) for (name, shape) in zip(all_input_names, input_shapes, strict=False)]
     # Using an ordereddict maintains input ordering.
     shape_dict = collections.OrderedDict(all_input_mapping)
     # Get only feed input pairs

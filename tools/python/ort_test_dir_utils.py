@@ -159,7 +159,7 @@ def create_test_dir(
         sess = ort.InferenceSession(test_model_filename, so)
         outputs = sess.run(output_names, name_input_map)
         name_output_map = {}
-        for name, data in zip(output_names, outputs):
+        for name, data in zip(output_names, outputs, strict=False):
             name_output_map[name] = data
 
     save_data("output", name_output_map, model_outputs)

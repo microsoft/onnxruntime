@@ -70,7 +70,7 @@ def _parse_args():
     return args
 
 
-def run_gh_pr_command(command: typing.List[str], check: bool = True):
+def run_gh_pr_command(command: list[str], check: bool = True):
     try:
         return subprocess.run(["gh", "pr", *command], capture_output=True, text=True, check=check)
     except subprocess.CalledProcessError as cpe:

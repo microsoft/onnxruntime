@@ -50,8 +50,8 @@ class FusionT5Attention(FusionAttention):
         input: str,
         output: str,
         add_qk_str: str,
-        scale: Optional[float] = None,
-    ) -> Union[NodeProto, None]:
+        scale: float | None = None,
+    ) -> NodeProto | None:
         """Create an Attention node.
         Args:
             mask_index (str): mask input
@@ -162,7 +162,7 @@ class FusionT5Attention(FusionAttention):
         present_value: str,
         num_heads: int,
         hidden_size: int,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:

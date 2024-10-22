@@ -275,7 +275,7 @@ class EngineBuilder:
 
 
 def get_engine_paths(
-    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None
+    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: str | None = None
 ):
     root_dir = work_dir or "."
     short_name = pipeline_info.short_name()

@@ -159,7 +159,7 @@ struct PipelineStageNodeGroup {
   // the consumer nodes of a particular initializer can be more than one, so we need a vector to store those
   // nodes.
   std::vector<Node*> nodes;
-  PipelineStageNodeGroup(const size_t stage, std::vector<Node*>& node_group) : stage_id(stage), nodes(std::move(node_group)) {};
+  PipelineStageNodeGroup(const size_t stage, std::vector<Node*>& node_group) : stage_id(stage), nodes(std::move(node_group)){};
 };
 
 // This function passes through the given initializer across stages specified in node_groups[i].stage_id.

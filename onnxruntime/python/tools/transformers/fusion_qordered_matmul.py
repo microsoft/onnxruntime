@@ -18,7 +18,7 @@ class FusionQOrderedMatMul(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "QOrderedMatMul", "MatMul")
 
-    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         matmul_children = self.model.get_children(node, input_name_to_nodes)
 
         # Should only have 1 child - Bias Add

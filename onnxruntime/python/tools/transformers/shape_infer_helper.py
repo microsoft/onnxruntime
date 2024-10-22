@@ -26,9 +26,9 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         self.model_ = model
         self.all_shapes_inferred_: bool = False
         self.is_inferred_: bool = False
-        self.dynamic_axis_mapping_: Dict[str, int] = {}
+        self.dynamic_axis_mapping_: dict[str, int] = {}
 
-    def infer(self, dynamic_axis_mapping: Dict[str, int], max_runs: int = 200):
+    def infer(self, dynamic_axis_mapping: dict[str, int], max_runs: int = 200):
         """Run shape inference, and try replace dynamic axis from string to integer when mapping is provided.
 
         Args:

@@ -69,8 +69,7 @@ void _winmli::ConvertVideoFrameToVideoFrame(
   wgdx::Direct3D11::IDirect3DSurface spInputDirect3DSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) ||
-      (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
+  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
     WINML_THROW_HR(E_INVALIDARG);
   }
 

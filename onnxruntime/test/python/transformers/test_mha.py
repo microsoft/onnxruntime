@@ -102,9 +102,9 @@ def attention_reference(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    scale: Optional[float] = None,
-    attn_bias: Optional[torch.Tensor] = None,
-    mask: Optional[torch.Tensor] = None,
+    scale: float | None = None,
+    attn_bias: torch.Tensor | None = None,
+    mask: torch.Tensor | None = None,
     verbose: bool = False,
 ) -> torch.Tensor:
     """Reference implementation of SDPA
@@ -171,14 +171,14 @@ def attention_reference(
 
 def mha_with_past_reference(
     config: MultiHeadAttentionConfig,
-    past_k: Optional[torch.Tensor],
-    past_v: Optional[torch.Tensor],
+    past_k: torch.Tensor | None,
+    past_v: torch.Tensor | None,
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    scale: Optional[float] = None,
-    attn_bias: Optional[torch.Tensor] = None,
-    mask: Optional[torch.Tensor] = None,
+    scale: float | None = None,
+    attn_bias: torch.Tensor | None = None,
+    mask: torch.Tensor | None = None,
 ):
     assert config.kv_sequence_length == config.sequence_length
     assert config.use_kv_cache
@@ -649,7 +649,7 @@ def parity_check_mha(
 
 
 def parity_check_mha_multi_threading(
-    test_inputs: List[Dict],
+    test_inputs: list[dict],
     rtol: float = 1e-3,
     atol: float = 1e-3,
     attention_kernel=SdpaKernel.DEFAULT,
