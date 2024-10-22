@@ -245,19 +245,6 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   float beta = 0;
 
-// TODO delete
-const int left_X_num_elems = left_X->SizeInBytes() / sizeof(MLFloat16);
-const int right_X_num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
-printf("\nPrinting tensor data for left_X:\n");
-PrintTensorData<MLFloat16>(stream, left_X->DataRaw(), left_X_num_elems, 4);
-printf("\nPrinting tensor data for right_X:\n");
-PrintTensorData<MLFloat16>(stream, right_X->DataRaw(), right_X_num_elems, 4);
-
-printf("\nPrinting tensor data for left_X_fp8:\n");
-PrintTensorData<Float8E4M3FN>(stream, left_X_fp8.get(), left_X_num_elems, 4);
-printf("\nPrinting tensor data for right_X_fp8 tranposed:\n");
-PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 4);
-
   const void* p_input_a = right_X_fp8.get();
   const void* p_input_b = left_X_fp8.get();
   const void* p_input_c = C.get();
@@ -334,9 +321,6 @@ PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 4);
     return status;
   float scale_y = 1.0f;
 
-// TODO delete
-printf("scale_a = %f, scale_b = %f\n", scale_a, scale_b);
-
   // Create the on device scale values.
   IAllocatorUniquePtr<void> p_scale_a = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
   IAllocatorUniquePtr<void> p_scale_b = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
@@ -382,8 +366,6 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
   cublasStatus_t cuda_status = cublasLtMatmulAlgoGetHeuristic(
       cublasLt, operationDesc, Adesc, Bdesc, Cdesc, Ydesc, preference, 1, &heuristicResult, &returnedResults);
 
-printf("returnedResults = %d, cuda_status == CUBLAS_STATUS_SUCCESS = %d\n", returnedResults, cuda_status == CUBLAS_STATUS_SUCCESS);
-
   int n_inputs = ctx->InputCount();
   ORT_ENFORCE(
       returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
@@ -428,9 +410,6 @@ printf("returnedResults = %d, cuda_status == CUBLAS_STATUS_SUCCESS = %d\n", retu
       workspace,                                /* workspace */
       workspaceSize,
       stream);                                  /* stream */
-
-printf("\nPrinting tensor data for Y:\n");
-PrintTensorData<MLFloat16>(stream, Y->DataRaw(), M * N, M * N);
 
   ORT_ENFORCE(
       cuda_status == CUBLAS_STATUS_SUCCESS,
