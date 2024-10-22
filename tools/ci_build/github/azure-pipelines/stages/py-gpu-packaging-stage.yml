@@ -80,7 +80,7 @@ stages:
             docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241020.1
             trt_version: 10.4.0.26-1.cuda12.6
 
-  - $ - ${{ if eq(parameters.enable_windows_dml, true) }}:
+  - ${{ if eq(parameters.enable_windows_dml, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
       - template: py-win-gpu-stage.yml
         parameters:
