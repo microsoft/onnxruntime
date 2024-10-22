@@ -147,7 +147,6 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
-    std::cout << "input_params.coreml_version  " << input_params.coreml_version << std::endl;
 #if TARGET_OS_OSX
 #if TARGET_CPU_ARM64
     // not sure why, we are seeing failures in arm64 macosx CI for this test

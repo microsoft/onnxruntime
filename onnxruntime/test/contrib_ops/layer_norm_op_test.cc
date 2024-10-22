@@ -283,11 +283,13 @@ TYPED_TEST(LayerNormTest, LayerNorm17_opset) {
       test.Run();
     }
   };
-  //   if (std::is_same<TypeParam, MLFloat16>::value) {
-  // #if !defined(COREML_ENABLE_MLPROGRAM)
-  //     return;
-  // #endif
-  //   }
+  // Execution provider entry invalid.
+  // when other EPs support layer-norm fp16, this test should be updated to include them.
+  if (std::is_same<TypeParam, MLFloat16>::value) {
+#if !defined(COREML_ENABLE_MLPROGRAM)
+    return;
+#endif
+  }
 
   run_test(false);
   run_test(true);
