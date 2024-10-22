@@ -36,7 +36,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 // This is a special handling case for ArgMax Op, where argmax is followed by a cast to int32 type.
 // The ArgMax is fused with the Cast node and produces an int32 output.
 #if defined(COREML_ENABLE_MLPROGRAM)
-  auto input_dtype =  node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   // TensorProto_DataType_INT64 is not supported in CoreML MLProgram, only when the predeceased node is ArgMax
   if (model_builder.CreateMLProgram() && input_dtype != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     using namespace CoreML::Specification::MILSpec;
