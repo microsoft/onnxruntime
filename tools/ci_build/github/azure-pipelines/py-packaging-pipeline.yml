@@ -106,7 +106,7 @@ stages:
     enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
     enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
     cmake_build_type: ${{ parameters.cmake_build_type }}
-    enable_windows_dml: ${ parameters.enable_windows_dml }}
+    enable_windows_dml: ${{ parameters.enable_windows_dml }}
     cuda_version: ${{ parameters.cuda_version }}
     publish_symbols: true
 
