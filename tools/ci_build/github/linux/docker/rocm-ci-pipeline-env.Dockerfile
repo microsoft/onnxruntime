@@ -25,11 +25,20 @@ RUN apt-get update && \
     python3-pip \
     rocm-dev \
     rocm-libs \
+    g++-12 \
+    gcc-12 \
     build-essential && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -g 109 render
+
+# Upgrade GCC
+RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
+    apt-get install -y gcc-12 g++-12 && \
+    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
+    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12 && \
+    apt-get clean -y
 
 # Upgrade to meet security requirements
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
