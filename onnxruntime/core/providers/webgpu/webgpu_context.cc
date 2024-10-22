@@ -581,10 +581,7 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
 
     cached_events.clear();
   } else {
-    LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device. Zero is presented.";
-    const std::unordered_map<std::string, std::string>& event_args = {};
-    profiling::EventRecord event(profiling::API_EVENT, -1, -1, "", 0, 0, event_args);
-    events.emplace_back(std::move(event));
+    LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }
 }
 

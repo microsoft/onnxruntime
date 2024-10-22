@@ -740,7 +740,8 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
     }
   }
 
-#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || defined(USE_WEBGPU)
+// Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
+#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || (defined(USE_WEBGPU) && !defined(__APPLE__))
   ASSERT_TRUE(has_api_info);
 #endif
 }
