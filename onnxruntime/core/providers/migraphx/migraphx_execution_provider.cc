@@ -835,6 +835,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "GlobalMaxPool",
                                                     "Greater",
                                                     "GreaterOrEqual",
+                                                    "GroupNormalization",
                                                     "GroupQueryAttention",
                                                     "HardSigmoid",
                                                     "HardSwish",
@@ -843,6 +844,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ImageScaler",
                                                     "InstanceNormalization",
                                                     "IsNan",
+                                                    "LayerNormalization",
                                                     "LeakyRelu",
                                                     "Less",
                                                     "LessOrEqual",
@@ -1425,7 +1427,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       {
         // lock to avoid race condition
-        std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
 
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
