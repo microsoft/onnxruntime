@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.26.0.240828
+  default: 2.27.0.240926
 
 - name: ENV_SETUP_SCRIPT
   type: string

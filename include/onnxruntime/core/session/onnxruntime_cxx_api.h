@@ -1140,6 +1140,19 @@ struct SessionImpl : ConstSessionImpl<T> {
    *  The OrtAllocator instances must be valid at the point of memory release.
    */
   AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator);  ///< Wraps OrtApi::SessionEndProfiling
+
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Wraps OrtApi::SetEpDynamicOptions
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
+   *
+   * \param[in] keys Array of null terminated UTF8 encoded strings of EP dynamic option keys
+   * \param[in] values Array of null terminated UTF8 encoded string of EP dynamic option values
+   * \param[in] kv_len Number of elements in the keys and values arrays
+   */
+  void SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len);
 };
 
 }  // namespace detail

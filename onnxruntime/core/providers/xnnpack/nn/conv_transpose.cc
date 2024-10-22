@@ -170,12 +170,14 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint(
-                                      "T", DataTypeImpl::GetTensorType<float>()),
+                                      "T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   ConvTranspose);
 
 ONNX_OPERATOR_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint(
-                            "T", DataTypeImpl::GetTensorType<float>()),
+                            "T", {DataTypeImpl::GetTensorType<float>(),
+                                  DataTypeImpl::GetTensorType<MLFloat16>()}),
                         ConvTranspose);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
@@ -186,18 +188,5 @@ ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpack
                                  DataTypeImpl::GetTensorType<int8_t>()}),
                         ConvTranspose);
 
-#ifdef XNNPACK_FP16_SUPPORTED
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, MLFloat16,
-                                        kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint(
-                                            "T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        ConvTranspose);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, MLFloat16, kXnnpackExecutionProvider,
-                              KernelDefBuilder().TypeConstraint(
-                                  "T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                              ConvTranspose);
-
-#endif
 }  // namespace xnnpack
 }  // namespace onnxruntime

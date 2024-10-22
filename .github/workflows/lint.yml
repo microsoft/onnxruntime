@@ -7,6 +7,10 @@ on:
       - rel-*
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  cancel-in-progress: true
+
 jobs:
   optional-lint:
     name: Optional Lint

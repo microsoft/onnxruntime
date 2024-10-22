@@ -281,6 +281,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_npu_.insert(
       std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_npu_.insert(
+      std::make_pair(V_2024_3, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
+  supported_types_npu_.insert(
+      std::make_pair(V_2024_3, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ));
 
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
@@ -328,6 +332,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Equal", V_2023_0, {"GPU"}});
   no_dimension_supported_.push_back({"Expand", V_2023_3, {"CPU"}});
+  no_dimension_supported_.push_back({"Expand", V_2024_3, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Identity", V_2023_0, {"All"}});
@@ -363,7 +368,7 @@ void DataOps::populate_op_mode_supported() {
 
   // populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3},
+    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -378,7 +383,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ReduceMax", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -395,7 +400,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Reshape", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -410,7 +415,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -583,10 +588,20 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   }
 }
 
-bool DataOps::unsupported_op_mode(const Node* node) {
+bool DataOps::unsupported_op_mode(const Node* node, bool& has_external_weights_) {
   bool result = false;
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+
+  for (const auto& tensor_pair : initializers) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_pair.second;
+    // Check if the tensor exists and if it has an external data location
+    if (tensor_proto && tensor_proto->has_data_location() &&
+        tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      has_external_weights_ = true;
+      break;
+    }
+  }
 
   auto iter = op_list_.equal_range(optype);
   for (auto it = iter.first; it != iter.second; ++it) {
@@ -637,7 +652,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
-bool DataOps::node_is_supported(const NodeIndex node_idx) {
+bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_weights_) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -745,7 +760,7 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
   }
 
   // Check 3a
-  if (domain == kOnnxDomain && unsupported_op_mode(node)) {
+  if (domain == kOnnxDomain && unsupported_op_mode(node, has_external_weights_)) {
     if (optype == "GatherElements") {
       return true;
     }
@@ -760,11 +775,12 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
   return true;
 }
 
-std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
+std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers,
+                                                          bool& has_external_weights_) {
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (node_is_supported(node_idx)) {
+    if (node_is_supported(node_idx, has_external_weights_)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {
