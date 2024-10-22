@@ -989,8 +989,7 @@ class QDQQuantizer(BaseQuantizer):
             per_chan_overrides = self.tensor_quant_overrides.get_per_channel_overrides(tensor_name)
             axis = per_chan_overrides[0]["axis"]  # Prefer axis from user-specified tensor-level overrides if available
 
-        weight_nparray = tensor_proto_to_array(weight_initializer)
-        weight_rank = len(weight_nparray.shape)
+        weight_rank = len(weight_initializer.dims)
         axis_valid, axis = normalize_axis(axis, weight_rank)
         if not axis_valid:
             logging.warning(f"Axis {axis} is out-of-range for weight '{tensor_name}' with rank {weight_rank}")

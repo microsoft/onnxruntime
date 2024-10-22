@@ -508,6 +508,7 @@ ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
+ORT_DEFINE_RELEASE(LoraAdapter);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
@@ -736,6 +737,32 @@ struct CustomOpDomain : detail::Base<OrtCustomOpDomain> {
   void Add(const OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
 };
 
+/// \brief LoraAdapter holds a set of Lora Parameters loaded from a single file
+struct LoraAdapter : detail::Base<OrtLoraAdapter> {
+  using Base = detail::Base<OrtLoraAdapter>;
+  using Base::Base;
+
+  explicit LoraAdapter(std::nullptr_t) {}  ///< Create an empty LoraAdapter object, must be assigned a valid one to be used
+  /// \brief Wraps OrtApi::CreateLoraAdapter
+  ///
+  /// The function attempts to load the adapter from the specified file
+  /// \param adapter_path The path to the Lora adapter
+  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
+  ///        be copied to device if required by the model at inference time.
+  static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
+                                       OrtAllocator* allocator);
+
+  /// \brief Wraps OrtApi::CreateLoraAdapterFromArray
+  ///
+  /// The function attempts to load the adapter from the specified byte array.
+  /// \param bytes The byte array containing file LoraAdapter format
+  /// \param num_bytes The number of bytes in the byte array
+  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
+  ///        be copied to device if required by the model at inference time.
+  static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
+                                                OrtAllocator* allocator);
+};
+
 /** \brief RunOptions
  *
  */
@@ -766,6 +793,14 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * Wraps OrtApi::RunOptionsUnsetTerminate
    */
   RunOptions& UnsetTerminate();
+
+  /** \brief Add the LoraAdapter to the list of active adapters.
+   *  The setting does not affect RunWithBinding() calls.
+   *
+   * Wraps OrtApi::RunOptionsAddActiveLoraAdapter
+   * \param adapter The LoraAdapter to be used as the active adapter
+   */
+  RunOptions& AddActiveLoraAdapter(const LoraAdapter& adapter);
 };
 
 namespace detail {
@@ -1105,6 +1140,19 @@ struct SessionImpl : ConstSessionImpl<T> {
    *  The OrtAllocator instances must be valid at the point of memory release.
    */
   AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator);  ///< Wraps OrtApi::SessionEndProfiling
+
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Wraps OrtApi::SetEpDynamicOptions
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
+   *
+   * \param[in] keys Array of null terminated UTF8 encoded strings of EP dynamic option keys
+   * \param[in] values Array of null terminated UTF8 encoded string of EP dynamic option values
+   * \param[in] kv_len Number of elements in the keys and values arrays
+   */
+  void SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len);
 };
 
 }  // namespace detail

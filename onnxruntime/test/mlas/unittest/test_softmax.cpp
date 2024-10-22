@@ -23,13 +23,15 @@ class MlasSoftmaxTest : public MlasTestBase {
       Input[nd] = distribution(generator);
     }
 
-    Test(Input, Output, OutputReference, N, D, false);
-    Test(Input, Output, OutputReference, N, D, true);
+    Test(Input, Output, OutputReference, N, D, false, true);
+    Test(Input, Output, OutputReference, N, D, true, true);
+    Test(Input, Output, OutputReference, N, D, false, false);
+    Test(Input, Output, OutputReference, N, D, true, false);
   }
 
-  void Test(const float* Input, float* Output, float* OutputReference, size_t N, size_t D, bool LogSoftmax) {
-    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, threadpool_);
-    ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax);
+  void Test(const float* Input, float* Output, float* OutputReference, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax) {
+    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, threadpool_);
+    ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax, SmoothSoftmax);
 
     constexpr float AbsoluteTolerance = 1e-6f;
     constexpr float RelativeTolerance = 1e-6f;
@@ -42,12 +44,16 @@ class MlasSoftmaxTest : public MlasTestBase {
     }
   }
 
-  void ReferenceSoftmax(const float* Input, float* Output, size_t N, size_t D, bool LogSoftmax) {
+  void ReferenceSoftmax(const float* Input, float* Output, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax) {
     for (size_t n = 0; n < N; n++) {
       float MaximumValue = std::numeric_limits<float>::lowest();
 
       for (size_t d = 0; d < D; d++) {
         MaximumValue = (std::max)(MaximumValue, Input[d]);
+      }
+
+      if (SmoothSoftmax && MaximumValue < 0.0f) {
+        MaximumValue = 0.0f;
       }
 
       double Sum = 0.0;
@@ -56,6 +62,10 @@ class MlasSoftmaxTest : public MlasTestBase {
         double e = std::exp(double(Input[d]) - double(MaximumValue));
         Sum += e;
         Output[d] = float(e);
+      }
+
+      if (SmoothSoftmax) {
+        Sum += expf(-MaximumValue);
       }
 
       if (LogSoftmax) {

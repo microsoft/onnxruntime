@@ -31,10 +31,6 @@ parameters:
   type: boolean
   default: false
 
-- name: BuildTraining
-  type: boolean
-  default: true
-
 - name: WithCache
   type: boolean
   default: false
@@ -77,7 +73,7 @@ jobs:
     displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.8'
+      versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
   - template: download-deps.yml
@@ -116,19 +112,6 @@ jobs:
       DisplayName: 'Build and test (browser) (simd + threads)'
       WithCache: ${{ parameters.WithCache }}
 
-  - ${{ if eq(parameters.BuildTraining, true) }}:
-    - template: build-linux-wasm-step.yml
-      parameters:
-        Today: $(Today)
-        ${{ if eq(parameters.BuildStaticLib, true)}}:
-          AdditionalKey: wasm_training | ${{ parameters.BuildConfig }} | static
-        ${{ else }}:
-          AdditionalKey: wasm_training | ${{ parameters.BuildConfig }}
-        CacheDir: $(ORT_CACHE_DIR)/wasm_training
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_training --enable_training_apis --target onnxruntime_webassembly --skip_tests'
-        DisplayName: 'Build (training + simd + threads)'
-        WithCache: ${{ parameters.WithCache }}
-
   - ${{ if eq(parameters.BuildJsep, true) }}:
     - template: build-linux-wasm-step.yml
       parameters:
@@ -149,10 +132,6 @@ jobs:
         if [ -d $(Build.BinariesDirectory)/wasm_inferencing_jsep ]; then
           cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)
           cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)
-        fi
-        if [ -d $(Build.BinariesDirectory)/wasm_training ]; then
-          cp $(Build.BinariesDirectory)/wasm_training/${{ parameters.BuildConfig }}/ort-training-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)
-          cp $(Build.BinariesDirectory)/wasm_training/${{ parameters.BuildConfig }}/ort-training-wasm-simd-threaded.mjs $(Build.ArtifactStagingDirectory)
         fi
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:

@@ -71,9 +71,7 @@ onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_p
 
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  if(onnxruntime_ENABLE_TRAINING)
-    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
-  endif()
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
@@ -98,11 +96,7 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-    # cudnn_home is optional for Window when cuda and cudnn are installed in the same directory.
-    if(onnxruntime_CUDNN_HOME)
-      target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-    endif()
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
@@ -121,7 +115,9 @@ elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
   else()
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --gc-sections")
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --gc-sections")
+    endif()
   endif()
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
@@ -182,12 +178,14 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
     ${PROVIDERS_QNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
+    onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
@@ -228,7 +226,9 @@ elseif (APPLE)
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+     set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
@@ -476,6 +476,9 @@ file(GLOB onnxruntime_python_transformers_models_longformer_src CONFIGURE_DEPEND
 file(GLOB onnxruntime_python_transformers_models_phi2_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/phi2/*.py"
 )
+file(GLOB onnxruntime_python_transformers_models_sam2_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/sam2/*.py"
+)
 file(GLOB onnxruntime_python_transformers_models_stable_diffusion_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/stable_diffusion/*.py"
 )
@@ -512,7 +515,6 @@ file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
 )
 file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/mobile_helpers/*.py
-    ${REPO_ROOT}/tools/ci_build/github/android/mobile_package.required_operators.config
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
     ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md
     ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md
@@ -548,6 +550,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/llama
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/sam2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper
@@ -657,6 +660,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_phi2_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_sam2_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/sam2/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_stable_diffusion_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion/
@@ -1026,6 +1032,12 @@ if (onnxruntime_USE_QNN)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${QNN_LIB_FILES}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_qnn_ctx_gen>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")

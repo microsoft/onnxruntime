@@ -28,8 +28,8 @@ class ConvOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -311,12 +311,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      x_zero_point = model_builder.GetZeroConstant("uint8");
+      x_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
     }
     if (input_defs.size() >= 4) {
       w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      w_zero_point = model_builder.GetZeroConstant("uint8");
+      w_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger",
                                                               input, x_zero_point, filter, w_zero_point, options);
@@ -378,55 +378,6 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     return false;
   }
 
-  return true;
-}
-
-bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                           const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-  int32_t input0_type;  // input data type
-  int32_t input1_type;  // weight data type
-  int32_t input2_type;  // bias or x_zero_point data type
-  int32_t input3_type;  // w_zero_point data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
-  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
-
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      !GetType(*input_defs[1], input1_type, logger) ||
-      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
-      (has_input3 && !GetType(*input_defs[3], input3_type, logger))) {
-    return false;
-  }
-
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  if (op_type == "Conv" || op_type == "ConvTranspose") {
-    // WebNN conv2d and convTranspose2d only support float32 and float16 input data types.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
-  } else if (op_type == "ConvInteger") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-    };
-  }
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  if (input0_type != input1_type ||
-      (has_input2 && input0_type != input2_type) ||
-      (has_input3 && input0_type != input3_type)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
   // WebNN CPU backend (TFLite) only supports default dilations and group.
   // https://source.chromium.org/chromium/chromium/src/+/main:services/webnn/tflite/graph_builder_tflite.cc;l=1040
   if (device_type == WebnnDeviceType::CPU && op_type == "ConvTranspose") {
@@ -444,6 +395,38 @@ bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceTy
   }
 
   return true;
+}
+
+bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                           const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // input data type
+  int32_t input1_type;  // weight data type
+  int32_t input2_type;  // bias or x_zero_point data type
+  int32_t input3_type;  // w_zero_point data type
+  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger))) {
+    return false;
+  }
+
+  InlinedVector<int32_t, 4> input_types = {input0_type, input1_type};
+  if (has_input2) {
+    input_types.push_back(input2_type);
+  }
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

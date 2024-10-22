@@ -5,6 +5,7 @@
 #include <iterator>
 #include <unordered_map>
 #include <set>
+#include <filesystem>
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
@@ -16,6 +17,7 @@
 #include "migraphx_allocator.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_inc.h"
+#include <hip/hip_version.h>
 
 #include "migraphx_stream_handle.h"
 
@@ -180,6 +182,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
 
+  // Allow for exhaustive tune during compile
+  const std::string exhaustive_tune_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kExhaustiveTune);
+  if (!exhaustive_tune_env.empty()) {
+    exhaustive_tune_ = (std::stoi(exhaustive_tune_env) == 0 ? false : true);
+  }
+
   metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 
   LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
@@ -188,6 +196,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", dump_model_ops: " << dump_model_ops_
+                        << ", exhaustive_tune: " << exhaustive_tune_
                         << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
                         << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
@@ -314,22 +323,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "ConvInteger") {
-    if (node->InputDefs()[0]->Shape()->dim_size() != 4) {
-      return true;
-    }
-
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
-    // only support int8 type
+    // only support int8 and uint8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
 
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+        (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
   } else if (optype == "Expand") {
@@ -371,18 +372,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "MatMulInteger") {
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
-    // only support int8 type
+    // only support int8 and uint8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
 
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+        (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
   } else if (optype == "NonZero") {
@@ -454,7 +451,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
         return true;
       }
     }
-
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
@@ -839,6 +835,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "GlobalMaxPool",
                                                     "Greater",
                                                     "GreaterOrEqual",
+                                                    "GroupNormalization",
+                                                    "GroupQueryAttention",
                                                     "HardSigmoid",
                                                     "HardSwish",
                                                     "Identity",
@@ -846,6 +844,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ImageScaler",
                                                     "InstanceNormalization",
                                                     "IsNan",
+                                                    "LayerNormalization",
                                                     "LeakyRelu",
                                                     "Less",
                                                     "LessOrEqual",
@@ -857,6 +856,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "LSTM",
                                                     "MatMul",
                                                     "MatMulInteger",
+                                                    "MatMulNBits",
                                                     "Max",
                                                     "MaxPool",
                                                     "Mean",
@@ -865,6 +865,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Mul",
                                                     "Multinomial",
                                                     "Neg",
+                                                    "NegativeLogLikelihoodLoss",
                                                     "NonMaxSuppression",
                                                     "NonZero",
                                                     "Not",
@@ -908,8 +909,10 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Shape",
                                                     "Sigmoid",
                                                     "Sign",
+                                                    "SimplifiedLayerNormalization",
                                                     "Sin",
                                                     "Sinh",
+                                                    "SkipSimplifiedLayerNormalization",
                                                     "Slice",
                                                     "Softmax",
                                                     "Softplus",
@@ -990,6 +993,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
+  model_path_ = graph_viewer.ModelPath();
 
   // dump onnx file if environment var is set
   if (dump_model_ops_) {
@@ -1168,7 +1172,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           auto param_shapes = prog.get_parameter_shapes();
 
           // Add all calibration data read in from int8 table
-          for (auto& [cal_key, cal_val] : dynamic_range_map) {
+          for (auto& [cal_key, cal_val] : dynamic_range_map_) {
             auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
             quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
           }
@@ -1191,6 +1195,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
         migraphx::compile_options co;
         co.set_fast_math(false);
+        co.set_exhaustive_tune_flag(exhaustive_tune_);
         LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
         prog.compile(t_, co);
         LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
@@ -1217,7 +1222,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
             map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_,
-            int8_calibration_cache_available_, dynamic_range_map,
+            int8_calibration_cache_available_, dynamic_range_map_,
             save_compiled_model_, save_compiled_path_,
             load_compiled_model_, load_compiled_path_, dump_model_ops_};
       *state = p.release();
@@ -1297,6 +1302,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (!input_shape_match) {
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
           LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+#ifndef ENABLE_TRAINING_CORE
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
+          cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());
+#endif
+#endif
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
 
           // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1350,6 +1360,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
           migraphx::compile_options co;
           co.set_fast_math(false);
+          co.set_exhaustive_tune_flag(exhaustive_tune_);
           prog.compile(t, co);
 
           save_compiled_model(prog, mgx_state->save_compiled_mode, mgx_state->save_compiled_path);
@@ -1416,7 +1427,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       {
         // lock to avoid race condition
-        std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
 
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));

@@ -639,6 +639,7 @@ Status FlashAttention(
           sequence_length,
           sequence_length,
           scale,
+          0.0,
           false,  // is causal
           false   // is bf16
           ));
@@ -693,6 +694,7 @@ Status FusedAttentionCutlass(
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;
+  p.use_smooth_softmax = false;
   p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   p.seqlen_k_ptr = nullptr;
@@ -701,8 +703,11 @@ Status FusedAttentionCutlass(
   p.query = data.no_qkv_workspace ? data.query : data.workspace;
   p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
-  p.attn_bias = data.relative_position_bias;
-  p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
+
+  p.attn_bias = data.attention_bias;
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
+
   p.output = data.output;
   p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
@@ -791,11 +796,13 @@ Status UnfusedAttention(
   // Apply softmax and store result R to attention_score: BxNxSxS
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
       scaled_qk,
-      data.relative_position_bias,
-      parameters.broadcast_res_pos_bias,
+      data.attention_bias,
+      parameters.broadcast_attn_bias_dim_0,
+      parameters.broadcast_attn_bias_dim_1,
       data.cumulative_sequence_length,
       batch_size,
       sequence_length,
+      sequence_length,  // total sequence length
       num_heads,
       attention_score, stream));
 

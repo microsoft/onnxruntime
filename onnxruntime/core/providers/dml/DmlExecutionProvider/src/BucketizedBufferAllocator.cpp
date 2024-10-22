@@ -186,7 +186,7 @@ namespace Dml
         }
         else
         {
-            if (!m_context->IsClosed())
+            if (!m_closed)
             {
                 // Free the underlying allocation once queued work has completed.
     #ifdef _GAMING_XBOX
@@ -223,28 +223,4 @@ namespace Dml
     {
         m_defaultRoundingMode = roundingMode;
     }
-
-    CPUAllocator::CPUAllocator(OrtMemType memType)
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML CPU",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                0,
-                memType
-            )
-        )
-    {
-    }
-
-    void* CPUAllocator::Alloc(size_t size)
-    {
-        return onnxruntime::AllocatorDefaultAlloc(size);
-    }
-
-    void CPUAllocator::Free(void* p)
-    {
-        return onnxruntime::AllocatorDefaultFree(p);
-    }
-
 } // namespace Dml

@@ -249,7 +249,7 @@ Status GetMinimalBuildOptimizationHandling(
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
-OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
 onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
@@ -371,7 +371,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_id_ = global_session_id_.fetch_add(1);
 
 #ifdef _WIN32
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   active_sessions_[global_session_id_++] = this;
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
@@ -725,7 +725,7 @@ InferenceSession::~InferenceSession() {
 
   // Unregister the session and ETW callbacks
 #ifdef _WIN32
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
   logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
 #endif
@@ -745,7 +745,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding an EP is pointless as the graph as already been partitioned so no nodes will be assigned to
@@ -759,12 +759,12 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
-  if (provider_type == onnxruntime::kDmlExecutionProvider) {
-    // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  if (provider_type == onnxruntime::kDmlExecutionProvider || provider_type == onnxruntime::kWebGpuExecutionProvider) {
+    // DML and WebGPU memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
       LOGS(*session_logger_, INFO)
-          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
-          << "So disabling it for this session since it uses the DML Execution Provider.";
+          << "Having memory pattern enabled is not supported while using " << provider_type << ". "
+          << "So disabling it for this session since it uses " << provider_type << ".";
       session_options_.enable_mem_pattern = false;
     }
 
@@ -830,6 +830,14 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
+  if (p_external_data_loader) {
+    auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
+    if (!st.IsOK()) {
+      return st;
+    }
+  }
+
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
   return execution_providers_.Add(provider_type, p_exec_provider);
@@ -868,7 +876,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
 
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding a transformer now is pointless as the graph as already been transformed
@@ -932,7 +940,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     tp = session_profiler_.Start();
   }
   ORT_TRY {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
       return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -1388,7 +1396,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
     Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -1512,7 +1520,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 }
 
 bool InferenceSession::IsInitialized() const {
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
   return is_inited_;
 }
 
@@ -1665,7 +1673,7 @@ common::Status InferenceSession::Initialize() {
     bool have_cpu_ep = false;
 
     {
-      std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
+      std::lock_guard<std::mutex> initial_guard(session_mutex_);
 
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
@@ -1703,7 +1711,7 @@ common::Status InferenceSession::Initialize() {
     }
 
     // re-acquire mutex
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializers.empty()) {
@@ -1731,6 +1739,7 @@ common::Status InferenceSession::Initialize() {
         GetIntraOpThreadPoolToUse(),
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
+        external_data_loader_mgr_,
         *session_logger_,
         session_profiler_,
         session_options_,
@@ -2054,10 +2063,13 @@ common::Status InferenceSession::Initialize() {
           const size_t optimized_model_external_initializers_min_size_in_bytes =
               ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
+          Graph::OffsetAlignmentInfo align_info;
+          align_info.align_offset = true;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
-                                                                             optimized_model_external_initializers_min_size_in_bytes));
+                                                                             optimized_model_external_initializers_min_size_in_bytes,
+                                                                             align_info));
         }
       }
     }
@@ -2147,6 +2159,10 @@ const SessionOptions& InferenceSession::GetSessionOptions() const {
 
 const DataTransferManager& InferenceSession::GetDataTransferManager() const {
   return data_transfer_mgr_;
+}
+
+const ExternalDataLoaderManager& InferenceSession::GetExternalDataLoaderManager() const {
+  return external_data_loader_mgr_;
 }
 
 common::Status InferenceSession::CheckShapes(const std::string& input_output_name, const TensorShape& input_output_shape,
@@ -2459,6 +2475,24 @@ struct ThreadPoolSpinningSwitch {
 };
 }  // namespace
 
+Status InferenceSession::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                             gsl::span<const char* const> values) {
+  Status retval = Status::OK();
+
+  if (!is_inited_) {
+    LOGS(*session_logger_, ERROR) << "Session was not initialized";
+    return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+  }
+
+  // TODO: only call SetEpDynamicOptions for all providers in-use
+  for (auto& xp : execution_providers_) {
+    auto status = xp->SetEpDynamicOptions(keys, values);
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  return retval;
+}
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
@@ -2550,7 +2584,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
-      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
+      std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
       if (is_concurrent_run_supported_ == false) {
         sequential_run_lock.emplace(session_mutex_);
       }
@@ -2754,7 +2788,8 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
   if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
-  std::function<void()> run_fn = [=]() {
+  std::function<void()> run_fn = [run_options, feed_names, feeds, fetch_names, fetches, num_fetches,
+                                  callback, user_data, this]() {
     Status status = Status::OK();
     ORT_TRY {
       if (run_options) {
@@ -2802,7 +2837,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2814,7 +2849,7 @@ std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetada
 
 std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2827,7 +2862,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
 
 std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2840,7 +2875,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableI
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2852,7 +2887,7 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
 
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
@@ -3236,7 +3271,7 @@ IOBinding* SessionIOBinding::Get() {
 void InferenceSession::LogAllSessions() {
   const Env& env = Env::Default();
 
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
 

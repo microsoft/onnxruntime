@@ -122,6 +122,13 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'API Documentation Check and generate'
 
+  # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
+  - task: UseDotNet@2
+    inputs:
+      version: 8.x
+    env:
+      PROCESSOR_ARCHITECTURE: ${{ parameters.buildArch }}
+
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 6.10.x
     inputs:
@@ -209,7 +216,7 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         python3 -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
 
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'

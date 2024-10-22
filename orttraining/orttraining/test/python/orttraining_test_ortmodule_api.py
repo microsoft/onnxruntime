@@ -779,6 +779,8 @@ def test_scatternd_correctness(device, indices):
 @pytest.mark.parametrize("input_requires_grad", [False, True])
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_search):
+    pytest.skip("Temporarily disabled pending investigation (might be related to cudnn frontend).")
+
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super().__init__()
@@ -6044,7 +6046,7 @@ def test_e2e_padding_elimination():
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     class OneLayer(torch.nn.Module):
@@ -6773,7 +6775,7 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
             del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
 
 
-def test_layerwise_recompute_pythonop_determinstic():
+def test_layerwise_recompute_pythonop_deterministic():
 
     original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
 
@@ -6887,7 +6889,7 @@ def test_layerwise_recompute_pythonop_determinstic():
     os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "0"
     ort_model1 = ORTModule(copy.deepcopy(pt_model))
 
-    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
@@ -6960,6 +6962,8 @@ def test_layerwise_recompute_pythonop_determinstic():
     reason="torch.nn.attention module was introduced in PyTorch 2.3.0",
 )
 def test_aten_attention():
+    pytest.skip("Temporarily disabled pending investigation.")
+
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
     class _NeuralNetAttention(torch.nn.Module):

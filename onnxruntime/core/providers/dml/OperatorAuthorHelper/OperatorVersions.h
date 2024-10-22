@@ -437,6 +437,17 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceMin = 20;
     }
 
+    namespace OnnxOperatorSet21
+    {
+        static const int sc_sinceVer_QuantizeLinear = 21;
+        static const int sc_sinceVer_DequantizeLinear = 21;
+        static const int sc_sinceVer_Squeeze = 21;
+        static const int sc_sinceVer_Unsqueeze = 21;
+        static const int sc_sinceVer_Reshape = 21;
+        static const int sc_sinceVer_Cast = 21;
+        static const int sc_sinceVer_Shape = 21;
+    }
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_DmlFusedConv = 1;

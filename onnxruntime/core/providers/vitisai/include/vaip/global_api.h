@@ -14,9 +14,13 @@ void initialize_vitisai_ep();
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options);
 std::shared_ptr<onnxruntime::KernelRegistry> get_kernel_registry_vitisaiep();
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep();
-void get_backend_compilation_cache(const onnxruntime::PathString& model_path_str, const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::ProviderOptions& options, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data);
-void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path);
 std::optional<std::vector<onnxruntime::Node*>> create_ep_context_nodes(
-    onnxruntime::Graph& ep_context_graph,
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps);
-bool has_create_ep_context_nodes();
+
+int vitisai_ep_on_run_start(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
+    vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name));
+int vitisai_ep_set_ep_dynamic_options(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const char* const* keys,
+    const char* const* values, size_t kv_len);

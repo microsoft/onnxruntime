@@ -35,8 +35,6 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
   // We only support Resize opset 11+ here.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
 };
 
 // Helper functions
@@ -270,30 +268,6 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
       }
     }
-  }
-
-  return true;
-}
-
-bool ResizeOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                             const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  // WebNN resample2d op only supports float32 and float16 input data types.
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-  };
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
   }
 
   return true;

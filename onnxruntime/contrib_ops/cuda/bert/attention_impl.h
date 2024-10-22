@@ -9,6 +9,7 @@
 #include <iostream>
 #include <mutex>
 #include "core/framework/allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
@@ -52,8 +53,10 @@ size_t GetAttentionWorkspaceSize(
     size_t total_sequence_length,
     void* fused_runner,
     bool use_flash_attention,
+    bool use_lean_attention,
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention,
+    bool use_cudnn_flash_attention,
     bool no_qkv_workspace);
 
 template <typename T>
@@ -69,7 +72,7 @@ struct AttentionData {
   const T* past = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
-  const T* relative_position_bias = nullptr;
+  const T* attention_bias = nullptr;
 
   bool has_qkv_workspace = false;
   T* workspace = nullptr;
@@ -100,22 +103,38 @@ struct AttentionData {
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
 
+  // Flash Atttention and Lean Attention
+  int num_splits;
+
+  // Lean Attention
+  bool use_lean_attention = false;
+#if USE_LEAN_ATTENTION
+  int grid_dim_z = 0;
+  int max_tiles_per_tb = 0;
+  int high_load_tbs = 0;
+  int tiles_per_head = 0;
+  int* lean_sync_flag = nullptr;
+#endif
+
   // For Debugging
   size_t workspace_bytes = 0;
   bool allow_debug_info = false;
 
+  // For MultiHeadAttention only.
+  AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
+  AllocatorPtr allocator = nullptr;
   bool IsUnfused() const {
-    return !use_flash_attention && !use_memory_efficient_attention &&
-           (fused_runner == nullptr) && (fused_cross_attention_kernel == nullptr);
+    return kernel_type == AttentionKernelType::AttentionKernel_Unfused;
   }
 
   void PrintDebugInfo() const {
     std::cout << "flash=" << use_flash_attention
+              << ", lean=" << use_lean_attention
               << ", efficient=" << use_memory_efficient_attention
               << ", fused_runner=" << (fused_runner != nullptr)
               << ", fused_cross=" << (fused_cross_attention_kernel != nullptr)
               << ", bias=" << (bias != nullptr)
-              << ", attn_bias=" << (relative_position_bias != nullptr)
+              << ", attn_bias=" << (attention_bias != nullptr)
               << ", mask_dims=" << mask_index_dims.size()
               << ", has_qkv_workspace=" << has_qkv_workspace
               << ", workspace=" << workspace_bytes
@@ -139,6 +158,7 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
     Stream* stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);

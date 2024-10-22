@@ -247,6 +247,8 @@ namespace Windows::AI::MachineLearning::Adapter
         }
 
         ML_TENSOR_TYPE_CASE(float);
+        ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+        ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<true>);
         ML_TENSOR_TYPE_CASE(uint8_t);
         ML_TENSOR_TYPE_CASE(int8_t);
         ML_TENSOR_TYPE_CASE(uint16_t);
@@ -293,6 +295,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
 
             ML_TENSOR_TYPE_CASE(float);
+            ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+            ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<true>);
             ML_TENSOR_TYPE_CASE(uint8_t);
             ML_TENSOR_TYPE_CASE(int8_t);
             ML_TENSOR_TYPE_CASE(uint16_t);
@@ -314,6 +318,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 return onnxruntime::DataTypeImpl::GetSequenceTensorType<std::string>();
 
             ML_SEQUENCE_TENSOR_TYPE_CASE(float);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<true>);
             ML_SEQUENCE_TENSOR_TYPE_CASE(uint8_t);
             ML_SEQUENCE_TENSOR_TYPE_CASE(int8_t);
             ML_SEQUENCE_TENSOR_TYPE_CASE(uint16_t);
@@ -335,6 +341,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 return onnxruntime::DataTypeImpl::GetType<std::string>();
 
             ML_PRIMITIVE_TYPE_CASE(float);
+            ML_PRIMITIVE_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+            ML_PRIMITIVE_TYPE_CASE(onnxruntime::Int4x2Base<true>);
             ML_PRIMITIVE_TYPE_CASE(uint8_t);
             ML_PRIMITIVE_TYPE_CASE(int8_t);
             ML_PRIMITIVE_TYPE_CASE(uint16_t);
@@ -363,6 +371,12 @@ namespace Windows::AI::MachineLearning::Adapter
         {
         case onnx::TensorProto_DataType_FLOAT:
             return MLOperatorTensorDataType::Float;
+
+        case onnx::TensorProto_DataType_UINT4:
+            return MLOperatorTensorDataType::UInt4;
+
+        case onnx::TensorProto_DataType_INT4:
+            return MLOperatorTensorDataType::Int4;
 
         case onnx::TensorProto_DataType_UINT8:
             return MLOperatorTensorDataType::UInt8;
@@ -455,6 +469,12 @@ namespace Windows::AI::MachineLearning::Adapter
             case MLOperatorTensorDataType::Float:
                 return "tensor(float)";
 
+            case MLOperatorTensorDataType::UInt4:
+                return "tensor(uint4)";
+
+            case MLOperatorTensorDataType::Int4:
+                return "tensor(int4)";
+
             case MLOperatorTensorDataType::UInt8:
                 return "tensor(uint8)";
 
@@ -508,6 +528,12 @@ namespace Windows::AI::MachineLearning::Adapter
             {
             case MLOperatorTensorDataType::Float:
                 return "seq(tensor(float))";
+
+            case MLOperatorTensorDataType::UInt4:
+                return "seq(tensor(uint4))";
+
+            case MLOperatorTensorDataType::Int4:
+                return "seq(tensor(int4))";
 
             case MLOperatorTensorDataType::UInt8:
                 return "seq(tensor(uint8))";
@@ -1518,7 +1544,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
                 m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
             }
-            
+
             // There can be operators (or kernels) which don't require any input.
             assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
             m_graphNodeCreateInfo->inputEdges.insert(

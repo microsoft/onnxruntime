@@ -8,7 +8,7 @@ on:
     paths:
       - java/**
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
 concurrency:
@@ -47,4 +47,4 @@ jobs:
         with:
           name: onnxruntime-java-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30

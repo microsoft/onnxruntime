@@ -34,7 +34,6 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
-
   switch (e) {
     CASE_ENUM_TO_STR(CUBLAS_STATUS_SUCCESS);
     CASE_ENUM_TO_STR(CUBLAS_STATUS_NOT_INITIALIZED);
@@ -87,9 +86,15 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
 }
 #endif
 
-template <typename ERRTYPE, bool THRW>
+template <typename ERRTYPE>
+int GetErrorCode(ERRTYPE err) {
+  return static_cast<int>(err);
+}
+
+template <typename ERRTYPE, bool THRW, typename SUCCTYPE>
 std::conditional_t<THRW, void, Status> CudaCall(
-    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg, const char* file, const int line) {
+    ERRTYPE retCode, const char* exprString, const char* libName, SUCCTYPE successCode, const char* msg,
+    const char* file, const int line) {
   if (retCode != successCode) {
     try {
 #ifdef _WIN32
@@ -108,7 +113,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
       cudaGetLastError();  // clear last CUDA error
       static char str[1024];
       snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
-               libName, (int)retCode, CudaErrString(retCode), currentCudaDevice,
+               libName, GetErrorCode(retCode), CudaErrString(retCode), currentCudaDevice,
                hostname,
                file, line, exprString, msg);
       if constexpr (THRW) {
@@ -118,7 +123,8 @@ std::conditional_t<THRW, void, Status> CudaCall(
         LOGS_DEFAULT(ERROR) << str;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, str);
       }
-    } catch (const std::exception& e) {  // catch, log, and rethrow since CUDA code sometimes hangs in destruction, so we'd never get to see the error
+    } catch (const std::exception& e) {  // catch, log, and rethrow since CUDA code sometimes hangs in destruction,
+                                         // so we'd never get to see the error
       if constexpr (THRW) {
         ORT_THROW(e.what());
       } else {

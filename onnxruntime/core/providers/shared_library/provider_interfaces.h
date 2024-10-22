@@ -27,6 +27,8 @@ enum OperatorStatus : int;
 
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
+using DataTypeSet = std::unordered_set<DataType>;
+using TypeConstraintMap = std::unordered_map<std::string, std::pair<DataTypeSet, std::string>>;
 
 }  // namespace ONNX_NAMESPACE
 
@@ -379,6 +381,7 @@ struct ProviderHost {
   virtual float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual const ONNX_NAMESPACE::TensorProto& AttributeProto__t(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
+  virtual void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, ::std::string&& value) = 0;
   virtual void AttributeProto__set_f(ONNX_NAMESPACE::AttributeProto* p, const float& value) = 0;
   virtual void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) = 0;
   virtual void AttributeProto__set_t(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
@@ -565,14 +568,23 @@ struct ProviderHost {
   virtual int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
-  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
+  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
+  virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
+  virtual const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__outputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__outputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const ONNX_NAMESPACE::TypeConstraintMap& OpSchema__typeConstraintMap(const ONNX_NAMESPACE::OpSchema* p) const = 0;
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
+  virtual std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key,
+                                                        const std::string& default_value) = 0;
 
   // OrtRunOptions
   virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;
-
+  // OrtSessionOptions
+  virtual const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) = 0;
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
@@ -694,6 +706,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_Int4x2() = 0;
   virtual MLDataType DataTypeImpl__GetType_UInt4x2() = 0;
 
+  virtual MLDataType DataTypeImpl__GetTensorTypeFromOnnxType(int) = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;
@@ -849,6 +862,7 @@ struct ProviderHost {
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) = 0;
   virtual void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) = 0;
   virtual void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
+  virtual void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, ONNX_NAMESPACE::AttributeProto&& v) = 0;
   virtual void NodeAttributes__insert_or_assign(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
   virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
@@ -896,10 +910,11 @@ struct ProviderHost {
   virtual NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) = 0;
   virtual void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) = 0;
   virtual void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) = 0;
-
+  virtual const std::unordered_map<std::string, int>& Graph__DomainToVersionMap(const Graph* p) const noexcept = 0;
   virtual Status Graph__Resolve(Graph* p) = 0;
   virtual void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
   virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
+  virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, NodeAttributes&& attributes, const std::string& domain) = 0;
   virtual Node& Graph__AddNode(Graph* p, const Node& other) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept = 0;
@@ -941,6 +956,7 @@ struct ProviderHost {
   virtual const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const = 0;
   virtual const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const = 0;
   virtual IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const = 0;
+  virtual bool Graph__SetOpSchemaFromRegistryForNode(Graph* p, Node& node) = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;

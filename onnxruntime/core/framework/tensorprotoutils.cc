@@ -1022,59 +1022,12 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     ext_data_buf = buffer.release();
     ext_data_len = raw_data_safe_len;
 
-    // In WebAssembly, try use a simplified preloaded file map in WebAssembly when available.
-    auto err_code = EM_ASM_INT(({
-                                 // If available, "Module.MountedFiles" is a Map for all preloaded files.
-                                 if (typeof Module == 'undefined' || !Module.MountedFiles) {
-                                   return 1;  // "Module.MountedFiles" is not available.
-                                 }
-                                 let fileName = UTF8ToString($0 >>> 0);
-                                 if (fileName.startsWith('./')) {
-                                   fileName = fileName.substring(2);
-                                 }
-                                 const fileData = Module.MountedFiles.get(fileName);
-                                 if (!fileData) {
-                                   return 2;  // File not found in preloaded files.
-                                 }
-                                 const offset = $1 >>> 0;
-                                 const length = $2 >>> 0;
-                                 const buffer = $3 >>> 0;
-
-                                 if (offset + length > fileData.byteLength) {
-                                   return 3;  // Out of bounds.
-                                 }
-
-                                 try {
-                                   // Copy the file data (fileData,offset,length) into WebAssembly memory
-                                   // (HEAPU8,buffer,length).
-                                   HEAPU8.set(fileData.subarray(offset, offset + length), buffer);
-                                   return 0;
-                                 } catch {
-                                   return 4;
-                                 }
-                               }),
-                               external_data_file_path.c_str(),
-                               static_cast<int32_t>(file_offset),
-                               static_cast<int32_t>(raw_data_safe_len),
-                               ext_data_buf);
-    const char* err_msg;
-    switch (err_code) {
-      case 0:
-        return Status::OK();
-      case 1:
-        err_msg = "Module.MountedFiles is not available.";
-        break;
-      case 2:
-        err_msg = "File not found in preloaded files.";
-        break;
-      case 3:
-        err_msg = "Out of bounds.";
-        break;
-      default:
-        err_msg = "Unknown error occurred in memory copy.";
-    }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path,
-                           "\", error: ", err_msg);
+    ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(env,
+                                                    external_data_file_path,
+                                                    file_offset,
+                                                    ext_data_len,
+                                                    ExternalDataLoadType::CPU,
+                                                    ext_data_buf));
 #else
     // The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
     // manually check file size first.
@@ -1093,6 +1046,31 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   }
 
   return Status::OK();
+}
+
+Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          const IExternalDataLoader& ext_data_loader,
+                                          Tensor& tensor) {
+  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+
+  ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                " does not match the tensor size: ", tensor.SizeInBytes());
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+
+  return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \
@@ -1358,6 +1336,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
+  ORT_ENFORCE(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
 

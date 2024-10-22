@@ -1469,6 +1469,54 @@ TEST_F(GraphTransformationTests, FusePadWithConv) {
   }
 }
 
+TEST_F(GraphTransformationTests, FusePadWithNoPadsConv) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-nopadsconv.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<int64_t> expected_pads;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "Pad") {
+      const auto* pads_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      Initializer pads{*pads_proto, graph.ModelPath()};
+      gsl::span<const int64_t> pads_values = pads.DataAsSpan<int64_t>();
+      expected_pads.resize(pads_values.size() - 4);
+
+      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
+        expected_pads[index] = pads_values[pads_index];
+        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
+      }
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Pad"], 0);
+  ASSERT_EQ(op_to_count["Conv"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
+          << "fusion should produce the same size of pads integer as the Conv node";
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
+            << "fusion does not produce correct padding value";
+      }
+    }
+  }
+}
+
 TEST_F(GraphTransformationTests, FusePadWithMaxPool) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool.onnx";
 
@@ -1993,67 +2041,22 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
   ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
-#if (defined(USE_CUDA) || defined(USE_JSEP)) && !defined(DISABLE_CONTRIB_OPS)
-// Conv->Add->Relu will be transformed to FusedConv
-TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-  for (auto& node : p_model->MainGraph().Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["Relu"] == 1);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
-  ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
-}
-
-// Currently the ConvAddRelu fusion is only backed by a float kernel for the
-// the CUDA EP.
-
-// When we see the corresponding pattern for the fp16 data type, the fusion
-// should not be triggered as there is no kernel to back the fused pattern.
-
-// TODO(hasesh): Limit the test to using the CUDA EP for now as the level of
-// data type support in other compatible EPs is still yet to be ascertained.
-
-// TODO(hasesh): If at all the fp16 type is supported for the fusion, adjust/remove
-// this test.
-TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_add_relu_fp16.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-  for (auto& node : p_model->MainGraph().Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Add"], 1);
-  ASSERT_EQ(op_to_count["Relu"], 1);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Add"], 1);   // Add not removed from graph (fusion not triggered)
-  ASSERT_EQ(op_to_count["Relu"], 1);  // Relu not removed from graph (fusion not triggered)
-}
-
+#if !defined(DISABLE_CONTRIB_OPS)
 // Conv->Add->Relu will be left intact since there is Identity depend on Add
 TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
+#if defined(USE_JSEP)
   for (auto& node : p_model->MainGraph().Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
+    node.SetExecutionProviderType(kJsExecutionProvider);
   }
+#else
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+#endif
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 1);
   ASSERT_TRUE(op_to_count["Relu"] == 1);
@@ -2073,9 +2076,15 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
+#if defined(USE_JSEP)
   for (auto& node : p_model->MainGraph().Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
+    node.SetExecutionProviderType(kJsExecutionProvider);
   }
+#else
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+#endif
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 1);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -2165,17 +2174,13 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
-#ifdef USE_CUDA
-    for (auto& node : p_model->MainGraph().Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-#elif defined(USE_ROCM)
-    for (auto& node : p_model->MainGraph().Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-#elif defined(USE_JSEP)
+#if defined(USE_JSEP)
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kJsExecutionProvider);
+    }
+#else
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
     }
 #endif
     std::map<std::string, int> op_to_count_before_fusion = CountOpsInGraph(graph);
@@ -2187,14 +2192,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
     std::map<std::string, int> op_to_count_after_fusion = CountOpsInGraph(graph);
-#if defined(USE_CUDA) || defined(USE_ROCM)
-    std::set<std::string> cuda_rocm_supported = {"Relu"};
-    if (cuda_rocm_supported.find(model.second) == cuda_rocm_supported.end()) {
-      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
-    } else {
-      ASSERT_EQ(op_to_count_after_fusion[model.second], 0);
-    }
-#elif defined(USE_JSEP)
+#if defined(USE_JSEP)
     std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};
     if (js_supported.find(model.second) == js_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
@@ -4484,7 +4482,11 @@ TEST_F(GraphTransformationTests, GeluFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4495,6 +4497,28 @@ TEST_F(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["com.microsoft.Gelu"] == 1);
 }
 
+TEST_F(GraphTransformationTests, GeluFusionTest_Opset20) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gelu_opset20.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
 TEST_F(GraphTransformationTests, GeluFusionTestSwitchOrderFormat2) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gelu_format2_0.onnx";
   std::shared_ptr<Model> p_model;
@@ -4502,7 +4526,11 @@ TEST_F(GraphTransformationTests, GeluFusionTestSwitchOrderFormat2) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4520,7 +4548,11 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4538,7 +4570,11 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphInput) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4556,8 +4592,12 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphOutput) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<BiasGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4572,8 +4612,12 @@ TEST_F(GraphTransformationTests, BiasGeluTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<BiasGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);

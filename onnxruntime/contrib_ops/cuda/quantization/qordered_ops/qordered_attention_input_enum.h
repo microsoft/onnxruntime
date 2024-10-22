@@ -17,4 +17,4 @@ DefineQOrderedAttentionInput(Input, input, 0),
     DefineQOrderedAttentionInput(Scale_Values_Gemm, scale_values_gemm, 16),
     DefineQOrderedAttentionInput(Mask_Index, mask_index, 17),
     DefineQOrderedAttentionInput(Past, past, 18),
-    DefineQOrderedAttentionInput(relative_position_bias, relative_position_bias, 19)
+    DefineQOrderedAttentionInput(attention_bias, attention_bias, 19)

@@ -9,6 +9,7 @@
 namespace onnxruntime {
 struct AttentionKernelDebugInfo {
   std::optional<bool> use_flash_attention = std::nullopt;
+  std::optional<bool> use_lean_attention = std::nullopt;
   std::optional<bool> use_efficient_attention = std::nullopt;
   std::optional<bool> use_trt_fused_attention = std::nullopt;
   std::optional<bool> use_cudnn_flash_attention = std::nullopt;
@@ -21,9 +22,10 @@ struct AttentionKernelDebugInfo {
 
 class AttentionKernelOptions {
  public:
-  void InitializeOnce(int sdpa_kernel, bool use_build_flag);
+  void InitializeOnce(int sdpa_kernel, bool use_build_flag, bool check_cudnn_version = false);
 
   bool UseFlashAttention() const { return use_flash_attention_; }
+  bool UseLeanAttention() const { return use_lean_attention_; }
   bool UseEfficientAttention() const { return use_efficient_attention_; }
   bool UseTrtFusedAttention() const { return use_trt_fused_attention_; }
   bool UseCudnnFlashAttention() const { return use_cudnn_flash_attention_; }
@@ -40,10 +42,11 @@ class AttentionKernelOptions {
  protected:
   void Print() const;
 
-  void Initialize(int value, bool use_build_flag);
+  void Initialize(int value, bool use_build_flag, bool check_cudnn_version);
 
  private:
   bool use_flash_attention_{true};
+  bool use_lean_attention_{false};
   bool use_efficient_attention_{true};
   bool use_trt_fused_attention_{true};
   bool use_cudnn_flash_attention_{false};

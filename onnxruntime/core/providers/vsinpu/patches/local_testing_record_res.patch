@@ -1,5 +1,5 @@
 diff --git a/onnxruntime/test/onnx/dataitem_request.cc b/onnxruntime/test/onnx/dataitem_request.cc
-index 1ee302d5d5..5c2dd5ab00 100644
+index d8deafb70b..86a97493f8 100644
 --- a/onnxruntime/test/onnx/dataitem_request.cc
 +++ b/onnxruntime/test/onnx/dataitem_request.cc
 @@ -135,6 +135,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
@@ -10,7 +10,7 @@ index 1ee302d5d5..5c2dd5ab00 100644
    for (auto& output : expected_output_values) {
      const std::string& output_name = output.first;
      OrtValue* expected_output_value = output.second;  // Automatic cast
-@@ -170,7 +171,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
+@@ -158,7 +159,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
        } else {  // Both expect and actual OrtValues are not None, proceed with data checking
          ret =
              CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
@@ -19,47 +19,22 @@ index 1ee302d5d5..5c2dd5ab00 100644
        }
      } else {  // Expected output is None, ensure that the received output OrtValue is None as well
        if (actual_output_value->IsAllocated()) {
-@@ -223,9 +224,10 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
+@@ -211,9 +212,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
      if (compare_result != COMPARE_RESULT::SUCCESS && !ret.second.empty()) {
        LOGS_DEFAULT(ERROR) << test_case_.GetTestCaseName() << ":output=" << output_name << ":" << ret.second;
      }
 -    if (compare_result != COMPARE_RESULT::SUCCESS) {
 -      break;
 -    }
-+    // if (compare_result != COMPARE_RESULT::SUCCESS) {
-+    //   break;
-+    // }
 +    out_idx ++;
    }
    return std::make_pair(res, spent_time_);
  }
-diff --git a/onnxruntime/test/providers/checkers.cc b/onnxruntime/test/providers/checkers.cc
-index f1a7240ea3..436031dfa8 100644
---- a/onnxruntime/test/providers/checkers.cc
-+++ b/onnxruntime/test/providers/checkers.cc
-@@ -154,6 +154,7 @@ struct TensorCheck<int8_t> {
-     }
- 
-     const bool has_abs_err = params.absolute_error.has_value();
-+    const int8_t default_abs_err = 1;
-     if (has_abs_err) {
-       double threshold = *(params.absolute_error);
- 
-@@ -162,7 +163,8 @@ struct TensorCheck<int8_t> {
-       }
-     } else {
-       for (int i = 0; i < size; ++i) {
--        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
-+        // EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
-+        EXPECT_NEAR(cur_expected[i], cur_actual[i], default_abs_err) << "i:" << i;
-       }
-     }
-   }
 diff --git a/onnxruntime/test/util/compare_ortvalue.cc b/onnxruntime/test/util/compare_ortvalue.cc
-index 3d53d4a3a0..8129af1820 100644
+index cc4c0440d2..1a37b6f28a 100644
 --- a/onnxruntime/test/util/compare_ortvalue.cc
 +++ b/onnxruntime/test/util/compare_ortvalue.cc
-@@ -138,11 +138,75 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
+@@ -188,11 +188,75 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
    return res;
  }
  
@@ -136,7 +111,53 @@ index 3d53d4a3a0..8129af1820 100644
    for (size_t di = 0; di != size1; ++di) {
      if (expected_output[di] != real_output[di]) {
        std::ostringstream oss;
-@@ -201,7 +265,7 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
+@@ -205,10 +269,12 @@ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outval
+ 
+ template <>
+ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<Int4x2>(const Tensor& outvalue,
+-                                                                    const Tensor& expected_value) {
++                                                                    const Tensor& expected_value,
++                                                                    int32_t placehold) {
+   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+   const Int4x2* expected_output = expected_value.Data<Int4x2>();
+   const Int4x2* real_output = outvalue.Data<Int4x2>();
++  (void) placehold;
+   for (size_t di = 0; di != size1; ++di) {
+     size_t r = di >> 1;
+     size_t c = di & 0x1;
+@@ -224,10 +290,12 @@ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<Int4x2>(const Tensor
+ 
+ template <>
+ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<UInt4x2>(const Tensor& outvalue,
+-                                                                     const Tensor& expected_value) {
++                                                                     const Tensor& expected_value,
++                                                                     int32_t placehold) {
+   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+   const UInt4x2* expected_output = expected_value.Data<UInt4x2>();
+   const UInt4x2* real_output = outvalue.Data<UInt4x2>();
++  (void) placehold;
+   for (size_t di = 0; di != size1; ++di) {
+     size_t r = di >> 1;
+     size_t c = di & 0x1;
+@@ -244,7 +312,7 @@ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<UInt4x2>(const Tenso
+ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
+                                                             double per_sample_tolerance,
+                                                             double relative_per_sample_tolerance,
+-                                                            bool post_processing) {
++                                                            bool post_processing, int32_t out_idx) {
+   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+   const MLFloat16* expected_output = expected_value.Data<MLFloat16>();
+   const MLFloat16* real_output = outvalue.Data<MLFloat16>();
+@@ -267,7 +335,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
+ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
+                                                              double per_sample_tolerance,
+                                                              double relative_per_sample_tolerance,
+-                                                             bool post_processing) {
++                                                             bool post_processing, int32_t out_idx) {
+   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+   const BFloat16* expected_output = expected_value.Data<BFloat16>();
+   const BFloat16* real_output = outvalue.Data<BFloat16>();
+@@ -289,7 +357,7 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
  
  std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue, const Tensor& expected_tensor,
                                                           double per_sample_tolerance,
@@ -145,8 +166,8 @@ index 3d53d4a3a0..8129af1820 100644
    if (expected_tensor.Shape() != outvalue.Shape()) {
      std::ostringstream oss;
      oss << "shape mismatch, expect " << expected_tensor.Shape().ToString() << " got " << outvalue.Shape().ToString();
-@@ -209,30 +273,30 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
-   }
+@@ -328,40 +396,40 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
+ 
    if (outvalue.IsDataType<float>()) {
      return CompareFloatResult<float>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
 -                                     post_processing);
@@ -185,10 +206,24 @@ index 3d53d4a3a0..8129af1820 100644
    } else if (outvalue.IsDataType<bool>()) {
 -    return IsResultExactlyMatch<bool>(outvalue, expected_tensor);
 +    return IsResultExactlyMatch<bool>(outvalue, expected_tensor, out_idx);
+   } else if (outvalue.IsDataType<Int4x2>()) {
+-    return IsResultExactlyMatch<Int4x2>(outvalue, expected_tensor);
++    return IsResultExactlyMatch<Int4x2>(outvalue, expected_tensor, 0);
+   } else if (outvalue.IsDataType<UInt4x2>()) {
+-    return IsResultExactlyMatch<UInt4x2>(outvalue, expected_tensor);
++    return IsResultExactlyMatch<UInt4x2>(outvalue, expected_tensor, 0);
    } else if (outvalue.IsDataType<MLFloat16>()) {
      return CompareFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                                 post_processing);
-@@ -300,7 +364,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor&
+-                                post_processing);
++                                post_processing, out_idx);
+   } else if (outvalue.IsDataType<BFloat16>()) {
+     return CompareBFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
+-                                 post_processing);
++                                 post_processing, out_idx);
+   } else {
+     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
+   }
+@@ -423,7 +491,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor&
                       " actual: ", actual.Format());
  
    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual.Values(), expected.Values(),
@@ -197,7 +232,7 @@ index 3d53d4a3a0..8129af1820 100644
                         "While comparing sparse values");
  
    if (actual.Format() == SparseFormat::kCoo) {
-@@ -308,16 +372,16 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor&
+@@ -431,16 +499,16 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor&
      auto expected_view = expected.AsCoo();
  
      TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Indices(), expected_view.Indices(),
@@ -217,7 +252,7 @@ index 3d53d4a3a0..8129af1820 100644
                           "Comparing Csr(c) outer indices");
    }
  
-@@ -385,7 +449,83 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const
+@@ -508,7 +576,83 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const
        return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
      }
      return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
@@ -302,7 +337,7 @@ index 3d53d4a3a0..8129af1820 100644
    } else if (o.IsSparseTensor()) {
  #if !defined(DISABLE_SPARSE_TENSORS)
      TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH,
-@@ -419,7 +559,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const
+@@ -542,7 +686,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const
  
      for (size_t i = 0; i < expected_tensor_count; ++i) {
        auto res = CompareTwoTensors(actual_tensor_seq.Get(i), expected_tensor_seq.Get(i), per_sample_tolerance, relative_per_sample_tolerance,

@@ -22,6 +22,7 @@
         "-build/include_subdir",
         "-runtime/references"
     ],
+<<<<<<< HEAD
     "files.associations": {
         "span": "cpp",
         "*.inc": "cpp",
@@ -107,4 +108,7 @@
         "typeinfo": "cpp",
         "variant": "cpp"
     }
+=======
+    "C_Cpp.autoAddFileAssociations": false
+>>>>>>> main
 }

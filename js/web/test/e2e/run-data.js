@@ -14,27 +14,27 @@ const NODEJS_TEST_CASES = [
 // [test_for_same_origin, test_for_cross_origin, main_js, ort_main_js, [test_args]]
 const BROWSER_TEST_CASES = [
   // IIFE
-  [true, true, './browser-test-webgl.js', 'ort.min.js'],                               // webgl
-  [true, true, './browser-test-webgl.js', 'ort.webgl.min.js'],                         // webgl
-  [true, true, './browser-test-wasm.js', 'ort.wasm.min.js'],                           // wasm, ort.wasm
-  [true, true, './browser-test-wasm-multi-session-create.js', 'ort.min.js'],           // wasm, multi-session create
-  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=1']],             // wasm, 1 thread
-  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=2']],             // wasm, 2 threads
-  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=2', 'proxy=1']],  // wasm, 2 threads, proxy
-  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=1', 'proxy=1']],  // wasm, 1 thread, proxy
+  [true, true, './browser-test-webgl.js', 'ort.min.js'], // webgl
+  [true, true, './browser-test-webgl.js', 'ort.webgl.min.js'], // webgl
+  [true, true, './browser-test-wasm.js', 'ort.wasm.min.js'], // wasm, ort.wasm
+  [true, true, './browser-test-wasm-multi-session-create.js', 'ort.min.js'], // wasm, multi-session create
+  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=1']], // wasm, 1 thread
+  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=2']], // wasm, 2 threads
+  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=2', 'proxy=1']], // wasm, 2 threads, proxy
+  [true, true, './browser-test-wasm.js', 'ort.min.js', ['num_threads=1', 'proxy=1']], // wasm, 1 thread, proxy
 
   // ort.min.mjs
-  [true, true, './browser-test-webgl.js', 'ort.min.mjs'],                               // webgl
-  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=1']],             // wasm, 1 thread
-  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=2']],             // wasm, 2 threads
-  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=2', 'proxy=1']],  // wasm, 2 threads, proxy
-  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=1', 'proxy=1']],  // wasm, 1 thread, proxy
+  [true, true, './browser-test-webgl.js', 'ort.min.mjs'], // webgl
+  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=1']], // wasm, 1 thread
+  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=2']], // wasm, 2 threads
+  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=2', 'proxy=1']], // wasm, 2 threads, proxy
+  [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=1', 'proxy=1']], // wasm, 1 thread, proxy
 
   // ort.bundle.min.mjs
-  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=1']],             // 1 thread
-  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=2']],             // 2 threads
-  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=2', 'proxy=1']],  // 2 threads, proxy
-  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=1', 'proxy=1']],  // 1 thread, proxy
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=1']], // 1 thread
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=2']], // 2 threads
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=2', 'proxy=1']], // 2 threads, proxy
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=1', 'proxy=1']], // 1 thread, proxy
 
   // wasm binary override:
   [true, false, './browser-test-wasm-binary-override.js', 'ort.min.js'],
@@ -65,8 +65,8 @@ const BROWSER_TEST_CASES = [
   [false, true, './browser-test-wasm-path-override-prefix.js', 'ort.min.js', ['port=8081']],
   [false, true, './browser-test-wasm-path-override-prefix.js', 'ort.wasm.min.js', ['port=8081']],
 
-  [true, true, './browser-test-wasm-image-tensor-image.js', 'ort.min.js'],      // pre-post-process
-  [true, true, './browser-test-webgpu-external-data.js', 'ort.webgpu.min.js'],  // external data
+  [true, true, './browser-test-wasm-image-tensor-image.js', 'ort.min.js'], // pre-post-process
+  [true, true, './browser-test-webgpu-external-data.js', 'ort.webgpu.min.js'], // external data
 ];
 
 // [bundle_path, format]

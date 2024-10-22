@@ -10,6 +10,9 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "openvino/core/version.hpp"
+#ifdef USE_OVEP_NPU_MEMORY
+#include "core/providers/openvino/ov_allocator.h"
+#endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
@@ -22,8 +25,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_ = std::make_unique<openvino_ep::GlobalContext>();
   global_context_->device_type = info.device_type_;
   global_context_->precision_str = info.precision_;
-  global_context_->enable_npu_fast_compile = info.enable_npu_fast_compile_;
   global_context_->cache_dir = info.cache_dir_;
+  global_context_->load_config = info.load_config_;
   global_context_->model_priority = info.model_priority_;
   global_context_->num_streams = info.num_streams_;
   global_context_->context = info.context_;
@@ -121,6 +124,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
+  global_context_->has_external_weights = obj.HasExternalWeights();
 
   return result;
 }
@@ -179,5 +183,19 @@ common::Status OpenVINOExecutionProvider::Compile(
 
   return Status::OK();
 }
+
+#ifdef USE_OVEP_NPU_MEMORY
+std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo npu_allocator_info{
+      [this](OrtDevice::DeviceId device_id) {
+        return std::make_unique<OVRTAllocator>(global_context_->ie_core.Get(), OrtDevice::NPU, device_id, OpenVINO_RT_NPU);
+      },
+      0,
+  };
+
+  // fill in allocator
+  return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
+}
+#endif
 
 }  // namespace onnxruntime

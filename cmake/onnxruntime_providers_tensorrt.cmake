@@ -159,7 +159,7 @@
   if(onnxruntime_CUDA_MINIMAL)
     set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   else()
-    set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+    set(trt_link_libs CUDNN::cudnn_all cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   endif()
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
@@ -183,9 +183,6 @@
   endif()
   target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
-  if(onnxruntime_CUDNN_HOME)
-    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-  endif()
 
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
@@ -209,11 +206,9 @@
 
   if(APPLE)
     set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/tensorrt/exported_symbols.lst")
-    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE nsync::nsync_cpp)
   elseif(UNIX)
     set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
     set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/tensorrt/version_script.lds -Xlinker --gc-sections")
-    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE nsync::nsync_cpp)
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/tensorrt/symbols.def")
   else()

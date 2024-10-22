@@ -6,6 +6,7 @@
 #include <random>
 #include <map>
 #include <chrono>
+#include <stdexcept>
 
 // Default parameter will produce a shape with alpha = 0.5
 // and beta = 0.5.
@@ -81,7 +82,7 @@ class BetaDistribution {
     for (int i = 0; i < sample_size; i++) {
       calc_type sample = convert_to_fixed_range(gen);
       calc_type highest_probability_temp = highest_probability;
-      highest_probability = std::max({highest_probability_temp, distribution(sample)});
+      highest_probability = std::max(highest_probability_temp, distribution(sample));
 
       // A new sample number with a higher probability has been found
       //
@@ -133,7 +134,7 @@ class BetaDistribution {
 
       return static_cast<double>(result);
     } else {
-      throw std::exception("Non special gamma values not yet Implemeted");
+      throw std::runtime_error("Non special gamma values not yet Implemeted");
     }
   }
 
@@ -154,7 +155,7 @@ class BetaDistribution {
     calc_type term2{pow((randVar - min()) / range, m_alpha - 1)};
     calc_type term3{pow((max() - randVar) / range, m_beta - 1)};
 
-    return {term * term1 * term2 * term3};
+    return (term * term1 * term2 * term3);
   }
 
   // Used to convert the number that generator produces
@@ -170,9 +171,9 @@ class BetaDistribution {
 
     // Convert the number to the range [beginRange, endRange]
     //
-    calc_type range{std::numeric_limits<generator::result_type>::max() - std::numeric_limits<generator::result_type>::lowest()};
+    calc_type range{std::numeric_limits<typename generator::result_type>::max() - std::numeric_limits<typename generator::result_type>::lowest()};
 
-    calc_type delta{x - std::numeric_limits<generator::result_type>::lowest()};
+    calc_type delta{x - std::numeric_limits<typename generator::result_type>::lowest()};
     calc_type ratio{delta / range};
 
     calc_type new_range{static_cast<calc_type>(max()) - static_cast<calc_type>(min())};
@@ -183,7 +184,7 @@ class BetaDistribution {
     }
 
     calc_type res{(ratio * new_range) + min()};
-    return {res};
+    return (res);
   }
 
  private:

@@ -1,0 +1,66 @@
+diff --git a/src/dawn/native/CMakeLists.txt b/src/dawn/native/CMakeLists.txt
+index 9c0bd6fa4e..bf8a57aeac 100644
+--- a/src/dawn/native/CMakeLists.txt
++++ b/src/dawn/native/CMakeLists.txt
+@@ -857,6 +857,11 @@ if (DAWN_ENABLE_SWIFTSHADER)
+     target_compile_definitions(dawn_native PRIVATE "DAWN_ENABLE_SWIFTSHADER")
+ endif()
+
++if (IOS)
++    target_compile_options(dawn_native_objects PRIVATE -fno-objc-arc)
++    target_compile_options(dawn_native PRIVATE -fno-objc-arc)
++endif()
++
+ if (DAWN_BUILD_MONOLITHIC_LIBRARY)
+     ###############################################################################
+     # Do the 'complete_lib' build.
+diff --git a/src/dawn/native/Surface_metal.mm b/src/dawn/native/Surface_metal.mm
+index ce55acbd43..baa4835362 100644
+--- a/src/dawn/native/Surface_metal.mm
++++ b/src/dawn/native/Surface_metal.mm
+@@ -36,7 +36,13 @@
+ namespace dawn::native {
+
+ bool InheritsFromCAMetalLayer(void* obj) {
+-    id<NSObject> object = static_cast<id>(obj);
++    id<NSObject> object =
++#if TARGET_OS_IOS
++        (__bridge id)obj;
++#else
++        static_cast<id>(obj);
++#endif
++
+     return [object isKindOfClass:[CAMetalLayer class]];
+ }
+
+diff --git a/src/dawn/native/metal/SharedFenceMTL.mm b/src/dawn/native/metal/SharedFenceMTL.mm
+index bde8bfea07..f2f6459e91 100644
+--- a/src/dawn/native/metal/SharedFenceMTL.mm
++++ b/src/dawn/native/metal/SharedFenceMTL.mm
+@@ -40,7 +40,13 @@ ResultOrError<Ref<SharedFence>> SharedFence::Create(
+     DAWN_INVALID_IF(descriptor->sharedEvent == nullptr, "MTLSharedEvent is missing.");
+     if (@available(macOS 10.14, iOS 12.0, *)) {
+         return AcquireRef(new SharedFence(
+-            device, label, static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)));
++            device, label,
++#if TARGET_OS_IOS
++            (__bridge id<MTLSharedEvent>)(descriptor->sharedEvent)
++#else
++            static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)
++#endif
++            ));
+     } else {
+         return DAWN_INTERNAL_ERROR("MTLSharedEvent not supported.");
+     }
+diff --git a/src/tint/api/BUILD.cmake b/src/tint/api/BUILD.cmake
+index 0037d83276..6372c4ee77 100644
+--- a/src/tint/api/BUILD.cmake
++++ b/src/tint/api/BUILD.cmake
+@@ -57,6 +57,7 @@ tint_target_add_dependencies(tint_api lib
+   tint_lang_wgsl_ast_transform
+   tint_lang_wgsl_common
+   tint_lang_wgsl_features
++  tint_lang_wgsl_inspector
+   tint_lang_wgsl_program
+   tint_lang_wgsl_sem
+   tint_lang_wgsl_writer_ir_to_program

@@ -269,6 +269,9 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
 
+// Share EP related resources across EPs
+static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
@@ -285,3 +288,10 @@ static const char* const kOrtSessionOptionsGemmCudaFloat8E4M3FN = "enable_gemm_c
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
+// Meant to be used with SetEpDynamicOptions
+// Specify the type of workload for this session.
+// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
+// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
+static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";

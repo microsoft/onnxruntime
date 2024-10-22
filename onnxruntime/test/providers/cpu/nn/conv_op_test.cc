@@ -25,6 +25,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
                 bool weight_is_initializer = false,
+                optional<float> epsilon = optional<float>(),
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
                 int opset = 7) {
@@ -56,11 +57,13 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
 
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
+  if (epsilon.has_value()) {
+    test.SetOutputTolerance(*epsilon);
+  }
+
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
-  // Disable CUDA NHWC execution provider as it is currently flaky
-  excluded_providers.insert(kCudaNHWCExecutionProvider);
 
   // QNN SDK 2.10.0 has a bug that breaks support for dynamic bias inputs.
   excluded_providers.insert(kQnnExecutionProvider);
@@ -189,10 +192,15 @@ TEST(ConvTest, Conv1D_Bias) {
   vector<int64_t> Y_shape = {2, 1, 4};
   auto expected_vals = {0.37892162799835205f, 0.4625728130340576f, 0.4934738576412201f, 0.44801419973373413f,
                         0.37892162799835205f, 0.2499445676803589f, 0.31682088971138f, 0.32773756980895996f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // For the CUDA EP: Due to CUDNN Frontend using TF32 for FP32 operations we get a higher error than using FP32 only,
+  // as TF32 has a 10 bit mantissa.
+  float epsilon = 1.1e-5f;
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, epsilon);
 
   // CoreML EP requires weight to be an initializer
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true, epsilon);
 }
 
 // Conv47
@@ -240,7 +248,7 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> X_shape = {1, 1, 1};
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false, optional<float>(),
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both inferred and declared dimension have values but they differ. Inferred=0 Declared=2 Dimension=2",
@@ -263,7 +271,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {2, 2, 1, 2};
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false, optional<float>(),
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both inferred and declared dimension have values but they differ. Inferred=1 Declared=2 Dimension=0",
@@ -620,7 +628,12 @@ TEST(ConvTest, Conv3D_Bias) {
                         -0.47542816400527954f, -0.5078460574150085f, -0.4205915927886963f, -0.5584549903869629f,
                         -0.39770257472991943f, -0.45317384600639343f, -0.5598302483558655f, -0.2542789578437805f,
                         -0.5359901785850525f, -0.48090484738349915f, -0.38603779673576355f, -0.4991581439971924f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // For the CUDA EP: Due to CUDNN Frontend using TF32 for FP32 operations we get a higher error than using FP32 only,
+  // as TF32 has a 10 bit mantissa.
+  float epsilon = 2.1e-4f;
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, epsilon);
 }
 
 TEST(ConvTest, Conv2D_group) {
@@ -902,7 +915,8 @@ TEST(ConvTest, ConvDimWithZero) {
   // not handled by ACL
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, optional<float>(),
+             OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
 TEST(ConvTest, Conv1D_asymmetric_padding) {
