@@ -283,17 +283,14 @@ TYPED_TEST(LayerNormTest, LayerNorm17_opset) {
       test.Run();
     }
   };
-  if (std::is_same<TypeParam, MLFloat16>::value) {
-#if !defined(COREML_ENABLE_MLPROGRAM)
-    return;
-#endif
-  }
+  //   if (std::is_same<TypeParam, MLFloat16>::value) {
+  // #if !defined(COREML_ENABLE_MLPROGRAM)
+  //     return;
+  // #endif
+  //   }
 
   run_test(false);
-#if defined(COREML_ENABLE_MLPROGRAM)
-  // gamma as initialized will fail for CPUEP
   run_test(true);
-#endif
 }
 
 TEST(LayerNormTest, LayerNorm17_double) {

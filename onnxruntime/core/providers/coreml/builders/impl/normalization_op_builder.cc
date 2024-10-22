@@ -107,8 +107,9 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
 #if defined(COREML_ENABLE_MLPROGRAM)
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
-  // uncomment it when this bugs was fixed.
-  // "failed to infer output detype"
+  // uncomment it when this bug was fixed.
+  // groupnorm--> reshape [b, num_groups, c // (num_groups), h, w] --> layer_norm --> reshape [b, c, h, w]->mul(scale)->add(bias)
+  // "failed to infer output dtype"
   // const auto& initializers(model_builder.GetInitializerTensors());
   // const auto& scale_tensor = *initializers.at(input_defs[1]->Name());
   // const auto& bias_tensor = *initializers.at(input_defs[2]->Name());
