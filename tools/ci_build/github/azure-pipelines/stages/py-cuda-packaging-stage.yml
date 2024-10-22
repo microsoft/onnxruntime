@@ -6,12 +6,12 @@ parameters:
   default: ''
 
 - name: enable_linux_cuda
-  displayName: 'Whether Linux GPU package is built.'
+  displayName: 'Whether Linux CUDA package is built.'
   type: boolean
   default: true
 
 - name: enable_windows_cuda
-  displayName: 'Whether Windows GPU package is built.'
+  displayName: 'Whether Windows CUDA package is built.'
   type: boolean
   default: true
 
