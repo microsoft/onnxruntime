@@ -8,12 +8,12 @@ parameters:
 - name: enable_linux_cuda
   displayName: 'Whether Linux CUDA package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_windows_cuda
   displayName: 'Whether Windows CUDA package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_windows_dml
   displayName: 'Whether Windows DML package is built.'
