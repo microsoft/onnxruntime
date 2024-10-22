@@ -269,7 +269,7 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
     return false;
 #else
     if (!input_params.create_mlprogram) {
-        return true;
+      return false;
     }
 #endif
   }
