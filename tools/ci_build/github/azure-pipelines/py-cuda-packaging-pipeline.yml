@@ -30,15 +30,10 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    # Update the pool with your team's 1ES hosted pool.
-    pool:
-      name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
-      os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
-
-stages:
-  - template: stages/py-gpu-packaging-stage.yml
-    parameters:
-      enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
-      enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
-      cmake_build_type: ${{ parameters.cmake_build_type }}
-      cuda_version: '12.2'
+    stages:
+      - template: stages/py-gpu-packaging-stage.yml
+        parameters:
+          enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
+          enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          cuda_version: '12.2'
