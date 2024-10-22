@@ -12,9 +12,11 @@
 #endif
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "QnnTypes.h"
@@ -22,7 +24,6 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/path_string.h"
-#include "core/platform/ort_mutex.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -234,7 +235,7 @@ class QnnBackendManager {
 
  private:
   const std::string backend_path_;
-  OrtMutex logger_mutex_;
+  std::mutex logger_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
