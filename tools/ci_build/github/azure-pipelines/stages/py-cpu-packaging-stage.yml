@@ -304,7 +304,7 @@ stages:
         inputs:
           versionSpec: $(PythonVersion)
 
-      - template: use-xcode-version.yml
+      - template: ../templates/use-xcode-version.yml
 
       - template: ../templates/download-deps.yml
 
