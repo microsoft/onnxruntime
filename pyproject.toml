@@ -2,7 +2,7 @@
 line-length = 120
 # NOTE: Do not extend the exclude list. Edit .lintrunner.toml instead
 extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
-target-version = ["py310","py311","py312"]
+target-version = ["py310", "py311", "py312"]
 
 [tool.isort]
 # NOTE: Do not extend the exclude list. Edit .lintrunner.toml instead
