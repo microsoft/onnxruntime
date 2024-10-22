@@ -2074,6 +2074,7 @@ common::Status InferenceSession::Initialize() {
             LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
                                             << "Use this option only when run model inference on PC with CPU."
                                             << "Make sure to save and load model in same device as prepack is device specific."
+                                            << "Note: this feature in only work with ONNX model format."
                                             << "Process of use this option is like below:"
                                             << "1. Optimize model with external data file with save_prepacked_constant_initializers on:"
                                             << "       sample: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  ' 1 ')"
