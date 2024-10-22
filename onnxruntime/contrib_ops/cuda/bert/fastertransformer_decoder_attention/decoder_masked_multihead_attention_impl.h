@@ -5,6 +5,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -64,6 +65,11 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
 template <typename T, int head_size>
 void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
+
+inline bool has_decoder_masked_multihead_attention(int sm, int head_size) {
+  // This kernel contains some code that cannot be compiled on CUDA ARCH 5.3 or lower
+  return (sm >= 53) && (head_size == 32 || head_size == 64 || head_size == 128);
+}
 
 }  // namespace cuda
 

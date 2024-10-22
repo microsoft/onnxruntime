@@ -7,6 +7,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -20,10 +20,13 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
     use_efficient_attention_ = (value & static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION)) > 0;
     use_trt_fused_attention_ = (value & static_cast<int>(AttentionBackend::TRT_FUSED_ATTENTION)) > 0;
     use_cudnn_flash_attention_ = (value & static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION)) > 0;
+    
     use_unfused_ = (value & static_cast<int>(AttentionBackend::MATH)) > 0;
     use_trt_flash_attention_ = (value & static_cast<int>(AttentionBackend::TRT_FLASH_ATTENTION)) > 0;
     use_trt_cross_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CROSS_ATTENTION)) > 0;
     use_trt_causal_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CAUSAL_ATTENTION)) > 0;
+  
+    use_ft_causal_attention_ = (value & static_cast<int>(AttentionBackend::FT_CAUSAL_ATTENTION)) > 0;
   } else {
     use_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFlashAttention, false);
     use_efficient_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableMemoryEfficientAttention, false);
@@ -34,6 +37,8 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
     use_trt_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableTrtFlashAttention, false);
     use_trt_cross_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedCrossAttention, false);
     use_trt_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableFusedCausalAttention, false);
+
+    use_ft_causal_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFtCausalAttention, false);
   }
 
   enable_kernel_debug_info_ = ParseEnvironmentVariableWithDefault<bool>(kEnableAttentionKernelDebugInfo, false);
@@ -87,6 +92,7 @@ void AttentionKernelOptions::Print() const {
   sstream << " TRT_FLASH_ATTENTION=" << int(use_trt_flash_attention_);
   sstream << " TRT_CROSS_ATTENTION=" << int(use_trt_cross_attention_);
   sstream << " TRT_CAUSAL_ATTENTION=" << int(use_trt_causal_attention_);
+  sstream << " FT_CAUSAL_ATTENTION=" << int(use_ft_causal_attention_);
   sstream << " MATH=" << int(use_unfused_);
 
   if (!use_unfused_) {
@@ -143,6 +149,8 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
     sstream << "TRT_CROSS_ATTENTION";
   } else if (use_trt_causal_attention.has_value() && use_trt_causal_attention.value()) {
     sstream << "TRT_CAUSAL_ATTENTION";
+  } else if (use_ft_causal_attention.has_value() && use_ft_causal_attention.value()) {
+    sstream << "FT_CAUSAL_ATTENTION";
   } else {
     sstream << "MATH";
   }

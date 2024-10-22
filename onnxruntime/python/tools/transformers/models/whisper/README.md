@@ -19,6 +19,20 @@ In addition to the above packages, you will need to install `ffmpeg` on your mac
 
 **FFMPEG includes numerous codecs, many of which are likely not used by your product/service. Microsoft engineering teams using FFMPEG must build FFMPEG to remove all the unneeded and unused codecs. Including codecs in your product/service, even if not used, can create patent risk for Microsoft. You are responsible for building FFMPEG in a way that follows this codec guidance.**
 
+## Exporting Whisper for ONNX Runtime GenAI
+
+To export Whisper for ONNX Runtime GenAI, you can use the `convert_to_onnx.py` script.
+
+```
+# From source
+$ git clone https://github.com/microsoft/onnxruntime
+$ cd onnxruntime/onnxruntime/python/tools/transformers/
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --no_beam_search_op
+
+# From wheel
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --no_beam_search_op
+```
+
 ## Exporting Whisper with Beam Search
 
 There are several ways to export Whisper with beam search (using Whisper tiny as an example).
@@ -88,10 +102,10 @@ $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/w
 Export + Optimize for FP16 and GPU
 ```
 # From source:
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda --disable_auto_mixed_precision
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda --disable_auto_mixed_precision
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
 ```
 
 Export + Quantize for INT8

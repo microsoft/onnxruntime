@@ -394,7 +394,7 @@ class FusionBartAttention(FusionAttention):
             #             \              /
             #               -> Concat <-
             #                    |
-            #                    |--> Reshape -> Transpose -> Present_K
+            #                    +--> Reshape -> Transpose -> Present_K
             concat_path = self.model.match_child_path(matmul_k, ["Concat", "Reshape", "Transpose"])
             if reshape_path is not None:
                 (_, transpose_matmul_k) = reshape_path

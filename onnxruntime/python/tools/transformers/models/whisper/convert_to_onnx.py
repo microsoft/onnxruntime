@@ -110,14 +110,6 @@ def parse_arguments(argv=None):
     conversion_args.set_defaults(use_int64_inputs=False)
 
     conversion_args.add_argument(
-        "--disable_auto_mixed_precision",
-        required=False,
-        action="store_true",
-        help="Use pure fp16 instead of mixed precision",
-    )
-    conversion_args.set_defaults(disable_auto_mixed_precision=False)
-
-    conversion_args.add_argument(
         "-r",
         "--provider",
         required=False,
@@ -340,8 +332,8 @@ def export_onnx_models(
     verbose,
     use_forced_decoder_ids: bool = False,
     merge_encoder_and_decoder_init: bool = True,
+    no_beam_search_op: bool = False,
     overwrite: bool = False,
-    disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
     quantize_embedding_layer: bool = False,
     quantize_per_channel: bool = False,
@@ -349,20 +341,27 @@ def export_onnx_models(
     state_dict_path: str = "",
     provider: str = "cpu",
 ):
-    device = torch.device("cuda:0" if use_gpu else "cpu")
+    device = torch.device("cuda" if use_gpu else "cpu")
 
     models = WhisperHelper.load_model(
-        model_name_or_path, model_impl, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
+        model_name_or_path,
+        model_impl,
+        cache_dir,
+        device,
+        torch.float16 if precision == Precision.FLOAT16 else torch.float32,
+        merge_encoder_and_decoder_init,
+        no_beam_search_op,
+        state_dict_path,
     )
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_hidden_layers > 24):
-        logger.info("Try use_external_data_format when model size > 2GB")
+        logger.warning("You MUST pass `--use_external_data_format` because model size > 2GB")
+        raise Exception("Please pass `--use_external_data_format` for this model.")
 
     output_paths = []
     for name, model in models.items():
         print(f"========> Handling {name} model......")
-        model.to(device)
         filename_suffix = "_" + name
 
         onnx_path = WhisperHelper.get_onnx_path(
@@ -372,23 +371,23 @@ def export_onnx_models(
             new_folder=False,
         )
 
+        # Export to ONNX
         if overwrite or not os.path.exists(onnx_path):
             logger.info(f"Exporting ONNX model to {onnx_path}")
-            # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
-            device_to_export = torch.device("cpu")
-            cloned_model = copy.deepcopy(model).to(device_to_export)
             WhisperHelper.export_onnx(
-                cloned_model,
-                device_to_export,
+                model,
                 onnx_path,
                 verbose,
                 use_external_data_format,
+                use_fp16_inputs=(precision == Precision.FLOAT16),
                 use_int32_inputs=use_int32_inputs,
+                use_encoder_hidden_states=(name == "decoder_init"),
+                use_kv_cache_inputs=(name == "decoder"),
             )
         else:
             logger.info(f"Skip exporting: existing ONNX model {onnx_path}")
 
-        # Optimize ONNX graph
+        # Optimize ONNX model
         if optimize_onnx or precision != Precision.FLOAT32:
             output_path = WhisperHelper.get_onnx_path(
                 output_dir,
@@ -404,13 +403,20 @@ def export_onnx_models(
                         onnx_path,
                         output_path,
                         precision == Precision.FLOAT16,
-                        config.encoder_attention_heads,
-                        config.d_model,
+                        model.config.encoder_attention_heads,
+                        model.config.d_model,
+                        model.config.num_hidden_layers,
                         use_external_data_format,
-                        auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
                         provider=provider,
+                        is_decoder=(name == "decoder"),
+                        no_beam_search_op=no_beam_search_op,
                     )
+                    # Remove old ONNX model and old data file
+                    if os.path.exists(onnx_path):
+                        os.remove(onnx_path)
+                    if os.path.exists(onnx_path + ".data"):
+                        os.remove(onnx_path + ".data")
                     onnx_path = output_path
 
                 if precision == Precision.INT8:
@@ -430,12 +436,12 @@ def export_onnx_models(
         else:
             output_path = onnx_path
 
-        ort_session = create_onnxruntime_session(
-            output_path,
-            use_gpu=use_gpu,
-            provider=provider,
-        )
-        assert ort_session is not None
+        # ort_session = create_onnxruntime_session(
+        #     output_path,
+        #     use_gpu=use_gpu,
+        #     provider=provider,
+        # )
+        # assert ort_session is not None
 
         output_paths.append(output_path)
 
@@ -456,9 +462,6 @@ def main(argv=None):
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
-    if args.optimize_onnx:
-        logger.warning("Applying graph optimization for Whisper...")
-
     output_paths = export_onnx_models(
         args.model_name_or_path,
         args.model_impl,
@@ -471,8 +474,8 @@ def main(argv=None):
         args.verbose,
         args.use_forced_decoder_ids,
         not args.separate_encoder_and_decoder_init,
+        args.no_beam_search_op,
         args.overwrite,
-        args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
         args.quantize_embedding_layer,
         args.quantize_per_channel,
@@ -491,7 +494,7 @@ def main(argv=None):
             new_folder=False,
         )
         for path in output_paths:
-            if "encoder_decoder" in path:
+            if "encoder_decoder" in path or "encoder" in path:
                 args.encoder_path = path
             elif "decoder" in path:
                 args.decoder_path = path
@@ -504,7 +507,7 @@ def main(argv=None):
             use_gpu=args.use_gpu,
             provider=args.provider,
         )
-        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+        device = torch.device("cuda" if args.use_gpu else "cpu")
 
         # Wrap parity check in try-except to allow export to continue in case this produces an error
         try:
@@ -531,22 +534,22 @@ def main(argv=None):
                 os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
 
-    elif args.use_gpu and args.precision == Precision.FLOAT16 and args.no_beam_search_op:
-        # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
-        decoder_path = list(filter(lambda path: "decoder" in path and "encoder_decoder" not in path, output_paths))[0]
+    # elif args.use_gpu and args.precision == Precision.FLOAT16 and args.no_beam_search_op:
+    #     # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
+    #     decoder_path = list(filter(lambda path: "decoder" in path and "encoder_decoder" not in path, output_paths))[0]
 
-        model = OnnxModel(onnx.load_model(decoder_path, load_external_data=True))
-        model = replace_mha_with_dmmha(model)
+    #     model = OnnxModel(onnx.load_model(decoder_path, load_external_data=True))
+    #     model = replace_mha_with_dmmha(model)
 
-        onnx.save(
-            model.model,
-            decoder_path,
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            convert_attribute=True,
-            location=f"{os.path.basename(decoder_path)}.data",
-        )
-        onnx.checker.check_model(decoder_path, full_check=True)
+    #     onnx.save(
+    #         model.model,
+    #         decoder_path,
+    #         save_as_external_data=True,
+    #         all_tensors_to_one_file=True,
+    #         convert_attribute=True,
+    #         location=f"{os.path.basename(decoder_path)}.data",
+    #     )
+    #     onnx.checker.check_model(decoder_path, full_check=True)
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff

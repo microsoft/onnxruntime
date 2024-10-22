@@ -12,10 +12,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if DEBUG_TENSOR_LEVEL > 1
+#if DUMP_TENSOR_LEVEL > 1
 // Dump the workspace for Q, K, V after processing QKV data.
 template <typename T>
-void DumpQkv(AttentionData<T>& data) {
+void DumpQkv(contrib::AttentionParameters& parameters, AttentionData<T>& data) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
@@ -99,7 +99,7 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
 
 // Dump the kernel outputs
 template <typename T>
-void DumpOutputs(AttentionData<T>& data) {
+void DumpOutputs(contrib::AttentionParameters& parameters, AttentionData<T>& data) {
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
@@ -207,6 +207,22 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
     // Here we have assumption that there is no bias for key and value when they are in BNSH format.
     data.k = const_cast<T*>(data.key);
     data.v = const_cast<T*>(data.value);
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
+  } else if (data.use_decoder_masked_multihead_attention) {
+    data.q = const_cast<T*>(data.query);
+    data.k = const_cast<T*>(data.key);
+    data.v = const_cast<T*>(data.value);
+
+    data.q_bias = const_cast<T*>(data.bias);
+    data.k_bias = const_cast<T*>(data.bias + parameters.hidden_size);
+    data.v_bias = const_cast<T*>(data.bias + 2*parameters.hidden_size);
+
+    data.attn_bias = const_cast<T*>(data.attention_bias);
+    // data.past_key = reinterpret_cast<const T*>(data.past_key);
+    // data.past_value = reinterpret_cast<const T*>(data.past_value);
+    // data.present_key = const_cast<T*>(data.present_key);
+    // data.present_value = const_cast<T*>(data.present_value);
+
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
   } else {  // unfused kernel
     assert(data.IsUnfused());
@@ -470,18 +486,21 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
 
     constexpr int format = 0;
     // Query (BxSxNxH) => Q (BxNxSxH)
+    std::cout << "AddBiasTranspose for Q" << std::endl;
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                               batch_size, sequence_length, num_heads, qk_head_size,
                               data.query, data.bias, data.q,
                               true, -1);
 
     // Key (BxLxNxH) => K (BxNxLxH)
+    std::cout << "AddBiasTranspose for K" << std::endl;
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                               batch_size, kv_sequence_length, num_heads, qk_head_size,
                               data.key, data.bias + num_heads * qk_head_size, data.k,
                               true, -1);
 
     // Value (BxLxNxH_v) => V (BxNxLxH_v)
+    std::cout << "AddBiasTranspose for V" << std::endl;
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                               batch_size, kv_sequence_length, num_heads, v_head_size,
                               data.value, data.bias + 2 * num_heads * qk_head_size, data.v,
@@ -640,6 +659,7 @@ Status PrepareQkv_MultiHeadAttention(contrib::AttentionParameters& parameters,
                                      int max_threads_per_block) {
   switch (parameters.qkv_format) {
     case AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH:
+      std::cout << "PrepareQkv_MHA_Cross" << std::endl;
       ORT_RETURN_IF_ERROR(PrepareQkv_MHA_Cross(parameters, data, stream, max_threads_per_block));
       break;
     case AttentionQkvFormat::Q_KV_BSNH_BSN2H:
@@ -651,11 +671,14 @@ Status PrepareQkv_MultiHeadAttention(contrib::AttentionParameters& parameters,
     case AttentionQkvFormat::Q_K_V_BSNH:
       if (data.past_key != nullptr || data.present_key != nullptr) {
         if (data.bias == nullptr) {
+          std::cout << "PrepareQkv_MHA_WithPast_NoBias" << std::endl;
           ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast_NoBias(parameters, data, stream, max_threads_per_block));
         } else {
+          std::cout << "PrepareQkv_MHA_WithPast_Bias" << std::endl;
           ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast_Bias(parameters, data, stream, max_threads_per_block));
         }
       } else {  // no past state
+        std::cout << "PrepareQkv_MHA_NoPast" << std::endl;
         ORT_RETURN_IF_ERROR(PrepareQkv_MHA_NoPast(parameters, data, stream, max_threads_per_block));
       }
       break;
@@ -715,7 +738,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     data.scratch = data.workspace;
   }
 
-#if DEBUG_TENSOR_LEVEL > 1
+#if DUMP_TENSOR_LEVEL > 1
   DumpInputs(parameters, data);
 #endif
 
@@ -727,8 +750,8 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
   assert(data.qkv_format != AttentionQkvFormat::UNKNOWN);
 
-#if DEBUG_TENSOR_LEVEL > 1
-  DumpQkv(data);
+#if DUMP_TENSOR_LEVEL > 1
+  DumpQkv(parameters, data);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());

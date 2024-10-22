@@ -5,6 +5,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_masked_multihead_attention.h"
 #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 
@@ -83,6 +84,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       attention_bias,
                                                                       past_key,
                                                                       past_value,
+                                                                      cache_indir,
                                                                       past_seq_len,
                                                                       &parameters,
                                                                       num_heads_,
@@ -237,26 +239,27 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
-  switch (parameters.head_size) {
-    case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
-      break;
+  return LaunchDecoderMaskedMultiHeadAttention<T2>(parameters, cuda_stream, parameters.head_size);
+  // switch (parameters.head_size) {
+  //   case 32:
+  //     mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+  //     break;
 
-    case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
-      break;
+  //   case 64:
+  //     mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
+  //     break;
 
-    case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
-      break;
+  //   case 128:
+  //     mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
+  //     break;
 
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedMultiHeadAttention. "
-                             "Got head size: ",
-                             parameters.head_size);
-  }
-  return Status::OK();
+  //   default:
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+  //                            "Unsupported head size in DecoderMaskedMultiHeadAttention. "
+  //                            "Got head size: ",
+  //                            parameters.head_size);
+  // }
+  // return Status::OK();
 }
 
 }  // namespace cuda

@@ -29,6 +29,7 @@ class AttentionCPUBase : public AttentionBase {
                         Tensor* output,            // output tensor
                         Tensor* present_key,       // present K output tensor (if separating present KV)
                         Tensor* present_value,     // present V output tensor (if separating present KV)
+                        Tensor* output_qk,         // Q*K output tensor (if returning Q*K value)
                         int batch_size,            // batch size (B)
                         int sequence_length,       // sequence length of Q (S)
                         int kv_sequence_length,    // sequence length of K or V (L)
@@ -85,6 +86,7 @@ class AttentionCPUBase : public AttentionBase {
     T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
     const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
     T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
+    T* output_qk_data = output_qk != nullptr ? output_qk->MutableData<T>() : nullptr;
 
     const T* attn_bias_data = (attn_bias != nullptr) ? attn_bias->Data<T>() : nullptr;
     auto attn_bias_dims = (attn_bias != nullptr) ? attn_bias->Shape().GetDims() : gsl::span<const int64_t>{};
@@ -97,7 +99,7 @@ class AttentionCPUBase : public AttentionBase {
                              static_cast<T*>(mask_data),
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
-                             present_data, present_key_data, tp, scale, attn_bias_data, attn_bias_dims);
+                             present_data, present_key_data, output_qk_data, tp, scale, attn_bias_data, attn_bias_dims);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
@@ -130,6 +132,7 @@ class AttentionCPUBase : public AttentionBase {
                              const T* past_key,                       // past key only (if not using past state)
                              T* present,                              // present state
                              T* present_key,                          // present key only (if not using present state)
+                             T* output_qk,                            // Q*K output
                              ThreadPool* tp,                          // thread pool
                              float scale,                             // scale factor
                              const T* attn_bias_data,                 // attention bias
@@ -231,6 +234,11 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     DUMP_CPU_TENSOR("QK (scaled)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
+    if (output_qk != nullptr) {
+      const ptrdiff_t attention_probs_size = SafeInt<ptrdiff_t>(batch_size * num_heads_ * sequence_length * total_sequence_length);
+      const ptrdiff_t attention_probs_bytes = attention_probs_size * sizeof(T);
+      memcpy(output_qk, attention_probs, attention_probs_bytes);
+    }
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
     {

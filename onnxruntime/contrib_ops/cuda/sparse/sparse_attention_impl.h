@@ -6,6 +6,7 @@
 #include <cublas_v2.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/tunable/cuda_tunable.h"
 
