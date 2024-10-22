@@ -10,6 +10,10 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
+#if __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 namespace onnxruntime {
 namespace coreml {
 
@@ -147,6 +151,16 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBu
     return false;
   }
 
+#if TARGET_OS_IOS
+#if TARGET_CPU_X86_64
+  // To Pass IOS pipeline https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=134&_a=summary
+  auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    LOGS(logger, VERBOSE) << "BN with float16 input is not supported on IOS+x86_64";
+    return false;
+  }
+#endif
+#endif
   return true;
 }
 
