@@ -58,7 +58,7 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
-      - template: get-docker-image-steps.yml
+      - template: ../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
