@@ -56,7 +56,7 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: set-nightly-build-option-variable-step.yml
+      - template: ../templates/set-nightly-build-option-variable-step.yml
 
       - template: get-docker-image-steps.yml
         parameters:

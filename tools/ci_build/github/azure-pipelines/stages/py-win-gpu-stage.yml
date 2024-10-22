@@ -113,7 +113,7 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
               arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
 
-          - template: set-nightly-build-option-variable-step.yml
+          - template: ../templates/set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
             displayName: 'Generate cmake config'

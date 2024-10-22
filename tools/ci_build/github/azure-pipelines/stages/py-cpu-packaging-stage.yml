@@ -132,7 +132,7 @@ stages:
           tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
           appendSourceBranchName: false
 
-      - template: set-nightly-build-option-variable-step.yml
+      - template: ../templates/set-nightly-build-option-variable-step.yml
 
       - task: BatchScript@1
         displayName: 'setup env'
