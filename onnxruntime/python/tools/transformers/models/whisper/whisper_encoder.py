@@ -39,6 +39,7 @@ class WhisperEncoder(torch.nn.Module):
     def export_onnx(
         self,
         onnx_model_path: str,
+        provider: str,
         verbose: bool = True,
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
@@ -47,6 +48,7 @@ class WhisperEncoder(torch.nn.Module):
 
         Args:
             onnx_model_path (str): path to save ONNX model
+            provider (str): provider to use for verifying parity on ONNX model
             verbose (bool, optional): print verbose information. Defaults to True.
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
@@ -95,3 +97,43 @@ class WhisperEncoder(torch.nn.Module):
                     save_as_external_data=True,
                     all_tensors_to_one_file=True,
                 )
+
+        self.verify_onnx(onnx_model_path, provider, use_fp16_inputs)
+
+    def verify_onnx(
+        self,
+        onnx_model_path: str,
+        provider: str,
+        use_fp16_inputs: bool,
+    ):
+        """Verify ONNX model outputs and PyTorch model outputs match 
+
+        Args:
+            onnx_model_path (str): path to save ONNX model
+            provider (str): execution provider for ONNX model
+            use_fp16_inputs (bool, optional): use float16 inputs for the audio_features
+        """
+        # Shape of encoder's tensors:
+        # Inputs:
+        #    audio_features: (batch_size, num_mels, num_frames)
+        # Outputs:
+        #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
+        inputs = get_sample_encoder_inputs(
+            self.config,
+            self.device,
+            batch_size=2,
+            use_fp16=use_fp16_inputs,
+        )
+
+        # Run PyTorch model
+        pt_outputs = self.forward(inputs["audio_features"]).detach().cpu().numpy()
+
+        # Run ONNX model
+        sess = ort.InferenceSession(onnx_model_path, providers=[provider])
+        ort_outputs = sess.run(None, {"audio_features": inputs["audio_features"].detach().cpu().numpy()})[0]
+        
+        # Calculate output difference
+        diff = np.abs(pt_outputs - ort_outputs)
+        logger.warning("Comparing encoder_hidden_states...")
+        # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
+        logger.warning(f"Max diff: {np.max(diff)}")

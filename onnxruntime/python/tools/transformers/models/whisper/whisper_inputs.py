@@ -5,7 +5,9 @@
 # --------------------------------------------------------------------------
 
 import logging
+import numpy as np
 import torch
+from onnxruntime import InferenceSession
 from transformers import WhisperConfig
 from typing import List, Tuple
 
@@ -90,12 +92,12 @@ def get_sample_past_key_values(
         )
         for _ in range(config.num_hidden_layers)
     ]
-    return group_past_key_values(self_attention_kv_caches, cross_attention_kv_caches)
+    return flatten_past_key_values(self_attention_kv_caches, cross_attention_kv_caches)
     # return flatten_past_key_values(self_attention_kv_caches, cross_attention_kv_caches)
 
-# Group KV caches into pairs-of-4 where each pair is defined as:
+# Flatten KV caches into pairs-of-4 where each pair is defined as:
 # (self_attn_key_cache, self_attn_value_cache, cross_attn_key_cache, cross_attn_value_cache)
-def group_past_key_values(
+def flatten_past_key_values(
     self_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
     cross_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
 ):
@@ -105,21 +107,34 @@ def group_past_key_values(
         past_key_values.append(layer_kv_caches)
     return past_key_values
 
-# Flatten KV caches into a 1D list where the list is defined as:
-# [past_key_self_0, past_value_self_0, past_key_self_1, past_value_self_1, ...] + 
-# [past_key_cross_0, past_value_cross_0, past_key_cross_1, past_value_cross_1, ...]
-def flatten_past_key_values(
-    self_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
-    cross_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
+# # Flatten KV caches into a 1D list where the list is defined as:
+# # [past_key_self_0, past_value_self_0, past_key_self_1, past_value_self_1, ...] + 
+# # [past_key_cross_0, past_value_cross_0, past_key_cross_1, past_value_cross_1, ...]
+# def flatten_past_key_values(
+#     self_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
+#     cross_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
+# ):
+#     past_key_values = []
+#     for (self_k_cache, self_v_cache) in self_attn_kv_caches:
+#         past_key_values.append(self_k_cache)
+#         past_key_values.append(self_v_cache)
+#     for (cross_k_cache, cross_v_cache) in cross_attn_kv_caches:
+#         past_key_values.append(cross_k_cache)
+#         past_key_values.append(cross_v_cache)
+#     return past_key_values
+
+# Group KV caches into two 1D lists where one list contains the self attention KV caches and
+# one list contains the cross attention KV caches
+def group_past_key_values(
+    kv_caches: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
 ):
-    past_key_values = []
-    for (self_k_cache, self_v_cache) in self_attn_kv_caches:
-        past_key_values.append(self_k_cache)
-        past_key_values.append(self_v_cache)
-    for (cross_k_cache, cross_v_cache) in cross_attn_kv_caches:
-        past_key_values.append(cross_k_cache)
-        past_key_values.append(cross_v_cache)
-    return past_key_values
+    self_attn_kv_caches, cross_attn_kv_caches = [], []
+    for (self_k_cache, self_v_cache, cross_k_cache, cross_v_cache) in kv_caches:
+        self_attn_kv_caches.append(self_k_cache)
+        self_attn_kv_caches.append(self_v_cache)
+        cross_attn_kv_caches.append(cross_k_cache)
+        cross_attn_kv_caches.append(cross_v_cache)
+    return self_attn_kv_caches, cross_attn_kv_caches
 
 # Create inputs for encoder component of Whisper
 def get_sample_encoder_inputs(
@@ -175,6 +190,46 @@ def get_sample_decoder_inputs(
     encoder_hidden_states = get_sample_encoder_hidden_states(config, device, batch_size, use_fp16)
     past_key_values = get_sample_past_key_values(config, device, batch_size, past_sequence_length, use_fp16)
     return {"decoder_input_ids": decoder_input_ids, "encoder_hidden_states": encoder_hidden_states, "past_key_values": past_key_values}
+
+# Convert PyTorch inputs to ONNX Runtime inputs
+def convert_inputs_for_ort(
+    inputs: dict,
+    model: InferenceSession,
+):
+    self_attn_kv_caches, cross_attn_kv_caches = None, None
+    batch_size, num_heads, past_seq_len, head_size = 0, 0, 0, 0
+    num_beams, max_seq_len = 1, 448
+    if "past_key_values" in inputs:
+        (self_attn_kv_caches, cross_attn_kv_caches) = group_past_key_values(inputs["past_key_values"])
+        batch_size, num_heads, past_seq_len, head_size = self_attn_kv_caches[0].shape
+
+    ort_inputs = {}
+    model_inputs = list(map(lambda i: i.name, model.get_inputs()))
+    use_buffer_sharing = "cache_indirection" in model_inputs
+    for name in model_inputs:
+        if name in {"audio_features", "encoder_input_ids"}:
+            ort_inputs[name] = inputs["audio_features"].detach().cpu().numpy()
+        elif name == "encoder_hidden_states":
+            ort_inputs[name] = inputs["encoder_hidden_states"].detach().cpu().numpy()
+        elif name in {"decoder_input_ids", "input_ids"}:
+            ort_inputs[name] = inputs["decoder_input_ids"].detach().cpu().numpy()
+        elif "self" in name:
+            orig_kv_cache = self_attn_kv_caches.pop(0).detach().cpu().numpy()
+            if use_buffer_sharing:
+                new_kv_cache = np.zeros((batch_size, num_heads, max_seq_len, head_size), dtype=orig_kv_cache.dtype)
+                new_kv_cache[:batch_size, :num_heads, :past_seq_len, :head_size] = orig_kv_cache
+                ort_inputs[name] = new_kv_cache
+            else:
+                ort_inputs[name] = orig_kv_cache
+        elif "cross" in name:
+            orig_kv_cache = cross_attn_kv_caches.pop(0).detach().cpu().numpy()
+            ort_inputs[name] = orig_kv_cache
+        elif name == "past_sequence_length":
+            ort_inputs[name] = np.array([past_seq_len], dtype=np.int32)
+        elif name == "cache_indirection":
+            ort_inputs[name] = np.zeros((batch_size, num_beams, max_seq_len), dtype=np.int32)
+
+    return ort_inputs
 
 # Get dynamic axes for all inputs and outputs to the model
 def get_model_dynamic_axes(

@@ -123,6 +123,7 @@ class WhisperHelper:
     def export_onnx(
         model: Union[WhisperEncoder, WhisperEncoderDecoderInit, WhisperDecoder],
         onnx_model_path: str,
+        provider: str,
         verbose: bool,
         use_external_data_format: bool,
         use_fp16_inputs: bool,
@@ -134,6 +135,7 @@ class WhisperHelper:
 
         Args:
             onnx_model_path (str): path to save ONNX model
+            provider (str): provider to use for verifying parity on ONNX model
             verbose (bool): print verbose information.
             use_external_data_format (bool): use external data format or not.
             use_fp16_inputs (bool): use float16 inputs for the audio_features, encoder_hidden_states, logits, and KV caches.
@@ -144,6 +146,7 @@ class WhisperHelper:
         if isinstance(model, WhisperEncoder):
             model.export_onnx(
                 onnx_model_path,
+                provider,
                 verbose,
                 use_external_data_format,
                 use_fp16_inputs,
@@ -151,6 +154,7 @@ class WhisperHelper:
         elif isinstance(model, WhisperEncoderDecoderInit):
             model.export_onnx(
                 onnx_model_path,
+                provider,
                 verbose,
                 use_external_data_format,
                 use_fp16_inputs,
@@ -159,6 +163,7 @@ class WhisperHelper:
         else:
             model.export_onnx(
                 onnx_model_path,
+                provider,
                 verbose,
                 use_external_data_format,
                 use_fp16_inputs,

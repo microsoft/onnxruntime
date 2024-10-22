@@ -11,7 +11,7 @@ from itertools import chain
 from pathlib import Path
 from typing import List, Optional
 
-import numpy
+import numpy as np
 import onnx
 import torch
 from onnx import ModelProto, ValueInfoProto
@@ -20,7 +20,7 @@ from past_helper import PastKeyValuesHelper
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoder
 from whisper_encoder import WhisperEncoder
-from whisper_inputs import get_model_dynamic_axes, get_sample_encoder_decoder_init_inputs
+from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_encoder_decoder_init_inputs, group_past_key_values
 
 from onnxruntime import InferenceSession
 
@@ -103,7 +103,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             ]
         return output_names
 
-    def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool):
+    def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
         inputs = get_sample_encoder_decoder_init_inputs(
             self.config,
             self.device,
@@ -112,6 +112,11 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             use_fp16=use_fp16_inputs,
             use_int32=use_int32_inputs,
         )
+        if return_dict:
+            if self.no_beam_search_op:
+                del inputs["decoder_input_ids"]
+            return inputs
+
         if self.no_beam_search_op:
             return (inputs["audio_features"], )
         return (inputs["audio_features"], inputs["decoder_input_ids"], )
@@ -173,6 +178,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
     def export_onnx(
         self,
         onnx_model_path: str,
+        provider: str,
         verbose: bool = True,
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
@@ -182,6 +188,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
         Args:
             onnx_model_path (str): path to save ONNX model
+            provider (str): provider to use for verifying parity on ONNX model
             verbose (bool, optional): print verbose information. Defaults to True.
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
@@ -234,3 +241,68 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,
             )
+        
+        self.verify_onnx(onnx_model_path, provider, use_fp16_inputs, use_int32_inputs)
+
+    def verify_onnx(
+        self,
+        onnx_model_path: str,
+        provider: str,
+        use_fp16_inputs: bool,
+        use_int32_inputs: bool,
+    ):
+        """Verify ONNX model outputs and PyTorch model outputs match 
+
+        Args:
+            onnx_model_path (str): path to save ONNX model
+            provider (str): execution provider for ONNX model
+            use_fp16_inputs (bool, optional): use float16 inputs for the audio_features
+            use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids
+        """
+        # Shape of encoder's tensors:
+        # Inputs:
+        #    audio_features: (batch_size, num_mels, num_frames)
+        # Outputs:
+        #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
+        
+        # Shape of decoder's tensors:
+        # Inputs:
+        #    decoder_input_ids: (batch_size, sequence_length)
+        #    encoder_hidden_states (comes from encoder's outputs): (batch_size, num_frames // 2, hidden_size)
+        # Outputs:
+        #    logits: (batch_size, sequence_length, vocab_size)
+        #    present_{key/value}_self_* (present self attention KV caches): (batch_size, num_heads, past_sequence_length + sequence_length, head_size)
+        #    present_{key/value}_cross_* (present cross attention KV caches): (batch_size, num_heads, num_frames // 2, head_size)
+
+        inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
+
+        # Run PyTorch model
+        pt_outputs = []
+        if self.no_beam_search_op:
+            out = self.forward(**inputs)
+            pt_outputs.append(out[0].detach().cpu().numpy())
+            for present_cross_attn_cache in out[1]:
+                pt_outputs.append(present_cross_attn_cache.detach().cpu().numpy())
+        else:
+            out = self.forward(**inputs)
+            pt_outputs.append(out[0].detach().cpu().numpy())
+            pt_outputs.append(out[1].detach().cpu().numpy())
+            
+            (self_attn_kv_caches, cross_attn_kv_caches) = group_past_key_values(out[2])
+            pt_outputs.extend([self_attn_kv_cache.detach().cpu().numpy() for self_attn_kv_cache in self_attn_kv_caches])
+            pt_outputs.extend([cross_attn_kv_cache.detach().cpu().numpy() for cross_attn_kv_cache in cross_attn_kv_caches])
+            # for present_key_value_layer in out[2]:
+            #     for (self_k_cache, self_v_cache, cross_k_cache, cross_v_cache) in present_key_value_layer:
+            #         print(present_key_value.shape)
+            #         pt_outputs.append(present_key_value.detach().cpu().numpy())
+
+        # Run ONNX model
+        sess = InferenceSession(onnx_model_path, providers=[provider])
+        ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
+        
+        # Calculate output difference
+        for i, output_name in enumerate(self.output_names()):
+            diff = np.abs(pt_outputs[i] - ort_outputs[i])
+            logger.warning(f"Comparing {output_name}...")
+            # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
+            logger.warning(f"Max diff: {np.max(diff)}")

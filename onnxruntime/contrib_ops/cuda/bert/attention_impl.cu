@@ -657,6 +657,7 @@ Status UnfusedAttention(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  device_prop.maxThreadsPerBlock, false, temp_output, data.output);
+  DUMP_TENSOR_D("Attention Output", data.output, batch_size, sequence_length, num_heads, v_head_size);
   return result;
 }
 

@@ -80,6 +80,20 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   past_seq_len));
   assert(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
 
+  std::cout << "Batch size = " << parameters.batch_size << std::endl;
+  std::cout << "Sequence length = " << parameters.sequence_length << std::endl;
+  std::cout << "Past sequence length = " << parameters.past_sequence_length << std::endl;
+  std::cout << "KV sequence length = " << parameters.kv_sequence_length << std::endl;
+  std::cout << "Total sequence length = " << parameters.total_sequence_length << std::endl;
+  std::cout << "Max sequence length = " << parameters.max_sequence_length << std::endl;
+  std::cout << "Input hidden size = " << parameters.input_hidden_size << std::endl;
+  std::cout << "Q hidden size = " << parameters.hidden_size << std::endl;
+  std::cout << "V hidden size = " << parameters.v_hidden_size << std::endl;
+  std::cout << "Head size = " << parameters.head_size << std::endl;
+  std::cout << "Num heads = " << parameters.num_heads << std::endl;
+  std::cout << "Buffer sharing = " << parameters.past_present_share_buffer << std::endl;
+  std::cout << "QKV format = " << parameters.qkv_format << std::endl;
+
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
 

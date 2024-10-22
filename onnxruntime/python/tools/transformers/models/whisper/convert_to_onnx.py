@@ -15,6 +15,7 @@ from benchmark_helper import Precision, create_onnxruntime_session, prepare_envi
 from convert_generation import replace_mha_with_dmmha
 from onnx_model import OnnxModel
 from whisper_chain import chain_model
+from whisper_encoder import WhisperEncoder
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
 from onnxruntime import quantization
@@ -377,6 +378,7 @@ def export_onnx_models(
             WhisperHelper.export_onnx(
                 model,
                 onnx_path,
+                PROVIDERS[provider],
                 verbose,
                 use_external_data_format,
                 use_fp16_inputs=(precision == Precision.FLOAT16),
@@ -418,6 +420,20 @@ def export_onnx_models(
                     if os.path.exists(onnx_path + ".data"):
                         os.remove(onnx_path + ".data")
                     onnx_path = output_path
+
+                    if isinstance(model, WhisperEncoder):
+                        model.verify_onnx(
+                            onnx_path,
+                            PROVIDERS[provider],
+                            use_fp16_inputs=(precision == Precision.FLOAT16),
+                        )
+                    else:
+                        model.verify_onnx(
+                            onnx_path,
+                            PROVIDERS[provider],
+                            use_fp16_inputs=(precision == Precision.FLOAT16),
+                            use_int32_inputs=use_int32_inputs,
+                        )
 
                 if precision == Precision.INT8:
                     quantization.quantize_dynamic(
