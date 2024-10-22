@@ -62,6 +62,11 @@ export const createNaiveMatmulProgramInfo = (
   }
   programUniforms.push(...createTensorShapeVariables(outputShapeInShader));
 
+  const outerDimsA = aShape.slice(0, -2);
+  const outerDimsB = bShape.slice(0, -2);
+  const broadcastADims = getBroadcastDims(outerDimsA, outerDims);
+  const broadcastBDims = getBroadcastDims(outerDimsB, outerDims);
+
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const batchDims = internalVariable('batch_dims', inputs[0].dataType, outerDims.length);
     const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
@@ -79,10 +84,6 @@ export const createNaiveMatmulProgramInfo = (
       }`;
     }
 
-    const outerDimsA = aShape.slice(0, -2);
-    const outerDimsB = bShape.slice(0, -2);
-    const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
-    const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
     const uniforms: UniformsArrayType = [
       { name: 'output_size', type: 'u32' },
       { name: 'M', type: 'u32' },
@@ -141,9 +142,9 @@ export const createNaiveMatmulProgramInfo = (
     let batch = index1 / stride1;
 
     ${outputShape.length === 2 ? '' : `let batch_indices = ${batchDims.offsetToIndices('batch')};`}
-    ${getIndices(a, broadCastADims)}
+    ${getIndices(a, broadcastADims)}
     let a_offset = ${a.indicesToOffset('a_indices')};
-    ${getIndices(b, broadCastBDims)}
+    ${getIndices(b, broadcastBDims)}
     let b_offset = ${b.indicesToOffset('b_indices')};
     var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < uniforms.K; k = k + ${aComponents}) {
@@ -160,10 +161,12 @@ export const createNaiveMatmulProgramInfo = (
   }
   `;
   };
+  // Input broadcasting impacts the shader code, and should be handled in cache key
+  const inputBroadcastingDims = `${broadcastADims};${broadcastBDims}`;
   return {
     name: 'MatMulNaive',
     shaderCache: {
-      hint: `${activationAttributes.activation};${components};${aComponents};${outputNumber};${isChannelsLast}`,
+      hint: `${activationAttributes.activation};${components};${aComponents};${outputNumber};${inputBroadcastingDims};${isChannelsLast}`,
       inputDependencies: hasBias ? ['rank', 'rank', 'rank'] : ['rank', 'rank'],
     },
     getRunData: () => ({

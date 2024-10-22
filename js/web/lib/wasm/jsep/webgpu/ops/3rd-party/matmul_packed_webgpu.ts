@@ -548,10 +548,12 @@ export const createMatmulProgramInfo = (
   }
                    `;
   };
+  // Input broadcasting impacts the shader code, and should be handled in cache key
+  const inputBroadcastingDims = `${getBroadcastDims(outerDimsA, outerDims)};${getBroadcastDims(outerDimsB, outerDims)}`;
   return {
     name: 'MatMul',
     shaderCache: {
-      hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${isChannelsLast}`,
+      hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${inputBroadcastingDims};${isChannelsLast}`,
       inputDependencies,
     },
     getRunData: () => ({
