@@ -2066,7 +2066,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path = os.pathsep.join(dll_path_list)
 
         if not ctest_path and not is_windows():
-            executables = ["onnxruntime_test_all", "onnxruntime_mlas_test"]
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
