@@ -572,7 +572,8 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
   // When profiling is disabled, should never run into this function.
-  ORT_ENFORCE(query_type_ != TimestampQueryType::None, "Timestamp query is not enabled.");
+  ORT_ENFORCE(query_type_ != TimestampQueryType::None,
+              "Timestamp query is not enabled. Device: ", AdapterInfo().device, ", Device ID: ", AdapterInfo().deviceID);
 
   // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
   ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
