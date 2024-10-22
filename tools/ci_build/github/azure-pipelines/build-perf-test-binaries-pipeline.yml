@@ -24,6 +24,11 @@ extends:
     pool:
       name: onnxruntime-Win-CPU-2022
       os: windows
+    sdl:
+      tsa:
+        enabled: true
+      policheck:
+        enabled: true
     stages:
     - stage: Windows_Build
       jobs:
@@ -57,11 +62,6 @@ extends:
           Runtime: static
 
       - job: NuGet_Packaging
-        variables:
-          ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
-          ob_sdl_binskim_break: false
-          ob_symbolsPublishing_enabled: ${{ parameters.UploadSymbols }}
-          ob_symbolsPublishing_symbolsFolder: $(Build.SourcesDirectory)/unzipped
         dependsOn:
         - Windows_Packaging_x64_dynamic
         - Windows_Packaging_x86_dynamic
@@ -291,12 +291,6 @@ extends:
                ]
 
       - job: NuGet_Publishing
-        variables:
-          ob_outputDirectory: '$(Build.BinariesDirectory)'
-          ob_sdl_binskim_enabled: false
-          ob_pipelineartifacts_enabled: false
-          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
-            ob_nugetPublishing_enabled: true
         dependsOn:
         - NuGet_Packaging
         condition: succeeded()
@@ -305,6 +299,16 @@ extends:
             - input: pipelineArtifact
               artifactName: drop_Windows_Build_NuGet_Packaging
               targetPath: $(Build.BinariesDirectory)/merged
+          outputs:
+            - output: nuget
+              # condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main')) # Optional condition
+              useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
+              packagesToPush: '$(Build.BinariesDirectory)/packages/*.nupkg;!$(Build.BinariesDirectory)/packages/*.symbols.nupkg'
+              packageParentPath: '$(Build.BinariesDirectory)/'
+              publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
+              nuGetFeedType: internal  # Change to external when publishing to external feed
+              allowPackageConflicts: true # Optional. NuGetCommand task only.
+              publishPackageMetadata: true # Optional
         steps:
         - powershell: |
            Rename-Item  -Path merged packages
