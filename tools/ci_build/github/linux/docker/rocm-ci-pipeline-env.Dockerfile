@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-24.04-complete
 FROM ubuntu:24.04
 
-ARG ROCM_VERSION=6.2.3
+ARG ROCM_VERSION=6.2
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -69,7 +69,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 # Create rocm-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
 ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.10
+RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.12
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Enable rocm-ci environment
@@ -92,7 +92,7 @@ RUN apt install -y git
 # Install Cupy to decrease CPU utilization
 # Note that the version of Cupy requires numpy < 1.27
 RUN git clone https://github.com/ROCm/cupy && cd cupy && \
-    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
+    git checkout 2f5409233679582df9f917c75714f129574efc2c && \
     export CUPY_INSTALL_USE_HIP=1 && \
     export ROCM_HOME=/opt/rocm && \
     export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
