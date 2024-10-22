@@ -355,7 +355,7 @@ stages:
     - stage: Python_Packaging_Linux_ARM
       dependsOn: []
       jobs:
-        - template: py-linux.yml
+        - template: ../templates/py-linux.yml
           parameters:
             arch: 'aarch64'
             machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
@@ -366,7 +366,7 @@ stages:
     - stage: Python_Packaging_Linux_CPU
       dependsOn: []
       jobs:
-      - template: py-linux.yml
+      - template: ../templates/py-linux.yml
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
@@ -377,7 +377,7 @@ stages:
     - stage: Python_Packaging_Windows_ARM64_QNN
       dependsOn: []
       jobs:
-      - template: py-win-arm64-qnn.yml
+      - template: ../templates/py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
@@ -387,7 +387,7 @@ stages:
     - stage: Python_Packaging_Windows_arm64ec_QNN
       dependsOn: []
       jobs:
-        - template: py-win-arm64ec-qnn.yml
+        - template: ../templates/py-win-arm64ec-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}
@@ -397,7 +397,7 @@ stages:
     - stage: Python_Packaging_Windows_x64_QNN
       dependsOn: []
       jobs:
-        - template: py-win-x64-qnn.yml
+        - template: ../templates/py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}
@@ -407,7 +407,7 @@ stages:
     - stage: Python_Packaging_Linux_x64_QNN
       dependsOn: []
       jobs:
-      - template: py-linux-qnn.yml
+      - template: ../templates/py-linux-qnn.yml
         parameters:
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
