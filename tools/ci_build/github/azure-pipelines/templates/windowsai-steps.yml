@@ -16,11 +16,6 @@ parameters:
 
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
-
-  variables:
-    ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
-    ob_sdl_binskim_break: true
-    ob_sdl_binskim_scanOutputDirectoryOnly: true
   steps:
     - task: UseDotNet@2
       inputs:
