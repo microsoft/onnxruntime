@@ -95,7 +95,7 @@ stages:
           --android_sdk_path $ANDROID_HOME \
           --android_ndk_path $ANDROID_NDK_HOME \
           --android_abi=x86_64 \
-          --android_api=30 \
+          --android_api=33 \
           --skip_submodule_sync \
           --parallel \
           --cmake_generator=Ninja \
