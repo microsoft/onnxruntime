@@ -61,10 +61,6 @@ parameters:
   displayName: 'QNN SDK version. Only for QNN packages.'
   default: 2.27.0.240926
 
-- name: publish_symbols
-  type: boolean
-  default: false
-
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
   - stage: Python_Packaging_Windows_CPU
@@ -170,21 +166,9 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
-            --parallel --use_binskim_compliant_compile_flags --update
+            --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
-
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
-          platform: $(MsbuildPlatform)
-          configuration: ${{ parameters.cmake_build_type }}
-          msbuildArchitecture: $(buildArch)
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}'
-          createLogFile: true
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml
@@ -241,27 +225,6 @@ stages:
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
-      - ${{ if eq(parameters.publish_symbols, true) }}:
-        - task: PublishSymbols@2
-          displayName: 'Publish symbols'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-          inputs:
-            SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
-            SearchPattern: |
-               onnxruntime_pybind11_state.pdb
-               onnxruntime_providers_shared.pdb
-            IndexSources: true
-            SymbolServerType: TeamServices
-            SymbolExpirationInDays: 3650
-            SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
-
-      - task: TSAUpload@2
-        displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        inputs:
-          GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-        continueOnError: true
 
       - template: ../templates/component-governance-component-detection-steps.yml
         parameters:

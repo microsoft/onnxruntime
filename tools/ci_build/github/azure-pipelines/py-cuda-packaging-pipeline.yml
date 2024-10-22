@@ -1,4 +1,17 @@
 trigger: none
+# The `resources` specify the location and version of the 1ES PT.
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
 
 parameters:
   - name: enable_linux_cuda
