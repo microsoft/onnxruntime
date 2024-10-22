@@ -25,7 +25,7 @@ parameters:
 
 - name: runTests
   type: boolean
-  default: true
+  default: false
 
 - name: buildJava
   type: boolean
