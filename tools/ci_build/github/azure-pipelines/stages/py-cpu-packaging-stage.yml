@@ -141,7 +141,7 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - template: download-deps.yml
+      - template: ../templates/download-deps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
@@ -306,7 +306,7 @@ stages:
 
       - template: use-xcode-version.yml
 
-      - template: download-deps.yml
+      - template: ../templates/download-deps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
