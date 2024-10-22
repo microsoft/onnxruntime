@@ -198,7 +198,7 @@ template <typename T>
 std::vector<T> GetTypedArray(std::vector<float> inputs) {
   static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value ||
                     std::is_same<T, MLFloat16>::value || std::is_integral_v<T>,
-                "Only float, double and MLFloat16 are supported.");
+                "Only float, double, MLFloat16, and integral types are supported.");
   if constexpr (std::is_same<T, float>::value) {
     return inputs;
   } else if constexpr (std::is_integral_v<T> || std::is_same<T, double>::value) {

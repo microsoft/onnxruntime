@@ -155,7 +155,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
     if (add_gelu_mode) {
       NodeAttrHelper helper(node);
-      std::string approximate = helper.Get("approximate", std::string("EXACT"));
+      std::string approximate = helper.Get("approximate", std::string("none"));
       if (approximate == "tanh") {
         approximate = "TANH_APPROXIMATION";
       } else if (approximate == "none") {
