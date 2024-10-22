@@ -25,7 +25,7 @@ parameters:
 
 stages:
 - ${{ each python_version in parameters.PythonVersions }}:
-  - template: py-win-gpu.yml
+  - template: py-win-gpu-stage.yml
     parameters:
       MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
       PYTHON_VERSION: ${{ python_version }}

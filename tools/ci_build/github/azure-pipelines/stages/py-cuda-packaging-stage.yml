@@ -34,7 +34,6 @@ parameters:
    - 11.8
    - 12.2
 
-- name: Build
 - name: PythonVersions
   type: object
   displayName: 'Python versions to build'
