@@ -1,5 +1,5 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG ROCM_VERSION=6.2.3
 ARG AMDGPU_VERSION=${ROCM_VERSION}
@@ -12,33 +12,26 @@ RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
-    curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
-    printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
-    printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    sudo \
-    libelf1 \
-    kmod \
-    file \
-    python3 \
-    python3-pip \
-    rocm-dev \
-    rocm-libs \
-    g++-12 \
-    gcc-12 \
-    build-essential && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+  apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
+  curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
+  printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ noble main" | tee --append /etc/apt/sources.list.d/rocm.list && \
+  printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu noble main" | tee /etc/apt/sources.list.d/amdgpu.list && \
+  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  sudo \
+  libelf1 \
+  kmod \
+  file \
+  python3-dev \
+  python3-pip \
+  rocm-dev \
+  rocm-libs \
+  build-essential && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -g 109 render
 
-# Upgrade GCC
-RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
-    apt-get install -y gcc-12 g++-12 && \
-    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
-    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12 && \
-    apt-get clean -y
+
 
 # Upgrade to meet security requirements
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
