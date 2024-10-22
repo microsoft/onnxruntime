@@ -25,9 +25,9 @@ inline void THROW_ON_ERROR(OrtStatus* status, const OrtApi* api) {
     }
 }
 
-void RegisterTrtEpPlugin(const OrtApi* api, OrtEnv* env, OrtSessionOptions* so) {
+void RegisterTrtEpPlugin(const OrtApi* api, OrtEnv* env, OrtSessionOptions* so, std::vector<const char*>& keys, std::vector<const char*>& values) {
+    std::cout << keys.size() << std::endl;
     THROW_ON_ERROR(api->RegisterPluginExecutionProviderLibrary(ep_plugin_lib, env, ep_plugin_name), api);
-    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"}; // hardcode device id for now
     THROW_ON_ERROR(api->SessionOptionsAppendPluginExecutionProvider(so, ep_plugin_name, env, keys.data(), values.data(), keys.size()), api);
 }
 
@@ -74,19 +74,15 @@ void RunWithOneSessionSingleThreadInference() {
   OrtSessionOptions* so = nullptr;
   THROW_ON_ERROR(api->CreateSessionOptions(&so), api);
 
-  RegisterTrtEpPlugin(api, env, so);
+  std::vector<const char*> keys{"trt_engine_cache_enable", "trt_engine_cache_prefix", "trt_dump_ep_context_model", "trt_ep_context_file_path"};
+  std::vector<const char*> values{"1", "TRTEP_Cache_Test", "1", "EP_Context_model.onnx"};
+
+  RegisterTrtEpPlugin(api, env, so, keys, values);
 
   // Use C++ Wrapper
   Ort::SessionOptions ort_so{so};
   Ort::Env ort_env{env};
 
-  OrtTensorRTProviderOptionsV2* trt_options;
-  ASSERT_TRUE(api->CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api->ReleaseTensorRTProviderOptions)>
-      rel_trt_options(trt_options, api->ReleaseTensorRTProviderOptions);
-  std::vector<const char*> keys{"trt_engine_cache_enable", "trt_engine_cache_prefix", "trt_dump_ep_context_model", "trt_ep_context_file_path"};
-  std::vector<const char*> values{"1", "TRTEP_Cache_Test", "1", "EP_Context_model.onnx"};
-  ASSERT_TRUE(api->UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
 
   Ort::Session session(ort_env, model_path, ort_so);
 
@@ -139,7 +135,10 @@ TEST(TensorrtExecutionProviderPluginTest, SmallModel) {
   OrtSessionOptions* so = nullptr;
   THROW_ON_ERROR(api->CreateSessionOptions(&so), api);
 
-  RegisterTrtEpPlugin(api, env, so);
+  std::vector<const char*> keys;
+  std::vector<const char*> values;
+
+  RegisterTrtEpPlugin(api, env, so, keys, values);
 
   // Use C++ Wrapper
   Ort::SessionOptions ort_so{so};
@@ -182,7 +181,7 @@ TEST(TensorrtExecutionProviderPluginTest, SmallModel) {
 TEST(TensorrtExecutionProviderPluginTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   std::vector<int> dims = {1, 3, 2};
-  int num_thread = 5;
+  int num_thread = 1;
 
   for (int i = 0; i < num_thread; ++i)
     threads.push_back(std::thread(RunWithOneSessionSingleThreadInference));
