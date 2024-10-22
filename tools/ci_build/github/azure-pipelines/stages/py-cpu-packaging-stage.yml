@@ -61,6 +61,10 @@ parameters:
   displayName: 'QNN SDK version. Only for QNN packages.'
   default: 2.27.0.240926
 
+- name: publish_symbols
+  type: boolean
+  default: false
+
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
   - stage: Python_Packaging_Windows_CPU
