@@ -28,9 +28,6 @@ class CastOpBuilder : public BaseOpBuilder {
 
  public:
   bool SupportsMLProgram() const override { return true; }
-
- private:
-  mutable bool fused_into_prev_{false};
 };
 
 Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
@@ -38,9 +35,10 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
                                             [[maybe_unused]] const logging::Logger& logger) const {
 // This is a special handling case for ArgMax Op, where argmax is followed by a cast to int32 type.
 // The ArgMax is fused with the Cast node and produces an int32 output.
-// Cast node is not provided in CoreML model, so we're skipping adding the Cast node here.
 #if defined(COREML_ENABLE_MLPROGRAM)
-  if (model_builder.CreateMLProgram() && !fused_into_prev_) {
+  auto input_dtype =  node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  // TensorProto_DataType_INT64 is not supported in CoreML MLProgram, only when the predeceased node is ArgMax
+  if (model_builder.CreateMLProgram() && input_dtype != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.cast
 
@@ -76,9 +74,6 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
-    if (is_supported) {
-      fused_into_prev_ = true;
-    }
     // cast only support int64 input when the prec_node is ArgMax
     int32_t input_type;
     GetType(*node.InputDefs()[0], input_type, logger);
