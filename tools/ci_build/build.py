@@ -1028,7 +1028,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
-        "-Donnxruntime_TEST_TENSORRT_EP_PLUGIN =" + ("ON" if args.test_tensorrt_ep_plugin else "OFF"),
+        "-Donnxruntime_TEST_TENSORRT_EP_PLUGIN=" + ("ON" if args.test_tensorrt_ep_plugin else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
