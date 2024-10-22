@@ -4,7 +4,7 @@
 #include "qlinear_binary_op.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/platform/threadpool.h"
 
 using onnxruntime::concurrency::ThreadPool;

@@ -8,7 +8,7 @@
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace onnxruntime {
 

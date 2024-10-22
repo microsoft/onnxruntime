@@ -7,7 +7,7 @@
 #include <string>
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"

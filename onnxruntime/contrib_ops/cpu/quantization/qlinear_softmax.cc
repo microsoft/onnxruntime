@@ -13,7 +13,7 @@
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/platform/threadpool.h"
 #include <gsl/gsl>
 

@@ -10,7 +10,7 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace onnxruntime {
 // uint8_t kernel supports weight being either uint8_t or int8_t

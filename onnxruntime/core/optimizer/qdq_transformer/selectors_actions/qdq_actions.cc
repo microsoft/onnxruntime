@@ -9,7 +9,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas_q4.h"
+#include "mlas_q4.h"
 
 namespace onnxruntime {
 namespace QDQ {

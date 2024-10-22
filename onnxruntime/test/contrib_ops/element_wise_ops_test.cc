@@ -7,7 +7,7 @@
 #include <cmath>
 
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"

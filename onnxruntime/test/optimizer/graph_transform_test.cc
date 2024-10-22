@@ -19,7 +19,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/mlas/inc/mlas_q4.h"
+#include "mlas_q4.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"

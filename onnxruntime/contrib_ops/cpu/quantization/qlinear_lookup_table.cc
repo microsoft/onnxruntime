@@ -3,7 +3,7 @@
 
 #include "qlinear_lookup_table.h"
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

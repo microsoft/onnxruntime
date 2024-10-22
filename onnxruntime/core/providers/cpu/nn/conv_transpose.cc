@@ -17,7 +17,7 @@
 
 #include "core/providers/cpu/nn/conv_transpose.h"
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/common/safeint.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"

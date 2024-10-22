@@ -6,7 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "graph_transform_test_builder.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {

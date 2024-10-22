@@ -5,7 +5,7 @@
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 #include "core/platform/threadpool.h"
 #include <unsupported/Eigen/SpecialFunctions>

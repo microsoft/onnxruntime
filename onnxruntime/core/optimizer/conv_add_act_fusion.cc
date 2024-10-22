@@ -5,7 +5,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_act_fusion.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
 

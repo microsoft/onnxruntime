@@ -3,7 +3,7 @@
 
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"

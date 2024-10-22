@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace onnxruntime {
 namespace test {

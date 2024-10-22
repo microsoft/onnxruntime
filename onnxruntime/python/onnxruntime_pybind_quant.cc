@@ -5,7 +5,7 @@
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
 
-#include "core/mlas/inc/mlas_q4.h"
+#include "mlas_q4.h"
 #include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
 

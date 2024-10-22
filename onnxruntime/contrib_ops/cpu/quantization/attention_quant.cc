@@ -9,7 +9,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 using onnxruntime::concurrency::ThreadPool;
 

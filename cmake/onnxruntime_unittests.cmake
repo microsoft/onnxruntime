@@ -1190,25 +1190,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
     set_target_properties(onnxruntime_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
 
-    SET(MLAS_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench)
-    file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
-    onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
-    target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-    target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
-    target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
-    if(WIN32)
-      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
-      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
-      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26409)
-      # "Global initializer calls a non-constexpr function." BENCHMARK_CAPTURE macro needs this.
-      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26426)
-    else()
-      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE  ${CMAKE_DL_LIBS})
-    endif()
-    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
-    endif()
-    set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   if(WIN32)
@@ -1463,55 +1444,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
-    file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
-      "${TEST_SRC_DIR}/mlas/unittest/*.h"
-      "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
-    )
-    onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
-    if(MSVC)
-      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26409>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
-      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
-              "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6326>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
-      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
-    endif()
-    if(IOS)
-      set_target_properties(onnxruntime_mlas_test PROPERTIES
-        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-      )
-    endif()
-    target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
-            ${CMAKE_CURRENT_BINARY_DIR})
-    target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
-    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
-    endif()
-    if(NOT WIN32)
-      target_link_libraries(onnxruntime_mlas_test PRIVATE  ${CMAKE_DL_LIBS})
-    endif()
-    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-      target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
-    endif()
-    if(WIN32)
-      target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
-    endif()
-    if (onnxruntime_LINK_LIBATOMIC)
-      target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
-    endif()
-    target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
-    set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-        set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
-      else()
-        set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
-      endif()
-    endif()
-endif()
+
   # Training API Tests
   # Disabling training_api_test_trainer. CXXOPT generates a ton of warnings because of which nuget pipeline is failing.
   # TODO(askhade): Fix the warnings.

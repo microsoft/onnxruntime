@@ -8,7 +8,7 @@
 #include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/util/qmath.h"
 
 namespace onnxruntime {
