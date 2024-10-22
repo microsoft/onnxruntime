@@ -14,6 +14,7 @@
 //
 
 import fs from 'fs';
+import {bootstrap as global_agent_bootstrap} from 'global-agent';
 import https from 'https';
 import jszip from 'jszip';
 import path from 'path';
@@ -110,6 +111,9 @@ console.log(
     buildId ? `build "${buildId}"` : 'latest "main" branch'
   } ===`,
 );
+
+// Bootstrap global-agent to honor the proxy settings
+global_agent_bootstrap();
 
 const filter = buildId
   ? `&buildIds=${buildId}`

@@ -2,8 +2,12 @@
 // Licensed under the MIT License.
 
 import { WriteStream } from 'fs';
+import {bootstrap as global_agent_bootstrap} from 'global-agent';
 import * as https from 'https';
 import { JSZipObject } from 'jszip';
+
+// Bootstrap global-agent to honor the proxy settings
+global_agent_bootstrap();
 
 export const downloadZip = async (url: string): Promise<Buffer> =>
   new Promise<Buffer>((resolve, reject) => {
