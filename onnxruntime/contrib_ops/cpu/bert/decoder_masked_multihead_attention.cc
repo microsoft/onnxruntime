@@ -375,7 +375,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
         }
       }
       // Append current key to present key (past_present_share_buffer_ is true)
-      memcpy(present_key_data + i * max_sequence_length * head_size, K + i * head_size, head_size * sizeof(T));
+      memcpy(present_key_data + (i * max_sequence_length + past_sequence_length) * head_size,
+             K + i * head_size, head_size * sizeof(T));
     }
   });
 
@@ -460,7 +461,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeVxAttentionScoreWithBeams(
             }
           }
           // Append current value to present value (past_present_share_buffer_ is true)
-          memcpy(present_value_data + i * max_sequence_length * v_head_size,
+          memcpy(present_value_data + (i * max_sequence_length + past_sequence_length) * v_head_size,
                  V + i * v_head_size,
                  v_head_size * sizeof(T));
         }
