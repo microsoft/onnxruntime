@@ -11,7 +11,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 #include "tvm_compiler.h"
 #include "tvm_runner.h"
