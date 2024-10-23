@@ -162,17 +162,22 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
                                  (info.session_options &&
                                   info.session_options->config_options.GetConfigOrDefault(
                                       kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
-  if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size > 1) {
+  if (xnn_thread_pool_size == 0) {
+    if (ort_thread_pool_size == 0) {
+      // By default, intra_op_num_threads is 0, so we set xnn_thread_pool_size to the number of physical cores - 1.
+      xnn_thread_pool_size = Env::Default().GetNumPhysicalCpuCores() - 1;
+    } else {
+      xnn_thread_pool_size = ort_thread_pool_size;
+    }
+  }
+
+  if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size != 1) {
     LOGS_DEFAULT(WARNING)
         << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
            "If ORT's thread pool size is > 1 and spinning is enabled, "
            "there will be contention between the two thread pools, and performance will suffer."
            "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
            "or the ORT intra-op threadpool size to 1.";
-  }
-
-  if (xnn_thread_pool_size == 0) {
-    xnn_thread_pool_size = ort_thread_pool_size;
   }
 
   if (xnn_thread_pool_size > 1) {
