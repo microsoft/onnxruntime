@@ -51,7 +51,23 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-2022
+        name: ${{ parameters.machine_pool }}
+        os: linux
+      templateContext:
+        codeSignValidation:
+          enabled: true
+          break: true
+        psscriptanalyzer:
+          enabled: true
+        sdl:
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+            targetPathPattern: '\".*.so\"'
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: onnxruntime_${{ parameters.EP_NAME }}
       variables:
         GRADLE_OPTS: '-Dorg.gradle.daemon=false'
         VSGenerator: 'Visual Studio 17 2022'
@@ -163,11 +179,6 @@ stages:
               SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
               Contents: '*.whl'
               TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Artifact: ONNXRuntime python wheel'
-            inputs:
-              ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
 
           - ${{ if eq(parameters.publish_symbols, true) }}:
             - task: PublishSymbols@2
