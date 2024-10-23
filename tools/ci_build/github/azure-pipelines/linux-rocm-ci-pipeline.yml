@@ -188,6 +188,8 @@ jobs:
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
             . /ort/env/bin/activate; \
+            pip install /build/Release/dist/*.whl; \
+            pip show onnxruntime-rocm; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -233,6 +235,7 @@ jobs:
           onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "set -ex; \
             . /ort/env/bin/activate; \
+            pip install /build/Release/dist/*.whl; \
             pip list; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)

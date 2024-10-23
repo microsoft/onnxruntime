@@ -63,7 +63,7 @@ RUN mkdir -p /tmp/ccache && \
 WORKDIR /ort
 COPY scripts/requirements.txt /ort/
 RUN python3 -m venv /ort/env && . /ort/env/bin/activate && \
-    pip install --upgrade pip && \
+    pip install --upgrade pip setuptools wheel && \
     pip install -r /ort/requirements.txt && \
     pip install ml_dtypes pytest-xdist pytest-rerunfailures scipy
 
@@ -78,5 +78,5 @@ RUN git clone https://github.com/ROCm/cupy && cd cupy && \
     export ROCM_HOME=/opt/rocm && \
     export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
     git submodule update --init && \
-    . /ort/env/bin/activate; \
+    . /ort/env/bin/activate && \
     pip install -e . --no-cache-dir -vvvv
