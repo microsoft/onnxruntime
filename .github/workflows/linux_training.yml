@@ -12,7 +12,7 @@ concurrency:
   
 jobs:
   orttraining-linux-ci-pipeline:
-    runs-on: ubuntu-24.04
+    runs-on: onnxruntime-github-Ubuntu2204-AMD-CPU
     permissions:
       actions: read
       contents: read
