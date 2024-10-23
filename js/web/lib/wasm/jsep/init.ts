@@ -123,6 +123,29 @@ class ComputeContextImpl implements ComputeContext {
     return this.backend.device.limits.maxComputeWorkgroupStorageSize;
   }
 
+  isSubgroupsSupported(): boolean {
+    return this.backend.device.features.has('subgroups' as GPUFeatureName);
+  }
+
+  isSubgroupsF16Supported(): boolean {
+    return this.backend.device.features.has('subgroups-f16' as GPUFeatureName);
+  }
+
+  getSubgroupSizeRange(): [number, number] | undefined {
+    // Currently subgroups feature is still experimental and size attributes are not in the WebGPU IDL, so we have to
+    // workaround the IDL type checks.
+    // TODO: clean this after subgroups feature is sattled in IDL.
+    const deviceSubgroupsLimits = this.backend.device.limits as { minSubgroupSize?: number; maxSubgroupSize?: number };
+    if (
+      !this.isSubgroupsSupported() ||
+      !deviceSubgroupsLimits.minSubgroupSize ||
+      !deviceSubgroupsLimits.maxSubgroupSize
+    ) {
+      return undefined;
+    }
+    return [deviceSubgroupsLimits.minSubgroupSize, deviceSubgroupsLimits.maxSubgroupSize];
+  }
+
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
