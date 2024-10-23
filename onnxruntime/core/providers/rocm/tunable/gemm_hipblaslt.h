@@ -37,26 +37,26 @@ enum ActivationType {
 };
 
 template <typename T>
-constexpr hipblasltDatatype_t HipBlasDataTypeFor();
+constexpr hipDataType HipBlasDataTypeFor();
 
 template <>
-constexpr hipblasltDatatype_t HipBlasDataTypeFor<float>() {
-  return HIPBLASLT_R_32F;
+constexpr hipDataType HipBlasDataTypeFor<float>() {
+  return HIP_R_32F;
 }
 
 template <>
-constexpr hipblasltDatatype_t HipBlasDataTypeFor<half>() {
-  return HIPBLASLT_R_16F;
+constexpr hipDataType HipBlasDataTypeFor<half>() {
+  return HIP_R_16F;
 }
 
 template <>
-constexpr hipblasltDatatype_t HipBlasDataTypeFor<BFloat16>() {
-  return HIPBLASLT_R_16B;
+constexpr hipDataType HipBlasDataTypeFor<BFloat16>() {
+  return HIP_R_16BF;
 }
 
 template <>
-constexpr hipblasltDatatype_t HipBlasDataTypeFor<double>() {
-  return HIPBLASLT_R_64F;
+constexpr hipDataType HipBlasDataTypeFor<double>() {
+  return HIP_R_64F;
 }
 
 template <BlasOp Op>
@@ -108,7 +108,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
   hipblasOperation_t trans_a = MapBlasOpToHipBlasLt<OpB>();
   hipblasOperation_t trans_b = MapBlasOpToHipBlasLt<OpA>();
-  hipblasltDatatype_t in_out_datatype = HipBlasDataTypeFor<T>();
+  hipDataType in_out_datatype = HipBlasDataTypeFor<T>();
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
 
   HIPBLASLT_CALL_THROW(hipblaslt_ext::getAllAlgos(handle,
@@ -119,7 +119,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                   in_out_datatype,
                                                   in_out_datatype,
                                                   in_out_datatype,
-                                                  HIPBLASLT_COMPUTE_F32,
+                                                  HIPBLAS_COMPUTE_32F,
                                                   heuristic_result));
   HIPBLASLT_CALL_THROW(hipblasLtDestroy(handle));
 
@@ -161,7 +161,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_a, in_out_datatype, row_a, col_a, lda));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_b, in_out_datatype, row_b, col_b, ldb));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_c, in_out_datatype, row_c, col_c, ldc));
-      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescCreate(&matmul, HIPBLASLT_COMPUTE_F32, HIPBLASLT_R_32F));
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescCreate(&matmul, HIPBLAS_COMPUTE_32F, HIP_R_32F));
 
       int batch = GetBatchCountFromParams<T>(params);
       if (batch > 1) {
