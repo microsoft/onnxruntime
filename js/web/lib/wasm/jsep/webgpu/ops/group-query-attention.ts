@@ -3,12 +3,15 @@
 
 import { TensorView } from '../../tensor-view';
 import { createAttributeWithCacheKey } from '../attribute-with-cache-key';
-import { ComputeContext } from '../types';
+import { ComputeContext, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
+import { DataType } from '../../../wasm-common';
 
 import { applyAttention, AttentionMaskType, AttentionParameters, AttentionQkvFormat } from './attention';
 import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
 import { createSplitProgramInfo, SplitAttributes } from './split';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
+import { RotaryEmbeddingAttributes, createRotaryEmbeddingProgramInfo } from './rotary-embedding';
+import { inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType } from './common';
 export interface GroupQueryAttentionAttributes {
   numHeads: number;
   kvNumHeads: number;
@@ -32,6 +35,9 @@ export const validateInputs = (
   const value = inputs[2];
   const pastKey = inputs[3];
   const pastValue = inputs[4];
+  if (attributes.doRotary !== 0 && inputs.length <= 7) {
+    throw new Error('cos_cast and sin_cache are expected if do_rotary attribute is non-zero');
+  }
   if (attributes.localWindowSize !== -1) {
     throw new Error('Local attention is not supported');
   }
@@ -235,6 +241,66 @@ const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params
   return reshapedInput;
 };
 
+const generatePositionIdsProgramInfo = (
+  batchSize: number,
+  sequenceLength: number,
+  seqLens: TensorView,
+  totalSeqLen: TensorView,
+) => {
+  const outputDataType = DataType.int64;
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
+  const outputShape = [batchSize * sequenceLength];
+  const outputSize = batchSize * sequenceLength;
+  const programUniforms: ProgramUniform[] = [
+    { type: DataType.uint32, data: outputSize },
+    { type: DataType.uint32, data: sequenceLength },
+  ];
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const seqLensInputHelper = inputVariable('seq_lens', seqLens.dataType, seqLens.dims);
+    const totalSeqLenInputHelper = inputVariable('total_seq_lens', totalSeqLen.dataType, totalSeqLen.dims);
+    const positionIdsHelper = outputVariable('pos_ids', outputDataType, outputShape);
+
+    const uniforms: UniformsArrayType = [
+      { name: 'output_size', type: 'u32' },
+      { name: 'sequence_length', type: 'u32' },
+    ];
+    const outputType = tensorTypeToWsglStorageType(outputDataType);
+
+    return `
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(seqLensInputHelper, totalSeqLenInputHelper, positionIdsHelper)}
+  ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+    let total_sequence_length = u32(${totalSeqLenInputHelper.getByOffset('0')});
+    let is_subsequent_prompt = uniforms.sequence_length > 1 && uniforms.sequence_length != total_sequence_length;
+    let is_first_prompt = !is_subsequent_prompt && uniforms.sequence_length == total_sequence_length;
+    let batch_idx = global_idx / uniforms.sequence_length;
+    let sequence_idx = global_idx % uniforms.sequence_length;
+    var pos_id: ${outputType} = ${outputType}(0);
+    if (is_first_prompt == false) {
+      let total_seqlen = u32(${seqLensInputHelper.getByOffset('batch_idx')}) + 1u;
+      let past_seqlen = u32(total_seqlen - uniforms.sequence_length);
+      if (past_seqlen + sequence_idx < total_seqlen) {
+        pos_id = ${outputType}(past_seqlen + sequence_idx);
+      } else {
+        pos_id = ${outputType}(1);
+      }
+    }
+    pos_ids[global_idx] = pos_id;
+  }
+  `;
+  };
+  return {
+    name: 'GeneratePositionIds',
+    shaderCache: { hint: `${batchSize}`, inputDependencies },
+    getRunData: () => ({
+      outputs: [{ dims: outputShape, dataType: outputDataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+      programUniforms,
+    }),
+    getShaderSource,
+  };
+};
+
 export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttributes): void => {
   const params = validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 5) {
@@ -276,11 +342,38 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     undefined,
     0,
   );
+  const K = maybeTransposeToBNSH(context, key, params);
+  const V = maybeTransposeToBNSH(context, value, params);
+  let qRotary: TensorView | undefined;
+  let kRotary: TensorView | undefined;
+  if (attributes.doRotary) {
+    const posIds = context.compute(
+      generatePositionIdsProgramInfo(params.batchSize, params.sequenceLength, seqLens!, totalSequenceLengthInput!),
+      { inputs: [seqLens!, totalSequenceLengthInput!], outputs: [-1] },
+    )[0];
+    const cosCache = context.inputs[7];
+    const sinCache = context.inputs[8];
+    const rotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
+      interleaved: false,
+      numHeads: params.numHeads,
+      rotaryEmbeddingDim: 2 * cosCache.dims[1],
+      scale: attributes.scale,
+    });
+
+    qRotary = context.compute(
+      createRotaryEmbeddingProgramInfo([Q, posIds, cosCache, sinCache], rotaryEmbeddingAttributes),
+      { inputs: [Q, posIds, cosCache, sinCache], outputs: [-1] },
+    )[0];
+    kRotary = context.compute(
+      createRotaryEmbeddingProgramInfo([K, posIds, cosCache, sinCache], rotaryEmbeddingAttributes),
+      { inputs: [K, posIds, cosCache, sinCache], outputs: [-1] },
+    )[0];
+  }
   applyAttention(
     context,
-    Q,
-    maybeTransposeToBNSH(context, key, params),
-    maybeTransposeToBNSH(context, value, params),
+    attributes.doRotary ? qRotary! : Q,
+    attributes.doRotary ? kRotary! : K,
+    V,
     undefined,
     undefined,
     pastKey,
