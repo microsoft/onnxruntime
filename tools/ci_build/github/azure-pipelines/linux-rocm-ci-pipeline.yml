@@ -38,8 +38,6 @@ variables:
     value: 109
   - name: RocmVersion
     value: 6.2
-  - name: RocmVersionPatchSuffix
-    value: ""
 
 jobs:
 - job: Linux_Build
@@ -66,8 +64,8 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
-      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      Repository: onnxruntime-rocm-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
     inputs:
@@ -95,11 +93,12 @@ jobs:
           --volume $(CCACHE_DIR):/cache \
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
-          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
+          onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
-            env; \
             ccache -s; \
+            . /ort/env/bin/activate; \
+            env; \
             python tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -166,8 +165,8 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
-      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      Repository: onnxruntime-rocm-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
@@ -184,10 +183,11 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
           --workdir /build/Release \
-          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
+          onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
+            . /ort/env/bin/activate; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -230,8 +230,11 @@ jobs:
           -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
           -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           -e CUPY_CACHE_DIR=/build/Release \
-          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
-            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
+          onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
+            /bin/bash -c "set -ex; \
+            . /ort/env/bin/activate; \
+            pip list; \
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()
