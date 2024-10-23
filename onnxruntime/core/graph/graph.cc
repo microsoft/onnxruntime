@@ -4108,11 +4108,12 @@ void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_inf
 
     // padding tensor with zeros for alignment
     InlinedVector<uint8_t> paddings;
-    paddings.reserve(SafeInt<size_t>(new_external_offset - external_offset));
-    for (int64_t index = external_offset; index != new_external_offset; ++index) {
+    size_t padding_size = SafeInt<size_t>(new_external_offset - external_offset);
+    paddings.reserve(padding_size);
+    for (size_t index = 0; index != padding_size; ++index) {
       paddings.push_back(0x0);
     }
-    external_stream.write(reinterpret_cast<const char*>(paddings.data()), new_external_offset - external_offset);
+    external_stream.write(reinterpret_cast<const char*>(paddings.data()), padding_size);
 
     external_offset = new_external_offset;
   }
