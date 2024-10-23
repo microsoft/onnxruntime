@@ -28,6 +28,8 @@ jobs:
   variables:
   - name: runCodesignValidationInjection
     value: false
+  - name: QnnSDKVersionYaml
+    value: $[ dependencies.Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}.outputs['Set_QnnSDKVersionYaml.QnnSDKVersionYaml'] ]
   timeoutInMinutes: 90
   dependsOn:
     - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}

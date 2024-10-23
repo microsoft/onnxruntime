@@ -21,15 +21,15 @@ steps:
       sdk_file="$(QnnSDKRootDir)/sdk.yaml"
       qnn_sdk_version=$(grep '^version:' "$sdk_file" | head -n 1 | cut -d':' -f2 | xargs | cut -d'.' -f1-3)
       if [[ -n "$qnn_sdk_version" ]]; then
-        echo "##vso[task.setvariable variable=QnnSDKVersionYaml]$qnn_sdk_version"
+        echo "##vso[task.setvariable variable=QnnSDKVersionYaml;isOutput=true]$qnn_sdk_version"
       else
         echo "Version not found in sdk.yaml."
         exit 1
       fi
-    displayName: Set QnnSDKVersionYaml based on sdk.yaml
-
+    displayName: Set_QnnSDKVersionYaml based on sdk.yaml
+    name: Set_QnnSDKVersionYaml
   - bash: |
-      echo "QnnSDKVersionYaml=$(QnnSDKVersionYaml)"
+      echo "QnnSDKVersionYaml=$(Set_QnnSDKVersionYaml.QnnSDKVersionYaml)"
     displayName: 'Print QnnSDKVersionYaml after extracting from sdk.yaml'
 
   - script: |
