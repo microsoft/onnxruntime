@@ -23,6 +23,7 @@ RUN apt-get update && \
   file \
   git \
   python3-pip \
+  python3.12-dev \
   python3.12-venv \
   rocm-dev \
   rocm-libs \
