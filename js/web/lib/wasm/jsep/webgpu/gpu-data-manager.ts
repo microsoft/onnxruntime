@@ -74,8 +74,6 @@ export interface GpuDataManager {
    * @param sessionId - specify the session ID.
    */
   onReleaseSession(sessionId: number): void;
-
-  sessionCount: number;
 }
 
 interface StorageCacheValue {
@@ -207,6 +205,9 @@ class GpuDataManagerImpl implements GpuDataManager {
   // a SessionID -> GPUBuffer[] mapping.
   private capturedPendingBuffers: Map<number, GPUBuffer[]>;
 
+  // The session count.
+  private sessionCount: number;
+
   constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.freeBuffers = new Map();
@@ -220,8 +221,9 @@ class GpuDataManagerImpl implements GpuDataManager {
       this.freeBuffers.set(key, []);
       this.freeUniformBuffers.set(key, []);
     }
+
+    this.sessionCount = 0;
   }
-  sessionCount = 0;
 
   upload(id: GpuDataId, data: Uint8Array): void {
     const srcArrayBuffer = data.buffer;
@@ -474,7 +476,6 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   onCreateSession() {
-    LOG_DEBUG('verbose', () => '[WebGPU] Incrementing session count');
     this.sessionCount += 1;
   }
 
@@ -488,11 +489,10 @@ class GpuDataManagerImpl implements GpuDataManager {
       this.capturedPendingBuffers.delete(sessionId);
     }
 
-    LOG_DEBUG('verbose', () => '[WebGPU] Decrementing session count');
     // release the storage cache if no active sessions.
     this.sessionCount -= 1;
     if (this.sessionCount === 0) {
-      LOG_DEBUG('verbose', () => '[WebGPU] Clearing cache');
+      LOG_DEBUG('warning', () => '[WebGPU] Clearing webgpu buffer cache');
       this.storageCache.forEach((storage) => {
         storage.gpuData.buffer.destroy();
       });
