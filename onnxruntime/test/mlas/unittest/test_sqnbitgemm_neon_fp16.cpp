@@ -128,7 +128,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     }
 
     for (; n < N; ++n) {
-      for (int k = 0; k < Ldb; k += 8) {
+      for (size_t k = 0; k < Ldb; k += 8) {
         PrepackSlice(src, n * Ldb + k, dst);
       }
     }
@@ -171,7 +171,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
   }
 
  public:
-  MlasNeonFp16PrepackDequantBTest()
+  MlasNeonFp16PrepackTest()
     : _gen(_rd()), _distrib(0, 255) {
   }
 
@@ -317,7 +317,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
   }
 
  public:
-  MlasNeonFp16PrepackDequantBTest()
+  MlasNeonFp16DequantBTest()
     : _gen(_rd()), _distrib(0, 255), _distribFp(0.5f, 2.0f) {
   }
 
@@ -414,7 +414,6 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   void TestSQ4BitGemmKernel() {
     constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkNum * BlkLen;
-    constexpr size_t ldb_N = ldb * N;
 
     std::vector<MLAS_FP16> A(M * K), B(ldb * N), C(M * N), ref(M * N), bias(N);
     InitializeBuffer(A, -3.0f, 3.0f);
@@ -422,14 +421,14 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     InitializeBuffer(bias, -3.0f, 3.0f);
 
     GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
-        A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, ldb, N, 64, 32
+        A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N, 64, 32
     );
     MatMul<M, N, K, ldb, UseBias>(A, B, bias, ref);
     Check<N, M, N>(C, ref);
   }
 
  public:
-  MlasNeonFp16PrepackDequantBTest()
+  MlasNeonFp16SQ4BitGemmKernelTest()
     : _gen(_rd()) {
   }
 
