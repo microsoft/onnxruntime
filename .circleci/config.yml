@@ -46,8 +46,18 @@ jobs:
       - run:
           name: archive the build results
           command: |
+            cd $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime.xcframework/ios-arm64_x86_64-maccatalyst/onnxruntime.framework
+            mkdir -p Versions/A
+            mkdir -p Versions/A/Resources
+            mv Headers Versions/A/
+            ln -s Versions/A/Headers Headers
+            mv Info.plist Versions/A/Resources/
+            ln -s Versions/A/Resources Resources
+            mv onnxruntime Versions/A/
+            ln -s Versions/A/onnxruntime onnxruntime
+            cd Versions && ln -s Current A
             tar -cvf /Users/distiller/project/onnxruntime_xcf.tar -C $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out .
-            zip -r /Users/distiller/project/onnxruntime_xcframework.zip $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime_xcframework/
+            zip -r /Users/distiller/project/onnxruntime_xcframework.zip $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime.xcframework/
 
       - store_artifacts:
           path: /Users/distiller/project/onnxruntime_xcf.tar
