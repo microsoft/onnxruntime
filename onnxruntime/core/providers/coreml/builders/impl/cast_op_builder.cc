@@ -80,11 +80,6 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     if (!is_supported && input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       return false;
     }
-    // In CoreML version 6 (e.g., on an iOS 16 simulator)
-    // "Error: Unable to parse ML Program: Failed to find type of output." error is thrown
-    if (input_params.coreml_version >= 7) {
-      return true;
-    }
   }
 #endif
   return is_supported;
