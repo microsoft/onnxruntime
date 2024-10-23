@@ -9,11 +9,6 @@ parameters:
   type: string
   default: 'dynamic'
 
-- name: PythonPackageName
-  displayName: PythonPackageName on nuget.org to use
-  type: string
-  default: 'python'
-
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
   steps:

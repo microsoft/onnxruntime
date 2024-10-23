@@ -28,7 +28,6 @@ extends:
       - template: tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
-          PythonPackageName: pythonx86
 
       - template: tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
@@ -42,7 +41,6 @@ extends:
       - template: tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
-          PythonPackageName: pythonx86
           Runtime: static
 
       - template: tools/ci_build/github/azure-pipelines/templates/windowsai-steps.yml@self
