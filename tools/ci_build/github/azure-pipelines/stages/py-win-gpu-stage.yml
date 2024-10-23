@@ -185,9 +185,9 @@ stages:
 
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
-            ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
+            ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
-            TargetPath: 'win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
 
         - task: PowerShell@2
           displayName: 'Install ONNX'
