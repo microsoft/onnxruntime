@@ -46,7 +46,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "dbb0094fd0cb936469e35320bf37e866ef7a1da4",
+          "commitHash": "7b1337140c44f3fbc0c48edaa677f4c8ecca9dad",
           "repositoryUrl": "https://github.com/apple/coremltools.git"
         },
         "comments": "coremltools"

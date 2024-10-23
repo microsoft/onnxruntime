@@ -142,8 +142,9 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
-#if TARGET_OS_OSX
-#if TARGET_CPU_ARM64
+    std::cout << "input_params.coreml_version: " << input_params.coreml_version << std::endl;
+#if TARGET_OS_OSX1
+#if TARGET_CPU_ARM641
     // not sure why, we are seeing failures in arm64 macosx CI for this test
     // Xcode 15.7 or below works for Cast, but Xcode 16+ fails
     // https://github.com/microsoft/onnxruntime/actions/runs/11454539711/job/31868873687?pr=22480
