@@ -168,8 +168,10 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Create NuGet Package'
 
-    - template: win-esrp-dll.yml
-      parameters:
-        FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
-        DisplayName: 'Sign test_artifact'
-        Pattern: '*.exe,*.dll'
+    # Only dynamic copied to test_artifact
+    - ${{ if eq(parameters.Runtime, 'dynamic') }}:
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
+          DisplayName: 'Sign test_artifact'
+          Pattern: '*.exe,*.dll'
