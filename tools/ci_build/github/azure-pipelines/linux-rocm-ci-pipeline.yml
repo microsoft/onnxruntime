@@ -189,7 +189,9 @@ jobs:
             xargs -a /build/Release/perms.txt chmod a+x; \
             . /ort/env/bin/activate; \
             pip install /build/Release/dist/*.whl; \
+            python -c 'import onnxruntime; print(onnxruntime.get_available_providers())'; \
             pip show onnxruntime-rocm; \
+            env; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -237,6 +239,7 @@ jobs:
             . /ort/env/bin/activate; \
             pip install /build/Release/dist/*.whl; \
             pip list; \
+            env; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
