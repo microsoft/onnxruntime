@@ -66,24 +66,24 @@ jobs:
         create: true
         start: true
 
-  - script: |
-      set -e -x
-      cd android_test/android
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
-    displayName: Run E2E test using Emulator
-    workingDirectory: $(Build.BinariesDirectory)
+    - script: |
+        set -e -x
+        cd android_test/android
+        $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
+      displayName: Run E2E test using Emulator
+      workingDirectory: $(Build.BinariesDirectory)
 
     - template: use-android-emulator.yml
       parameters:
         stop: true
 
-    - script: |
+  - script: |
         set -e -x
         # build apks for qnn package as they are not built in the emulator test step
         $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnSDKVersionYaml) --stacktrace
-      displayName: Build QNN APK
-      workingDirectory: $(Build.BinariesDirectory)/android_test/android
-      condition: contains('${{ parameters.packageName }}', 'qnn')
+    displayName: Build QNN APK
+    workingDirectory: $(Build.BinariesDirectory)/android_test/android
+    condition: contains('${{ parameters.packageName }}', 'qnn')
 
   # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
   - script: |

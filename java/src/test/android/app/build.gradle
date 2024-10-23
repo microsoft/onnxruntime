@@ -46,8 +46,10 @@ android {
 			jniLibs {
 				useLegacyPackaging = true
 			}
+			// Dsp is used in older QC devices and not supported by ORT
 			// Gpu support isn't the target, we just want Npu support (Htp)
 			exclude 'lib/arm64-v8a/libQnnGpu.so'
+			exclude 'lib/arm64-v8a/libDsp*.so'
 		}
 	}
 	sourceSets {
