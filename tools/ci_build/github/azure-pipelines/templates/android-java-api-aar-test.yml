@@ -14,6 +14,11 @@ parameters:
   type: string
   default: 'onnxruntime-android'
 
+- name: ReleaseVersionSuffix
+  displayName: Release Version Suffix
+  type: string
+  default: ''
+
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
   workspace:
@@ -50,7 +55,7 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
+        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/onnxruntime-android.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
@@ -61,12 +66,12 @@ jobs:
         create: true
         start: true
 
-    - script: |
-        set -e -x
-        cd android_test/android
-        $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
-      displayName: Run E2E test using Emulator
-      workingDirectory: $(Build.BinariesDirectory)
+  - script: |
+      set -e -x
+      cd android_test/android
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
+    displayName: Run E2E test using Emulator
+    workingDirectory: $(Build.BinariesDirectory)
 
     - template: use-android-emulator.yml
       parameters:

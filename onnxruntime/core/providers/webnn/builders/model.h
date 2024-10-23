@@ -6,7 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 #include <emscripten.h>
 #include <emscripten/val.h>
@@ -35,7 +35,7 @@ class Model {
                                       const InlinedHashMap<std::string, OnnxTensorData>& outputs);
 
   // Mutex for exclusive lock to this model object.
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
   // Input and output names in the onnx model's order.
   const std::vector<std::string>& GetInputs() const { return inputs_; }
@@ -77,7 +77,7 @@ class Model {
   InlinedHashMap<std::string, size_t> input_map_;
   InlinedHashMap<std::string, size_t> output_map_;
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 
   bool use_dispatch_;
 

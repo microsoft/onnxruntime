@@ -32,6 +32,14 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     LOGS_DEFAULT(ERROR) << "CoreML EP is not supported on this platform.";
   }
 
+  // check if only one flag is set
+  if ((coreml_flags & COREML_FLAG_USE_CPU_ONLY) && (coreml_flags & COREML_FLAG_USE_CPU_AND_GPU)) {
+    // multiple device options selected
+    ORT_THROW(
+        "Multiple device options selected, you should use at most one of the following options:"
+        "COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU or not set");
+  }
+
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (coreml_version_ < MINIMUM_COREML_MLPROGRAM_VERSION &&
       (coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0) {
@@ -210,7 +218,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // performed, to block other threads to perform Predict on the same model
       // TODO, investigate concurrent runs for different executions from the same model
       {
-        std::unique_lock<OrtMutex> lock(model->GetMutex());
+        std::unique_lock<std::mutex> lock(model->GetMutex());
         std::unordered_map<std::string, coreml::OnnxTensorInfo> outputs;
         outputs.reserve(model_outputs.size());
 
