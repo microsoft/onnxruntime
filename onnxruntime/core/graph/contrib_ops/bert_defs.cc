@@ -919,7 +919,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (batch_size, num_heads, v_hidden_size)",
+                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
         .Output(1,
                 "present_key",

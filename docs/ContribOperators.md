@@ -1186,7 +1186,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, num_heads, v_hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present_key</tt> (optional) : T</dt>
 <dd>present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
