@@ -43,18 +43,9 @@ const compareMLContextOptions = (a?: MLContextOptions, b?: MLContextOptions): bo
   if (a === undefined || b === undefined) {
     return false;
   }
-  const aKeys = Object.keys(a).sort();
-  const bKeys = Object.keys(b).sort();
-  if (aKeys.length !== bKeys.length) {
-    return false;
-  }
-  type GeneticObject = { [key: string]: object };
-  for (const key of aKeys) {
-    if ((a as GeneticObject)[key] !== (b as GeneticObject)[key]) {
-      return false;
-    }
-  }
-  return true;
+  const aKeys = Object.keys(a).sort() as Array<keyof typeof a>;
+  const bKeys = Object.keys(b).sort() as Array<keyof typeof b>;
+  return aKeys.length === bKeys.length && aKeys.every((key, index) => key === bKeys[index] && a[key] === b[key]);
 };
 
 /**
