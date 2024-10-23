@@ -9,7 +9,7 @@ import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 import { createMatmulProgramInfo } from './3rd-party/matmul_packed_webgpu';
 import {
   createTensorShapeVariables,
-  getBroadcastDims,
+  getElementAt,
   getMaxComponents,
   IndicesHelper,
   inputVariable,
@@ -62,11 +62,6 @@ export const createNaiveMatmulProgramInfo = (
   }
   programUniforms.push(...createTensorShapeVariables(outputShapeInShader));
 
-  const outerDimsA = aShape.slice(0, -2);
-  const outerDimsB = bShape.slice(0, -2);
-  const broadcastADims = getBroadcastDims(outerDimsA, outerDims);
-  const broadcastBDims = getBroadcastDims(outerDimsB, outerDims);
-
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const batchDims = internalVariable('batch_dims', inputs[0].dataType, outerDims.length);
     const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
@@ -92,23 +87,32 @@ export const createNaiveMatmulProgramInfo = (
     ];
     appendActivationUniforms(activationAttributes, uniforms);
 
-    const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
-      const rank = variable.rank;
-      const name = variable.name;
-      if (rank === 2) {
-        return `var ${name}_indices = ${variable.type.indices}(0u, 0u);`;
+    // Helper that convert output batch to input batch indices using only the rank and the shape information in uniform
+    const convertOutputBatchIndicesToInput = (inputVariable: IndicesHelper, targetIndicesName: string) => {
+      const inputRank = inputVariable.rank;
+      const outputBatchRank = batchDims.rank;
+      if (inputRank === 2) {
+        return `var ${targetIndicesName} = ${inputVariable.type.indices}(0u, 0u);`;
       }
-      const batchRank = batchDims.rank;
-      let resStr = `var ${name}_indices: ${variable.type.indices};`;
-      for (let i = rank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-        resStr += `\n${name}_indices[${i}] = ${batchRank > 1 ? `batch_indices[${j}]` : 'batch_indices'};`;
-      }
-      broadCastDims.forEach((i) => {
-        resStr += `\n${name}_indices[${i}] = 0;`;
-      });
-      resStr += `${name}_indices[${rank - 2}] = 0u;
-                     ${name}_indices[${rank - 1}] = 0u;`;
-      return resStr;
+      const inputBatchRank = inputRank - 2;
+      // Assume outputBatchRank >= inputBatchRank, the first outputBatchRank - inputBatchRank of outputBatchRank
+      // should be ignored.
+      const extendingInputRank = outputBatchRank - inputBatchRank;
+      return `
+      var ${targetIndicesName}: ${inputVariable.type.indices};
+      ${Array.from({ length: inputBatchRank })
+        .map(
+          (_, i) => `
+      if (${getElementAt(inputVariable.shape, i, inputRank)} != 1) {
+        ${inputVariable.indicesSet(targetIndicesName, i, getElementAt('batch_indices', i + extendingInputRank, outputBatchRank))}
+      } else {
+        ${inputVariable.indicesSet(targetIndicesName, i, 0)}
+      }`,
+        )
+        .join('')}
+      ${inputVariable.indicesSet(targetIndicesName, inputRank - 2, 0)}
+      ${inputVariable.indicesSet(targetIndicesName, inputRank - 1, 0)}
+`;
     };
 
     const calcResult = (): string => {
@@ -142,9 +146,9 @@ export const createNaiveMatmulProgramInfo = (
     let batch = index1 / stride1;
 
     ${outputShape.length === 2 ? '' : `let batch_indices = ${batchDims.offsetToIndices('batch')};`}
-    ${getIndices(a, broadcastADims)}
+    ${convertOutputBatchIndicesToInput(a, 'a_indices')}
     let a_offset = ${a.indicesToOffset('a_indices')};
-    ${getIndices(b, broadcastBDims)}
+    ${convertOutputBatchIndicesToInput(b, 'b_indices')}
     let b_offset = ${b.indicesToOffset('b_indices')};
     var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < uniforms.K; k = k + ${aComponents}) {
@@ -161,12 +165,10 @@ export const createNaiveMatmulProgramInfo = (
   }
   `;
   };
-  // Input broadcasting impacts the shader code, and should be handled in cache key
-  const inputBroadcastingDims = `${broadcastADims};${broadcastBDims}`;
   return {
     name: 'MatMulNaive',
     shaderCache: {
-      hint: `${activationAttributes.activation};${components};${aComponents};${outputNumber};${inputBroadcastingDims};${isChannelsLast}`,
+      hint: `${activationAttributes.activation};${components};${aComponents};${outputNumber};${isChannelsLast}`,
       inputDependencies: hasBias ? ['rank', 'rank', 'rank'] : ['rank', 'rank'],
     },
     getRunData: () => ({

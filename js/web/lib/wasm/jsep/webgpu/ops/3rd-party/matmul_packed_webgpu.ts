@@ -25,7 +25,7 @@ import { ShapeUtil } from '../../../util';
 import { ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../../types';
 import {
   createTensorShapeVariables,
-  getBroadcastDims,
+  getElementAt,
   IndicesHelper,
   inputVariable,
   internalVariable,
@@ -373,41 +373,41 @@ const matMulReadWriteFnSource = (
   hasBias: boolean,
   applyActivation: string,
   variables: IndicesHelper[],
-  batchShapes: Array<readonly number[]>,
   isChannelsLast = false,
 ): string => {
-  const [batchAShape, batchBShape, batchShape] = batchShapes;
   const [batchVariable, aVariable, bVariable, outputVariable] = variables;
-  const broadCastADims = getBroadcastDims(batchAShape, batchShape);
-  const broadCastBDims = getBroadcastDims(batchBShape, batchShape);
   const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
-  const getAIndices = () => {
-    const aRank = aVariable.rank;
-    const batchRank = batchVariable.rank;
-    let resStr = `var aIndices: ${aVariable.type.indices};`;
-    for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-      resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+
+  // Helper that convert output batch to input batch indices using only the rank and the shape information in uniform
+  const convertOutputBatchIndicesToInput = (
+    inputVariable: IndicesHelper,
+    targetIndicesName: string,
+    lastTwoIndices: [number | string, number | string],
+  ) => {
+    const inputRank = inputVariable.rank;
+    const outputBatchRank = batchVariable.rank;
+    if (inputRank === 2) {
+      return `var ${targetIndicesName} = ${inputVariable.type.indices}(${lastTwoIndices[0]}, ${lastTwoIndices[1]});`;
     }
-    broadCastADims.forEach((i) => {
-      resStr += `\naIndices[${i}] = 0;`;
-    });
-    resStr += `\naIndices[${aRank - 2}] = u32(row);
-                   aIndices[${aRank - 1}] = u32(colIn);`;
-    return resStr;
-  };
-  const getBIndices = () => {
-    const bRank = bVariable.rank;
-    const batchRank = batchVariable.rank;
-    let resStr = `var bIndices: ${bVariable.type.indices};`;
-    for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-      resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-    }
-    broadCastBDims.forEach((i) => {
-      resStr += `\nbIndices[${i}] = 0;`;
-    });
-    resStr += `\nbIndices[${bRank - 2}] = u32(row);
-                   bIndices[${bRank - 1}] = u32(colIn);`;
-    return resStr;
+    const inputBatchRank = inputRank - 2;
+    // Assume outputBatchRank >= inputBatchRank, the first outputBatchRank - inputBatchRank of outputBatchRank
+    // should be ignored.
+    const extendingInputRank = outputBatchRank - inputBatchRank;
+    return `
+        var ${targetIndicesName}: ${inputVariable.type.indices};
+        ${Array.from({ length: inputBatchRank })
+          .map(
+            (_, i) => `
+        if (${getElementAt(inputVariable.shape, i, inputRank)} != 1) {
+          ${inputVariable.indicesSet(targetIndicesName, i, getElementAt('batchIndices', i + extendingInputRank, outputBatchRank))}
+        } else {
+          ${inputVariable.indicesSet(targetIndicesName, i, 0)}
+        }`,
+          )
+          .join('')}
+        ${inputVariable.indicesSet(targetIndicesName, inputRank - 2, lastTwoIndices[0])}
+        ${inputVariable.indicesSet(targetIndicesName, inputRank - 1, lastTwoIndices[1])}
+`;
   };
   const source = `
     fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
@@ -418,7 +418,7 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
       {
-        ${getAIndices()}
+        ${convertOutputBatchIndicesToInput(aVariable, 'aIndices', ['u32(row)', 'u32(colIn)'])}
         value = ${aVariable.getByIndices('aIndices')};
       }
       return value;
@@ -432,7 +432,7 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_inner && col < uniforms.dim_b_outer)
       {
-        ${getBIndices()}
+        ${convertOutputBatchIndicesToInput(bVariable, 'bIndices', ['u32(row)', 'u32(colIn)'])}
         value = ${bVariable.getByIndices('bIndices')};
       }
       return value;
@@ -532,7 +532,6 @@ export const createMatmulProgramInfo = (
       hasBias,
       applyActivation,
       [batchDims, A, B, output],
-      [outerDimsA, outerDimsB, outerDims],
       isChannelsLast,
     );
     return `
@@ -548,12 +547,10 @@ export const createMatmulProgramInfo = (
   }
                    `;
   };
-  // Input broadcasting impacts the shader code, and should be handled in cache key
-  const inputBroadcastingDims = `${getBroadcastDims(outerDimsA, outerDims)};${getBroadcastDims(outerDimsB, outerDims)}`;
   return {
     name: 'MatMul',
     shaderCache: {
-      hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${inputBroadcastingDims};${isChannelsLast}`,
+      hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${isChannelsLast}`,
       inputDependencies,
     },
     getRunData: () => ({
