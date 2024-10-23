@@ -357,14 +357,14 @@ const createInPlaceSoftmaxProgramInfo = (
     let sequence_length = uniforms.sequence_length;
     var total_sequence_length = uniforms.total_sequence_length;
     ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
-    let local_offset = local_id.x * uniforms.elements_per_thread;
-    let offset = global_idx * uniforms.total_sequence_length / ${WG} + local_offset;
+    let local_offset = local_idx * uniforms.elements_per_thread;
+    let offset = (global_idx / ${WG}) * uniforms.total_sequence_length + local_offset;
     let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + workgroup_id.y + 1)' : 'total_sequence_length'};
     var thread_max_vector = ${f32Type}(-3.402823e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
-    thread_max[local_id.x] = ${(() => {
+    thread_max[local_idx] = ${(() => {
       switch (components) {
         case 1:
           return 'thread_max_vector';
@@ -387,7 +387,7 @@ const createInPlaceSoftmaxProgramInfo = (
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
-    thread_sum[local_id.x] = ${(() => {
+    thread_sum[local_idx] = ${(() => {
       switch (components) {
         case 1:
           return 'sum_vector';
