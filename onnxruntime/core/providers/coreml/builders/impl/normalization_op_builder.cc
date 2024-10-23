@@ -273,14 +273,14 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
 }
 
 bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                           const logging::Logger& logger) const {
+                                                    const logging::Logger& logger) const {
   if (!input_params.create_mlprogram) {
     return false;
   }
   // We only check the type of input 0,1,2
   const auto& input_0 = *node.InputDefs()[0];
   const auto& input_1 = *node.InputDefs()[1];
-  const auto& input_2 = node.InputDefs().size()>2? *node.InputDefs()[2]:input_0;
+  const auto& input_2 = node.InputDefs().size() > 2 ? *node.InputDefs()[2] : input_0;
   int32_t input_type_0, input_type_1, input_type_2;
   if (!GetType(input_0, input_type_0, logger)) {
     return false;

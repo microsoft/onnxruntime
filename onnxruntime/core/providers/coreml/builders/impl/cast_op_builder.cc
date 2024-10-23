@@ -8,7 +8,6 @@
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
 
-
 namespace onnxruntime {
 namespace coreml {
 
