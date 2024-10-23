@@ -1,0 +1,18 @@
+trigger: none
+
+parameters:
+  - name: cmake_build_type
+    type: string
+    default: 'Release'
+    values:
+      - Debug
+      - Release
+      - RelWithDebInfo
+      - MinSizeRel
+
+stages:
+  - template: stages/py-gpu-packaging-stage.yml
+    parameters:
+      enable_windows_dml: true
+      cmake_build_type: ${{ parameters.cmake_build_type }}
+      publish_symbols: true
