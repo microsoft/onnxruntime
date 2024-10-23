@@ -368,7 +368,12 @@ class GpuDataManagerImpl implements GpuDataManager {
   release(id: GpuDataId): number {
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
-      throw new Error('releasing data does not exist');
+      if (this.storageCache.size === 0) {
+        // cache was previously cleared, no need to release anything.
+        return 0;
+      } else {
+        throw new Error('releasing data does not exist');
+      }
     }
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
