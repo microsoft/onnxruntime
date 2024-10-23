@@ -234,7 +234,6 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
   };
   run_test(false);
 #ifdef COREML_ENABLE_MLPROGRAM
-  // gamma as initialized will fail for CPUEP
   run_test(true);
 #endif
 }
@@ -258,7 +257,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializer
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 // LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.

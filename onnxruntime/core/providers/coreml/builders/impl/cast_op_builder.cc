@@ -8,9 +8,6 @@
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#endif
 
 namespace onnxruntime {
 namespace coreml {
@@ -138,18 +135,6 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
-    std::cout << "input_params.coreml_version: " << input_params.coreml_version << std::endl;
-#ifdef TARGET_OS_OSX1
-#ifdef TARGET_CPU_ARM641
-    // not sure why, we are seeing failures in arm64 macosx CI for this test
-    // Xcode 15.7 or below works for Cast, but Xcode 16+ fails
-    // https://github.com/microsoft/onnxruntime/actions/runs/11454539711/job/31868873687?pr=22480
-    if (input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      return false;
-    }
-#endif
-#endif
-
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||

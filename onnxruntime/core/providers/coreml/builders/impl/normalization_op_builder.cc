@@ -25,7 +25,8 @@ class NormalizationOpBuilder : public BaseOpBuilder {
 
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
-
+  bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                              const logging::Logger& logger) const override;
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 1; }
 
  public:
@@ -272,6 +273,35 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     }
   }
 
+  return true;
+}
+
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] const OpBuilderInputParams& input_params,
+                                           const logging::Logger& logger) const {
+  // We only check the type of input 0,1,2
+  const auto& input_0 = *node.InputDefs()[0];
+  const auto& input_1 = *node.InputDefs()[1];
+  const auto& input_2 = *node.InputDefs()[2];
+  int32_t input_type_0, input_type_1, input_type_2;
+  if (!GetType(input_0, input_type_0, logger)) {
+    return false;
+  }
+  if (!GetType(input_1, input_type_1, logger)) {
+    return false;
+  }
+  if (!GetType(input_2, input_type_2, logger)) {
+    return false;
+  }
+  if (input_type_0 != input_type_1 || input_type_0 != input_type_2) {
+    LOGS(logger, VERBOSE) << "Input types of LayerNorm must be the same";
+    return false;
+  }
+
+  if (input_type_0 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type_0 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    LOGS(logger, VERBOSE) << "Input types of LayerNorm must be float or float16";
+    return false;
+  }
   return true;
 }
 
