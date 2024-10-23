@@ -4108,7 +4108,7 @@ void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_inf
 
     // padding tensor with zeros for alignment
     InlinedVector<uint8_t> paddings;
-    paddings.reserve(new_external_offset - external_offset);
+    paddings.reserve(SafeInt<size_t>(new_external_offset - external_offset));
     for (int64_t index = external_offset; index != new_external_offset; ++index) {
       paddings.push_back(0x0);
     }
