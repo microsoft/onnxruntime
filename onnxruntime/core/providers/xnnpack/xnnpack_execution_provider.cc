@@ -164,8 +164,8 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
                                       kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
   if (xnn_thread_pool_size == 0) {
     if (ort_thread_pool_size == 0) {
-      // By default, intra_op_num_threads is 0, so we set xnn_thread_pool_size to the number of physical cores - 1.
-      xnn_thread_pool_size = Env::Default().GetNumPhysicalCpuCores() - 1;
+      // By default, intra_op_num_threads is 0, so we set xnn_thread_pool_size to the number of physical cores.
+      xnn_thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
     } else {
       xnn_thread_pool_size = ort_thread_pool_size;
     }
