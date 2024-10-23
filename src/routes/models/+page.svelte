@@ -17,10 +17,10 @@
 			imagealt: 'ONNX Model Zoo'
 		},
 		{
-			title: 'AI Hub (Qualcomm)',
+			title: 'Qualcomm ONNX Models (HuggingFace)',
 			description:
 				'Discover ONNX-compatible AI models optimized for Qualcomm hardware on the AI Hub.',
-			url: 'https://aihub.qualcomm.com/models',
+			url: 'https://huggingface.co/qualcomm',
 			image: 'https://logosandtypes.com/wp-content/uploads/2020/08/qualcomm.svg',
 			imagealt: 'Qualcomm AI Hub Logo'
 		},
