@@ -392,6 +392,7 @@ type MLNamedTensor = Record<string, MLTensor>;
 
 type MLTensorUsageFlags = number;
 
+// TODO(@Honry): Remove this once it is deprecated in Chromium.
 declare const MLTensorUsage: {
   readonly WEBGPU_INTEROP: MLTensorUsageFlags;
   readonly READ: MLTensorUsageFlags;
@@ -400,6 +401,9 @@ declare const MLTensorUsage: {
 
 interface MLTensorDescriptor extends MLOperandDescriptor {
   usage: MLTensorUsageFlags;
+  importableToWebGPU?: boolean;
+  readable?: boolean;
+  writable?: boolean;
 }
 
 interface MLContext {
