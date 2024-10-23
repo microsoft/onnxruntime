@@ -1,3 +1,4 @@
+huggingface_hub==0.25.2
 diffusers==0.28.0
 transformers==4.41.2
 numpy>=1.24.1
@@ -14,6 +15,4 @@ controlnet_aux==0.0.9
 optimum==1.20.0
 safetensors
 invisible_watermark
-# newer version of opencv-python migth encounter module 'cv2.dnn' has no attribute 'DictValue' error
-opencv-python==4.8.0.74
-opencv-python-headless==4.8.0.74
+opencv-python-headless
