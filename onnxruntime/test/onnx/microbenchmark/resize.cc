@@ -5,7 +5,6 @@
 #include <benchmark/benchmark.h>
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/mlas/lib/mlasi.h"
 #include "core/providers/cpu/tensor/upsample.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
