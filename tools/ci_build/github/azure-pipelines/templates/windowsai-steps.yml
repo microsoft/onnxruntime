@@ -19,7 +19,7 @@ jobs:
   steps:
     - task: UseDotNet@2
       inputs:
-        version: '5.x'
+        version: '6.x'
 
     - template: telemetry-steps.yml
 
