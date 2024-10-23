@@ -51,8 +51,8 @@ stages:
       workspace:
         clean: all
       pool:
-        name: ${{ parameters.machine_pool }}
-        os: linux
+        name: onnxruntime-Win-CPU-2022
+        os: windows
       templateContext:
         codeSignValidation:
           enabled: true
