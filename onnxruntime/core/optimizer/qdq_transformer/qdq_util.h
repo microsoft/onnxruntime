@@ -9,10 +9,12 @@
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
-}
+enum TensorProto_DataType : int;
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 
+class Graph;
 class Node;
 class Path;
 
@@ -68,6 +70,9 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 // Checks that the y_scale/x_scale input to the QuantizeLinear/DequantizeLinear node is a positive scalar.
 bool IsQOrDQScalePositiveConstantScalar(const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
                                         const std::filesystem::path& model_path);
+
+bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
+                           /*out*/ ONNX_NAMESPACE::TensorProto_DataType& zp_data_type);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // Check Q node op type, version, and domain.

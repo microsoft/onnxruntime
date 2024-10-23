@@ -12,36 +12,6 @@
 
 namespace onnxruntime {
 
-/// <summary>
-/// Returns the zero-point type from the given QuantizeLinear node.
-/// </summary>
-/// <param name="graph">Graph</param>
-/// <param name="q_node">QuantizeLinear node</param>
-/// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
-/// <returns>True if successfully extracted the zero-point data type</returns>
-static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
-                                  /*out*/ ONNX_NAMESPACE::TensorProto_DataType& zp_data_type) {
-  assert(q_node.OpType() == "QuantizeLinear");
-  const auto input_defs = q_node.InputDefs();
-
-  if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
-    // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
-    // The "output_dtype" attribute was added in ONNX opset 21.
-    const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
-    zp_data_type = attr != nullptr ? static_cast<ONNX_NAMESPACE::TensorProto_DataType>(attr->i())
-                                   : ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-    return true;
-  }
-
-  const auto* zp_proto = graph.GetConstantInitializer(input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
-  if (zp_proto == nullptr) {
-    return false;
-  }
-
-  zp_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(zp_proto->data_type());
-  return true;
-}
-
 // Applies a new zero point or scale as the input for a Q/DQ node.
 template <typename T>
 static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
@@ -186,7 +156,7 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   }
 
   auto q1_quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  if (!GetQNodeZeroPointType(graph, *q1, q1_quant_type)) {
+  if (!QDQ::GetQNodeZeroPointType(graph, *q1, q1_quant_type)) {
     return false;
   }
 
@@ -199,7 +169,7 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   if (q2 == nullptr ||
       q2->OpType() != "QuantizeLinear" ||
       graph.NodeProducesGraphOutput(*q2) ||
-      !GetQNodeZeroPointType(graph, *q2, q2_quant_type) ||
+      !QDQ::GetQNodeZeroPointType(graph, *q2, q2_quant_type) ||
       q1_quant_type != q2_quant_type) {
     return false;
   }
