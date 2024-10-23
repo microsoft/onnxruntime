@@ -119,6 +119,7 @@ jobs:
               --skip_onnx_tests \
               --skip_submodule_sync \
               --use_cache \
+              --allow_running_as_root \
               --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest; \
             ccache -sv; \
             ccache -z"
@@ -207,6 +208,7 @@ jobs:
               --parallel \
               --build_wheel \
               --skip_submodule_sync \
+              --allow_running_as_root \
               --test --skip_onnx_tests --enable_transformers_tool_test \
               --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
       workingDirectory: $(Build.SourcesDirectory)
