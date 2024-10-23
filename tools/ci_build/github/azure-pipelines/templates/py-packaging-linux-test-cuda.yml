@@ -61,7 +61,7 @@ jobs:
   # The private ADO project
   - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
     - download: build   # pipeline resource identifier.
-      artifact: 'drop-linux-gpu-${{ parameters.arch }}'
+      artifact: 'linux_gpu_wheel_${{ parameters.arch }}'
 
     - download: build   # pipeline resource identifier.
       artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
@@ -69,7 +69,7 @@ jobs:
     - bash: |
         set -e -x
         ls $(Pipeline.Workspace)/build
-        mv "$(Pipeline.Workspace)/build/drop-linux-gpu-${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+        mv "$(Pipeline.Workspace)/build/linux_gpu_wheel_${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
         mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;

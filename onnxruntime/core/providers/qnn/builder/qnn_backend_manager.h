@@ -12,9 +12,11 @@
 #endif
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "QnnTypes.h"
@@ -233,6 +235,7 @@ class QnnBackendManager {
 
  private:
   const std::string backend_path_;
+  std::mutex logger_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
