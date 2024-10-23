@@ -6,6 +6,19 @@
 	import converttoort from '../../images/events/converttoort.jpg';
 	import Event from './event-post.svelte';
 	import Videogallery from '../components/videogallery.svelte';
+	let upcomingEvents = [
+		{
+			title: 'Microsoft Ignite',
+			date: 'November 19th, 2024',
+			blurb:
+				'Discover solutions that help modernize and manage intelligent apps, safeguard data, accelerate productivity, and expand your services, while connecting with partners and growing your community or business.',
+			linkarr: [
+				{ name: 'Event Page', link: 'https://ignite.microsoft.com/en-US/home' },
+				{ name: 'Boost Edge AI (IRL)', link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions' },
+			],
+			image: converttoort,
+			imagealt: 'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
+		},]
 	let events = [
 		{
 			title: 'ONNX Runtime Community Meetup',
@@ -61,7 +74,18 @@
 	</div>
 	<div class="pt-5 mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Upcoming Events</h3>
-		<div class="grid gap-4 grid-cols-1 lg:grid-cols-3" />
+		<div class="grid gap-4 grid-cols-1" >
+			{#each upcomingEvents as event, i}
+				<Event
+					title={event.title}
+					description={event.blurb}
+					date={event.date}
+					linkarr={event.linkarr}
+					image={event.image}
+					imagealt={event.imagealt}
+				/>
+			{/each}
+		</div>
 	</div>
 	<div class="mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Past Events</h3>
