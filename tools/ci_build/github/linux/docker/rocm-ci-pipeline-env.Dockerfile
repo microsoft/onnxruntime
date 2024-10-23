@@ -33,8 +33,6 @@ RUN apt-get update && \
 
 RUN groupadd -g 109 render
 
-
-
 # Upgrade to meet security requirements
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
     apt-get install  -y locales cifs-utils wget half libnuma-dev lsb-release && \

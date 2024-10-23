@@ -87,7 +87,6 @@ jobs:
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
-          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(CCACHE_DIR):/cache \
@@ -178,7 +177,6 @@ jobs:
           --device=/dev/dri/renderD$DRIVER_RENDER \
           --group-add $(video) \
           --group-add $(render) \
-          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
@@ -224,7 +222,6 @@ jobs:
           --device=/dev/dri/renderD$DRIVER_RENDER \
           --group-add $(video) \
           --group-add $(render) \
-          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           -e OPENBLAS_NUM_THREADS=1 \
@@ -234,6 +231,7 @@ jobs:
           -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
           -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           -e CUPY_CACHE_DIR=/build/Release \
+          --workdir /ort \
           onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "set -ex; \
             . /ort/env/bin/activate; \
