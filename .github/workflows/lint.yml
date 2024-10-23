@@ -14,7 +14,7 @@ concurrency:
 jobs:
   optional-lint:
     name: Optional Lint
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: misspell # Check spellings as well
@@ -78,7 +78,7 @@ jobs:
 
   lint-cpp:
     name: Optional Lint C++
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
       - name: Install ninja
@@ -114,7 +114,7 @@ jobs:
 
   lint-js:
     name: Lint JavaScript
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: reviewdog/action-eslint@v1
