@@ -9,7 +9,7 @@ import { applyAttention, AttentionMaskType, AttentionParameters, AttentionQkvFor
 import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
 import { createSplitProgramInfo, SplitAttributes } from './split';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
-export interface GroupQueryAttentionAttrs {
+export interface GroupQueryAttentionAttributes {
   numHeads: number;
   kvNumHeads: number;
   scale: number;
@@ -19,9 +19,10 @@ export interface GroupQueryAttentionAttrs {
   smoothSoftmax: boolean;
   localWindowSize: number;
 }
+
 export const validateInputs = (
   inputs: readonly TensorView[],
-  attributes: GroupQueryAttentionAttrs,
+  attributes: GroupQueryAttentionAttributes,
 ): AttentionParameters => {
   if (attributes.doRotary && inputs.length <= 7) {
     throw new Error('cos_cache and sin_cache inputs are required if do_rotary is specified');
@@ -218,9 +219,6 @@ export const validateInputs = (
   };
 };
 
-export const parseGroupQueryAttentionAttributes = (attributes: GroupQueryAttentionAttrs): GroupQueryAttentionAttrs =>
-  createAttributeWithCacheKey({ ...attributes });
-
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({ perm: [0, 2, 1, 3] });
 
 const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params: AttentionParameters) => {
@@ -237,7 +235,7 @@ const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params
   return reshapedInput;
 };
 
-export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttrs): void => {
+export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttributes): void => {
   const params = validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 5) {
     throw new Error('Packed QKV is not implemented');
