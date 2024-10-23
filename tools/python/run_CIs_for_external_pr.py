@@ -35,20 +35,22 @@ def get_pipeline_names():
         # mac
         "MacOS CI Pipeline",
         # training
-        "orttraining-amd-gpu-ci-pipeline",
         "orttraining-linux-ci-pipeline",
         "orttraining-linux-gpu-ci-pipeline",
-        "orttraining-ortmodule-distributed",
         # checks
         "onnxruntime-binary-size-checks-ci-pipeline",
         # big models
         "Big Models",
         # android
         "Linux Android Emulator QNN CI Pipeline",
-        # not currently required, but running ensures we're hitting all mobile platforms
+        # not currently required, but running these like internal PRs.
         "Android CI Pipeline",
         "iOS CI Pipeline",
         "ONNX Runtime React Native CI Pipeline",
+        "CoreML CI Pipeline",
+        "Linux DNNL CI Pipeline",
+        "Linux MIGraphX CI Pipeline",
+        "Linux ROCm CI Pipeline",
     ]
 
     return pipelines
