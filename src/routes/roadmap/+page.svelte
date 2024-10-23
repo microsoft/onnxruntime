@@ -95,6 +95,10 @@
 		(Maven Central) were published.</li>
 		<li><strong>ONNX Runtime packages will stop supporting Python 3.8 and Python 3.9.</strong> This decision aligns with 
 		NumPy Python version support. To continue using ORT with Python 3.8 and Python 3.9, you can use ORT 1.19.2 and earlier.</li>
+		<li><strong>ONNX Runtime 1.20 CUDA packages will include new dependencies that were not required in 1.19 packages.</strong>
+		The following dependencies are new: libcudnn_adv.so.9, libcudnn_cnn.so.9, libcudnn_engines_precompiled.so.9,
+		libcudnn_engines_runtime_compiled.so.9, libcudnn_graph.so.9, libcudnn_heuristic.so.9, libcudnn_ops.so.9, libnvrtc.so.12, 
+		and libz.so.1.</li>
 	</ul>
 	<h2 class="text-xl font-bold mt-2">New Packages</h2>
 	<p class="font-thin">We are planning to start releasing the following packages:</p>
@@ -110,9 +114,10 @@
 		added in ORT 1.20):
 	</p>
 	<ul class="list-disc ml-8">
-		<li>ONNX 1.16.1 --> 1.17.0</li>
 		<li>TensorRT 10.2 --> 10.4</li>
 		<li>DirectML 1.15.1 --> 1.15.2</li>
+		<li>Python 3.13 support will also be added.</li>
+		<li>ONNX 1.17 support will be included in a future release.</li>
 	</ul>
 
 	<h2 class="text-xl font-bold mt-2">Major Updates</h2>
@@ -173,14 +178,18 @@
 			<input type="checkbox" name="announcements" />
 			<div class="collapse-title text-xl font-bold">Announcements</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					<strong>All ONNX Runtime Training packages have been deprecated.</strong> ORT 1.19.2 was the
-					last release for which onnxruntime-training (PyPI), onnxruntime-training-cpu (PyPI), Microsoft.ML.OnnxRuntime.Training
+				<ul class="list-disc ml-8">
+					<li><strong>All ONNX Runtime Training packages have been deprecated.</strong> ORT 1.19.2 was the last
+					release for which onnxruntime-training (PyPI), onnxruntime-training-cpu (PyPI), Microsoft.ML.OnnxRuntime.Training
 					(Nuget), onnxruntime-training-c (CocoaPods), onnxruntime-training-objc (CocoaPods), and onnxruntime-training-android
-					(Maven Central) were published. ONNX Runtime packages will stop supporting Python 3.8 and Python
-					3.9. This decision aligns with NumPy Python version support. To continue using ORT with Python
-					3.8 and Python 3.9, you can use ORT 1.19.2 and earlier.
-				</p>
+					(Maven Central) were published.</li>
+					<li><strong>ONNX Runtime packages will stop supporting Python 3.8 and Python 3.9.</strong> This decision aligns with 
+					NumPy Python version support. To continue using ORT with Python 3.8 and Python 3.9, you can use ORT 1.19.2 and earlier.</li>
+					<li><strong>ONNX Runtime 1.20 CUDA packages will include new dependencies that were not required in 1.19 packages.</strong>
+					The following dependencies are new: libcudnn_adv.so.9, libcudnn_cnn.so.9, libcudnn_engines_precompiled.so.9,
+					libcudnn_engines_runtime_compiled.so.9, libcudnn_graph.so.9, libcudnn_heuristic.so.9, libcudnn_ops.so.9, libnvrtc.so.12, 
+					and libz.so.1.</li>
+				</ul>
 			</div>
 		</div>
 
@@ -190,12 +199,10 @@
 			<div class="collapse-title text-xl font-bold">Build System & Packages</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Upgrade ONNX support from 1.16.1 to 1.17.0.</li>
-					<li>Add Python 3.12 support for Windows ARM64.</li>
-					<li>Add vcpkg support.</li>
-					<li>
-						Digitally sign DLLs in Maven build.
-					</li>
+					<li>Python 3.13 support is included in PyPI packages.</li>
+					<li>ONNX 1.17 support will be delayed until a future release, but the ONNX version used by ONNX Runtime has been patched to include a shape inference change to the Einsum op.</li>
+					<li>DLLs in the Maven build are now digitally signed.</li>
+					<li>(Experimental) vcpkg support added for the CPU EP. The DML EP does not yet support vcpkg, and other EPs have not been tested.</li>
 				</ul>
 			</div>
 		</div>
@@ -206,12 +213,8 @@
 			<div class="collapse-title text-xl font-bold">Core</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Add MultiLoRA support.</li>
-					<li>
-						Improve ThreadPool to spend less time busy waiting.
-					</li>
-					<li>Improve memory utilization, particularly related to external weights.</li>
-					<li>Improve partitioning.</li>
+					<li>MultiLoRA support.</li>
+					<li>Memory utilization (specifically related to external weights) and partitioning improvements.</li>
 				</ul>
 			</div>
 		</div>
@@ -222,8 +225,8 @@
 			<div class="collapse-title text-xl font-bold">Performance</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Add FP16 SLM model support on CPU.</li>
-					<li>Add INT4 quantized embedding support on CPU and CUDA.</li>
+					<li>FP16 SLM model support on CPU EP.</li>
+					<li>INT4 quantized embedding support on CPU and CUDA EPs.</li>
 				</ul>
 			</div>
 		</div>
@@ -235,23 +238,23 @@
 			<div class="collapse-content">
 				<h3 class="text-lg font-semibold">TensorRT</h3>
 				<ul class="list-disc ml-8">
-					<li>Upgrade TensorRT support from 10.2 to 10.4.</li>
-					<li>Enable DDS, including performance fixes for NMS.</li>
+					<li>TensorRT 10.4 support.</li>
+					<li>DDS enablement and performance improvements for NMS.</li>
 				</ul>
 				<h3 class="text-lg font-semibold">QNN</h3>
 				<ul class="list-disc ml-8">
-					<li>Add HTP shared weights context binary.</li>
-					<li>Add runtime support for HTP shared weights in multiple ORT sessions.</li>
-					<li>Add efficient mode support.</li>
+					<li>HTP shared weights context binary (offline tool).</li>
+					<li>Runtime support for QNN HTP shared weights in multiple ORT sessions.</li>
+					<li>Efficient mode support.</li>
 				</ul>
 				<h3 class="text-lg font-semibold">OpenVINO</h3>
 				<ul class="list-disc ml-8">
-					<li>Add context generation memory optimizations.</li>
-					<li>Add efficient mode support.</li>
+					<li>Context generation memory optimizations.</li>
+					<li>Efficient mode support.</li>
 				</ul>
 				<h3 class="text-lg font-semibold">DirectML</h3>
 				<ul class="list-disc ml-8">
-					<li>Upgrade DirectML support from 1.15.1 to 1.15.2.</li>
+					<li>DirectML 1.15.2 support.</li>
 				</ul>
 			</div>
 		</div>
@@ -262,12 +265,9 @@
 			<div class="collapse-title text-xl font-bold">Mobile</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>
-						Add Android QNN support, including a pre-build package, performance improvements, and
-						Phi-3 model support.
-					</li>
-					<li>Add GPU EP support for ORT Mobile.</li>
-					<li>Add FP16 support for CoreML EP and XNNPACK kernels.</li>
+					<li>Android QNN support, including a pre-built Maven package, performance improvements, and Phi-3 model support.</li>
+					<li>Mobile GPU EP for support.</li>
+					<li>FP16 support for CoreML EP and XNNPACK kernels.</li>
 				</ul>
 			</div>
 		</div>
@@ -278,18 +278,12 @@
 			<div class="collapse-title text-xl font-bold">Web</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Add quantized embedding support.</li>
-					<li>
-						Add on-demand weight loading support, which offloads wasm32 heap and enables
-						8B-parameter LLM models.
-					</li>
-					<li>
-						Add support for wasm64 through a custom build (will not be included in released
-						packages).
-					</li>
-					<li>Add GQA support.</li>
-					<li>Improve performance for integrated Intel GPU.</li>
-					<li>Add support for Opset 21, including Reshape, Shape, and Gelu.</li>
+					<li>Quantized embedding support.</li>
+					<li>On-demand weight loading support (offloads Wasm32 heap and enables 8B-parameter LLMs).</li>
+					<li>wasm64 support (available in custom builds but not included in released packages).</li>
+					<li>GQA support.</li>
+					<li>Integrated Intel GPU performance improvements.</li>
+					<li>Opset-21 support (Reshape, Shape, Gelu).</li>
 				</ul>
 			</div>
 		</div>
@@ -300,12 +294,10 @@
 			<div class="collapse-title text-xl font-bold">GenAI</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Add continuous decoding support, including chat mode and system prompt caching.</li>
-					<li>Introduce MultiLoRA API.</li>
-					<li>Add Whisper model support.</li>
-					<li>Add Phi-3.5-vision multi-frame model support.</li>
-					<li>Add Phi-3.5 and Llama-3.1 model support on Qualcomm NPU.</li>
-					<li>Introduce packages for Mac/iOS.</li>
+					<li>Continuous decoding support, including chat mode and system prompt caching.</li>
+					<li>MultiLoRA API.</li>
+					<li>Additional model support, including Whisper, Phi-3.5 Vision Multi-Frame, and Qualcomm NPU support for Phi-3.5 and Llama-3.1.</li>
+					<li>Mac/iOS support available in pre-built packages.</li>
 				</ul>
 			</div>
 		</div>
@@ -316,11 +308,34 @@
 			<div class="collapse-title text-xl font-bold">Extensions</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Improve performance profiling and optimize tokenization.</li>
-					<li>Increase multi-modal model support, including more kernel attributes.</li>
-					<li>Add Unigram tokenization model support.</li>
-					<li>Remove OpenCV dependency from C API build.</li>
+					<li>Tokenization performance improvements.</li>
+					<li>Additional multi-modal model support (CLIP and Mllama), including more kernel attributes.</li>
+					<li>Unigram tokenization model support.</li>
+					<li>OpenCV dependency removed from C API build.</li>
 				</ul>
+				<p class="font-thin">
+					Full release notes for ONNX Runtime Extensions v0.13 will be found <a
+					href="https://github.com/microsoft/onnxruntime-extensions/releases"
+					class="text-blue-600 underline">here</a> once they are available (10/30 target).
+				</p>
+			</div>
+		</div>
+
+		<!-- Olive Section -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="olive" />
+			<div class="collapse-title text-xl font-bold">Olive</div>
+			<div class="collapse-content">
+				<ul class="list-disc ml-8">
+					<li>Olive command line interface (CLI) now available with support to execute well-defined, concrete workflows without the need to create or edit configs manually.</li>
+					<li>Additional improvements, including support for YAML-based workflow configs, streamlined DataConfig management, simplified workflow configuration, and more.</li>
+					<li>Llama and Phi-3 model updates, including an updated MultiLoRA example using the ORT generate() API.</li>
+				</ul>
+				<p class="font-thin">
+					Full release notes for Olive v0.7.0 can be found <a
+					href="https://github.com/microsoft/Olive/releases/"
+					class="text-blue-600 underline">here</a>.
+				</p>
 			</div>
 		</div>
 	</div>
