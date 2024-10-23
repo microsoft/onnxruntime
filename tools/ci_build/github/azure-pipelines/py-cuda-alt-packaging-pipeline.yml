@@ -1,5 +1,10 @@
 trigger: none
-
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 parameters:
   - name: enable_linux_cuda
     type: boolean
