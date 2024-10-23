@@ -21,7 +21,6 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_execution_plan.h"
-#include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/framework/bfc_arena.h"
@@ -72,7 +71,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
                                                         const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                         Tensor& tensor, OrtCallback& ext_data_deleter,
-                                                        std::unordered_set<std::string>& pre_packed_initializers_name_set,
+                                                        SessionState::PrePackInitializers::PrePackedTensorNamesReadFromFile& pre_packed_initializers_name_set,
                                                         Tensor* buffered_tensor = nullptr) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
 
@@ -101,7 +100,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
                                              const ExternalDataLoaderManager& external_data_loader_mgr,
-                                             std::unordered_set<std::string>& pre_packed_initializers_name_set,
+                                             SessionState::PrePackInitializers::PrePackedTensorNamesReadFromFile& pre_packed_initializers_name_set,
                                              bool use_device_allocator_for_initializers = false,
                                              Tensor* buffered_tensor = nullptr) {
   if (bool(alloc) == (m != nullptr)) {
@@ -275,7 +274,7 @@ common::Status SaveInitializedTensors(
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
-    std::unordered_set<std::string>& pre_packed_initializers_name_set) {
+    SessionState::PrePackInitializers::PrePackedTensorNamesReadFromFile& pre_packed_initializers_name_set) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 

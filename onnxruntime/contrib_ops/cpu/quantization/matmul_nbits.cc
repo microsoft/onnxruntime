@@ -282,10 +282,6 @@ std::optional<Tensor> MatMulNBits<T1>::GetPrePackTensor(int input_idx) {
   // Inorder to cope with this logic, we need to return latest prepacked buffer and only serialize
   // the latest one. So, we need to always return packed_tensor_ here not only for input_B.
   ORT_UNUSED_PARAMETER(input_idx);
-  if (!packed_tensor_.has_value()) {
-    return std::nullopt;
-  }
-
   return std::move(packed_tensor_.value());
 }
 

@@ -2028,7 +2028,7 @@ common::Status InferenceSession::Initialize() {
     }
 
     SessionState::PrePackInitializers pre_packed_initializers;
-    Graph::PrePackInitializersTensorProto pre_packed_initializers_tensor_proto;
+    Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
@@ -2082,15 +2082,22 @@ common::Status InferenceSession::Initialize() {
                                             << "2. Load optimized model and external data file in same device, no prepack is need."
                                             << "3. Run inference with optimized model.";
 
+            if (fbs::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)) {
+              ORT_RETURN_IF_ERROR_SESSIONID_(
+                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                  "Unable to serialize prepacked external constant initializer for ORT format model."
+                                  "Please use ONNX format model with save_prepacked_constant_initializers."));
+            }
+
             // convert pre_packed_initializers to tensorproto format and save to external data file
-            for (const auto& name_item_pair : pre_packed_initializers.pre_packed_initializers_name_map) {
+            for (const auto& name_item_pair : pre_packed_initializers.pre_packed_initializers_to_save) {
               auto initializer_name = name_item_pair.first;
 
               for (const auto& kernel_name_initializer_item_pair : name_item_pair.second) {
                 auto kernel_name = kernel_name_initializer_item_pair.first;
                 auto prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer_name, kernel_name);
 
-                pre_packed_initializers_tensor_proto.pre_packed_initializers_name_map[initializer_name][kernel_name] = utils::TensorToTensorProto(kernel_name_initializer_item_pair.second, prepacked_initializer_name);
+                pre_packed_initializers_tensor_proto[initializer_name][kernel_name] = utils::TensorToTensorProto(kernel_name_initializer_item_pair.second, prepacked_initializer_name);
               }
             }
           }

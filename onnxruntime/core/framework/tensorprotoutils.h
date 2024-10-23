@@ -17,6 +17,7 @@
 #include "core/framework/external_data_loader.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/mem_buffer.h"
+#include "core/framework/session_state.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
@@ -158,7 +159,7 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter,
-                                         std::unordered_set<std::string>& pre_packed_initializers_name_set,
+                                         SessionState::PrePackInitializers::PrePackedTensorNamesReadFromFile& pre_packed_initializers_name_set,
                                          Tensor* buffered_tensor = nullptr);
 
 // Given a tensor proto with external data obtain a tensor using the specified custom external data loader.

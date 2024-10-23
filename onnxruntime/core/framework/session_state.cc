@@ -430,7 +430,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
 
                 // found pre-packed constant initializers from data file, no need to do pre-packing again
                 // apply pre-packed tensor to kernel so kernel can use it directly
-                if (pre_packed_initializers.pre_packed_initializers_name_set.count(input_name) != 0) {
+                if (pre_packed_initializers.pre_packed_initializer_names_read_from_file.count(input_name) != 0) {
                   is_packed = true;
 
                   // kernel like Matmul_nbits will call prepack multiple times with input_B and possibly scales/zero_points.
@@ -514,7 +514,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                     if (tensor != std::nullopt) {
                       // save prepacked initializers per initializer and kernel since one initializer could
                       // be used by multiple kernels
-                      pre_packed_initializers.pre_packed_initializers_name_map[input_name][kernel_name] = std::move(tensor.value());
+                      pre_packed_initializers.pre_packed_initializers_to_save[input_name][kernel_name] = std::move(tensor.value());
 
                       pre_packed_kernel_input_map[kernel_name] = input_name;
                     }
@@ -523,7 +523,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   ++number_of_prepacks_counter_;
 
                   // if constant_initialized_tensor is already pre-packed, don't need to remove it
-                  if (pre_packed_initializers.pre_packed_initializers_name_set.count(input_name) == 0 &&
+                  if (pre_packed_initializers.pre_packed_initializer_names_read_from_file.count(input_name) == 0 &&
                       constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                     // release the constant initialized tensor
                     st->initialized_tensors_.erase(ort_value_idx);
@@ -541,7 +541,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
 
                     if (tensor != std::nullopt) {
                       auto existing_input_name = pre_packed_kernel_input_map[kernel_name];
-                      pre_packed_initializers.pre_packed_initializers_name_map[existing_input_name][kernel_name] = std::move(tensor.value());
+                      pre_packed_initializers.pre_packed_initializers_to_save[existing_input_name][kernel_name] = std::move(tensor.value());
                     }
                   }
                 }
@@ -1545,7 +1545,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return Status::OK();
           },
           logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-          memory_profile_func, name_to_buffered_tensor_, pre_packed_initializers.pre_packed_initializers_name_set));
+          memory_profile_func, name_to_buffered_tensor_, pre_packed_initializers.pre_packed_initializer_names_read_from_file));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

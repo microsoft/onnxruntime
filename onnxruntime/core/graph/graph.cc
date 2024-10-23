@@ -4089,9 +4089,9 @@ void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_inf
                                      int64_t& external_offset,
                                      std::ofstream& external_stream,
                                      gsl::span<const uint8_t> raw_data,
-                                     onnx::TensorProto& output_proto,
+                                     ONNX_NAMESPACE::TensorProto& output_proto,
                                      const std::filesystem::path& external_file_path,
-                                     const onnx::TensorProto& initializer,
+                                     const ONNX_NAMESPACE::TensorProto& initializer,
                                      bool is_prepacked) {
   // update external_offset for alignment
   // need to do padding before write actual tensor data as we do offset alignment at the begin of
@@ -4107,9 +4107,12 @@ void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_inf
                                   alignment_factor;
 
     // padding tensor with zeros for alignment
+    InlinedVector<uint8_t> paddings;
+    paddings.reserve(new_external_offset - external_offset);
     for (int64_t index = external_offset; index != new_external_offset; ++index) {
-      external_stream << 0x0;
+      paddings.push_back(0x0);
     }
+    external_stream.write(reinterpret_cast<const char*>(paddings.data()), new_external_offset - external_offset);
 
     external_offset = new_external_offset;
   }
@@ -4148,7 +4151,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold,
                                                                        const OffsetAlignmentInfo& align_info,
                                                                        bool save_prepacked_constant_initializers,
-                                                                       PrePackInitializersTensorProto& pre_packed_initializers) const {
+                                                                       PrePackedTensorProtoToSave& pre_packed_initializers) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4175,8 +4178,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     // to avoid conflict. Change the node input name accordingly.
     // IT could potentially make the ONNX data file larger since we store multiple prepacked initializers into disk
     // but this could be rare case.
-    if (save_prepacked_constant_initializers && pre_packed_initializers.pre_packed_initializers_name_map.count(initializer.name())) {
-      for (const auto& item : pre_packed_initializers.pre_packed_initializers_name_map[initializer.name()]) {
+    if (save_prepacked_constant_initializers && pre_packed_initializers.count(initializer.name())) {
+      for (const auto& item : pre_packed_initializers[initializer.name()]) {
         auto& kernel_name = item.first;
         std::string prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer.name(), kernel_name);
         pre_packed_initializers_tensor_proto.push_back(item.second);
@@ -4204,7 +4207,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     } else {
 #endif
       if (use_pre_packed_initializer) {
-        for (auto pre_packed_initializer : pre_packed_initializers_tensor_proto) {
+        for (const auto& pre_packed_initializer : pre_packed_initializers_tensor_proto) {
           // Dense tensors larger than the threshold are added to the external file.
           TensorProto* output_proto = result.add_initializer();
           std::vector<uint8_t> raw_data;

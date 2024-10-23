@@ -642,16 +642,16 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
     ASSERT_EQ(kernel_if_1->get_prepack_tensors_count, (test_param.test_prepacking && test_param.test_save_prepack_initializer) ? 1 : 0);
   }
 
-  // check pre_packed_initializers_name_map will be set properly when set save_prepacked_constant_initializers
+  // check pre_packed_initializers_to_save will be set properly when set save_prepacked_constant_initializers
   if (!test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map.size(), size_t(1));
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map.count("node_0_input_1"), size_t(1));
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map["node_0_input_1"].count("node_0"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.count("node_0_input_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["node_0_input_1"].count("node_0"), size_t(1));
   } else if (test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map.size(), size_t(1));
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map.count("if_shared"), size_t(1));
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map["if_shared"].count("if_node_1"), size_t(1));
-    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_name_map["if_shared"].count("if_node_0"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.count("if_shared"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["if_shared"].count("if_node_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["if_shared"].count("if_node_0"), size_t(1));
   }
 }
 

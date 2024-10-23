@@ -314,15 +314,18 @@ class SessionState {
 
   // Data structure stores prepacked initializers in format of Tensor.
   struct PrePackInitializers {
+    // This map is used during model save for prepacked initializers.
     // Since one constant initializer could be used by different kernels
     // and prepacked differently, use an unordered_map to store prepacked
     // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> pre_packed_initializers_name_map;
+    typedef std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> PrePackedTensorsToSave;
+    PrePackedTensorsToSave pre_packed_initializers_to_save;
 
-    // This InlinedHashSet is used during model load with prepacked initializer saved in ONNX data file.
-    // ORT reads prepacked initializers and store them into this set so we could skip PrePack
-    // process later to save heap memory.
-    std::unordered_set<std::string> pre_packed_initializers_name_set;
+    // This set is used during model load with prepacked initializer serialized in external data file.
+    // ORT reads prepacked initializers and store their name into this set so we could skip PrePack
+    // process later to save heap memory. Prepacked tensor itself is saved in session state's constant_initialized_tensors_.
+    typedef std::unordered_set<std::string> PrePackedTensorNamesReadFromFile;
+    PrePackedTensorNamesReadFromFile pre_packed_initializer_names_read_from_file;
   };
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
