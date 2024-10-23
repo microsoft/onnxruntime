@@ -183,9 +183,7 @@ export class WebNNBackend {
     }
     const fileData = mountedFiles.get(filePath);
     if (!fileData) {
-      throw new Error(
-        `File with name ${filePath} not found in preloaded files.`,
-      );
+      throw new Error(`File with name ${filePath} not found in preloaded files.`);
     }
 
     if (dataOffset + dataLength > fileData.byteLength) {
@@ -223,11 +221,7 @@ export class WebNNBackend {
         throw new Error(`Unsupported data type: ${desc.dataType} in creating WebNN Constant from external data.`);
     }
 
-    LOG_DEBUG(
-      'verbose',
-      () =>
-        `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`,
-    );
+    LOG_DEBUG('verbose', () => `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`);
 
     return builder.constant(desc, bufferView);
   }
