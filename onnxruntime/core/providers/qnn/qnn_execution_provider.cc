@@ -258,49 +258,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
-#ifdef _WIN32
-  auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
-  // Register callback for ETW capture state (rundown)
-  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
-      [&etwRegistrationManager, this](
-          LPCGUID SourceId,
-          ULONG IsEnabled,
-          UCHAR Level,
-          ULONGLONG MatchAnyKeyword,
-          ULONGLONG MatchAllKeyword,
-          PEVENT_FILTER_DESCRIPTOR FilterData,
-          PVOID CallbackContext) {
-        ORT_UNUSED_PARAMETER(SourceId);
-        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
-        ORT_UNUSED_PARAMETER(MatchAllKeyword);
-        ORT_UNUSED_PARAMETER(FilterData);
-        ORT_UNUSED_PARAMETER(CallbackContext);
-
-        if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
-          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
-            auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
-          }
-          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
-            if (Level != 0) {
-              // Commenting out Dynamic QNN Profiling for now
-              // There seems to be a crash in 3rd party QC QnnHtp.dll with this.
-              // Repro Scenario - start ETW tracing prior to session creation.
-              //    Then disable/enable ETW Tracing with the code below uncommented a few times
-              // auto profiling_level_etw = GetProfilingLevelFromETWLevel(Level);
-              // (void)qnn_backend_manager_->SetProfilingLevelETW(profiling_level_etw);
-            }
-          }
-        }
-
-        if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
-          // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
-          (void)qnn_backend_manager_->ResetQnnLogLevel();
-        }
-      });
-  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
-#endif
-
   // In case ETW gets disabled later
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
   if (profiling_level_pos != provider_options_map.end()) {
@@ -440,6 +397,49 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       htp_arch,
       soc_model,
       enable_htp_weight_sharing_);
+
+#ifdef _WIN32
+  auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+  // Register callback for ETW capture state (rundown)
+  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+      [&etwRegistrationManager, this](
+          LPCGUID SourceId,
+          ULONG IsEnabled,
+          UCHAR Level,
+          ULONGLONG MatchAnyKeyword,
+          ULONGLONG MatchAllKeyword,
+          PEVENT_FILTER_DESCRIPTOR FilterData,
+          PVOID CallbackContext) {
+        ORT_UNUSED_PARAMETER(SourceId);
+        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
+        ORT_UNUSED_PARAMETER(MatchAllKeyword);
+        ORT_UNUSED_PARAMETER(FilterData);
+        ORT_UNUSED_PARAMETER(CallbackContext);
+
+        if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
+            auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+          }
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+            if (Level != 0) {
+              // Commenting out Dynamic QNN Profiling for now
+              // There seems to be a crash in 3rd party QC QnnHtp.dll with this.
+              // Repro Scenario - start ETW tracing prior to session creation.
+              //    Then disable/enable ETW Tracing with the code below uncommented a few times
+              // auto profiling_level_etw = GetProfilingLevelFromETWLevel(Level);
+              // (void)qnn_backend_manager_->SetProfilingLevelETW(profiling_level_etw);
+            }
+          }
+        }
+
+        if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+          // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
+          (void)qnn_backend_manager_->ResetQnnLogLevel();
+        }
+      });
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+#endif
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
@@ -453,7 +453,9 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 
   // Unregister the ETW callback
 #ifdef _WIN32
-  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
+  if (callback_ETWSink_provider_ != nullptr) {
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
+  }
 #endif
 }
 
