@@ -61,6 +61,7 @@ jobs:
                 --build_dir $(Build.BinariesDirectory)/iOS \
                 --build_shared_lib \
                 --use_coreml \
+                --use_webgpu \
                 --use_xnnpack \
                 --ios \
                 --apple_sysroot iphonesimulator  \
