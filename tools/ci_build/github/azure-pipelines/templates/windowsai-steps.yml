@@ -25,7 +25,8 @@ jobs:
       inputs:
         versionSpec: '3.9'
         addToPath: true
-        architecture: if eq('${{ parameters.BuildArch }}', 'x86') then 'x86' else 'x64'
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          architecture: 'x86'
 
     - template: telemetry-steps.yml
 
