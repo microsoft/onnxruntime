@@ -54,7 +54,7 @@ jobs:
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
-  # skip emulator tests for qnn package as there are no arm64-v8a emulators
+  # skip emulator tests for qnn package as there are no arm64-v8a emulators and no qnn libraries for x86
   - ${{ if not(contains(parameters.packageName, 'qnn')) }}:
     - template: use-android-emulator.yml
       parameters:
