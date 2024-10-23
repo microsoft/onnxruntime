@@ -30,4 +30,3 @@ extends:
         parameters:
           enable_windows_dml: true
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          publish_symbols: true
