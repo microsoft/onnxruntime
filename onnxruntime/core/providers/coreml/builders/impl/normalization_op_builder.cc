@@ -195,13 +195,6 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
 
 bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                const logging::Logger& logger) const {
-#if !defined(COREML_ENABLE_MLPROGRAM)
-  if (node.OpType() == "LayerNormalization" || node.OpType() == "InstanceNormalization" ||
-      node.OpType() == "GroupNormalization") {
-    return false;
-  }
-#endif
-
   if (!input_params.create_mlprogram) {
     return false;
   }
@@ -213,8 +206,9 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   }
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
+  }
 
   NodeAttrHelper helper(node);
   const auto stash_type = helper.Get("stash_type", 1);

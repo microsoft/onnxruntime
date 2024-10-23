@@ -72,7 +72,6 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
                                       const logging::Logger& logger) const {
   bool is_supported = is_support_fused(node, input_params, logger);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     // cast only support int64 input when the prec_node is ArgMax
     int32_t input_type;
@@ -81,7 +80,7 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       return false;
     }
   }
-#endif
+
   return is_supported;
 }
 
@@ -130,16 +129,18 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
   const auto& output = *node.OutputDefs()[0];
 
   int32_t input_type, output_type;
-  if (!GetType(input, input_type, logger))
+  if (!GetType(input, input_type, logger)) {
     return false;
-  if (!GetType(output, output_type, logger))
+  }
+  if (!GetType(output, output_type, logger)) {
     return false;
+  }
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     std::cout << "input_params.coreml_version: " << input_params.coreml_version << std::endl;
-#if TARGET_OS_OSX1
-#if TARGET_CPU_ARM641
+#ifdef TARGET_OS_OSX1
+#ifdef TARGET_CPU_ARM641
     // not sure why, we are seeing failures in arm64 macosx CI for this test
     // Xcode 15.7 or below works for Cast, but Xcode 16+ fails
     // https://github.com/microsoft/onnxruntime/actions/runs/11454539711/job/31868873687?pr=22480
