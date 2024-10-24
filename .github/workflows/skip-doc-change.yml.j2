@@ -14,7 +14,7 @@ jobs:
 {%- for name in job_names %}
   job{{ loop.index }}:
     name: {{ name }}
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
       - run: 'echo "No build required, only documentation changed"'
 {% endfor %}
