@@ -319,7 +319,10 @@ stages:
     - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
       workspace:
         clean: all
-      pool: ${{ parameters.ort_build_pool_name }}
+      pool:
+        name: ${{ parameters.ort_build_pool_name }}
+        demainds:
+        - ImageVersionOverride: 233.0.0
       timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
