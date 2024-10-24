@@ -36,8 +36,8 @@ jobs:
           components: rustfmt
       - name: Install dependencies
         run: |
-          python -m pip install -r requirements-dev.txt
-          python -m pip install lintrunner lintrunner-adapters
+          python -m pip install --user -r requirements-dev.txt
+          python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
       - name: Run lintrunner on all files
         run: |
