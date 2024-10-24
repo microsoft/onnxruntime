@@ -50,7 +50,7 @@ bool ScatterNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
                                            const logging::Logger& logger) const {
   NodeAttrHelper helper(node);
   if (helper.Get("reduction", "none") != "none") {
-    LOGS(logger, VERBOSE) << "ScatterND: the type of reduction must be none (default)";
+    LOGS(logger, VERBOSE) << "ScatterND: WebNN only supports reduction type none (default)";
     return false;
   }
 

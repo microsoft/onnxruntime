@@ -48,7 +48,7 @@ bool GatherNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initial
                                           const logging::Logger& logger) const {
   NodeAttrHelper helper(node);
   if (helper.Get("batch_dims", 0) != 0) {
-    LOGS(logger, VERBOSE) << "GatherND: batch_dims must be equal to 0";
+    LOGS(logger, VERBOSE) << "GatherND: WebNN only supports batch_dims 0 (default)";
     return false;
   }
 
