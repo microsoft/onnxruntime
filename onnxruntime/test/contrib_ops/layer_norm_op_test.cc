@@ -221,16 +221,10 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
     test.AddInput<MLFloat16>("bias", {2}, ToFloat16({0.6435f, -0.3964f}), is_initializer);
     test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
     // TRT, DNNL, OpenVINO and NNAPI don't support this combination of datatypes
-    if (!is_initializer) {
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-               {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-                kNnapiExecutionProvider, kQnnExecutionProvider});
-    } else {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
-      // coreml EP requires weight and bias to be initializers
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    }
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+              {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+              kNnapiExecutionProvider, kQnnExecutionProvider});
+
   };
   run_test(false);
   run_test(true);
