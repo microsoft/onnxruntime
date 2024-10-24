@@ -207,6 +207,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"DequantizeLinear", "dequantizeLinear"},
     {"Dropout", "identity"},
     {"DynamicQuantizeLinear", "dynamicQuantizeLinear"},
+    {"Einsum", "matmul"},
     {"Elu", "elu"},
     {"Equal", "equal"},
     {"Erf", "erf"},
