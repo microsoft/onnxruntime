@@ -34,14 +34,13 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt
-      - name: Install dependencies
+      - name: Install dependencies and run lintrunner on all files
         run: |
+	  export PATH=$HOME/.local/bin:$PATH
+	  set -e -x
           python -m pip install --user -r requirements-dev.txt
           python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
-      - name: Run lintrunner on all files
-        run: |
-          set +e
           lintrunner f --all-files -v
           exit 0
       - uses: parkerbxyz/suggest-changes@v1
