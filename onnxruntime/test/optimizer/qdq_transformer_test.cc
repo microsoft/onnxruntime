@@ -3037,7 +3037,7 @@ TEST(QDQTransformerTests, Clip) {
 
     TransformerTester(build_test_case, check_clip_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level2,
+                      TransformerLevel::Level1,
                       opset_version,
                       epsilon,
                       epsilon);
