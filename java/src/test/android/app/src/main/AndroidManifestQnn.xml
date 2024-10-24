@@ -16,8 +16,8 @@
             </intent-filter>
         </activity>
         <uses-native-library
-        android:name="libcdsprpc.so"
-        android:required="false" />
+            android:name="libcdsprpc.so"
+            android:required="false" />
     </application>
 
 </manifest>
