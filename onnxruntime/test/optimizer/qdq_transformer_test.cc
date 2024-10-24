@@ -25,6 +25,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
@@ -3037,7 +3038,7 @@ TEST(QDQTransformerTests, Clip) {
 
     TransformerTester(build_test_case, check_clip_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level2,
+                      TransformerLevel::Level1,
                       opset_version,
                       epsilon,
                       epsilon);
@@ -3101,9 +3102,14 @@ TEST(QDQTransformerTests, Clip) {
   }
 }
 
-// Test that the ReluQuantFusion transformer only runs for optimization level >= 2.
-TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
-  auto test_case = [&](TransformerLevel opt_level, int8_t zp) {
+// Test that the ClipQuantFusion and ReluQuantFusion transformer never runs for OpenVINO.
+TEST(QDQTransformerTests, ReluQuantFusion_ExceptOpenVINO) {
+  auto test_case = [&](bool should_fuse, bool is_openvino, int8_t zp, bool is_relu = true) {
+    if (is_openvino) {
+      // OpenVINO don't do ClipQuantFusion and ReluQuantFusion
+      should_fuse = false;
+    }
+
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<int8_t>({1, 2, 2, 2},
                                                   {-4, -3, -2, 0, 1, 2, 3, 4});
@@ -3113,43 +3119,59 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
       auto* dq_output = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode<int8_t>(input_arg, 1.0f, zp, dq_output);
 
-      // add Relu
-      auto* relu_output = builder.MakeIntermediate();
-      builder.AddNode("Relu", {dq_output}, {relu_output});
+      auto* act_output = builder.MakeIntermediate();
+      if (is_relu) {  // add Relu
+        builder.AddNode("Relu", {dq_output}, {act_output});
+      } else {
+        auto* min_initializer = builder.MakeScalarInitializer<float>(-128.0f);
+        auto* max_initializer = builder.MakeScalarInitializer<float>(127.0f);
+        builder.AddNode("Clip", {dq_output, min_initializer, max_initializer}, {act_output});
+      }
 
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<int8_t>(relu_output, 1.0f, zp, q_output);
+      builder.AddQuantizeLinearNode<int8_t>(act_output, 1.0f, zp, q_output);
       builder.AddDequantizeLinearNode<int8_t>(q_output, 1.0f, zp, output_arg);
     };
 
     auto check_relu_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-      // Only fuse relu into Q if level >= 2 and zero_point == -128 for int8.
-      // Level1 graph:   input -> DQ -> Relu -> Q -> DQ -> output
-      // Level2+ graph: input -> DQ -> output (QuantReluFusion + QDQFinalCleanupTransformer transformers)
-      const bool fuse_relu = (zp == -128) &&
-                             (opt_level == TransformerLevel::Level2 || opt_level == TransformerLevel::Level3);
-      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], fuse_relu ? 0 : 1);
-      EXPECT_EQ(op_to_count["Relu"], fuse_relu ? 0 : 1);
-      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], fuse_relu ? 1 : 2);
+      // if not fuse: input -> DQ -> Relu/Clip -> Q -> DQ -> output
+      // if     fuse: input -> DQ -> output (QuantClipFusion/QuantReluFusion + QDQFinalCleanupTransformer transformers)
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], should_fuse ? 0 : 1);
+      EXPECT_EQ(op_to_count[is_relu ? "Relu" : "Clip"], should_fuse ? 0 : 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], should_fuse ? 1 : 2);
     };
 
     constexpr float epsilon = std::numeric_limits<float>::epsilon();
 
+    std::unique_ptr<IExecutionProvider> ep = nullptr;
+    if (is_openvino) {
+      ep = DefaultOpenVINOExecutionProvider();
+      EXPECT_NE(ep, nullptr);
+    }
     TransformerTester(build_test_case, check_relu_graph,
                       TransformerLevel::Default,
-                      opt_level,
+                      TransformerLevel::Level3,
                       18,
                       epsilon,
-                      epsilon);
+                      epsilon,
+                      /*transformer=*/nullptr,
+                      /*add_session_options=*/{},
+                      /*disabled_optimizers=*/{},
+                      std::move(ep));
   };
 
-  test_case(TransformerLevel::Level1, -128);  // Will not fuse Relu into QuantizeLinear due to level1 opt.
-  test_case(TransformerLevel::Level2, -128);  // Will fuse Relu into QuantizeLinear.
-  test_case(TransformerLevel::Level3, -128);  // Will fuse Relu into QuantizeLinear.
-  test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
+  test_case(/*should_fuse=*/true, /*is_openvino=*/false, /*zp=*/-128);                    // ReluQuantFusion applicable
+  test_case(/*should_fuse=*/false, /*is_openvino=*/false, /*zp=*/10);                     // ReluQuantFusion inapplicable
+  test_case(/*should_fuse=*/true, /*is_openvino=*/false, /*zp=*/0, /*is_relu=*/false);    // ClipQuantFusion applicable
+  test_case(/*should_fuse=*/false, /*is_openvino=*/false, /*zp=*/10, /*is_relu=*/false);  // ClipQuantFusion inapplicable
+
+#if defined(USE_OPENVINO)
+  test_case(/*should_fuse=*/false, /*is_openvino=*/true, /*zp=*/-128);                  // OpenVINO does not fuse Relu
+  test_case(/*should_fuse=*/false, /*is_openvino=*/true, /*zp=*/0, /*is_relu=*/false);  // OpenVINO does not fuse Clip
+#endif
 }
 
 TEST(QDQTransformerTests, Concat) {

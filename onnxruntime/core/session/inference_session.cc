@@ -1709,6 +1709,12 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
       execution_providers_.SetCpuProviderWasImplicitlyAdded(true);
     }
+    bool have_openvino_ep = execution_providers_.Get(onnxruntime::kOpenVINOExecutionProvider) != nullptr;
+    if (have_openvino_ep) {
+      LOGS(*session_logger_, INFO) << "Excluding ClipQuantFusion and ReluQuantFusion for OpenVINO provider.";
+      optimizers_to_disable_.insert(std::move("ClipQuantRewrite"));
+      optimizers_to_disable_.insert(std::move("ReluQuantRewrite"));
+    }
 
     // re-acquire mutex
     std::lock_guard<std::mutex> l(session_mutex_);
