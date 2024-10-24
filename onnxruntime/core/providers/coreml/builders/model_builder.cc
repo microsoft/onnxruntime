@@ -1040,9 +1040,7 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
     //   ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<bool>(), shape?shape:tensor.dims());
     //   break;
     default:
-      // un reachable
       ORT_THROW("AddConstant: Unsupported data type: ", data_type);
-      break;
   }
 
   return ret;

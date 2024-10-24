@@ -46,9 +46,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   // Normalization ops
   CreateBatchNormalizationOpBuilder("BatchNormalization", op_registrations);
-  CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
   CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
+  CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
 
   CreateArgMaxOpBuilder("ArgMax", op_registrations);
   CreateCastOpBuilder("Cast", op_registrations);

@@ -45,18 +45,16 @@ template <typename T>
 void HandlePReluWeight(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger,
                        std::vector<T>& alpha_values) {
   // add slope initializer as alpha weight
-  const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
-  const auto slope_tensor_num_elements = narrow<size_t>(Product(slope_tensor.dims()));
+  const auto& slope_tensor = *model_builder.GetConstantInitializer(node.InputDefs()[1]->Name());
   Initializer unpacked_tensor(slope_tensor);
+  const auto alpha_v = unpacked_tensor.DataAsSpan<T>();
 
-  std::vector<int64_t> x_shape;
-  GetShape(*node.InputDefs()[0], x_shape, logger);
-  // channel nums
-  if (slope_tensor_num_elements == 1) {
-    T value = unpacked_tensor.DataAsSpan<T>()[0];
-    alpha_values.resize(x_shape[x_shape.size() - 3], value);
+  if (alpha_v.size() == 1) {
+    // expand to number of channels
+    std::vector<int64_t> x_shape;
+    GetShape(*node.InputDefs()[0], x_shape, logger);
+    alpha_values.resize(x_shape[x_shape.size() - 3], alpha_v[0]);
   } else {
-    const auto alpha_v = unpacked_tensor.DataAsSpan<T>();
     alpha_values.assign(alpha_v.begin(), alpha_v.end());
   }
 }

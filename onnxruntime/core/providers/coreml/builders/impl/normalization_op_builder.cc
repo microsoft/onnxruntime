@@ -210,7 +210,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   NodeAttrHelper helper(node);
   const auto stash_type = helper.Get("stash_type", 1);
   if (stash_type != 1) {
-    LOGS(logger, VERBOSE) << "stash_type != 1 for " << node.OpType() << " is not supported";
+    LOGS(logger, VERBOSE) << "stash_type != 1 is not supported";
     return false;
   }
 
@@ -218,9 +218,11 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   const auto& scale_name = input_defs[1]->Name();
   const auto* scale_tensor = input_params.graph_viewer.GetConstantInitializer(scale_name);
   if (!scale_tensor) {
-    LOGS(logger, VERBOSE) << "Scale of Normazition must be a constant initializer";
+    LOGS(logger, VERBOSE) << "Scale must be a constant initializer";
     return false;
-  } else if (node.OpType() == "GroupNormalization") {
+  } 
+  
+  if (node.OpType() == "GroupNormalization") {
     Initializer unpacked_tensor(*scale_tensor);
     if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       const auto src_data = unpacked_tensor.DataAsSpan<MLFloat16>();
@@ -233,7 +235,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     } else {
       const auto src_data = unpacked_tensor.DataAsSpan<float>();
       for (size_t i = 0; i < src_data.size(); i++) {
-        if (fabs(src_data[i] - 1.0f) > 1e-6) {
+        if (fabs(src_data[i] - 1.0f) > 1e-6f) {
           LOGS(logger, VERBOSE) << "GroupNorm only support scale == 1.0";
           return false;
         }
@@ -245,7 +247,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     const auto& b_name = input_defs[2]->Name();
     const auto& b_tensor = input_params.graph_viewer.GetConstantInitializer(b_name);
     if (!b_tensor) {
-      LOGS(logger, VERBOSE) << "B of Normazition must be a constant initializer";
+      LOGS(logger, VERBOSE) << "Bias must be a constant initializer";
       return false;
     } else if (node.OpType() == "GroupNormalization") {
       Initializer unpacked_tensor(*b_tensor);
