@@ -21,7 +21,8 @@ target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
                                              "../../build/tensorrt/Debug/_deps/gsl-src/include"
                                              "../../build/tensorrt/Debug/_deps/onnx-src"
                                              "../../build/tensorrt/Debug/_deps/onnx-build"
-                                             "../../build/tensorrt/Debug/_deps/protobuf-src/src")
+                                             "../../build/tensorrt/Debug/_deps/protobuf-src/src"
+                                             "../../build/tensorrt/Debug/_deps/google_nsync-src/public")
 
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
 target_link_libraries(TensorRTEp PUBLIC "/home/leca/code/onnxruntime/build/tensorrt/Debug/libonnxruntime.so"
@@ -34,4 +35,5 @@ target_link_libraries(TensorRTEp PUBLIC "/home/leca/code/onnxruntime/build/tenso
                                     "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/onnx-build/libonnx_proto.a"
                                     "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/protobuf-build/libprotobufd.a"
                                     "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/protobuf-build/libprotocd.a"
+                                    "/home/leca/code/onnxruntime/build/tensorrt/Debug/_deps/google_nsync-build/libnsync_cpp.a"
                                     )
