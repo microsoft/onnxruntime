@@ -48,10 +48,6 @@ parameters:
     - '3.12'
     - '3.13'
 
-- name: publish_symbols
-  type: boolean
-  default: false
-
 stages:
   - ${{ if eq(parameters.enable_windows_cuda, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
@@ -89,5 +85,4 @@ stages:
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
-          publish_symbols: ${{ parameters.publish_symbols }}
           cmake_build_type: ${{ parameters.cmake_build_type }}

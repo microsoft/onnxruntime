@@ -99,6 +99,7 @@ stages:
           mv $(Build.BinariesDirectory)/dist ./dist
           pushd dist
           find . -name \*.whl -exec unzip -qq -o {} \;
+          rm -r onnxruntime
           popd
           pushd ${{ parameters.cmake_build_type }} 
           find . -name \*.whl -exec unzip -qq -o {} \;
