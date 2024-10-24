@@ -147,7 +147,7 @@ class OpKernel {
   // @param input_idx : The input index of the tensor in this kernel.
   // @param pre_packed_tensor: The prepacked tensor read from onnx data file and use the prepacked tensor
   // to restore prepacked weight buffer.
-  virtual Status SetPrePackTensor(int /*input_idx*/, Tensor& /*pre_packed_tensor*/) {
+  virtual Status SetPrePackTensor(int /*input_idx*/, const Tensor& /*pre_packed_tensor*/) {
     return Status::OK();
   }
 

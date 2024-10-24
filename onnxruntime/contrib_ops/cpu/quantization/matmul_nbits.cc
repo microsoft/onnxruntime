@@ -109,7 +109,7 @@ class MatMulNBits final : public OpKernel {
 
   std::optional<Tensor> GetPrePackTensor(int /*input_idx*/) override;
 
-  Status SetPrePackTensor(int input_idx, Tensor& pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
  private:
   const size_t K_;
@@ -286,12 +286,13 @@ std::optional<Tensor> MatMulNBits<T1>::GetPrePackTensor(int input_idx) {
 }
 
 template <typename T1>
-Status MatMulNBits<T1>::SetPrePackTensor(int input_idx, Tensor& pre_packed_tensor) {
+Status MatMulNBits<T1>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
     // pre_packed_tensor is constant initialized tensor and its lifecycle is managed by session_state,
     // session_state will release memory from pre_packed_tensor. packed_b_ will not release memory so
     // pass empty/default buffer deleter here.
-    packed_b_ = BufferUniquePtr(pre_packed_tensor.MutableDataRaw(), BufferDeleter());
+    // const_cast here is temporary, will fix in follow up PR.
+    packed_b_ = BufferUniquePtr(const_cast<void*>(pre_packed_tensor.DataRaw()), BufferDeleter());
   }
 
   return Status::OK();
