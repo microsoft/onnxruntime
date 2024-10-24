@@ -76,7 +76,7 @@ extends:
                 }
 
                 Write-Host "======================ArtifactStagingDirectory END ==========="
-          workingDirectory: $(Build.BinariesDirectory)
+            workingDirectory: $(Build.BinariesDirectory)
 
 
       - job: NuGet_Packaging
