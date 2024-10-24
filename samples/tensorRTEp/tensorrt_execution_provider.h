@@ -2,9 +2,9 @@
 #include <ctime>
 #include <string>
 #include <unordered_set>
+#include <mutex>
 #include "core/session/onnxruntime_c_api_ep.h"
 #include "core/framework/provider_options.h"
-#include "core/platform/ort_mutex.h"
 #include "tensorrt_execution_provider_info.h"
 #include "nv_includes.h"
 
@@ -162,7 +162,7 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
-  OrtMutex* tensorrt_mu_ptr = nullptr;
+  std::mutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
@@ -208,7 +208,7 @@ struct TensorrtShortFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
-  OrtMutex* tensorrt_mu_ptr = nullptr;
+  std::mutex* tensorrt_mu_ptr = nullptr;
 };
 
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
@@ -237,7 +237,7 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
     Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)
     should be protected by a lock when invoked by multiple threads concurrently.
     */
-    std::unique_lock<OrtMutex> GetApiLock() const;
+    std::unique_lock<std::mutex> GetApiLock() const;
 
     /**Check the graph is the subgraph of control flow op*/
     bool IsSubGraphOfControlFlowOp(const OrtGraphViewer* graph) const;
@@ -280,7 +280,7 @@ private:
   std::string tactic_sources_;
   std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
-  OrtMutex tensorrt_mu_;
+  std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
   bool context_memory_sharing_enable_ = false;

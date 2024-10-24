@@ -160,7 +160,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphV
   (*out)->shape_len = initializer->dims_size();
   (*out)->shape = new int64_t [initializer->dims_size()];
   for (size_t i = 0; i < (*out)->shape_len; i++) {
-    ((*out)->shape)[i] = initializer->dims(i);
+    ((*out)->shape)[i] = initializer->dims(static_cast<int>(i));
   }
 
   (*out)->data_type = static_cast<ONNXTensorElementDataType>(initializer->data_type());
@@ -202,7 +202,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetValueInfo, const OrtGraphViewer* g
   const auto& dims = utils::TryGetShape(*type)->dim();
   (*out)->shape_len = dims.size();
   (*out)->shape = new int64_t [(*out)->shape_len];
-  for (size_t i = 0; i < (*out)->shape_len; i++) ((*out)->shape)[i] = utils::HasDimValue(dims[i]) ? dims[i].dim_value() : -1;
+  for (size_t i = 0; i < (*out)->shape_len; i++) ((*out)->shape)[i] = utils::HasDimValue(dims[static_cast<int>(i)]) ? dims[static_cast<int>(i)].dim_value() : -1;
 
   *ret = true;
   return nullptr;
@@ -232,7 +232,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_SerializeToArray, const OrtGraphViewe
   GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true, ExecutionOrder::PRIORITY_BASED);
   *data_size = model_proto.ByteSizeLong();
   *data = malloc(*data_size);
-  model_proto.SerializeToArray(*data, *data_size);
+  model_proto.SerializeToArray(*data, static_cast<int>(*data_size));
   return nullptr;
 }
 
@@ -544,8 +544,8 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
       NodeAttributes node_attributes;
       node_attributes.reserve(num_attributes);
 
-      for (int i = 0; i < num_attributes; ++i) {
-        auto& attr = node_proto->attribute(i);
+      for (int ii = 0; ii < num_attributes; ++ii) {
+        auto& attr = node_proto->attribute(ii);
         node_attributes.emplace(attr.name(), attr);
       }
 

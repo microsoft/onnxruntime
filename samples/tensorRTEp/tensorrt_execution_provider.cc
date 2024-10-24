@@ -366,9 +366,9 @@ TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   return trt_logger;
 }
 
-std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
-  static OrtMutex singleton;
-  return std::unique_lock<OrtMutex>(singleton);
+std::unique_lock<std::mutex> TensorrtExecutionProvider::GetApiLock() const {
+  static std::mutex singleton;
+  return std::unique_lock<std::mutex>(singleton);
 }
 
 template <typename T>
@@ -2816,7 +2816,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     // The whole compute_function should be considered the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
     // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<std::mutex> lock(*(trt_state->tensorrt_mu_ptr));
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
@@ -3472,7 +3472,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
 
     // The whole compute_function should be considered the critical section.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<std::mutex> lock(*(trt_state->tensorrt_mu_ptr));
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
