@@ -12,7 +12,7 @@ concurrency:
   
 jobs:
   orttraining-linux-ci-pipeline:
-    runs-on: ubuntu-24.04
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions:
       actions: read
       contents: read
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-         python3 -m pip install -r tools/ci_build/github/linux/python/requirements.txt
+         python3 -m pip install --user -r tools/ci_build/github/linux/python/requirements.txt
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
