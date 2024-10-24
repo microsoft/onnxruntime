@@ -50,6 +50,7 @@ Do not modify directly.*
 | Gather | ai.onnx(1-10,11-12,13+) |  |
 | GatherBlockQuantized | com.microsoft(1+) |  |
 | GatherElements | ai.onnx(11-12,13+) |  |
+| GatherND | ai.onnx(11,12,13+) |  |
 | Gelu | ai.onnx(20+); com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
