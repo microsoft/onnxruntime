@@ -194,6 +194,24 @@ inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
   }
 }
 
+template <typename T>
+std::vector<T> GetTypedArray(std::vector<float> inputs) {
+  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value ||
+                    std::is_same<T, MLFloat16>::value || std::is_integral_v<T>,
+                "Only float, double, MLFloat16, and integral types are supported.");
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else if constexpr (std::is_integral_v<T> || std::is_same<T, double>::value) {
+    std::vector<T> result(inputs.size());
+    for (size_t i = 0; i < inputs.size(); i++) {
+      result[i] = static_cast<T>(inputs[i]);
+    }
+    return result;
+  } else {
+    return ToFloat16(inputs);
+  }
+}
+
 class ParallelRandomValueGenerator {
  public:
   using RandomEngine = std::default_random_engine;
