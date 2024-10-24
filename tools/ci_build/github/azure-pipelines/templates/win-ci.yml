@@ -321,7 +321,7 @@ stages:
         clean: all
       pool:
         name: ${{ parameters.ort_build_pool_name }}
-        demands: ImageVersionOverride -equals 233.0.0
+        demands: ImageVersionOverride -equals 248.0.0
       timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
