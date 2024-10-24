@@ -437,7 +437,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // If prepacked weights already read from ONNX data file (this happens we ORT reads data file with prepacked
                   // weights serialized), only need to set prepacked weights once to kernel.
                   is_kernel_prepacked = true;
-                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensor(input_idx, 
+                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensor(input_idx,
                                                               *(constant_initialized_tensors[ort_value_idx].GetMutable<Tensor>())));
                 }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now

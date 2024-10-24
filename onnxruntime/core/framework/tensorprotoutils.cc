@@ -230,12 +230,12 @@ Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& mo
 
 namespace utils {
 
-inline Status utils::GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                           const std::filesystem::path& tensor_proto_dir,
-                           std::basic_string<ORTCHAR_T>& external_file_path,
-                           onnxruntime::FileOffsetType& file_offset,
-                           SafeInt<size_t>& tensor_byte_size,
-                           bool& pre_packed) {
+static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                  const std::filesystem::path& tensor_proto_dir,
+                                  std::basic_string<ORTCHAR_T>& external_file_path,
+                                  onnxruntime::FileOffsetType& file_offset,
+                                  SafeInt<size_t>& tensor_byte_size,
+                                  bool& pre_packed) {
   ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
                     "Tensor does not have external data to read from.");
 
@@ -266,6 +266,11 @@ inline Status utils::GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tens
 
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param) {
   tensor_proto.set_raw_data(std::move(param));
+}
+
+Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& tensor_proto_dir, std::basic_string<ORTCHAR_T>& external_file_path, onnxruntime::FileOffsetType& file_offset, SafeInt<size_t>& tensor_byte_size) {
+  bool pre_packed = false;
+  return GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size, pre_packed);
 }
 
 void ConvertRawDataInTensorProto(TensorProto* tensor) {
