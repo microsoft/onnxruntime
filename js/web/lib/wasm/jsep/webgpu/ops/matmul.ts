@@ -201,6 +201,16 @@ export const matMul = (context: ComputeContext): void => {
   if (N < 8 && K < 8) {
     context.compute(createNaiveMatmulProgramInfo(context.inputs, { activation: '' }, outputShape));
   } else {
-    context.compute(createMatmulProgramInfo(context.inputs, { activation: '' }, outputShape));
+    const M = outputShape[outputShape.length - 2];
+    const batchA = ShapeUtil.size(context.inputs[0].dims.slice(0, -2));
+    const batchB = ShapeUtil.size(context.inputs[1].dims.slice(0, -2));
+    if (batchA !== 1 && M === 1 && batchB === 1) {
+      const reshapedA = context.inputs[0].reshape([1, batchA, K]);
+      const matmulOutputShape = [1, batchA, N];
+      const matmulInputs = [reshapedA, context.inputs[1]]
+      context.compute(createMatmulProgramInfo(matmulInputs, { activation: '' }, outputShape, matmulOutputShape), { inputs: matmulInputs });
+    } else {
+      context.compute(createMatmulProgramInfo(context.inputs, { activation: '' }, outputShape));
+    }
   }
 };
