@@ -42,6 +42,18 @@
 
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 
+#if defined(_MSC_VER)
+#define DISABLE_DEPRECATED_WARNING \
+  __pragma(warning(push))          \
+  __pragma(warning(disable : 4996))
+
+#define ENABLE_DEPRECATED_WARNING \
+  __pragma(warning(pop))
+#else
+#define DISABLE_MSVC_DEPRECATED_WARNING
+#define ENABLE_MSVC_DEPRECATED_WARNING
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
@@ -70,14 +82,9 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
     const std::string tensor_name = network.getInput(i)->getName();
     auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
     if (dynamic_range_iter != dynamic_range_map.end()) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
       if (!network.getInput(i)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
         LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for network input " << tensor_name;
         return false;
       }
@@ -91,14 +98,9 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
       const std::string tensor_name = trt_layer->getOutput(j)->getName();
       auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
       if (dynamic_range_iter != dynamic_range_map.end()) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
         if (!trt_layer->getOutput(j)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
           LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for tensor " << tensor_name;
           return false;
         }
@@ -136,14 +138,9 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
         if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight))) {
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
           LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for layer " << const_layer_name;
           return false;
         }
@@ -2938,28 +2935,18 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Check platform availability for low precision
   if (fp16_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
     if (!trt_builder->platformHasFastFp16()) {
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
       fp16_enable_ = false;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
     }
   }
 
   if (int8_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
     if (!trt_builder->platformHasFastInt8()) {
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
       int8_enable_ = false;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
     }
@@ -3175,16 +3162,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                  "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
         }
       } else {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
         // Set INT8 per tensor dynamic range
         if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
           trt_config->setInt8Calibrator(nullptr);
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
           if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
@@ -3308,14 +3290,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Note: Creating an execution context from an engine is thread safe per TRT doc
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
       size_t mem_size = trt_engine->getDeviceMemorySize();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
@@ -3587,16 +3564,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
       // Set INT8 Per Tensor Dynamic range
       if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
         trt_config->setInt8Calibrator(nullptr);
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
         if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
         }
@@ -3871,14 +3843,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
       size_t mem_size = trt_engine->getDeviceMemorySize();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
@@ -4011,14 +3978,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
     size_t mem_size = trt_engine->getDeviceMemorySize();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
@@ -4196,14 +4158,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+DISABLE_MSVC_DEPRECATED_WARNING
       size_t mem_size = trt_engine->getDeviceMemorySize();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+ENABLE_MSVC_DEPRECATED_WARNING
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
