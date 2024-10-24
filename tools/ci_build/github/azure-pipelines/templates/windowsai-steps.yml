@@ -14,7 +14,7 @@ jobs:
   templateContext:
     outputs:
     - output: pipelineArtifact
-      path: $(Build.ArtifactStagingDirectory)
+      path: '$(Build.ArtifactStagingDirectory)'
       artifact: drop_Windows_Build_Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
 
   steps:
@@ -177,3 +177,19 @@ jobs:
           FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
           DisplayName: 'Sign test_artifact'
           Pattern: '*.exe,*.dll'
+
+    - task: PowerShell@2
+      displayName: 'windowsai-steps-Check actual files'
+      inputs:
+        targetType: 'inline'
+        script: |
+                Write-Host "======================ArtifactStagingDirectory START==========="
+
+                $file_names=Get-ChildItem -Path $(Build.ArtifactStagingDirectory) -Name -Recurse -Force
+                foreach($file in $file_names)
+                {
+                    Write-Host $file
+                }
+
+                Write-Host "======================ArtifactStagingDirectory END ==========="
+      workingDirectory: $(Build.BinariesDirectory)
