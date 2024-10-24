@@ -1759,6 +1759,14 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
+    bool have_openvino_ep = execution_providers_.Get(onnxruntime::kOpenVINOExecutionProvider) != nullptr;
+    if (have_openvino_ep) {
+      LOGS(*session_logger_, INFO) << "Excluding ClipQuantFusion and ReluQuantFusion for OpenVINO provider.";
+      std::cout<< "Excluding ClipQuantFusion and ReluQuantFusion for OpenVINO provider." << std::endl;
+      optimizers_to_disable_.insert("ClipQuantRewrite");
+      optimizers_to_disable_.insert("ReluQuantRewrite");
+    }
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
     session_state_->SetMemoryProfiler(&memory_profiler_);
