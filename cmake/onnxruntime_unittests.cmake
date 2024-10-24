@@ -1418,17 +1418,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
               DEPENDS ${all_dependencies}
       )
     endif()
-
-    if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
-      AddTest(DYN
-              TARGET onnxruntime_webgpu_external_dawn_test
-              SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-              LIBS ${onnxruntime_shared_lib_test_LIBS}
-              DEPENDS ${all_dependencies}
-      )
-      onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
-      target_link_libraries(onnxruntime_webgpu_external_dawn_test PRIVATE dawn::dawn_native)
-    endif()
   endif()
 
   # the debug node IO functionality uses static variables, so it is best tested
@@ -1896,6 +1885,17 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
+endif()
+
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
+  AddTest(DYN
+          TARGET onnxruntime_webgpu_external_dawn_test
+          SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
+  onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  target_link_libraries(onnxruntime_webgpu_external_dawn_test PRIVATE dawn::dawn_native)
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
