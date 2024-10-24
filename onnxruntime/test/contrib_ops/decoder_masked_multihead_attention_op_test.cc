@@ -757,8 +757,8 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   // Attributes
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(!is_cross_attn));
-  // Output scaled Q * K^T by default for self-attention
-  tester.AddAttribute<int64_t>("output_qk", static_cast<int64_t>(!is_cross_attn));
+  // Output scaled Q * K^T by default for cross-attention
+  tester.AddAttribute<int64_t>("output_qk", static_cast<int64_t>(is_cross_attn));
 
   // Inputs and outputs
   auto query = CreateRandom<T>(batch_size * 1 * hidden_size);
@@ -784,6 +784,9 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
                                      kv_sequence_length, kv_sequence_length, head_size);
 
     tester.AddOutput<T>("output", {batch_size, 1, hidden_size}, output);
+    tester.AddOptionalOutputEdge<T>();  // optional present_key
+    tester.AddOptionalOutputEdge<T>();  // optional present_value
+    tester.AddOutput<T>("qk", {batch_size, num_heads, 1, kv_sequence_length}, output_qk);
   } else {
     int max_sequence_length = past_sequence_length + 10;
     int total_sequence_length = past_sequence_length + 1;
@@ -856,7 +859,6 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     tester.AddOutput<T>("present_key", {batch_size, num_heads, max_sequence_length, head_size},
                         (use_cuda ? merged_reordered_key : merged_key));
     tester.AddOutput<T>("present_value", {batch_size, num_heads, max_sequence_length, head_size}, merged_value);
-    tester.AddOutput<T>("output_qk", {batch_size, num_heads, 1, total_sequence_length}, output_qk);
   }
 
   if (std::is_same<T, MLFloat16>::value) {
