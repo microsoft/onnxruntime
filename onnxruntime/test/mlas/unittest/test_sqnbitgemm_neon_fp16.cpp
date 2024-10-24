@@ -371,7 +371,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   }
 
   template <size_t ldb, size_t N, size_t K>
-  float GetBVal(std::vector<MLAS_FP16>& B, int n, int k) {
+  float GetBVal(std::vector<MLAS_FP16>& B, size_t n, size_t k) {
     size_t i;
     if ((N & (~7)) > n) {
       i = (n & (~7)) * ldb + 8 * k + n;
@@ -454,8 +454,8 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     TestSQ4BitGemmKernel<M, 9, 33, 32, true>();
     TestSQ4BitGemmKernel<M, 15, 33, 16, false>();
     TestSQ4BitGemmKernel<M, 15, 33, 16, true>();
-    TestSQ4BitGemmKernel<M, 17, 67, 16, false>();
-    TestSQ4BitGemmKernel<M, 17, 67, 16, true>();
+    TestSQ4BitGemmKernel<M, 23, 71, 16, false>();
+    TestSQ4BitGemmKernel<M, 23, 71, 16, true>();
     TestSQ4BitGemmKernel<M, 17, 96, 128, false>();
     TestSQ4BitGemmKernel<M, 17, 96, 128, true>();
   }
