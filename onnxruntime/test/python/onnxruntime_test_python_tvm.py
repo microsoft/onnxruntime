@@ -51,7 +51,7 @@ def get_model_with_fixed_shapes() -> ModelProto:
     Create model with Static Shapes
     """
 
-    def change_input_shape(model: ModelProto, ind: int, shape: Tuple) -> None:
+    def change_input_shape(model: ModelProto, ind: int, shape: tuple) -> None:
         """
         Function to change the input form
         """
@@ -67,7 +67,7 @@ def get_model_with_fixed_shapes() -> ModelProto:
     return dynamic_model
 
 
-def get_input_data_for_model_with_dynamic_shapes() -> Dict[AnyStr, numpy.ndarray]:
+def get_input_data_for_model_with_dynamic_shapes() -> dict[AnyStr, numpy.ndarray]:
     """
     Create input data for model with dynamic shapes
     """
@@ -78,18 +78,18 @@ def get_input_data_for_model_with_dynamic_shapes() -> Dict[AnyStr, numpy.ndarray
     return data
 
 
-def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> Dict[AnyStr, numpy.ndarray]:
+def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> dict[AnyStr, numpy.ndarray]:
     """
     Create input data for model with static shapes
     """
 
-    def get_onnx_input_names(model: ModelProto) -> List[AnyStr]:
+    def get_onnx_input_names(model: ModelProto) -> list[AnyStr]:
         inputs = [node.name for node in model.graph.input]
         initializer = [node.name for node in model.graph.initializer]
         inputs = list(set(inputs) - set(initializer))
         return sorted(inputs)
 
-    def get_onnx_input_types(model: ModelProto) -> List[numpy.dtype]:
+    def get_onnx_input_types(model: ModelProto) -> list[numpy.dtype]:
         input_names = get_onnx_input_names(model)
         return [
             mapping.TENSOR_TYPE_TO_NP_TYPE[node.type.tensor_type.elem_type]
@@ -97,7 +97,7 @@ def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> Dict[A
             if node.name in input_names
         ]
 
-    def get_onnx_input_shapes(model: ModelProto) -> List[List[int]]:
+    def get_onnx_input_shapes(model: ModelProto) -> list[list[int]]:
         input_names = get_onnx_input_names(model)
         return [
             [dv.dim_value for dv in node.type.tensor_type.shape.dim]
@@ -109,11 +109,13 @@ def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> Dict[A
     input_shapes = get_onnx_input_shapes(onnx_model)
     input_types = get_onnx_input_types(onnx_model)
     assert len(input_names) == len(input_types) == len(input_shapes)
-    random_inputs = [numpy.random.uniform(size=shape).astype(dtype) for shape, dtype in zip(input_shapes, input_types)]
-    return dict(zip(input_names, random_inputs))
+    random_inputs = [
+        numpy.random.uniform(size=shape).astype(dtype) for shape, dtype in zip(input_shapes, input_types, strict=False)
+    ]
+    return dict(zip(input_names, random_inputs, strict=False))
 
 
-def get_input_names_and_shapes(data: Dict[AnyStr, numpy.ndarray]) -> Tuple[List[AnyStr], List[AnyStr]]:
+def get_input_names_and_shapes(data: dict[AnyStr, numpy.ndarray]) -> tuple[list[AnyStr], list[AnyStr]]:
     """
     Create text representations for model input names and shapes
     """
@@ -125,7 +127,7 @@ def get_input_names_and_shapes(data: Dict[AnyStr, numpy.ndarray]) -> Tuple[List[
     )
 
 
-def get_cpu_output(onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray]) -> List[numpy.ndarray]:
+def get_cpu_output(onnx_model: ModelProto, data: dict[AnyStr, numpy.ndarray]) -> list[numpy.ndarray]:
     """
     Run inference with CPUExecutionProvider
     """
@@ -139,8 +141,8 @@ def get_cpu_output(onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray]) ->
 
 
 def get_tvm_output(
-    onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray], provider_options: Dict[AnyStr, Any]
-) -> List[numpy.ndarray]:
+    onnx_model: ModelProto, data: dict[AnyStr, numpy.ndarray], provider_options: dict[AnyStr, Any]
+) -> list[numpy.ndarray]:
     """
     Run inference with TVMExecutionProvider
     """

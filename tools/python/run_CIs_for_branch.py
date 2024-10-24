@@ -78,7 +78,7 @@ def _parse_args():
     return args
 
 
-def _run_az_pipelines_command(command: typing.List[str]):
+def _run_az_pipelines_command(command: list[str]):
     try:
         az = "az.cmd" if is_windows() else "az"
         az_output = subprocess.run([az, "pipelines", *command], capture_output=True, text=True, check=True)

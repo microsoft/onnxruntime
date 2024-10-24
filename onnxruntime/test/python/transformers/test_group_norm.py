@@ -215,11 +215,11 @@ def group_norm_ort(
     src: torch.Tensor,
     gamma: torch.Tensor,
     beta: torch.Tensor,
-    skip: Optional[torch.Tensor],
-    bias: Optional[torch.Tensor],
+    skip: torch.Tensor | None,
+    bias: torch.Tensor | None,
     config: GroupNormConfig,
     measure_latency=False,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[float]]:
+) -> tuple[torch.Tensor, torch.Tensor | None, float | None]:
     onnx_model_str = create_group_norm_graph(config)
     ort_session = InferenceSession(onnx_model_str, providers=["CUDAExecutionProvider"])
 
@@ -276,10 +276,10 @@ def group_norm_torch(
     src: torch.Tensor,
     gamma: torch.Tensor,
     beta: torch.Tensor,
-    skip: Optional[torch.Tensor],
-    bias: Optional[torch.Tensor],
+    skip: torch.Tensor | None,
+    bias: torch.Tensor | None,
     config: GroupNormConfig,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     add_out = src
 
     if skip is not None:

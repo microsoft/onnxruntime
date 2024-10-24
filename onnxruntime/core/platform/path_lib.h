@@ -228,9 +228,11 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
   typename std::basic_string<PATH_CHAR_TYPE>::size_type pos = input.length();
   PATH_CHAR_TYPE sep = GetPathSep<PATH_CHAR_TYPE>();
   // remove trailing backslash
-  for (; pos > 1 && input[pos - 1] == sep; --pos);
+  for (; pos > 1 && input[pos - 1] == sep; --pos)
+    ;
   input.resize(pos);
-  for (; pos != 0 && input[pos - 1] != sep; --pos);
+  for (; pos != 0 && input[pos - 1] != sep; --pos)
+    ;
   return input.substr(pos);
 }
 

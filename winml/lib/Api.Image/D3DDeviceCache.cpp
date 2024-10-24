@@ -349,8 +349,7 @@ ID3D12RootSignature* D3DDeviceCache::GetTensorizeRootSignature() {
       newRootSignature->SetName(L"Tensorize Rootsignature");
     }
 
-    if (InterlockedCompareExchangePointer(tensorize_root_signature_.put_void(), newRootSignature.get(), nullptr) ==
-        nullptr) {
+    if (InterlockedCompareExchangePointer(tensorize_root_signature_.put_void(), newRootSignature.get(), nullptr) == nullptr) {
       // This thread won the race and just cached the PSO
       newRootSignature.detach();
     }
@@ -402,8 +401,7 @@ ID3D12RootSignature* D3DDeviceCache::GetDetensorizeRootSignature() {
       newRootSignature->SetName(L"Detensorize Rootsignature");
     }
 
-    if (InterlockedCompareExchangePointer(detensorize_root_signature_.put_void(), newRootSignature.get(), nullptr) ==
-        nullptr) {
+    if (InterlockedCompareExchangePointer(detensorize_root_signature_.put_void(), newRootSignature.get(), nullptr) == nullptr) {
       // This thread won the race and just cached the PSO
       newRootSignature.detach();
     }
@@ -418,8 +416,7 @@ ID3D12PipelineState* D3DDeviceCache::GetCachedPipelineState(
   PipelineStateCacheFormat formatTo,
   PipelineStateCacheOperation operation
 ) {
-  if (cached_pipeline_state[static_cast<int>(type)][static_cast<int>(formatFrom)][static_cast<int>(formatTo)]
-                           [static_cast<int>(operation)] == nullptr) {
+  if (cached_pipeline_state[static_cast<int>(type)][static_cast<int>(formatFrom)][static_cast<int>(formatTo)][static_cast<int>(operation)] == nullptr) {
     winrt::com_ptr<ID3D12PipelineState> newPSO;
     if (operation == PipelineStateCacheOperation::kTensorize) {
       newPSO.attach(CreateTensorizePipelineState(type, formatFrom, formatTo));
@@ -656,8 +653,7 @@ ID3D12Resource* D3DDeviceCache::GetDetensorizeVertexBuffer(_Out_ UINT* vertexBuf
     memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
     newResource->Unmap(0, nullptr);
 
-    if (InterlockedCompareExchangePointer(detensorize_vertex_buffer_.put_void(), newResource.get(), nullptr) ==
-        nullptr) {
+    if (InterlockedCompareExchangePointer(detensorize_vertex_buffer_.put_void(), newResource.get(), nullptr) == nullptr) {
       // This thread won the race and just cached the PSO
       newResource.detach();
     }

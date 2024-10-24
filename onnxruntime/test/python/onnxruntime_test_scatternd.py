@@ -19,7 +19,7 @@ def has_cuda():
     return "CUDAExecutionProvider" in available_providers
 
 
-def ignore_warnings(warns: typing.List[Warning]) -> typing.Callable:
+def ignore_warnings(warns: list[Warning]) -> typing.Callable:
     def wrapper(fct):
         if warns is None:
             raise AssertionError(f"warns cannot be None for '{fct}'.")

@@ -35,7 +35,7 @@ class FusionEmbedLayerNoMask(Fusion):
         self.attention = None
         self.embed_node = None
 
-    def match_two_gather(self, add: NodeProto) -> Union[None, Tuple[NodeProto, NodeProto]]:
+    def match_two_gather(self, add: NodeProto) -> None | tuple[NodeProto, NodeProto]:
         gather_0_path = self.model.match_parent_path(add, ["Gather"], [0])
         if gather_0_path is None:
             return None
@@ -49,7 +49,7 @@ class FusionEmbedLayerNoMask(Fusion):
     def check_attention_subgraph(
         self,
         layernorm: NodeProto,
-        input_name_to_nodes: Dict[str, List[NodeProto]],
+        input_name_to_nodes: dict[str, list[NodeProto]],
         is_distil_bert: bool,
     ) -> bool:
         """Check that LayerNormalization has a child of Attention node or subgraph like Attention.
@@ -399,7 +399,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
         return True
 
-    def cast_to_int32(self, input_name: str) -> Tuple[str, Union[None, NodeProto]]:
+    def cast_to_int32(self, input_name: str) -> tuple[str, None | NodeProto]:
         """Cast a graph input or node input to int32.
 
         Args:
@@ -428,8 +428,8 @@ class FusionEmbedLayerNoMask(Fusion):
         layernorm: NodeProto,
         word_embedding_gather: NodeProto,
         position_embedding_gather: NodeProto,
-        segment_embedding_gather: Union[None, NodeProto],
-        position_ids: Optional[str] = None,
+        segment_embedding_gather: None | NodeProto,
+        position_ids: str | None = None,
         embedding_sum_output=False,
         embedding_sum_name=None,
     ):

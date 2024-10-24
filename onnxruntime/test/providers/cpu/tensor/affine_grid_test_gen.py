@@ -24,7 +24,7 @@ if args.dim is None or args.dim == 2:
     test_count = 0
 
     for align_corners in align_corners_options:
-        for angle, translation, scale in zip(angles, translations, scales):
+        for angle, translation, scale in zip(angles, translations, scales, strict=False):
             for size in sizes:
                 theta = np.array([], dtype=np.float32)
                 for _ in range(size[0]):
@@ -71,7 +71,7 @@ if args.dim is None or args.dim == 3:
     test_count = 0
 
     for align_corners in align_corners_options:
-        for angle, translation, scale in zip(angles, translations, scales):
+        for angle, translation, scale in zip(angles, translations, scales, strict=False):
             for size in sizes:
                 theta = np.array([], dtype=np.float32)
                 for _ in range(size[0]):

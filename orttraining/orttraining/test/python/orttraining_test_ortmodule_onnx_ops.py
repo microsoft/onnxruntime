@@ -30,7 +30,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         pt_named_params = list(pt_model.named_parameters())
         self.assertEqual(len(ort_named_params), len(pt_named_params))
 
-        for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params):
+        for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params, strict=False):
             ort_name, ort_param = ort_named_param
             pt_name, pt_param = pt_named_param
 

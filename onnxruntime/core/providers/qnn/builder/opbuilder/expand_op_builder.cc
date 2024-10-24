@@ -125,7 +125,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported.");
     }  // switch
-  }  // if-else
+  }    // if-else
 
   const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
   std::string shape_input_name(input_name + "_" + output_name);

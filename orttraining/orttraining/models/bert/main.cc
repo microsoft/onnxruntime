@@ -861,7 +861,8 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while (keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

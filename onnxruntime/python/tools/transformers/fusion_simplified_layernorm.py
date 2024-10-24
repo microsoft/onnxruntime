@@ -13,7 +13,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SimplifiedLayerNormalization", "Mul")
 
-    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         if node.op_type != "Mul":
             return
 

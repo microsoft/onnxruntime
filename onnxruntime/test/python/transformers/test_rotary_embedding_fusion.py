@@ -23,7 +23,7 @@ else:
     from onnxruntime.transformers.optimizer import optimize_model
 
 
-def float_tensor(name: str, shape: List[int], random=False):
+def float_tensor(name: str, shape: list[int], random=False):
     low = 0.0
     high = 1.0
     total_elements = 1
@@ -113,7 +113,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
             outputs.append(helper.make_tensor_value_info("past_seq_len_plus_zero", TensorProto.FLOAT, [1]))
         return inputs, outputs
 
-    def create_fused_model(self, interleaved: bool, initializers: List[TensorProto]):
+    def create_fused_model(self, interleaved: bool, initializers: list[TensorProto]):
         inputs, outputs = self.create_inputs_and_outputs()
 
         rope_node = helper.make_node(
@@ -385,7 +385,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
 
         return x_half_shape_nodes + rotate_half_nodes + x_embed_nodes
 
-    def create_test_model(self, model_type: str, use_redundant_squeeze_ops: bool, initializers: List[TensorProto]):
+    def create_test_model(self, model_type: str, use_redundant_squeeze_ops: bool, initializers: list[TensorProto]):
         apply_rope_nodes = self.create_apply_rope_path()
         cache_nodes = self.create_cache_path(model_type, use_redundant_squeeze_ops)
         inputs, outputs = self.create_inputs_and_outputs(model_type)

@@ -1884,7 +1884,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
       reuse_pairs.erase(reused);
     }  // if
-  }  // for
+  }    // for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 

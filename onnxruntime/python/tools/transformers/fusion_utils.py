@@ -18,7 +18,7 @@ class FusionUtils:
     def __init__(self, model: OnnxModel):
         self.model: OnnxModel = model
 
-    def cast_graph_input_to_int32(self, input_name: str) -> Tuple[bool, str]:
+    def cast_graph_input_to_int32(self, input_name: str) -> tuple[bool, str]:
         graph_input = self.model.find_graph_input(input_name)
         if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
             cast_output, cast_node = self.cast_input_to_int32(input_name)
@@ -48,9 +48,9 @@ class FusionUtils:
         self,
         input_name: str,
         to_type: int,
-        output_name: Optional[str] = None,
+        output_name: str | None = None,
         output_name_to_node=None,
-        graph_name: Optional[str] = None,
+        graph_name: str | None = None,
     ):
         if output_name is None:
             output_name = input_name + f"_cast_to_{to_type}"

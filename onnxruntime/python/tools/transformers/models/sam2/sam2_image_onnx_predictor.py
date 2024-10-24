@@ -41,7 +41,7 @@ def create_session(
     onnx_path: str,
     session_options=None,
     provider="CUDAExecutionProvider",
-    device: Union[str, torch.device] = "cuda",
+    device: str | torch.device = "cuda",
     enable_cuda_graph=False,
 ) -> CudaSession:
     ort_session = create_ort_session(
@@ -59,7 +59,7 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         image_decoder_onnx_path: str = "",
         image_decoder_multi_onnx_path: str = "",
         provider: str = "CUDAExecutionProvider",
-        device: Union[str, torch.device] = "cuda",
+        device: str | torch.device = "cuda",
         onnx_dtype: torch.dtype = torch.float32,
         mask_threshold=0.0,
         max_hole_area=0.0,
@@ -114,7 +114,7 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         )
 
     @torch.no_grad()
-    def set_image(self, image: Union[np.ndarray, Image]):
+    def set_image(self, image: np.ndarray | Image):
         """
         Calculates the image embeddings for the provided image.
 
@@ -162,14 +162,14 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
     @torch.no_grad()
     def _predict(
         self,
-        point_coords: Optional[torch.Tensor],
-        point_labels: Optional[torch.Tensor],
-        boxes: Optional[torch.Tensor] = None,
-        mask_input: Optional[torch.Tensor] = None,
+        point_coords: torch.Tensor | None,
+        point_labels: torch.Tensor | None,
+        boxes: torch.Tensor | None = None,
+        mask_input: torch.Tensor | None = None,
         multimask_output: bool = True,
         return_logits: bool = False,
         img_idx: int = -1,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Predict masks for the given input prompts, using the currently set image.
         Input prompts are batched torch tensors and are expected to already be

@@ -101,7 +101,7 @@ class TestOrtLazyTensor(unittest.TestCase):
 
             print(f"MNIST loss: {loss} (pytorch), {loss_new} (ort).")
             torch.testing.assert_close(loss.to("lazy"), loss_new, rtol=1e-2, atol=1e-5)
-            for g, g_new in zip(grads, grads_new):
+            for g, g_new in zip(grads, grads_new, strict=False):
                 torch.testing.assert_close(g.to("lazy"), g_new)
 
         for _ in range(5):

@@ -166,7 +166,7 @@ class TrainingAgent:
 
     def get_serialized_ortmodule_memory_stat(
         self, memory_optimization_config_file_path: str, recompute_probe_level: str, return_opportunity_table: bool
-    ) -> Tuple[str, dict]:
+    ) -> tuple[str, dict]:
         """
         Get serialized memory stats for OrtModule.
         """

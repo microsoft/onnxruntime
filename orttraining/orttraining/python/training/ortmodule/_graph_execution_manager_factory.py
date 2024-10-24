@@ -24,7 +24,7 @@ class GraphExecutionManagerFactory:
         self._training_manager = TrainingManager(module, debug_options, fallback_manager, logger)
         self._inference_manager = InferenceManager(module, debug_options, fallback_manager, logger)
 
-    def __call__(self, is_training) -> Union[InferenceManager, TrainingManager]:
+    def __call__(self, is_training) -> InferenceManager | TrainingManager:
         if is_training:
             return self._training_manager
         else:

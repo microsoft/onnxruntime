@@ -397,7 +397,8 @@ void addSparseTensorMethods(pybind11::module& m) {
       // pybind apparently has a bug with returning enums from def_property_readonly or methods
       // returning a method object instead of the enumeration value
       // so we are using def_property and throw on a potential modification
-      .def_property("format", [](const PySparseTensor* py_tensor) -> OrtSparseFormat {
+      .def_property(
+          "format", [](const PySparseTensor* py_tensor) -> OrtSparseFormat {
         const SparseTensor& tensor = py_tensor->Instance();
         auto retval = OrtSparseFormat::ORT_SPARSE_UNDEFINED;
         switch (tensor.Format()) {

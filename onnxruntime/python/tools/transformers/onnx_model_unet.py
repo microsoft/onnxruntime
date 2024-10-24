@@ -91,7 +91,7 @@ class UnetOnnxModel(BertOnnxModel):
         if total:
             logger.info("Removed %d Transpose nodes", total)
 
-    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
+    def fuse_multi_head_attention(self, options: FusionOptions | None = None):
         # Self Attention
         enable_packed_qkv = (options is None) or options.enable_packed_qkv
         self_attention_fusion = FusionAttentionUnet(
@@ -120,7 +120,7 @@ class UnetOnnxModel(BertOnnxModel):
         fusion = FusionBiasAdd(self)
         fusion.apply()
 
-    def optimize(self, options: Optional[FusionOptions] = None):
+    def optimize(self, options: FusionOptions | None = None):
         if is_installed("tqdm"):
             import tqdm
             from tqdm.contrib.logging import logging_redirect_tqdm
@@ -133,7 +133,7 @@ class UnetOnnxModel(BertOnnxModel):
             logger.info("tqdm is not installed. Run optimization without progress bar")
             self._optimize(options, None)
 
-    def _optimize(self, options: Optional[FusionOptions] = None, progress_bar=None):
+    def _optimize(self, options: FusionOptions | None = None, progress_bar=None):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 

@@ -23,7 +23,7 @@ TRT_DOCKER_FILES = {
 }
 
 
-def run_cmd(cmd: List[str]) -> Optional[int]:
+def run_cmd(cmd: list[str]) -> int | None:
     """
     Runs a shell command and returns the process's return code.
 
@@ -38,7 +38,7 @@ def run_cmd(cmd: List[str]) -> Optional[int]:
     return pty.spawn(cmd)
 
 
-def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
+def get_common_docker_build_args(args: argparse.Namespace) -> list[str]:
     """
     Returns a list of common 'docker build' command-line arguments/options.
 

@@ -35,7 +35,7 @@ from .tensor_quant_overrides import TensorQuantOverridesHelper
 
 
 class QuantizationParams:
-    def __init__(self, **data: Dict[str, Any]):
+    def __init__(self, **data: dict[str, Any]):
         self.data = {}
         for k, v in data.items():
             if not isinstance(k, str):

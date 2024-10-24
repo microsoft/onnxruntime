@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class T5Encoder(torch.nn.Module):
     """T5 encoder outputs only the last hidden state"""
 
-    def __init__(self, encoder, config: Union[T5Config, MT5Config]):
+    def __init__(self, encoder, config: T5Config | MT5Config):
         super().__init__()
         self.encoder = encoder
         self.config = config
@@ -72,7 +72,7 @@ class T5EncoderInputs:
                 attention_mask[i, :padding_position] = 0
         return T5EncoderInputs(input_ids, attention_mask)
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         input_list = [v for v in [self.input_ids, self.attention_mask] if v is not None]
         return input_list
 

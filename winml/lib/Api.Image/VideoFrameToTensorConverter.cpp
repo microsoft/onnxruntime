@@ -138,19 +138,14 @@ void VideoFrameToTensorConverter::VideoFrameToSoftwareTensor(
   wgdx::Direct3D11::IDirect3DSurface spInputSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spInputSoftwareBitmap == nullptr && spInputSurface == nullptr) ||
-      (spInputSoftwareBitmap != nullptr && spInputSurface != nullptr)) {
+  if ((spInputSoftwareBitmap == nullptr && spInputSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputSurface != nullptr)) {
     WINML_THROW_IF_FAILED(E_INVALIDARG);
   }
 
   UINT32 tensorHeight = static_cast<UINT32>(tensorDesc.sizes[2]);
   UINT32 tensorWidth = static_cast<UINT32>(tensorDesc.sizes[3]);
-  if (spInputSurface ||
-      _winmli::NeedsVideoFrameConversion(inputVideoFrame, {}, inputBounds, tensorWidth, tensorHeight)) {
-    if (converted_video_frame_ == nullptr ||
-        _winmli::NeedsVideoFrameConversion(
-          converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight
-        )) {
+  if (spInputSurface || _winmli::NeedsVideoFrameConversion(inputVideoFrame, {}, inputBounds, tensorWidth, tensorHeight)) {
+    if (converted_video_frame_ == nullptr || _winmli::NeedsVideoFrameConversion(converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
       converted_video_frame_ = wm::VideoFrame::CreateWithSoftwareBitmap(
         wgi::SoftwareBitmap(wgi::BitmapPixelFormat::Bgra8, tensorWidth, tensorHeight)
       );
@@ -570,8 +565,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   wgi::BitmapBounds scaledBounds = inputBounds;
 
   // TODO: Scale during the tensorization phase instead of using the video frame pipeline when the input bounds are not the same size as the tensor
-  if (static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] ||
-      static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
+  if (static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] || static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
     scaledBounds = {0, 0, static_cast<uint32_t>(tensorDesc.sizes[3]), static_cast<uint32_t>(tensorDesc.sizes[2])};
 
     // Force the VideoFrame to not do a conversion if the format is supported since we do it during the tensorization anyway
