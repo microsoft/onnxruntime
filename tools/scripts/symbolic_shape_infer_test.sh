@@ -8,6 +8,6 @@ export build_dir=$1
 export PATH=/opt/python/cp312-cp312/bin:$PATH
 
 echo Run symbolic shape infer test
-pushd $build_dir/Release/
+pushd "$build_dir/Release/"
 python3 /build/Release/onnxruntime_test_python_symbolic_shape_infer.py
 popd
