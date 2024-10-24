@@ -11,6 +11,12 @@ parameters:
 
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
+  templateContext:
+    outputs:
+    - output: pipelineArtifact
+      path: $(Build.ArtifactStagingDirectory)
+      artifact: drop_Windows_Build_Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
+
   steps:
     - task: UseDotNet@2
       inputs:
