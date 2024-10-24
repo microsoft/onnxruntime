@@ -69,7 +69,7 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const We
   }
 }
 
-bool IsNodeArgSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger) {
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger) {
   const auto& node_arg_name = node_arg.Name();
   const auto* shape_proto = node_arg.Shape();
   // Optional tensors can be indicated by an empty name, just ignore it.
@@ -102,12 +102,12 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   std::vector<std::vector<size_t>> supported_node_groups;
 
   for (const auto* input : graph_viewer.GetInputs()) {
-    if (!IsNodeArgSupported(*input, "graph", logger)) {
+    if (!IsTensorShapeSupported(*input, "graph", logger)) {
       return supported_node_groups;
     }
   }
   for (const auto* output : graph_viewer.GetOutputs()) {
-    if (!IsNodeArgSupported(*output, "graph", logger)) {
+    if (!IsTensorShapeSupported(*output, "graph", logger)) {
       return supported_node_groups;
     }
   }

@@ -47,7 +47,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const emscripten::val& 
                                        const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!IsNodeArgSupported(*input, node_name, logger)) {
+    if (!IsTensorShapeSupported(*input, node_name, logger)) {
       return false;
     }
   }
@@ -72,7 +72,7 @@ bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val&
                                         const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* output : node.OutputDefs()) {
-    if (!IsNodeArgSupported(*output, node_name, logger)) {
+    if (!IsTensorShapeSupported(*output, node_name, logger)) {
       return false;
     }
   }
