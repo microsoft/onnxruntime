@@ -1150,7 +1150,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   // Since one constant initializer could be used by different kernels
   // and prepacked differently, use an unordered_map to store prepacked
-  // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
+  // initializer in format of <[initializer_name], <[node_name], [prepacked_initializer]>>
   typedef std::unordered_map<std::string, std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto>> PrePackedTensorProtoToSave;
 
 #if !defined(ORT_MINIMAL_BUILD)

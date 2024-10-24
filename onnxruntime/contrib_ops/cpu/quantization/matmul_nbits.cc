@@ -282,13 +282,16 @@ std::optional<Tensor> MatMulNBits<T1>::GetPrePackTensor(int input_idx) {
   // Inorder to cope with this logic, we need to return latest prepacked buffer and only serialize
   // the latest one. So, we need to always return packed_tensor_ here not only for input_B.
   ORT_UNUSED_PARAMETER(input_idx);
-  return std::move(packed_tensor_.value());
+  return std::move(packed_tensor_);
 }
 
 template <typename T1>
 Status MatMulNBits<T1>::SetPrePackTensor(int input_idx, Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_b_ = BufferUniquePtr(pre_packed_tensor.MutableDataRaw());
+    // pre_packed_tensor is constant initialized tensor and its lifecycle is managed by session_state,
+    // session_state will release memory from pre_packed_tensor. packed_b_ will not release memory so
+    // pass empty/default buffer deleter here.
+    packed_b_ = BufferUniquePtr(pre_packed_tensor.MutableDataRaw(), BufferDeleter());
   }
 
   return Status::OK();

@@ -79,7 +79,7 @@ class OpKernel {
   //               the allocator tied to the session if the kernel owns the pre-packed buffer or an
   //               allocator shared between sessions if the pre-packed buffer is to be shared across sessions
   //               (i.e.) the kernel does not own the buffer.
-  // @param save_prepacked_initializers: Set it to true if intend to save prepacked initializers to onnx data file.
+  // @param save_prepacked_initializers: Set it to true if intend to save prepacked initializers to external data file.
   // @param is_packed: Set it to true if the kernel packed the tensor or to false
   //                   The kernel is responsible for keeping the packed data and related metadata if is_packed is true,
   //                   and the original initialized constant tensor will be released and not accessible anymore in

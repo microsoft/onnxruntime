@@ -2028,7 +2028,6 @@ common::Status InferenceSession::Initialize() {
     }
 
     SessionState::PrePackInitializers pre_packed_initializers;
-    Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
@@ -2070,6 +2069,7 @@ common::Status InferenceSession::Initialize() {
           align_info.align_offset = true;
           bool save_prepacked_constant_initializers =
               session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
+          Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
           if (save_prepacked_constant_initializers) {
             LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
                                             << "Use this option only when run model inference on PC with CPU."

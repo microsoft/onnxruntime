@@ -79,7 +79,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   SafeInt<size_t> ext_data_len = 0;
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter,
-                                                       pre_packed_initializers_name_set, buffered_tensor));
+                                                       &pre_packed_initializers_name_set, buffered_tensor));
 
   // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
   // avoided if the Tensor class implements the do-nothing behavior when given a

@@ -4175,19 +4175,19 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     InlinedVector<TensorProto> pre_packed_initializers_tensor_proto;
     // If this initializer has been prepacked, saved prepacked external initializer instead of original one.
     // Since one initializer could be used by multiple kernels and been prepacked differently,
-    // Save each prepacked initializers seperately, chagne the initializer name to [initializer_name]:[kernel_name]
+    // Save each prepacked initializers seperately, chagne the initializer name to [initializer_name]:[node_name]
     // to avoid conflict. Change the node input name accordingly.
     // IT could potentially make the ONNX data file larger since we store multiple prepacked initializers into disk
     // but this could be rare case.
     if (save_prepacked_constant_initializers && pre_packed_initializers.count(initializer.name())) {
       for (const auto& item : pre_packed_initializers[initializer.name()]) {
-        auto& kernel_name = item.first;
-        std::string prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer.name(), kernel_name);
+        auto& node_name = item.first;
+        std::string prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer.name(), node_name);
         pre_packed_initializers_tensor_proto.push_back(item.second);
         use_pre_packed_initializer = true;
 
         for (auto& node : *result.mutable_node()) {
-          if (node.name() == kernel_name) {
+          if (node.name() == node_name) {
             int input_index = 0;
             for (const auto& input : node.input()) {
               if (input == initializer.name()) {

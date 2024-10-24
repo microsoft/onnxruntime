@@ -504,7 +504,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 #if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN) && !defined(__ANDROID__) && !defined(USE_COREML)
 // MLAS dispatcher used in matmul_nbits kernels here is 64 bit only
 #if defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)
-TEST(InferenceSessionTests, TestPrepackSerialization) {
+TEST(InferenceSessionTests, TestPrePackSerialization) {
   SessionOptions so;
   std::string model_name = "model_with_matmul_nbits";
 
