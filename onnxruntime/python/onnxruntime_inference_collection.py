@@ -439,6 +439,9 @@ class InferenceSession(Session):
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
+        from .onnxruntime_cuda_temp_env import setup_temp_env_for_ort_cuda
+
+        self.env_manager = setup_temp_env_for_ort_cuda()
         super().__init__()
 
         if isinstance(path_or_bytes, (str, os.PathLike)):
@@ -574,6 +577,11 @@ class InferenceSession(Session):
                 and providers[i][0] == "TensorrtExecutionProvider"
             ):
                 C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.env_manager is not None:
+            self.env_manager.__exit__()
+        return False
 
 
 class IOBinding:
