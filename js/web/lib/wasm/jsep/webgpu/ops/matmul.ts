@@ -9,7 +9,7 @@ import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 import { createMatmulProgramInfo } from './3rd-party/matmul_packed_webgpu';
 import {
   createTensorShapeVariables,
-  getBroadcastDims,
+  getElementAt,
   getMaxComponents,
   IndicesHelper,
   inputVariable,
@@ -25,6 +25,32 @@ import {
   getActivationSnippet,
   InternalActivationAttributes,
 } from './fuse-utils';
+
+// Helper that convert output batch indices to input batch indices using only the rank and
+// the shape information in uniform
+export const convertOutputBatchIndicesToInputBatchIndices = (
+  targetIndicesName: string,
+  inputVariable: IndicesHelper,
+  inputBatchRank: number,
+  outputBatchRank: number,
+  batchIndicesName: string,
+) => {
+  // Assume outputBatchRank >= inputBatchRank, the first outputBatchRank - inputBatchRank of
+  // outputBatchRank should be ignored.
+  const extendingInputRank = outputBatchRank - inputBatchRank;
+  return `
+      ${Array.from({ length: inputBatchRank })
+        .map(
+          (_, i) => `
+      if (${getElementAt(inputVariable.shape, i, inputVariable.rank)} != 1) {
+        ${inputVariable.indicesSet(targetIndicesName, i, getElementAt(batchIndicesName, i + extendingInputRank, outputBatchRank))}
+      } else {
+        ${inputVariable.indicesSet(targetIndicesName, i, 0)}
+      }`,
+        )
+        .join('')}
+`;
+};
 
 export const createNaiveMatmulProgramInfo = (
   inputs: readonly TensorView[],
@@ -79,10 +105,6 @@ export const createNaiveMatmulProgramInfo = (
       }`;
     }
 
-    const outerDimsA = aShape.slice(0, -2);
-    const outerDimsB = bShape.slice(0, -2);
-    const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
-    const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
     const uniforms: UniformsArrayType = [
       { name: 'output_size', type: 'u32' },
       { name: 'M', type: 'u32' },
@@ -90,25 +112,6 @@ export const createNaiveMatmulProgramInfo = (
       { name: 'K', type: 'u32' },
     ];
     appendActivationUniforms(activationAttributes, uniforms);
-
-    const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
-      const rank = variable.rank;
-      const name = variable.name;
-      if (rank === 2) {
-        return `var ${name}_indices = ${variable.type.indices}(0u, 0u);`;
-      }
-      const batchRank = batchDims.rank;
-      let resStr = `var ${name}_indices: ${variable.type.indices};`;
-      for (let i = rank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-        resStr += `\n${name}_indices[${i}] = ${batchRank > 1 ? `batch_indices[${j}]` : 'batch_indices'};`;
-      }
-      broadCastDims.forEach((i) => {
-        resStr += `\n${name}_indices[${i}] = 0;`;
-      });
-      resStr += `${name}_indices[${rank - 2}] = 0u;
-                     ${name}_indices[${rank - 1}] = 0u;`;
-      return resStr;
-    };
 
     const calcResult = (): string => {
       let calcStr = `var a_data: ${a.type.value};`;
@@ -141,9 +144,17 @@ export const createNaiveMatmulProgramInfo = (
     let batch = index1 / stride1;
 
     ${outputShape.length === 2 ? '' : `let batch_indices = ${batchDims.offsetToIndices('batch')};`}
-    ${getIndices(a, broadCastADims)}
+
+    var a_indices: ${a.type.indices};
+    ${convertOutputBatchIndicesToInputBatchIndices('a_indices', a, a.rank - 2, batchDims.rank, 'batch_indices')}
+    ${a.indicesSet('a_indices', a.rank - 2, 0)}
+    ${a.indicesSet('a_indices', a.rank - 1, 0)}
     let a_offset = ${a.indicesToOffset('a_indices')};
-    ${getIndices(b, broadCastBDims)}
+
+    var b_indices: ${b.type.indices};
+    ${convertOutputBatchIndicesToInputBatchIndices('b_indices', b, b.rank - 2, batchDims.rank, 'batch_indices')}
+    ${b.indicesSet('b_indices', b.rank - 2, 0)}
+    ${b.indicesSet('b_indices', b.rank - 1, 0)}
     let b_offset = ${b.indicesToOffset('b_indices')};
     var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < uniforms.K; k = k + ${aComponents}) {
