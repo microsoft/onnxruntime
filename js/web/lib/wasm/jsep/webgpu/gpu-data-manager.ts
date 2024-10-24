@@ -65,6 +65,11 @@ export interface GpuDataManager {
   dispose(): void;
 
   /**
+   * create session related data.
+   */
+  onCreateSession(): void;
+
+  /**
    * release session related data.
    * @param sessionId - specify the session ID.
    */
@@ -200,6 +205,9 @@ class GpuDataManagerImpl implements GpuDataManager {
   // a SessionID -> GPUBuffer[] mapping.
   private capturedPendingBuffers: Map<number, GPUBuffer[]>;
 
+  // The session count.
+  private sessionCount: number;
+
   constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.freeBuffers = new Map();
@@ -213,6 +221,8 @@ class GpuDataManagerImpl implements GpuDataManager {
       this.freeBuffers.set(key, []);
       this.freeUniformBuffers.set(key, []);
     }
+
+    this.sessionCount = 0;
   }
 
   upload(id: GpuDataId, data: Uint8Array): void {
@@ -360,7 +370,12 @@ class GpuDataManagerImpl implements GpuDataManager {
   release(id: GpuDataId): number {
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
-      throw new Error('releasing data does not exist');
+      if (this.storageCache.size === 0) {
+        // cache was previously cleared, no need to release anything.
+        return 0;
+      } else {
+        throw new Error('releasing data does not exist');
+      }
     }
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
@@ -460,6 +475,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.capturedPendingBuffers = new Map();
   }
 
+  onCreateSession() {
+    this.sessionCount += 1;
+  }
+
   onReleaseSession(sessionId: number) {
     // release the captured pending buffers.
     const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
@@ -468,6 +487,16 @@ class GpuDataManagerImpl implements GpuDataManager {
         buffer.destroy();
       });
       this.capturedPendingBuffers.delete(sessionId);
+    }
+
+    // release the storage cache if no active sessions.
+    this.sessionCount -= 1;
+    if (this.sessionCount === 0) {
+      LOG_DEBUG('warning', () => '[WebGPU] Clearing webgpu buffer cache');
+      this.storageCache.forEach((storage) => {
+        storage.gpuData.buffer.destroy();
+      });
+      this.storageCache = new Map();
     }
   }
 }
