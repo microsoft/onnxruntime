@@ -1,5 +1,8 @@
 trigger: none
 
+variables:
+  DisableDockerDetector: true
+
 resources:
   repositories:
     - repository: 1esPipelines
