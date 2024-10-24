@@ -319,9 +319,9 @@ stages:
     - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
       workspace:
         clean: all
-      pool: zhanyi_test_A100_pool
-        # name: ${{ parameters.ort_build_pool_name }}
-        # demands: ImageVersionOverride -equals 248.0.0
+      pool:
+        name: ${{ parameters.ort_build_pool_name }}
+        demands: ImageVersionOverride -equals 248.0.0
       timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
