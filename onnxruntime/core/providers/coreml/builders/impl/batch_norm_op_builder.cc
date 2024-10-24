@@ -155,10 +155,10 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBu
   // To Pass IOS pipeline https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=134&_a=summary
   auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 && input_params.coreml_version < 7) {
-    LOGS(logger, VERBOSE) << "BN with float16 input is not supported on IOS+x86_64";
+    LOGS(logger, VERBOSE) << "float16 input is not supported on the iOS x86_64 simulator"
+                          << " due to CoreML producing invalid output.";
     return false;
   }
-#endif
 #endif
   return true;
 }

@@ -130,6 +130,7 @@ class ModelBuilder {
   }
 
   // helper to convert a initializer to a constant
+  // by default, shape is inferred from the tensor.dims(), but can be provided and rewrite if needed
   std::string_view AddConstant(std::string_view op_type, std::string_view value_type,
                                const ONNX_NAMESPACE::TensorProto& tensor,
                                std::optional<gsl::span<const int64_t>> shape = std::nullopt);

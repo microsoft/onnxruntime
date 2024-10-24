@@ -108,12 +108,12 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
 #if defined(COREML_ENABLE_MLPROGRAM)
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
-  // uncomment it when this bug was fixed.
-  // groupnorm--> reshape [b, num_groups, c // (num_groups), h, w] --> layer_norm --> reshape [b, c, h, w]->mul(scale)->add(bias)
-  // "failed to infer output dtype"
-  // const auto& initializers(model_builder.GetInitializerTensors());
-  // const auto& scale_tensor = *initializers.at(input_defs[1]->Name());
-  // const auto& bias_tensor = *initializers.at(input_defs[2]->Name());
+  // Coreml hasn't supported GroupNorm yet.
+  // we decompose GroupNorm to sub ops and levrage LayerNorm to implement GroupNorm.
+  // groupnorm --> reshape [b, num_groups, c // (num_groups), h, w] --> layer_norm --> reshape [b, c, h, w]->mul(scale)->add(bias)
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& scale_tensor = *initializers.at(input_defs[1]->Name());
+  const auto& bias_tensor = *initializers.at(input_defs[2]->Name());
 
   const auto eps = helper.Get("epsilon", 1e-5f);
   int64_t num_groups = helper.Get("num_groups", 1);  // GroupNorm
@@ -140,8 +140,8 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
     std::vector<int64_t> shape1 = input_shape;
     shape1.insert(shape1.begin() + 1, num_groups);
     shape1[2] = input_shape[1] / num_groups;
-    std::vector<int64_t> shape3(shape1.size(), 1);
-    shape3[1] = channel_dims;
+    std::vector<int64_t> shape_scale_bias(input_shape.size(), 1);
+    shape_scale_bias[1] = channel_dims;
     AddOperationInput(*reshape1, "x", node.InputDefs()[0]->Name());
     AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", shape1));
     layer_input_name_x = model_builder.GetUniqueName(node, "ln_reshape1_");
@@ -164,38 +164,35 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
     auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
     AddOperationInput(*reshape2, "x", ln_output_name);
     AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", input_shape));
-    AddOperationOutput(*reshape2, *node.OutputDefs()[0]);
 
-    // const auto& reshape2_output_name = model_builder.GetUniqueName(node, "gn_reshape_output_");
-    // AddIntermediateOperationOutput(*reshape2, reshape2_output_name, elem_type, input_shape);
+    const auto& reshape2_output_name = model_builder.GetUniqueName(node, "gn_reshape_output_");
+    AddIntermediateOperationOutput(*reshape2, reshape2_output_name, elem_type, input_shape);
 
-    // auto mul = model_builder.CreateOperation(node, "mul", "post_mul");
-    // AddOperationInput(*mul, "x", reshape2_output_name);
-    // AddOperationInput(*mul, "y", model_builder.AddConstant(mul->type(), "mul1", scale_tensor, shape3));
-    // const auto& mul_output_name = model_builder.GetUniqueName(node, "mul_output_");
-    // AddIntermediateOperationOutput(*mul, mul_output_name, elem_type, input_shape);
+    auto mul = model_builder.CreateOperation(node, "mul", "post_mul");
+    AddOperationInput(*mul, "x", reshape2_output_name);
+    AddOperationInput(*mul, "y", model_builder.AddConstant(mul->type(), "mul1", scale_tensor, shape_scale_bias));
+    const auto& mul_output_name = model_builder.GetUniqueName(node, "mul_output_");
+    AddIntermediateOperationOutput(*mul, mul_output_name, elem_type, input_shape);
 
-    // auto add = model_builder.CreateOperation(node, "add", "post_add");
-    // AddOperationInput(*add, "x", mul_output_name);
-    // AddOperationInput(*add, "y", model_builder.AddConstant(add->type(), "add1", bias_tensor, shape3));
-    // AddOperationOutput(*add, *node.OutputDefs()[0]);
+    auto add = model_builder.CreateOperation(node, "add", "post_add");
+    AddOperationInput(*add, "x", mul_output_name);
+    AddOperationInput(*add, "y", model_builder.AddConstant(add->type(), "add1", bias_tensor, shape_scale_bias));
+    AddOperationOutput(*add, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(reshape1));
     model_builder.AddOperation(std::move(layer_norm));
     model_builder.AddOperation(std::move(reshape2));
-    // model_builder.AddOperation(std::move(mul));
-    // model_builder.AddOperation(std::move(add));
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLProgram is not enabled in this build, but LayerNormazition is supported");
+    model_builder.AddOperation(std::move(mul));
+    model_builder.AddOperation(std::move(add));
   }
-
+#endif  // (COREML_ENABLE_MLPROGRAM)
   return Status::OK();
 }
 
 bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                const logging::Logger& logger) const {
+  // LayerNormalization may have three output in the training mode, but we only support the inference mode
+  // for InstanceNormalization and GroupNormalization, they only have one output, so this check will always return true
   if (node.OutputDefs().size() != 1) {
     LOGS(logger, VERBOSE) << "Your onnx model (with LayerNormalization) may be in training mode,"
                           << " please export it for inferencing.";
@@ -207,40 +204,25 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     return false;
   }
 
-  NodeAttrHelper helper(node);
-  const auto stash_type = helper.Get("stash_type", 1);
-  if (stash_type != 1) {
-    LOGS(logger, VERBOSE) << "stash_type != 1 is not supported";
-    return false;
+  // groupnorm and layernorm has attribute "stash_type", while InstanceNormalization doesn't have this attribute
+  // Type of Mean and InvStdDev. This also specifies stage one’s computation precision.
+  //  if stash_type is 1, this operator casts all input variables to 32-bit float,
+  // perform the computation, and finally cast Normalized back to the original type of X
+  // coreml didn't have a similiar attribute to stash_type, for now, we support the default value
+  if (node.OpType() != "InstanceNormalization") {
+    NodeAttrHelper helper(node);
+    const auto stash_type = helper.Get("stash_type", 1);
+    if (stash_type != 1) {
+      LOGS(logger, VERBOSE) << "stash_type != 1 is not supported";
+      return false;
+    }
   }
 
-  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const auto& scale_name = input_defs[1]->Name();
   const auto* scale_tensor = input_params.graph_viewer.GetConstantInitializer(scale_name);
   if (!scale_tensor) {
     LOGS(logger, VERBOSE) << "Scale must be a constant initializer";
     return false;
-  } 
-  
-  if (node.OpType() == "GroupNormalization") {
-    Initializer unpacked_tensor(*scale_tensor);
-    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      const auto src_data = unpacked_tensor.DataAsSpan<MLFloat16>();
-      for (size_t i = 0; i < src_data.size(); i++) {
-        if (fabs(src_data[i].ToFloat() - 1.0f) > 1e-6) {
-          LOGS(logger, VERBOSE) << "GroupNorm only support scale == 1.0";
-          return false;
-        }
-      }
-    } else {
-      const auto src_data = unpacked_tensor.DataAsSpan<float>();
-      for (size_t i = 0; i < src_data.size(); i++) {
-        if (fabs(src_data[i] - 1.0f) > 1e-6f) {
-          LOGS(logger, VERBOSE) << "GroupNorm only support scale == 1.0";
-          return false;
-        }
-      }
-    }
   }
 
   if (input_defs.size() > 2) {
@@ -249,25 +231,6 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     if (!b_tensor) {
       LOGS(logger, VERBOSE) << "Bias must be a constant initializer";
       return false;
-    } else if (node.OpType() == "GroupNormalization") {
-      Initializer unpacked_tensor(*b_tensor);
-      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        const auto src_data = unpacked_tensor.DataAsSpan<MLFloat16>();
-        for (size_t i = 0; i < src_data.size(); i++) {
-          if (fabs(src_data[i].ToFloat() - .0f) > 1e-6) {
-            LOGS(logger, VERBOSE) << "GroupNorm only support bias == 0.0";
-            return false;
-          }
-        }
-      } else {
-        const auto src_data = unpacked_tensor.DataAsSpan<float>();
-        for (size_t i = 0; i < src_data.size(); i++) {
-          if (fabs(src_data[i] - .0f) > 1e-6) {
-            LOGS(logger, VERBOSE) << "GroupNorm only support bias == 0.0";
-            return false;
-          }
-        }
-      }
     }
   }
 

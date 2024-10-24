@@ -233,9 +233,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
     }
   };
   run_test(false);
-#ifdef COREML_ENABLE_MLPROGRAM
   run_test(true);
-#endif
 }
 
 template <typename T>

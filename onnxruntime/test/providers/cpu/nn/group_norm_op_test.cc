@@ -42,6 +42,7 @@ TYPED_TEST(GroupNormalizationOpTest, Equivalent_InstanceNorm_G_C) {
   vector<int64_t> B_dims = {3};
   test.AddInput<TypeParam>("bias", B_dims, GetTypedArray<TypeParam>(B), true);
 
+  // expected output is calculated using torch.nn.GroupNorm(3, 3, eps=0.3)
   vector<float> expected_output = {-0.56495477f, 1.48930046f, -1.13334329f, 0.20899761f,
                                    1.46688162f, -0.98600774f, -0.79911913f, 0.31824524f,
                                    0.57370438f, 0.42193634f, 0.6525492f, -1.64818992f,
@@ -59,6 +60,7 @@ TYPED_TEST(GroupNormalizationOpTest, Equivalent_InstanceNorm_G_C) {
 }
 
 // GroupSize = 1 to simulate LayerNorm, (LayerNorm)
+// expected output is calculated using torch.nn.GroupNorm(1, 3, eps=1e-5f)
 TYPED_TEST(GroupNormalizationOpTest, Equivalent_LayerNorm_G_1) {
   auto run_test = [](bool is_initializer) {
     OpTester test("GroupNormalization", 18);
@@ -67,9 +69,9 @@ TYPED_TEST(GroupNormalizationOpTest, Equivalent_LayerNorm_G_1) {
 
     std::vector<int64_t> dims{1, 2, 3};
     test.AddInput<TypeParam>("x", dims, GetTypedArray<TypeParam>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
-    test.AddInput<TypeParam>("scale", {3}, GetTypedArray<TypeParam>({1.0f, 1.0f, 1.0f}), is_initializer);
-    test.AddInput<TypeParam>("bias", {3}, GetTypedArray<TypeParam>({.0f, .0f, .0f}), is_initializer);
-    test.AddOutput<TypeParam>("output", dims, GetTypedArray<TypeParam>({-1.4638f, -0.8783f, -0.2928f, 0.2928f, 0.8783f, 1.4638f}));
+    test.AddInput<TypeParam>("scale", {2}, GetTypedArray<TypeParam>({1.0f, 1.0f}), is_initializer);
+    test.AddInput<TypeParam>("bias", {2}, GetTypedArray<TypeParam>({2.0f, 1.0f}), is_initializer);
+    test.AddOutput<TypeParam>("output", dims, GetTypedArray<TypeParam>({0.5361f, 1.1216f, 1.7072f, 1.2928f, 1.8783f, 2.4638f}));
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
@@ -80,6 +82,7 @@ TYPED_TEST(GroupNormalizationOpTest, Equivalent_LayerNorm_G_1) {
   run_test(true);
 }
 
+// expected output is calculated using torch.nn.GroupNorm(2, 6, eps=0.3)
 TYPED_TEST(GroupNormalizationOpTest, GroupSize_N) {
   OpTester test("GroupNormalization", 18);
   test.AddAttribute("epsilon", 0.3F);

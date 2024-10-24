@@ -262,14 +262,8 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
                                             const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
 
-  if (op_type == "Gelu") {
-#ifndef COREML_ENABLE_MLPROGRAM
+  if (op_type == "Gelu" && !input_params.create_mlprogram) {
     return false;
-#else
-    if (!input_params.create_mlprogram) {
-      return false;
-    }
-#endif
   }
   if (op_type == "PRelu") {
     return IsPReluOpSupported(node, input_params, logger);
