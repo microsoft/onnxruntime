@@ -2119,10 +2119,14 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
-            # if args.use_tensorrt:
-            #     run_subprocess(
-            #         [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
-            #     )
+            if args.use_tensorrt:
+                # Temporarily disable since TensorRT 10.4 release broke this test. Waiting on nvidia to fix.
+                # run_subprocess(
+                #     [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
+                # )
+                run_subprocess(
+                    [sys.executable, "onnxruntime_test_python_trt_acc.py"], cwd=cwd, dll_path=dll_path
+                )
 
             try:
                 import onnx  # noqa: F401
