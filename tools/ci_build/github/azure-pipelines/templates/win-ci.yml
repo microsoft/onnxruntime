@@ -136,7 +136,7 @@ stages:
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '18.x'
+          versionSpec: '20.x'
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -367,7 +367,7 @@ stages:
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
           inputs:
-            versionSpec: '18.x'
+            versionSpec: '20.x'
 
         - ${{ if ne(parameters.CudaVersion, '') }}:
           - template: jobs/download_win_gpu_library.yml
