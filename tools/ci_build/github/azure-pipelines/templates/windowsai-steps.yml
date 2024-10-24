@@ -24,10 +24,15 @@ jobs:
 
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.9'
+        versionSpec: '3.12'
         addToPath: true
         ${{ if eq(parameters.BuildArch, 'x86') }}:
           architecture: 'x86'
+
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'PublicPackages/ORT-Nightly'
 
     - template: telemetry-steps.yml
 
