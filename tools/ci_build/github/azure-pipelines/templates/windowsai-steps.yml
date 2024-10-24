@@ -177,19 +177,3 @@ jobs:
           FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
           DisplayName: 'Sign test_artifact'
           Pattern: '*.exe,*.dll'
-
-    - task: PowerShell@2
-      displayName: 'windowsai-steps-Check actual files'
-      inputs:
-        targetType: 'inline'
-        script: |
-                Write-Host "======================ArtifactStagingDirectory START==========="
-
-                $file_names=Get-ChildItem -Path $(Build.ArtifactStagingDirectory) -Name -Recurse -Force
-                foreach($file in $file_names)
-                {
-                    Write-Host $file
-                }
-
-                Write-Host "======================ArtifactStagingDirectory END ==========="
-        workingDirectory: $(Build.BinariesDirectory)

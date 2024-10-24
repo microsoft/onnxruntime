@@ -52,33 +52,6 @@ extends:
           BuildArch: arm64
           Runtime: static
 
-      - job: Check_Actual_Files
-        dependsOn:
-        - Windows_Packaging_x64_dynamic
-        - Windows_Packaging_x86_dynamic
-        - Windows_Packaging_arm64_dynamic
-        - Windows_Packaging_x64_static
-        - Windows_Packaging_x86_static
-        - Windows_Packaging_arm64_static
-        condition: succeeded()
-        steps:
-        - task: PowerShell@2
-          displayName: 'Check actual files'
-          inputs:
-            targetType: 'inline'
-            script: |
-                Write-Host "======================ArtifactStagingDirectory START==========="
-
-                $file_names=Get-ChildItem -Path $(Build.ArtifactStagingDirectory) -Name -Recurse -Force
-                foreach($file in $file_names)
-                {
-                    Write-Host $file
-                }
-
-                Write-Host "======================ArtifactStagingDirectory END ==========="
-            workingDirectory: $(Build.BinariesDirectory)
-
-
       - job: NuGet_Packaging
         dependsOn:
         - Windows_Packaging_x64_dynamic
