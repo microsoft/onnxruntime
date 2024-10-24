@@ -277,6 +277,17 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << default_rpc_control_latency_;
   }
 
+  static const std::string RPC_POLLING_TIME = "rpc_polling_time";
+  auto polling_time_pos = provider_options_map.find(RPC_POLLING_TIME);
+  if (polling_time_pos != provider_options_map.end()) {
+    default_rpc_polling_time_ = static_cast<uint32_t>(std::stoul(polling_time_pos->second));
+    if (default_rpc_polling_time_ > QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIG_MAX_RPC_POLLING_TIME) {
+      LOGS_DEFAULT(WARNING) << "rpc_polling_time exceed the max limit, use the limit instead: " << QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIG_MAX_RPC_POLLING_TIME;
+      default_rpc_polling_time_ = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIG_MAX_RPC_POLLING_TIME;
+    }
+    LOGS_DEFAULT(VERBOSE) << "rpc_polling_time: " << default_rpc_polling_time_;
+  }
+
   // default_htp_performance_mode from QNN EP option.
   // set it once only for each thread as default so user don't need to set it for every session run
   static const std::string HTP_PERFORMANCE_MODE = "htp_performance_mode";
@@ -1014,7 +1025,8 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
                                                          uint32_t device_id,
                                                          uint32_t core_id,
                                                          qnn::HtpPerformanceMode default_htp_performance_mode,
-                                                         uint32_t default_rpc_control_latency)
+                                                         uint32_t default_rpc_control_latency,
+                                                         uint32_t default_rpc_polling_time)
     : qnn_backend_manager_(qnn_backend_manager) {
   Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
   is_htp_power_config_id_valid_ = rt.IsOK();
@@ -1025,9 +1037,10 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
                                                                       default_htp_performance_mode));
     }
-    if (default_rpc_control_latency > 0) {
+    if (default_rpc_control_latency > 0 || default_rpc_polling_time > 0) {
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
-                                                                         default_rpc_control_latency));
+                                                                         default_rpc_control_latency,
+                                                                         default_rpc_polling_time));
     }
   }
 }
@@ -1058,7 +1071,9 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
     if (context_state_.retired_context_pool.empty()) {
       uint32_t core_id = 0;
       context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
-                                                   default_htp_performance_mode_, default_rpc_control_latency_);
+                                                   default_htp_performance_mode_,
+                                                   default_rpc_control_latency_,
+                                                   default_rpc_polling_time_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1111,7 +1126,18 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   uint32_t rpc_control_latency = 0;
   if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnRpcControlLatency, rpc_latency)) {
     rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
-    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+    LOGS_DEFAULT(VERBOSE) << kOrtRunOptionsConfigQnnRpcControlLatency << rpc_control_latency;
+  }
+
+  std::string rpc_polling = "";
+  uint32_t rpc_polling_time = 0;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnRpcPollingTime, rpc_polling)) {
+    rpc_polling_time = static_cast<uint32_t>(std::stoul(rpc_polling));
+    if (rpc_polling_time > QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIG_MAX_RPC_POLLING_TIME) {
+      LOGS_DEFAULT(WARNING) << "rpc_polling_time exceed the max limit, use the limit instead: " << QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIG_MAX_RPC_POLLING_TIME;
+      rpc_polling_time = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIG_MAX_RPC_POLLING_TIME;
+    }
+    LOGS_DEFAULT(VERBOSE) << kOrtRunOptionsConfigQnnRpcControlLatency << rpc_polling_time;
   }
 
   if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
@@ -1120,9 +1146,10 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
                                                                   htp_performance_mode));
     }
 
-    if (rpc_control_latency > 0) {
+    if (rpc_control_latency > 0 || rpc_polling_time > 0) {
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                     rpc_control_latency));
+                                                                     rpc_control_latency,
+                                                                     rpc_polling_time));
     }
   }
 
