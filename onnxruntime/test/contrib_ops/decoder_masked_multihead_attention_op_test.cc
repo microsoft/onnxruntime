@@ -667,7 +667,7 @@ static std::vector<T> CalculateOutputQK(const std::vector<T>& q, const std::vect
         }
 
         output_qk[b * num_heads * sequence_length + n * sequence_length + s] =
-            static_cast<T>(scale * (sum + mask_value + bias_value));
+            static_cast<T>(scale * sum + mask_value + bias_value);
       }
     }
   }
