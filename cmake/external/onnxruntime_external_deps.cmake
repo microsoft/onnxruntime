@@ -185,7 +185,8 @@ endif()
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -274,23 +275,23 @@ FetchContent_Declare(
 )
 onnxruntime_fetchcontent_makeavailable(date)
 
+find_package(Boost COMPONENTS mp11)
+
+if (NOT TARGET Boost::mp11)
 FetchContent_Declare(
   mp11
   URL ${DEP_URL_mp11}
   URL_HASH SHA1=${DEP_SHA1_mp11}
-  FIND_PACKAGE_ARGS NAMES Boost
 )
-onnxruntime_fetchcontent_makeavailable(mp11)
-if(NOT TARGET Boost::mp11)
-  if(onnxruntime_USE_VCPKG)
-    find_package(Boost REQUIRED)
-  endif()
-  message(STATUS "Aliasing Boost::headers to Boost::mp11")
-  add_library(Boost::mp11 ALIAS Boost::headers)
+
+FetchContent_Populate(mp11)
+
+add_library(Boost::mp11 IMPORTED INTERFACE)
+target_include_directories(Boost::mp11 INTERFACE ${mp11_SOURCE_DIR}/include)
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
+set(JSON_Install ON CACHE INTERNAL "")
 
 FetchContent_Declare(
     nlohmann_json
@@ -400,6 +401,7 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
   endif()
 endif()
 
+set(GSL_INSTALL ON)
 if(onnxruntime_USE_CUDA)
   FetchContent_Declare(
     GSL
@@ -432,7 +434,7 @@ if(NOT safeint_SOURCE_DIR)
   # use fetch content rather than makeavailable because safeint only includes unconditional test targets
   FetchContent_Populate(safeint)
 endif()
-add_library(safeint_interface INTERFACE)
+add_library(safeint_interface IMPORTED INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
@@ -442,7 +444,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR 
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
-set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
+set(FLATBUFFERS_INSTALL ON CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
@@ -506,7 +508,7 @@ FetchContent_Declare(
   URL_HASH SHA1=${DEP_SHA1_onnx}
   PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
   FIND_PACKAGE_ARGS NAMES ONNX onnx
-)
+  )
 if (NOT onnxruntime_MINIMAL_BUILD)
   onnxruntime_fetchcontent_makeavailable(onnx)
 else()
@@ -522,7 +524,10 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
 
+if(onnxruntime_USE_EIGEN_PACKAGE)
 find_package(Eigen3 CONFIG)
+endif()
+
 if(Eigen3_FOUND)
   get_target_property(eigen_INCLUDE_DIRS Eigen3::Eigen INTERFACE_INCLUDE_DIRECTORIES)
 else()

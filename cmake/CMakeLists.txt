@@ -101,6 +101,7 @@ option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
+option(onnxruntime_USE_EIGEN_PACKAGE "Use Eigen obtained via find_package. Note that onnxruntime is incompatible with the current major Eigen release. See the eigen commit in cmake/deps.txt." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
@@ -1708,12 +1709,10 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
-  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
-    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS.")
-  endif()
-  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
+if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
+  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS.")
 endif()
+list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
@@ -1828,33 +1827,56 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   )
 endif()
 
-if(TARGET onnxruntime)
 # Install
-  include(GNUInstallDirs)
-  include(CMakePackageConfigHelpers)
-  set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
-  string(APPEND PROJECT_CONFIG_CONTENT
-        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")")
-  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
-  install(EXPORT ${PROJECT_NAME}Targets
-    NAMESPACE ${PROJECT_NAME}::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
-# Create config for find_package()
-  configure_package_config_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+include(CMakePackageConfigHelpers)
 
-  write_basic_package_version_file(
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    VERSION ${ORT_VERSION}
-    COMPATIBILITY SameMajorVersion)
+set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
 
-  install(
-    FILES
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+string(APPEND PROJECT_CONFIG_CONTENT
+      "include(CMakeFindDependencyMacro)\n\
+      find_dependency(absl)\n\
+      find_dependency(date)\n\
+      find_dependency(Eigen3)\n\
+      find_dependency(nlohmann_json)\n\
+      find_dependency(ONNX)\n\
+      find_dependency(re2)\n\
+      find_dependency(flatbuffers)\n\
+      find_dependency(cpuinfo)\n\
+      find_dependency(protobuf)\n\
+      find_dependency(Boost COMPONENTS mp11)\n\
+      find_dependency(Microsoft.GSL 4.0)\n\
+      find_dependency(Iconv)\n\
+      find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
+      add_library(safeint_interface IMPORTED INTERFACE)\n\
+      target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
+      ")
 endif()
+
+string(APPEND PROJECT_CONFIG_CONTENT
+      "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")\n")
+
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
+install(EXPORT ${PROJECT_NAME}Targets
+  NAMESPACE ${PROJECT_NAME}::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+
+# Create config for find_package()
+configure_package_config_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+write_basic_package_version_file(
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  VERSION ${ORT_VERSION}
+  COMPATIBILITY SameMajorVersion)
+
+install(
+  FILES
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 
 if(DEFINED BUILD_AS_ARM64X)
   set(ARM64X_TARGETS onnxruntime)
