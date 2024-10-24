@@ -366,6 +366,11 @@ TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   return trt_logger;
 }
 
+std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
+  static OrtMutex singleton;
+  return std::unique_lock<OrtMutex>(singleton);
+}
+
 template <typename T>
 void GetShapeOfShapeTensor(Ort::ConstValue& input_tensor,
                              void* shape_values,
@@ -2088,7 +2093,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     }
 
     {
-        // auto lock = GetApiLock();  // TODO(leca)
+        auto lock = GetApiLock();
         runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
     }
 }
@@ -2105,7 +2110,7 @@ TensorrtExecutionProviderFactory::TensorrtExecutionProviderFactory() {
 nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) const {
   if (!builder_) {
     {
-      // auto lock = GetApiLock();  // TODO(leca)
+      auto lock = GetApiLock();
       builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     }
   }
@@ -2525,7 +2530,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     }
     {
       // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
-      // auto lock = GetApiLock(); // TODO(leca)
+      auto lock = GetApiLock();
 
       // If explicit profile flag is on and engine cache enable flag is on,
       // we need to compare explicit profiles and profiles used to build the engine in order to decide whether to rebuild the engine.
@@ -2786,7 +2791,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     *p = {context->AllocateFunc, context->DestroyFunc, context->allocator_handle, context->node_name, this_->builder_.get(),
           &(this_->parsers_[context->node_name]), &(this_->engines_[context->node_name]), &(this_->contexts_[context->node_name]),
           &(this_->networks_[context->node_name]), this_->input_info_[context->node_name], this_->output_info_[context->node_name],
-          this_->input_shape_ranges_[context->node_name], /*&tensorrt_mu_,*/ this_->fp16_enable_, this_->int8_enable_, this_->int8_calibration_cache_available_,
+          this_->input_shape_ranges_[context->node_name], &this_->tensorrt_mu_, this_->fp16_enable_, this_->int8_enable_, this_->int8_calibration_cache_available_,
           this_->dla_enable_, this_->dla_core_, &(this_->max_workspace_size_), this_->trt_node_name_with_precision_[context->node_name],
           this_->engine_cache_enable_, this_->cache_path_, this_->runtime_.get(), this_->profiles_[context->node_name],
           this_->context_memory_sharing_enable_, &(this_->max_ctx_mem_size_), this_->dynamic_range_map_[context->node_name], this_->engine_decryption_enable_,
@@ -2811,7 +2816,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     // The whole compute_function should be considered the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
     // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    //std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));  // TODO(leca)
+    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
@@ -3068,7 +3073,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
       {
-        //auto lock = GetApiLock(); // TODO(leca)
+        auto lock = this_->GetApiLock();
         std::chrono::steady_clock::time_point engine_build_start;
         if (this_->detailed_build_log_) {
           engine_build_start = std::chrono::steady_clock::now();
@@ -3467,7 +3472,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
 
     // The whole compute_function should be considered the critical section.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-//TODO(leca):    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
