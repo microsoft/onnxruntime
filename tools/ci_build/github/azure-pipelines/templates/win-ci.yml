@@ -328,6 +328,10 @@ stages:
           displayName: 'Clean Agent Directories'
           condition: always()
 
+        - script:
+            echo ${{ parameters.SpecificArtifact }}
+          displayName: 'Print Specific Artifact'
+
         - checkout: self
           clean: true
           submodules: none
