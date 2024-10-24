@@ -36,24 +36,51 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
+  constexpr size_t s_idx = 1;
   constexpr size_t zp_idx = 2;
+
+  const ONNX_NAMESPACE::TensorProto* s_tensor_proto = nullptr;
+  if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[s_idx]) ||
+      !graph.GetInitializedTensor(q_input_defs[s_idx]->Name(), s_tensor_proto)) {
+    return Status::OK();
+  }
+  Initializer s_init(*s_tensor_proto, graph.ModelPath());
+  const float scale = s_init.data<float>()[0];
+
   const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
   if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[zp_idx]) ||
       !graph.GetInitializedTensor(q_input_defs[zp_idx]->Name(), zp_tensor_proto)) {
     return Status::OK();
   }
+  Initializer zp_init(*zp_tensor_proto, graph.ModelPath());
 
-  using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
-  Initializer zero_point(*zp_tensor_proto, graph.ModelPath());
-  if (zero_point.size() != 1 ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 &&
-       zero_point.data<int8_t>()[0] != -128) ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT8 &&
-       zero_point.data<uint8_t>()[0] != 0) ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT16 &&
-       zero_point.data<int16_t>()[0] != -32768) ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT16 &&
-       zero_point.data<uint16_t>()[0] != 0)) {
+  if (zp_init.size() != 1) {
+    return Status::OK();
+  }
+
+  auto can_fuse = [&]() {
+    switch (zp_init.data_type()) {
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+        auto zero_point = zp_init.data<int8_t>()[0];
+        return QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point) >= 0;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+        auto zero_point = zp_init.data<int8_t>()[0];
+        return QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point) >= 0;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+        auto zero_point = zp_init.data<int8_t>()[0];
+        return QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point) >= 0;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+        auto zero_point = zp_init.data<int8_t>()[0];
+        return QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point) >= 0;
+      }
+      default:
+        return false;
+    }
+  };
+  if (!can_fuse()) {
     return Status::OK();
   }
 

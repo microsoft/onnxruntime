@@ -14,7 +14,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& lower, float& upper) {
+static bool GetQDomain(const Graph& graph, const Node& node, float& min_, float& max_) {
   const auto& input_defs = node.InputDefs();
 
   constexpr size_t input_cnt_required = 3;
@@ -52,27 +52,27 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
 
   switch (zp_initializer.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      const int8_t zero_point = zp_initializer.data<int8_t>()[0];
-      lower = scale * (std::numeric_limits<int8_t>::lowest() - zero_point);
-      upper = scale * (std::numeric_limits<int8_t>::max() - zero_point);
+      auto zero_point = zp_initializer.data<int8_t>()[0];
+      min_ = QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point);
+      max_ = QDQ::QuantizeDomain<int8_t>::MaxLower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      const uint8_t zero_point = zp_initializer.data<uint8_t>()[0];
-      lower = scale * (std::numeric_limits<uint8_t>::lowest() - zero_point);
-      upper = scale * (std::numeric_limits<uint8_t>::max() - zero_point);
+      auto zero_point = zp_initializer.data<uint8_t>()[0];
+      min_ = QDQ::QuantizeDomain<uint8_t>::MinUpper(scale, zero_point);
+      max_ = QDQ::QuantizeDomain<uint8_t>::MaxLower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
-      const int16_t zero_point = zp_initializer.data<int16_t>()[0];
-      lower = scale * (std::numeric_limits<int16_t>::lowest() - zero_point);
-      upper = scale * (std::numeric_limits<int16_t>::max() - zero_point);
+      auto zero_point = zp_initializer.data<int16_t>()[0];
+      min_ = QDQ::QuantizeDomain<int16_t>::MinUpper(scale, zero_point);
+      max_ = QDQ::QuantizeDomain<int16_t>::MaxLower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
-      const uint16_t zero_point = zp_initializer.data<uint16_t>()[0];
-      lower = scale * (std::numeric_limits<uint16_t>::lowest() - zero_point);
-      upper = scale * (std::numeric_limits<uint16_t>::max() - zero_point);
+      auto zero_point = zp_initializer.data<uint16_t>()[0];
+      min_ = QDQ::QuantizeDomain<uint16_t>::MinUpper(scale, zero_point);
+      max_ = QDQ::QuantizeDomain<uint16_t>::MaxLower(scale, zero_point);
       break;
     }
     default:
@@ -97,24 +97,19 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
 }
 
 Status ClipQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  float min, max;
-  if (!optimizer_utils::GetClipConstantMinMax(graph, node, min, max)) {
+  float clip_min, clip_max;
+  if (!optimizer_utils::GetClipConstantMinMax(graph, node, clip_min, clip_max)) {
     return Status::OK();
   }
 
   const Node& q_node = *graph.GetNode(node.OutputNodesBegin()->Index());
 
-  float lower, upper;
-  if (!GetQConstantLowerUpper(graph, q_node, lower, upper)) {
+  float min_, max_;
+  if (!GetQDomain(graph, q_node, min_, max_)) {
     return Status::OK();
   }
 
-  constexpr float epsilon = std::numeric_limits<float>::epsilon();
-  if (epsilon < min - lower || epsilon < upper - max) {
-    return Status::OK();
-  }
-
-  if (graph_utils::RemoveNode(graph, node)) {
+  if (clip_min <= min_ && max_ <= clip_max && graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
