@@ -108,6 +108,10 @@ extends:
             - input: pipelineArtifact
               artifactName: drop_Windows_Build_Windows_Packaging_arm64_static
               targetPath: $(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime
+          outputs:
+          - output: pipelineArtifact
+            path: '$(Build.ArtifactStagingDirectory)/merged'
+            artifact: drop_Windows_Build_NuGet_Packaging
 
         steps:
         - task: PowerShell@2
