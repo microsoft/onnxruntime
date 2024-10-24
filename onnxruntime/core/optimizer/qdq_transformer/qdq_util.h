@@ -79,6 +79,10 @@ bool MatchQNode(const Node& node);
 bool MatchDQNode(const Node& node);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+// The quantization formula is y = saturate((x / y_scale) + y_zero_point)
+// For (x / y_scale), it rounds to the nearest even. So the allowed quantize limits before rounding need to be taken
+// care of.
+//
 // 1. Clip can be removed iff the codoamin of QuantizeLinear remain unchanged.
 // 2. To remain unchanged, y=QuantizeLinear(Clip(x)) must span the full range of values that can be represented by the
 //    integer type of y. We can use this precondition to eval QuantizeLinear backward to to get the domain.
@@ -89,11 +93,17 @@ bool MatchDQNode(const Node& node);
 //      upperbound of min and lowerbound of max
 //    - Why?
 //      We want the codomain to be unchanged, so as long as the domain genreate a codomain that fill the integer value
-//      range will be fine.
-
-// The quantization formula is y = saturate((x / y_scale) + y_zero_point)
-// For (x / y_scale), it rounds to the nearest even. So the allowed quantize limits before saturate need to be taken
-// care of.
+//      range will be fine. In graphics:
+//               lowest
+//               /
+//              [           ]   Clip Codomain
+//             []     []  <------ Derived domain of Q by using Q's output type
+//            /  \  <------------ Boundery case when MinLower < lowest but lowest <= MinUpper
+//      MinLower  MinUpper
+//
+//      Domain is float value, and because of DQ's rounding, values in [MinLower, MinUpper] **all** evaluate to
+//      lowest=numeric_linmits<output_type>::lowest(). A relaxation can be applied, all we need is **some** values can
+//      generate lowest (MinUpper > lowest). WLOG, this also applies to MaxLower similarly.
 //
 // The following struct provides a wrapper to compute the domain from codomain (Q output dtype).
 template <typename T>
