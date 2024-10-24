@@ -25,7 +25,6 @@ import { ShapeUtil } from '../../../util';
 import { ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../../types';
 import {
   createTensorShapeVariables,
-  getElementAt,
   IndicesHelper,
   inputVariable,
   internalVariable,
@@ -40,6 +39,7 @@ import {
   getActivationSnippet,
   InternalActivationAttributes,
 } from '../fuse-utils';
+import { convertOutputBatchIndicesToInput } from '../matmul';
 
 import { typeSnippet } from './activation_util';
 
@@ -378,37 +378,6 @@ const matMulReadWriteFnSource = (
   const [batchVariable, aVariable, bVariable, outputVariable] = variables;
   const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
 
-  // Helper that convert output batch to input batch indices using only the rank and the shape information in uniform
-  const convertOutputBatchIndicesToInput = (
-    inputVariable: IndicesHelper,
-    targetIndicesName: string,
-    lastTwoIndices: [number | string, number | string],
-  ) => {
-    const inputRank = inputVariable.rank;
-    const outputBatchRank = batchVariable.rank;
-    if (inputRank === 2) {
-      return `var ${targetIndicesName} = ${inputVariable.type.indices}(${lastTwoIndices[0]}, ${lastTwoIndices[1]});`;
-    }
-    const inputBatchRank = inputRank - 2;
-    // Assume outputBatchRank >= inputBatchRank, the first outputBatchRank - inputBatchRank of outputBatchRank
-    // should be ignored.
-    const extendingInputRank = outputBatchRank - inputBatchRank;
-    return `
-        var ${targetIndicesName}: ${inputVariable.type.indices};
-        ${Array.from({ length: inputBatchRank })
-          .map(
-            (_, i) => `
-        if (${getElementAt(inputVariable.shape, i, inputRank)} != 1) {
-          ${inputVariable.indicesSet(targetIndicesName, i, getElementAt('batchIndices', i + extendingInputRank, outputBatchRank))}
-        } else {
-          ${inputVariable.indicesSet(targetIndicesName, i, 0)}
-        }`,
-          )
-          .join('')}
-        ${inputVariable.indicesSet(targetIndicesName, inputRank - 2, lastTwoIndices[0])}
-        ${inputVariable.indicesSet(targetIndicesName, inputRank - 1, lastTwoIndices[1])}
-`;
-  };
   const source = `
     fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
       component,
@@ -418,7 +387,7 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
       {
-        ${convertOutputBatchIndicesToInput(aVariable, 'aIndices', ['u32(row)', 'u32(colIn)'])}
+        ${convertOutputBatchIndicesToInput(aVariable, 'aIndices', batchVariable.rank, 'batchIndices', ['u32(row)', 'u32(colIn)'])}
         value = ${aVariable.getByIndices('aIndices')};
       }
       return value;
@@ -432,7 +401,7 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_inner && col < uniforms.dim_b_outer)
       {
-        ${convertOutputBatchIndicesToInput(bVariable, 'bIndices', ['u32(row)', 'u32(colIn)'])}
+        ${convertOutputBatchIndicesToInput(bVariable, 'bIndices', batchVariable.rank, 'batchIndices', ['u32(row)', 'u32(colIn)'])}
         value = ${bVariable.getByIndices('bIndices')};
       }
       return value;
