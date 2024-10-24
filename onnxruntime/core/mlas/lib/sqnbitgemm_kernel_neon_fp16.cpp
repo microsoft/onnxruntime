@@ -752,7 +752,7 @@ MLAS_FORCEINLINE
     const MLAS_FP16* aa = a;
     const MLAS_FP16* bb = b;
     size_t kk = 0;
-    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 8) {  // 16N_2M_8K
+    for (; kk + 8 <= CountK; kk += 8, aa += 8, bb += 64) {  // 16N_2M_8K
         accu00 = SQ4BitGemmMicroKernel<8, 1, 8>(aa, bb, accu00);
         if constexpr (N == 16) {
             accu01 = SQ4BitGemmMicroKernel<8, 1, 8>(aa, bb + ldb_substep, accu01);
@@ -777,7 +777,7 @@ MLAS_FORCEINLINE
         if constexpr (M == 2 && N == 16) {
             accu11 = SQ4BitGemmMicroKernel<8, 1, 4>(aa + lda, bb + ldb_substep, accu11);
         }
-        kk += 4, aa += 4, bb += 4;
+        kk += 4, aa += 4, bb += 32;
     }
 
     if (kk + 2 <= CountK) {
@@ -791,7 +791,7 @@ MLAS_FORCEINLINE
         if constexpr (M == 2 && N == 16) {
             accu11 = SQ4BitGemmMicroKernel<8, 1, 2>(aa + lda, bb + ldb_substep, accu11);
         }
-        kk += 2, aa += 2, bb += 2;
+        kk += 2, aa += 2, bb += 16;
     }
 
     if (kk < CountK) {
