@@ -57,15 +57,15 @@ jobs:
       - checkout: self
       - task: DownloadPipelineArtifact@2
         inputs:
-          artifact: 'drop-linux-gpu-x86_64'
-          targetPath: '$(Build.SourcesDirectory)/drop-linux-gpu-x86_64'
+          artifact: 'linux_gpu_wheel_x86_64'
+          targetPath: '$(Build.SourcesDirectory)/linux_gpu_wheel_x86_64'
           ${{ if ne(parameters.build_id, 'latest') }}:
             buildType: 'specific'
             project: '${{ parameters.project }}'
             pipeline: '${{ parameters.pipeline }}'
             buildVersionToDownload: 'specific'
             buildId: '${{ parameters.build_id }}'
-        displayName: 'Download Build Artifacts - drop-linux-gpu-x86_64'
+        displayName: 'Download Build Artifacts - linux_gpu_wheel_x86_64'
 
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -82,7 +82,7 @@ jobs:
       - bash: |
           set -e -x
           ls $(Build.SourcesDirectory)
-          mv "$(Build.SourcesDirectory)/drop-linux-gpu-x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+          mv "$(Build.SourcesDirectory)/linux_gpu_wheel_x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
           mv "$(Build.SourcesDirectory)/onnxruntime_gpu" "$(Build.BinariesDirectory)/whl"
           cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
           find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
