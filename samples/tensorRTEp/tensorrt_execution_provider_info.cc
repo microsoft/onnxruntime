@@ -54,8 +54,15 @@ constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
 
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
+
+  // #TODO: Make options parsing more concise.
   for (const auto& [k, v] : options) {
+    info.has_trt_options = true;
     if (k == "device_id") info.device_id = std::atoi(v.c_str());
+    if (k == "trt_engine_cache_enable") info.engine_cache_enable = (v == "1") ? true : false;
+    if (k == "trt_engine_cache_prefix") info.engine_cache_prefix = v; 
+    if (k == "trt_dump_ep_context_model") info.dump_ep_context_model = (v == "1") ? true : false; 
+    if (k == "trt_ep_context_file_path") info.ep_context_file_path = v;
   }
 //  void* user_compute_stream = nullptr;
 //  ORT_THROW_IF_ERROR(
