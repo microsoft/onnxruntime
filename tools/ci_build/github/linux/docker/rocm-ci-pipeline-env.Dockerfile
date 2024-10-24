@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=6.0
+ARG ROCM_VERSION=6.1.3
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -67,26 +67,30 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 # Create rocm-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
 ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
+RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.10
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 
-# ln -sf is needed to make sure that version `GLIBCXX_3.4.30' is found
+# Some DLLs in the conda environment have conflict with the one installed in Ubuntu system.
+# For example, the GCC version in the conda environment is 12.x, while the one in the Ubuntu 22.04 is 11.x.
+# ln -sf to make sure we always use libstdc++.so.6 and libgcc_s.so.1 in the system.
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libgcc_s.so.1
 
 RUN pip install packaging \
-                ml_dtypes==0.3.0 \
+                ml_dtypes==0.5.0 \
                 pytest==7.4.4 \
                 pytest-xdist \
                 pytest-rerunfailures \
-                scipy==1.10.0 \
-                numpy==1.24.1
+                scipy==1.14.1 \
+                numpy==1.26.4
 
 RUN apt install -y git
 
 # Install Cupy to decrease CPU utilization
+# Note that the version of Cupy requires numpy < 1.27
 RUN git clone https://github.com/ROCm/cupy && cd cupy && \
     git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
     export CUPY_INSTALL_USE_HIP=1 && \
