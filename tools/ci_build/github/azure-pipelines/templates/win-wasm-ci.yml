@@ -81,7 +81,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
   - template: download-deps.yml
 
   - task: PythonScript@0
