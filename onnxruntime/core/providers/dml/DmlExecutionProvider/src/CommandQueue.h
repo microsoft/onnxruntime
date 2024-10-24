@@ -44,7 +44,7 @@ namespace Dml
         }
 #endif
 
-        void Close();
+        void WaitForSignalAndClearQueue();
         void ReleaseCompletedReferences();
 
     private:
@@ -61,7 +61,7 @@ namespace Dml
 
         ComPtr<ID3D12Fence> m_fence;
         uint64_t m_lastFenceValue = 0;
-        bool m_closing = false;
+        bool m_clearingQueue = false;
         bool m_cpuSyncSpinningEnabled = false;
     };
 

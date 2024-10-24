@@ -110,9 +110,19 @@ common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOption
   };
   auto error_code = vitisai_ep_on_run_start(**execution_providers_, (const void*)&run_options, get_config_entry);
   if (error_code) {
-    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, std::to_string(error_code));
+    std::string error_msg = "vitisai_ep_on_run_start ret: " + std::to_string(error_code);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
   }
   return Status::OK();
 }
 
+common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                             gsl::span<const char* const> values) {
+  auto error_code = vitisai_ep_set_ep_dynamic_options(**execution_providers_, keys.data(), values.data(), std::min(keys.size(), values.size()));
+  if (error_code) {
+    std::string error_msg = "vitisai_ep_set_ep_dynamic_options ret: " + std::to_string(error_code);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
+  }
+  return Status::OK();
+}
 }  // namespace onnxruntime
