@@ -208,8 +208,10 @@ export const matMul = (context: ComputeContext): void => {
       const reshapedA = context.inputs[0].reshape([1, batchA, K]);
       const reshapedB = context.inputs[0].reshape([1, K, N]);
       const matmulOutputShape = [1, batchA, N];
-      const matmulInputs = [reshapedA, reshapedB]
-      context.compute(createMatmulProgramInfo(matmulInputs, { activation: '' }, outputShape, matmulOutputShape), { inputs: matmulInputs });
+      const matmulInputs = [reshapedA, reshapedB];
+      context.compute(createMatmulProgramInfo(matmulInputs, { activation: '' }, outputShape, matmulOutputShape), {
+        inputs: matmulInputs,
+      });
     } else {
       context.compute(createMatmulProgramInfo(context.inputs, { activation: '' }, outputShape));
     }
