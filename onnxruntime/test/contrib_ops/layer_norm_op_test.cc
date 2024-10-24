@@ -222,9 +222,8 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
     test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
     // TRT, DNNL, OpenVINO and NNAPI don't support this combination of datatypes
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-              {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+             {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
               kNnapiExecutionProvider, kQnnExecutionProvider});
-
   };
   run_test(false);
   run_test(true);
