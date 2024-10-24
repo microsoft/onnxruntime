@@ -21,6 +21,7 @@ extends:
         enabled: true
       policheck:
         enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
     stages:
     - stage: Windows_Build
       jobs:
