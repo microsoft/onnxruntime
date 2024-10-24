@@ -5,7 +5,9 @@
 #include <cmath>
 
 #include "dawn/dawn_proc.h"
+#if !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
+#endif
 
 #include "core/common/common.h"
 
@@ -25,8 +27,15 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
   std::call_once(init_flag_, [this, &webgpu_ep_info, dawn_proc_table]() {
     // Initialization.Step.1 - Create wgpu::Instance
     if (instance_ == nullptr) {
-      dawnProcSetProcs(dawn_proc_table ? reinterpret_cast<const DawnProcTable*>(dawn_proc_table)
-                                       : &dawn::native::GetProcs());
+      const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
+#if !defined(USE_EXTERNAL_DAWN)
+      if (dawn_procs == nullptr) {
+        dawn_procs = &dawn::native::GetProcs();
+      }
+#else
+      ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
+#endif
+      dawnProcSetProcs(dawn_procs);
 
       wgpu::InstanceDescriptor instance_desc{};
       instance_desc.features.timedWaitAnyEnable = true;
