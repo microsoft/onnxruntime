@@ -627,29 +627,78 @@ MLAS_FORCEINLINE
 
 template <size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
-    typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K > 0 && K <= 4)), float16x4_t>
-    SQ4BitGemmMicroKernel(
-        const MLAS_FP16* A,
-        const MLAS_FP16* B,
-        const size_t ldb,
-        float16x4_t accumulator
-    )
-{
-    float16x4_t a0;
-    if constexpr (K == 4)
-        a0 = MlasLoadFloat16x4(reinterpret_cast<const _mlas_fp16_*>(A));
-    else {
-        a0 = MlasZeroFloat16x4();
-        a0 = MlasLoadLaneFloat16x4<0>(A, a0);
-        if constexpr (K >= 2) a0 = MlasLoadLaneFloat16x4<1>(A + 1, a0);
-        if constexpr (K >= 3) a0 = MlasLoadLaneFloat16x4<2>(A + 2, a0);
-    }
-
+typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K == 4)), float16x4_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const size_t ldb,
+    float16x4_t accumulator
+) {
+    float16x4_t a0 = MlasLoadFloat16x4(reinterpret_cast<const _mlas_fp16_*>(A));
     float16x4_t b0, b1, b2, b3;
     b0 = MlasLoadFloat16x4(reinterpret_cast<const _mlas_fp16_*>(B));
     if constexpr (N > 1) b1 = MlasLoadFloat16x4(reinterpret_cast<const _mlas_fp16_*>(B + ldb));
     if constexpr (N > 2) b2 = MlasLoadFloat16x4(reinterpret_cast<const _mlas_fp16_*>(B + ldb * 2));
     if constexpr (N > 3) b3 = MlasLoadFloat16x4(reinterpret_cast<const _mlas_fp16_*>(B + ldb * 3));
+
+    float16x4_t c00, c01, c02, c03;
+    c00 = vmul_f16(b0, a0);
+    if constexpr (N > 1)
+        c01 = vmul_f16(b1, a0);
+    else
+        c01 = MlasZeroFloat16x4();
+    if constexpr (N > 2)
+        c02 = vmul_f16(b2, a0);
+    else
+        c02 = MlasZeroFloat16x4();
+    if constexpr (N > 3)
+        c03 = vmul_f16(b3, a0);
+    else
+        c03 = MlasZeroFloat16x4();
+
+    Transpose4x4(c00, c01, c02, c03);
+
+    float16x4_t c = vadd_f16(vadd_f16(c00, c01), vadd_f16(c02, c03));
+    return vadd_f16(c, accumulator);
+}
+
+template <size_t N, size_t M, size_t K>
+MLAS_FORCEINLINE
+typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K > 0 && K < 4)), float16x4_t>
+SQ4BitGemmMicroKernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const size_t ldb,
+    float16x4_t accumulator
+)
+{
+    float16x4_t a0 = MlasZeroFloat16x4();
+    float16x4_t b0 = MlasZeroFloat16x4(), b1, b2, b3;
+    if constexpr (N > 1) b1 = MlasZeroFloat16x4();
+    if constexpr (N > 2) b2 = MlasZeroFloat16x4();
+    if constexpr (N > 3) b3 = MlasZeroFloat16x4();
+
+    a0 = MlasLoadLaneFloat16x4<0>(A, a0);
+    b0 = MlasLoadLaneFloat16x4<0>(B, b0);
+    if constexpr (N > 1) b1 = MlasLoadLaneFloat16x4<0>(B + ldb, b1);
+    if constexpr (N > 2) b2 = MlasLoadLaneFloat16x4<0>(B + ldb * 2, b2);
+    if constexpr (N > 3) b3 = MlasLoadLaneFloat16x4<0>(B + ldb * 3, b3);
+
+    if constexpr (K >= 2) {
+        a0 = MlasLoadLaneFloat16x4<1>(A + 1, a0);
+        b0 = MlasLoadLaneFloat16x4<1>(B + 1, b0);
+        if constexpr (N > 1) b1 = MlasLoadLaneFloat16x4<1>(B + 1 + ldb, b1);
+        if constexpr (N > 2) b2 = MlasLoadLaneFloat16x4<1>(B + 1 + ldb * 2, b2);
+        if constexpr (N > 3) b3 = MlasLoadLaneFloat16x4<1>(B + 1 + ldb * 3, b3);
+    }
+
+    if constexpr (K >= 3) {
+        a0 = MlasLoadLaneFloat16x4<2>(A + 2, a0);
+        b0 = MlasLoadLaneFloat16x4<2>(B + 2, b0);
+        if constexpr (N > 1) b1 = MlasLoadLaneFloat16x4<2>(B + 2 + ldb, b1);
+        if constexpr (N > 2) b2 = MlasLoadLaneFloat16x4<2>(B + 2 + ldb * 2, b2);
+        if constexpr (N > 3) b3 = MlasLoadLaneFloat16x4<2>(B + 2 + ldb * 3, b3);
+    }
 
     float16x4_t c00, c01, c02, c03;
     c00 = vmul_f16(b0, a0);
