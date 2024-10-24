@@ -163,6 +163,69 @@ export class WebNNBackend {
     return id;
   }
 
+  // Register WebNN Constant operands from external data.
+  public registerMLConstant(
+    externalFilePath: string,
+    dataOffset: number,
+    dataLength: number,
+    builder: MLGraphBuilder,
+    desc: MLOperandDescriptor,
+    mountedFiles: Map<string, Uint8Array> | undefined,
+  ): MLOperand {
+    // If available, "Module.MountedFiles" is a Map for all preloaded files.
+    if (!mountedFiles) {
+      throw new Error('External mounted files are not available.');
+    }
+
+    let filePath = externalFilePath;
+    if (externalFilePath.startsWith('./')) {
+      filePath = externalFilePath.substring(2);
+    }
+    const fileData = mountedFiles.get(filePath);
+    if (!fileData) {
+      throw new Error(`File with name ${filePath} not found in preloaded files.`);
+    }
+
+    if (dataOffset + dataLength > fileData.byteLength) {
+      throw new Error('Out of bounds: data offset and length exceed the external file data size.');
+    }
+
+    const buffer = fileData.slice(dataOffset, dataOffset + dataLength).buffer;
+    let bufferView: ArrayBufferView;
+    switch (desc.dataType) {
+      case 'float32':
+        bufferView = new Float32Array(buffer);
+        break;
+      case 'float16':
+        bufferView = new Uint16Array(buffer);
+        break;
+      case 'int32':
+        bufferView = new Int32Array(buffer);
+        break;
+      case 'uint32':
+        bufferView = new Uint32Array(buffer);
+        break;
+      case 'int64':
+        bufferView = new BigInt64Array(buffer);
+        break;
+      case 'uint64':
+        bufferView = new BigUint64Array(buffer);
+        break;
+      case 'int8':
+        bufferView = new Int8Array(buffer);
+        break;
+      case 'uint8':
+        bufferView = new Uint8Array(buffer);
+        break;
+      default:
+        throw new Error(`Unsupported data type: ${desc.dataType} in creating WebNN Constant from external data.`);
+    }
+
+    LOG_DEBUG('verbose', () => `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`);
+
+    return builder.constant(desc, bufferView);
+  }
+
   public flush(): void {
     // Unlike the WebGPU backend, the WebNN backend does not need to flush any pending operations.
   }

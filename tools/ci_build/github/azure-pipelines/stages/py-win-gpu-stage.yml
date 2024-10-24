@@ -28,16 +28,6 @@ parameters:
     - 11.8
     - 12.2
 
-- name: SpecificArtifact
-  displayName: Use Specific Artifact
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Specific Artifact's BuildId
-  type: string
-  default: '0'
-
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -68,7 +58,7 @@ stages:
         name: onnxruntime-Win-CPU-2022
       variables:
       # The build machine pool doesn't have dotnet, so it can't run CG.
-      - template: common-variables.yml
+      - template: ../templates/common-variables.yml
       - name: GRADLE_OPTS
         value: '-Dorg.gradle.daemon=false'
       - name: VSGenerator
@@ -94,7 +84,7 @@ stages:
             clean: true
             submodules: recursive
 
-          - template: telemetry-steps.yml
+          - template: ../templates/telemetry-steps.yml
 
           - task: UsePythonVersion@0
             inputs:
@@ -108,10 +98,10 @@ stages:
               tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
               appendSourceBranchName: false
 
-          - template: download-deps.yml
+          - template: ../templates/download-deps.yml
 
           - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: jobs/set-winenv.yml
+            - template: ../templates/jobs/set-winenv.yml
               parameters:
                 EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
                 ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
@@ -119,7 +109,7 @@ stages:
                 DownloadTRT: ${{ parameters.use_tensorrt }}
 
           - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: jobs/download_win_gpu_library.yml
+            - template: ../templates/jobs/download_win_gpu_library.yml
               parameters:
                 CudaVersion: ${{ parameters.CudaVersion }}
                 ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
@@ -140,7 +130,7 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
               arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
 
-          - template: set-nightly-build-option-variable-step.yml
+          - template: ../templates/set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
             displayName: 'Generate cmake config'
@@ -170,7 +160,7 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
 
           # Esrp signing
-          - template: win-esrp-dll.yml
+          - template: ../templates/win-esrp-dll.yml
             parameters:
               FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
               DisplayName: 'ESRP - Sign Native dlls'
@@ -233,7 +223,7 @@ stages:
               GdnPublishTsaOnboard: false
               GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
 
-          - template: component-governance-component-detection-steps.yml
+          - template: ../templates/component-governance-component-detection-steps.yml
             parameters:
               condition: 'succeeded'
 
@@ -260,13 +250,11 @@ stages:
             addToPath: true
             architecture: 'x64'
 
-        - template: flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         - task: PowerShell@2
           displayName: 'Install ONNX'
