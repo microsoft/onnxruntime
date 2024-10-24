@@ -75,7 +75,7 @@ stages:
           clean: true
           submodules: none
 
-        - template: templates/win-ci-prebuild-steps.yml
+        - template: templates/jobs/win-ci-prebuild-steps.yml
           parameters:
             EnvSetupScript: setup_env.bat
             DownloadCUDA: false
@@ -86,7 +86,7 @@ stages:
             WithCache: true
             Today: $(Today)
 
-        - template: templates/win-ci-build-steps.yml
+        - template: templates/jobs/win-ci-build-steps.yml
           parameters:
             WithCache: true
             Today: $(TODAY)
