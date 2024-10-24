@@ -89,7 +89,7 @@ bool ExpandOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     return false;
   }
   if (std::any_of(new_shape.begin(), new_shape.end(), [](int64_t dimension) { return dimension == 0; })) {
-    LOGS(logger, VERBOSE) << "Expand does not support new shape with 0 dimension.";
+    LOGS(logger, VERBOSE) << "WebNN expand does not support new shape with 0 dimension.";
     return false;
   }
 
