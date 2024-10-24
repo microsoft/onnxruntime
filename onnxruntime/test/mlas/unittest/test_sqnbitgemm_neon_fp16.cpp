@@ -190,6 +190,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     TestPrepack<15, 33, 16>();
     TestPrepack<17, 67, 16>();
     TestPrepack<17, 96, 128>();
+    TestPrepack<263, 263, 16>();
   }
 };
 
@@ -346,6 +347,8 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
     TestDequant<17, 67, 16, true>();
     TestDequant<17, 96, 128, false>();
     TestDequant<17, 96, 128, true>();
+    TestDequant<263, 263, 16, false>();
+    TestDequant<263, 263, 16, true>();
   }
 };
 
@@ -374,7 +377,8 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   float GetBVal(std::vector<MLAS_FP16>& B, size_t n, size_t k) {
     size_t i;
     if ((N & (~7)) > n) {
-      i = (n & (~7)) * ldb + 8 * k + n;
+      size_t full8 = n & (~7);
+      i = full8 * ldb + 8 * k + (n - full8);
     } else {
       i = n * ldb + k;
     }
@@ -458,13 +462,15 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     TestSQ4BitGemmKernel<M, 23, 71, 16, true>();
     TestSQ4BitGemmKernel<M, 17, 96, 128, false>();
     TestSQ4BitGemmKernel<M, 17, 96, 128, true>();
+    TestSQ4BitGemmKernel<M, 263, 519, 16, false>();
+    TestSQ4BitGemmKernel<M, 263, 519, 16, true>();
   }
 
   void ExecuteShort(void) override {
     ExecuteShort_T<1>();
-    ExecuteShort_T<2>();
     ExecuteShort_T<7>();
-    ExecuteShort_T<16>();
+    ExecuteShort_T<23>();
+    ExecuteShort_T<135>();
   }
 };
 

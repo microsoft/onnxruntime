@@ -933,6 +933,7 @@ SQ4BitGemmKernel_CompFp16(
     const size_t lda_step = lda * m_step;
     const size_t ldb_step = ldb * n_step;
     const size_t ldc_step = StrideN * m_step;
+    const bool n_ge_8 = CountN >= 8;
 
     MLAS_FP16 buffer[StrideM * StrideN];
 
@@ -1144,11 +1145,11 @@ SQ4BitGemmKernel_CompFp16(
 
         k += CountK;
         A += CountK;
-        B += CountK;
+        B += n_ge_8 ? CountK * 8 : CountK;
     }
 
     // 2nd+ cache block K, accumulate to buffer.
-    for (; k < K; k += CountK, A += CountK, B += CountK) {
+    for (; k < K; k += CountK, A += CountK, B += (n_ge_8 ? CountK * 8 : CountK)) {
         CountK = std::min(K - k, StrideK);
         const MLAS_FP16* b = B;
         size_t nn = 0, c = 0;
