@@ -28,35 +28,27 @@ import {
 
 // Helper that convert output batch indices to input batch indices using only the rank and
 // the shape information in uniform
-export const convertOutputBatchIndicesToInput = (
-  inputVariable: IndicesHelper,
+export const convertOutputBatchIndicesToInputBatchIndices = (
   targetIndicesName: string,
+  inputVariable: IndicesHelper,
+  inputBatchRank: number,
   outputBatchRank: number,
   batchIndicesName: string,
-  lastTwoInputIndices: [number | string, number | string] = [0, 0],
 ) => {
-  const inputRank = inputVariable.rank;
-  if (inputRank === 2) {
-    return `var ${targetIndicesName} = ${inputVariable.type.indices}(${lastTwoInputIndices[0]}, ${lastTwoInputIndices[1]});`;
-  }
-  const inputBatchRank = inputRank - 2;
   // Assume outputBatchRank >= inputBatchRank, the first outputBatchRank - inputBatchRank of
   // outputBatchRank should be ignored.
   const extendingInputRank = outputBatchRank - inputBatchRank;
   return `
-      var ${targetIndicesName}: ${inputVariable.type.indices};
       ${Array.from({ length: inputBatchRank })
         .map(
           (_, i) => `
-      if (${getElementAt(inputVariable.shape, i, inputRank)} != 1) {
+      if (${getElementAt(inputVariable.shape, i, inputVariable.rank)} != 1) {
         ${inputVariable.indicesSet(targetIndicesName, i, getElementAt(batchIndicesName, i + extendingInputRank, outputBatchRank))}
       } else {
         ${inputVariable.indicesSet(targetIndicesName, i, 0)}
       }`,
         )
         .join('')}
-      ${inputVariable.indicesSet(targetIndicesName, inputRank - 2, lastTwoInputIndices[0])}
-      ${inputVariable.indicesSet(targetIndicesName, inputRank - 1, lastTwoInputIndices[1])}
 `;
 };
 
@@ -152,9 +144,17 @@ export const createNaiveMatmulProgramInfo = (
     let batch = index1 / stride1;
 
     ${outputShape.length === 2 ? '' : `let batch_indices = ${batchDims.offsetToIndices('batch')};`}
-    ${convertOutputBatchIndicesToInput(a, 'a_indices', batchDims.rank, 'batch_indices', [0, 0])}
+
+    var a_indices: ${a.type.indices};
+    ${convertOutputBatchIndicesToInputBatchIndices('a_indices', a, a.rank - 2, batchDims.rank, 'batch_indices')}
+    ${a.indicesSet('a_indices', a.rank - 2, 0)}
+    ${a.indicesSet('a_indices', a.rank - 1, 0)}
     let a_offset = ${a.indicesToOffset('a_indices')};
-    ${convertOutputBatchIndicesToInput(b, 'b_indices', batchDims.rank, 'batch_indices', [0, 0])}
+
+    var b_indices: ${b.type.indices};
+    ${convertOutputBatchIndicesToInputBatchIndices('b_indices', b, b.rank - 2, batchDims.rank, 'batch_indices')}
+    ${b.indicesSet('b_indices', b.rank - 2, 0)}
+    ${b.indicesSet('b_indices', b.rank - 1, 0)}
     let b_offset = ${b.indicesToOffset('b_indices')};
     var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < uniforms.K; k = k + ${aComponents}) {

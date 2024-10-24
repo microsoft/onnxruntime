@@ -39,7 +39,7 @@ import {
   getActivationSnippet,
   InternalActivationAttributes,
 } from '../fuse-utils';
-import { convertOutputBatchIndicesToInput } from '../matmul';
+import { convertOutputBatchIndicesToInputBatchIndices } from '../matmul';
 
 import { typeSnippet } from './activation_util';
 
@@ -387,7 +387,16 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
       {
-        ${convertOutputBatchIndicesToInput(aVariable, 'aIndices', batchVariable.rank, 'batchIndices', ['u32(row)', 'u32(colIn)'])}
+        var aIndices: ${aVariable.type.indices};
+        ${convertOutputBatchIndicesToInputBatchIndices(
+          'aIndices',
+          aVariable,
+          aVariable.rank - 2,
+          batchVariable.rank,
+          'batchIndices',
+        )}
+        ${aVariable.indicesSet('aIndices', aVariable.rank - 2, 'u32(row)')}
+        ${aVariable.indicesSet('aIndices', aVariable.rank - 1, 'u32(colIn)')}
         value = ${aVariable.getByIndices('aIndices')};
       }
       return value;
@@ -401,7 +410,16 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_inner && col < uniforms.dim_b_outer)
       {
-        ${convertOutputBatchIndicesToInput(bVariable, 'bIndices', batchVariable.rank, 'batchIndices', ['u32(row)', 'u32(colIn)'])}
+        var bIndices: ${bVariable.type.indices};
+        ${convertOutputBatchIndicesToInputBatchIndices(
+          'bIndices',
+          bVariable,
+          bVariable.rank - 2,
+          batchVariable.rank,
+          'batchIndices',
+        )}
+        ${bVariable.indicesSet('bIndices', bVariable.rank - 2, 'u32(row)')}
+        ${bVariable.indicesSet('bIndices', bVariable.rank - 1, 'u32(colIn)')}
         value = ${bVariable.getByIndices('bIndices')};
       }
       return value;
