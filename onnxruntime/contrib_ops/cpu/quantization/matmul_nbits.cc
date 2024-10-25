@@ -670,9 +670,10 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const size_t ldb = helper.Ldb(true);
 
   float* scales_ptr = nullptr;
+  IAllocatorUniquePtr<float> temp_scales;
   if (!scales_fp32_) {
     auto scales_size = static_cast<size_t>(scales->Shape().Size());
-    auto temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
+    temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
     MlasConvertHalfToFloatBuffer(scales_data, temp_scales.get(), scales_size);
     scales_ptr = temp_scales.get();
   } else {
@@ -753,8 +754,9 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   if (bias) {
     float* bias_ptr = nullptr;
     const size_t bias_size = static_cast<size_t>(bias->Shape().Size());
+    IAllocatorUniquePtr<float> bias_temp;
     if (!bias_fp32_) {
-      auto bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
+      bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
       MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), bias_temp.get(), bias_size);
       bias_ptr = bias_temp.get();
     } else {
