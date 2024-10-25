@@ -141,7 +141,7 @@ Status ModelBuilder::RegisterInitializers() {
             data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
           // For WebNN int4 and uint4 tensors are stored in Uint8Array,
           // so we need to adjust the number of elements.
-          num_elements = static_cast<size_t>(std::ceil(static_cast<double>(num_elements) / 2.0));
+          num_elements = (static_cast<size_t>(num_elements) + 1) / 2;
         }
         switch (data_type) {
           case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
