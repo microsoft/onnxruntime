@@ -45,7 +45,8 @@ steps:
 
         for file in $(find $jar_file_directory -type f); do
             echo "Adding checksum of sha256 to file: $file"
-            sha256sum $file | awk '{print $1}' >$file.sha256
+            sha256_value=$(sha256sum $file | awk '{print $1}')
+            echo $sha256_value" *"$(basename "$file") >$file.sha256
             echo "Added checksum of sha256 to file: $file"
         done
 
