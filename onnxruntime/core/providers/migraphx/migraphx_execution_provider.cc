@@ -49,6 +49,8 @@ class Memcpy final : public OpKernel {
     const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     if (!gpu_data_transfer)
       return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
+    // CopyTensorAsync could handle both pinned memory and non-pinned CPU memory.
+    // For non-pinned CPU memory, the copy is synchronous.
     return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
