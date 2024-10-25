@@ -28,10 +28,16 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
         HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToDevice));
+        // Follow core/providers/cuda/gpu_data_transfer.cc to synchronize the default stream here.
+        HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr));
       }
     } else {
       // copy from other CPU memory to GPU, this is blocking
       HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
+      if (src_device.MemType() != OrtDevice::MemType::HIP_PINNED) {
+        // Follow core/providers/cuda/gpu_data_transfer.cc to synchronize the default stream here.
+        HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr));
+      }
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     // copying from GPU to CPU memory, this is blocking
