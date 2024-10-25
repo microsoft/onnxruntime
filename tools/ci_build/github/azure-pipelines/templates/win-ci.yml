@@ -128,6 +128,7 @@ stages:
           workingDirectory: $(Build.BinariesDirectory)
           script: |
               $PSVersionTable
+              $PSDefaultParameterValues['*:Encoding'] = 'utf8NoBOM'
               $jar_file_directory = "$(Build.BinariesDirectory)\testing_sha256sum"
 
               New-Item -ItemType Directory -Force -Path $jar_file_directory
@@ -136,9 +137,8 @@ stages:
                   Set-Content -Path $testing_file_path -Value "Hello, World! $i"
               }
 
-              $PSDefaultParameterValues['*:Encoding'] = 'utf8'
-              $sha256sum_exe_path = "C:\Program Files\Git\usr\bin\sha256sum.exe"
 
+              $sha256sum_exe_path = "C:\Program Files\Git\usr\bin\sha256sum.exe"
               $targeting_asc_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
               foreach ($file in $targeting_asc_files) {
                   $file_path = Join-Path $jar_file_directory -ChildPath $file
