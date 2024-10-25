@@ -86,6 +86,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | ScatterElements | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterElements | ✗ | ✓ | Only supports 'reduction' == 'none' |
 | ScatterND | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterND | ✗ | ✓ | Only supports 'reduction' == 'none' |
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | ✓ | ✓ | |
+| SimplifiedLayerNormalization | ai.onnx(1+) | pow + reduceMean + add + sqrt + div + mul | ✓ | ✓ | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | ✓ | ✓ | |
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
 | Softsign | ai.onnx(7+) | softsign | ✓ | ✓ | |
