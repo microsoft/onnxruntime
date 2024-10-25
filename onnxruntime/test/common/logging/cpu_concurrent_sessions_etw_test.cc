@@ -35,6 +35,7 @@ protected:
     Ort::Session CreateSession() override {
         Ort::SessionOptions session_options;
         session_options.DisablePerSessionThreads();
+        session_options.SetLogSeverityLevel(ORT_LOGGING_LEVEL_INFO);
         return Ort::Session(*ort_env, MODEL_URI, session_options);
     }
 
@@ -42,12 +43,12 @@ public:
     // Use base class constructor with default or custom parameters
     CPUConcurrentSessionETWTest(
         size_t max_sessions = 5,
-        int max_iterations = 10,
+        int max_iterations = 100,
         std::chrono::seconds test_duration = std::chrono::seconds(30)
     ) : ConcurrentSessionETWTestBase(max_sessions, max_iterations, test_duration) {}
 };
 
-TEST(LoggingTests, WindowsConcurrentInferenceWithETWTestCPU) {
+TEST(LoggingTests, WindowsConcurrentSessionsWithETWTestCPU) {
     CPUConcurrentSessionETWTest test;
     test.RunConcurrentTest();
 }
