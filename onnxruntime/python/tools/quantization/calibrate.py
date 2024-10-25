@@ -69,6 +69,7 @@ class TensorData:
     _floats = frozenset(["avg", "std", "lowest", "highest", "hist_edges"])
 
     def __init__(self, **kwargs):
+        self._attrs = list(kwargs.keys())
         for k, v in kwargs.items():
             if k not in TensorData._allowed:
                 raise ValueError(f"Unexpected value {k!r} not in {TensorData._allowed}.")
@@ -90,6 +91,12 @@ class TensorData:
         if not hasattr(self, "avg") or not hasattr(self, "std"):
             raise AttributeError(f"Attributes 'avg' and/or 'std' missing in {dir(self)}.")
         return (self.avg, self.std)
+
+    def to_dict(self):
+        # This is needed to serialize the data into JSON.
+        data = {k: getattr(self, k) for k in self._attrs}
+        data["CLS"] = self.__class__.__name__
+        return data
 
 
 class TensorsData:
@@ -125,11 +132,23 @@ class TensorsData:
             raise RuntimeError(f"Only an existing tensor can be modified, {key!r} is not.")
         self.data[key] = value
 
+    def keys(self):
+        return self.data.keys()
+
     def values(self):
         return self.data.values()
 
     def items(self):
         return self.data.items()
+
+    def to_dict(self):
+        # This is needed to serialize the data into JSON.
+        data = {
+            "CLS": self.__class__.__name__,
+            "data": self.data,
+            "calibration_method": self.calibration_method,
+        }
+        return data
 
 
 class CalibrationMethod(Enum):

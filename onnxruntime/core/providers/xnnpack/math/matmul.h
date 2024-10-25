@@ -31,6 +31,9 @@ class MatMul : public XnnpackKernel {
   BufferUniquePtr packed_b_;
   AllocatorPtr myAlloc;
 
+  OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
+  std::string op_type_str_ = "";
+
   XnnpackOperator op0_ = nullptr;
 };
 

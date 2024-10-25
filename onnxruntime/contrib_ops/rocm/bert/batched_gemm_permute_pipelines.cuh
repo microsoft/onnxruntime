@@ -32,7 +32,7 @@ struct GemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     return MakeString("M", m, "_N", n, "_K", k, "_B", batch);
   }
 
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   const AttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 

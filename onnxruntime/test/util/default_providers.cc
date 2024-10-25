@@ -99,11 +99,13 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params,
+                                                                         const SessionOptions* session_options) {
 #ifdef USE_OPENVINO
-  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+  return OpenVINOProviderFactoryCreator::Create(params, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }
@@ -297,6 +299,15 @@ std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const Provid
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #ifdef USE_XNNPACK
   return XnnpackProviderFactoryCreator::Create(ProviderOptions(), nullptr)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
+#ifdef USE_WEBGPU
+  ConfigOptions config_options{};
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
   return nullptr;
 #endif
