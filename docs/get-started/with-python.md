@@ -253,20 +253,17 @@ print(pred_onx)
  <span class="fs-5"> [Go to the ORT Python API Docs](../api/python/api_summary.html){: .btn  .mr-4 target="_blank"} </span>
 
 ## Builds
+
 If using pip, run `pip install --upgrade pip` prior to downloading.
 
 | Artifact      | Description | Supported Platforms |
 |-----------    |-------------|---------------------|
 |[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64),  |
-|[onnxruntime](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime)|CPU (Dev)    | Same as above |
+|[nightly](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime)|CPU (Dev)    | Same as above |
 |[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU (Release)| Windows (x64), Linux (x64, ARM64) |
 |[onnxruntime-gpu for CUDA 11.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-11-nightly/PyPI/onnxruntime-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
 |[onnxruntime-gpu for CUDA 12.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
 
-Before installing nightly package, you will need install dependencies first.
-```
-python -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
-```
 
 Example to install onnxruntime-gpu for CUDA 11.*:
 ```
