@@ -856,7 +856,10 @@ export const applyAttention = (
       seqLens,
       totalSequenceLengthInput,
     ),
-    { inputs: seqLens && totalSequenceLengthInput ? [probs, seqLens, totalSequenceLengthInput] : [probs], outputs: [-1] },
+    {
+      inputs: seqLens && totalSequenceLengthInput ? [probs, seqLens, totalSequenceLengthInput] : [probs],
+      outputs: [-1],
+    },
   )[0];
 
   // Run AttentionScore
