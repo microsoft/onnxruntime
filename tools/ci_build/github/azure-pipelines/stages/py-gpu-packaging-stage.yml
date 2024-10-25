@@ -82,7 +82,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: ${{ python_version }}
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+          EP_BUILD_FLAGS: --use_dml --enable_wcos --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80 CMAKE_SYSTEM_VERSION=10.0.18362.0"
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
           cmake_build_type: ${{ parameters.cmake_build_type }}
