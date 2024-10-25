@@ -275,7 +275,7 @@ python -m pip install onnxruntime-gpu --index-url=https://aiinfra.pkgs.visualstu
 
 Example to install onnxruntime-gpu for CUDA 12.*:
 ```
-python -m pip install onnxruntime-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
+python -m pip install onnxruntime-gpu pre --extra-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
