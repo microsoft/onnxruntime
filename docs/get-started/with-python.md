@@ -270,12 +270,12 @@ python -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 
 Example to install onnxruntime-gpu for CUDA 11.*:
 ```
-python -m pip install onnxruntime-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-11-nightly/pypi/simple/
+python -m pip install onnxruntime-gpu --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-11-nightly/pypi/simple/
 ```
 
 Example to install onnxruntime-gpu for CUDA 12.*:
 ```
-python -m pip install onnxruntime-gpu pre --extra-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
+python -m pip install onnxruntime-gpu --pre --extra-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
