@@ -57,6 +57,7 @@ stages:
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    ComboTests: true
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:

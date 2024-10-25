@@ -71,6 +71,10 @@ parameters:
       - 11.8
       - 12.2
 
+- name: ComboTests
+  type: boolean
+  default: false
+
 - name: SpecificArtifact
   displayName: Use Specific Artifact
   type: boolean
@@ -390,13 +394,34 @@ stages:
           displayName: 'Append dotnet x86  Directory to PATH'
           condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
 
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
-            workingDirectory: '$(Build.BinariesDirectory)'
+        - ${{ if eq(parameters.ComboTests, 'true') }}:
+          - task: PythonScript@0
+            displayName: 'test'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+            environment:
+              NO_CUDA_TEST: 1
+          - task: PythonScript@0
+            displayName: 'test'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+            environment:
+              NO_DML_TEST: 1
+        - ${{ else }}:
+          - task: PythonScript@0
+            displayName: 'test'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+
 # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: make_java_win_binaries.yml

@@ -147,6 +147,12 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
+#ifdef USE_CUDA
+  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
+  if (no_dml_ep_test == "1") {
+    return nullptr;
+  }
+#endif
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
 #else
@@ -324,10 +330,16 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  ConfigOptions config_options{};
-  if (auto factory = DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, false, false)) {
-    return factory->CreateProvider();
+#ifdef USE_CUDA
+  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
+  if (no_cuda_ep_test == "1") {
+    return nullptr;
   }
+#endif
+    ConfigOptions config_options{};
+    if (auto factory = DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, false, false)) {
+      return factory->CreateProvider();
+    }
 #endif
   return nullptr;
 }
