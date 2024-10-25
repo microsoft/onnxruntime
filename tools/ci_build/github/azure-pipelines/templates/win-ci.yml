@@ -145,8 +145,8 @@ stages:
                 #$file_path = Join-Path $jar_file_directory -ChildPath $file
                 #Write-Host "Adding checksum of sha256 to file: "$file_path
                 Write-Host "Adding checksum of sha256 to file: "$file
-                $file_path_sha256 = $file_path + ".sha256"
-                & $sha256sum_exe_path $file_path  1>$file_path_sha256
+                $file_path_sha256 = $file + ".sha256"
+                & $sha256sum_exe_path $file  1>$file_path_sha256
                 if ($lastExitCode -ne 0) {
                     Write-Host -Object "sha256sum command failed. Exitcode: $exitCode"
                     exit $lastExitCode
