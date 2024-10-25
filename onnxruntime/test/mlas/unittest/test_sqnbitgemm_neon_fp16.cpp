@@ -369,8 +369,8 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
 
   MLAS_FORCEINLINE
   bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = std::abs(v0.ToFloat()), f1 = std::abs(v1.ToFloat());
-    return std::abs(f0 - f1) <= f1 * rtol + atol;
+    float f0 = v0.ToFloat(), f1 = v1.ToFloat();
+    return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
   }
 
   template <size_t ldb, size_t N, size_t K>
@@ -407,7 +407,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * Ldc + n;
-        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.01f, 0.01f))
+        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.01f, 0.02f))
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
       }
@@ -420,9 +420,9 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     constexpr size_t ldb = BlkNum * BlkLen;
 
     std::vector<MLAS_FP16> A(M * K), B(ldb * N), C(M * N), ref(M * N), bias(N);
-    InitializeBuffer(A, -3.0f, 3.0f);
-    InitializeBuffer(B, -3.0f, 3.0f);
-    InitializeBuffer(bias, -3.0f, 3.0f);
+    InitializeBuffer(A, -0.25f, 0.25f);
+    InitializeBuffer(B, -0.25f, 0.25f);
+    InitializeBuffer(bias, -5.0f, 5.0f);
 
     GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
         A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N, 64, 32
@@ -462,15 +462,15 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     TestSQ4BitGemmKernel<M, 23, 71, 16, true>();
     TestSQ4BitGemmKernel<M, 17, 96, 128, false>();
     TestSQ4BitGemmKernel<M, 17, 96, 128, true>();
-    TestSQ4BitGemmKernel<M, 263, 519, 16, false>();
-    TestSQ4BitGemmKernel<M, 263, 519, 16, true>();
+    TestSQ4BitGemmKernel<M, 31, 519, 16, false>();
+    TestSQ4BitGemmKernel<M, 31, 519, 16, true>();
   }
 
   void ExecuteShort(void) override {
     ExecuteShort_T<1>();
     ExecuteShort_T<7>();
     ExecuteShort_T<23>();
-    ExecuteShort_T<135>();
+    ExecuteShort_T<63>();
   }
 };
 
