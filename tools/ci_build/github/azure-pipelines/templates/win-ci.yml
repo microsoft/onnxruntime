@@ -121,25 +121,10 @@ stages:
       - template: telemetry-steps.yml
 
       - task: PowerShell@2
-        displayName: 'KYLE DEBUG - Output all files in directory'
-        inputs:
-          targetType: 'inline'
-          workingDirectory: $(Build.BinariesDirectory)
-          script: |
-              $PSVersionTable
-              $target_directory = "C:\Program Files\git\usr\bin"
-              Write-Host "========================="$target_directory" START ======================"
-              $file_names=Get-ChildItem -Path $target_directory -Name -Recurse -Force
-              foreach($file in $file_names)
-              {
-                  Write-Host $file
-              }
-              Write-Host "========================="$target_directory" END ======================"
-
-      - task: PowerShell@2
         displayName: 'KYLE DEBUG - powershell version'
         inputs:
           targetType: 'inline'
+          pwsh: true
           workingDirectory: $(Build.BinariesDirectory)
           script: |
               $PSVersionTable
