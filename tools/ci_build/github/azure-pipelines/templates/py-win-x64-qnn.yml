@@ -53,7 +53,7 @@ jobs:
       - task: PipAuthenticate@1
         displayName: 'Pip Authenticate'
         inputs:
-          artifactFeeds: 'Lotus/Lotus'
+          artifactFeeds: 'Lotus'
 
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'

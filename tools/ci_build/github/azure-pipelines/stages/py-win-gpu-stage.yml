@@ -88,7 +88,7 @@ stages:
           - task: PipAuthenticate@1
             displayName: 'Pip Authenticate'
             inputs:
-              artifactFeeds: 'Lotus/Lotus'
+              artifactFeeds: 'Lotus'
 
 
           - template: ../templates/download-deps.yml

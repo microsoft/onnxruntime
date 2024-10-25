@@ -129,7 +129,7 @@ stages:
       - task: PipAuthenticate@1
         displayName: 'Pip Authenticate'
         inputs:
-          artifactFeeds: 'Lotus/Lotus'
+          artifactFeeds: 'Lotus'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
@@ -373,7 +373,7 @@ stages:
         - task: PipAuthenticate@1
           displayName: 'Pip Authenticate'
           inputs:
-            artifactFeeds: 'Lotus/Lotus'
+            artifactFeeds: 'Lotus'
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
