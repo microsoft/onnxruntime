@@ -104,7 +104,7 @@
 	<p class="font-thin">We are planning to start releasing the following packages:</p>
 	<ul class="list-disc ml-8">
 		<li>Maven package with Android support for QNN EP</li>
-		<li>CocoaPods package with Mac / iOS support for ORT GenAI</li>
+		<li>CocoaPods package with Mac / iOS support for ORT generate() API</li>
 	</ul>
 
 	<h2 class="text-xl font-bold mt-2">Versioning Updates</h2>
@@ -129,9 +129,8 @@
 		<li>Add MultiLoRA support.</li>
 		<li>Improve CPU FP16 and INT4 performance.</li>
 		<li>
-			Increase GenAI API model support, including Whisper, Phi-3.5-vision multi-frame, and more.
+			Increase generate() API model support, including Phi-3.5-vision multi-frame and more.
 		</li>
-		<li>Publish Phi-3.5 ONNX model variants to Hugging Face.</li>
 		<li>
 			Expand mobile support to include GPU EP and FP16 support for CoreML EP and XNNPACK kernels.
 		</li>
@@ -170,6 +169,12 @@
 	<h2 class="text-xl font-bold mt-2">ONNX Runtime 1.20</h2>
 	<p class="font-thin">
 		<strong>Tentative release date:</strong> 10/30/2024
+	</p>
+	<p class="font-thin">
+		<strong>Release candidate now available on GitHub <a
+			href="https://github.com/microsoft/onnxruntime/issues/22604"
+			class="text-blue-600 underline">here</a
+		>.</strong>
 	</p>
 
 	<div class="join join-vertical w-full p-2">
@@ -288,15 +293,15 @@
 			</div>
 		</div>
 
-		<!-- GenAI Section -->
+		<!-- generate() API Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="genai" />
-			<div class="collapse-title text-xl font-bold">GenAI</div>
+			<input type="checkbox" name="generate" />
+			<div class="collapse-title text-xl font-bold">generate() API</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
 					<li>Continuous decoding support, including chat mode and system prompt caching.</li>
 					<li>MultiLoRA API.</li>
-					<li>Additional model support, including Whisper, Phi-3.5 Vision Multi-Frame, and Qualcomm NPU support for Phi-3.5 and Llama-3.1.</li>
+					<li>Additional model support, including Phi-3.5 Vision Multi-Frame and Qualcomm NPU support for Phi-3.5 and Llama-3.1.</li>
 					<li>Mac/iOS support available in pre-built packages.</li>
 				</ul>
 			</div>
