@@ -96,7 +96,13 @@ void addOrtValueMethods(pybind11::module& m) {
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
       CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
-#elif USE_DML
+#else
+      throw std::runtime_error(
+          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+          "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else if (device.Type() == OrtDevice::DML) {
+#if USE_DML
       // InputDeflist is null because OrtValue creation is not tied to a specific model
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
@@ -104,8 +110,8 @@ void addOrtValueMethods(pybind11::module& m) {
         nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
       throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+          "Can't allocate memory on the DML device using this package of OnnxRuntime. "
+          "Please use the GPU/DML package of OnnxRuntime to use this feature.");
 #endif
         } else if (device.Type() == OrtDevice::NPU) {
 #ifdef USE_CANN
