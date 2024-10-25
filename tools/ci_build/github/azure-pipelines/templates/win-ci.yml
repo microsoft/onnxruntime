@@ -126,6 +126,7 @@ stages:
           targetType: 'inline'
           workingDirectory: $(Build.BinariesDirectory)
           script: |
+              $PSVersionTable
               $target_directory = "C:\Program Files\git\usr\bin"
               Write-Host "========================="$target_directory" START ======================"
               $file_names=Get-ChildItem -Path $target_directory -Name -Recurse -Force
@@ -134,6 +135,43 @@ stages:
                   Write-Host $file
               }
               Write-Host "========================="$target_directory" END ======================"
+
+      - task: PowerShell@2
+        displayName: 'KYLE DEBUG - powershell version'
+        inputs:
+          targetType: 'inline'
+          workingDirectory: $(Build.BinariesDirectory)
+          script: |
+              $PSVersionTable
+              $jar_file_directory = "$(Build.BinariesDirectory)\testing_sha256sum"
+
+              New-Item -ItemType Directory -Force -Path $jar_file_directory
+              for($i=0; $i -lt 5; $i++) {
+                  $testing_file_path = Join-Path $jar_file_directory -ChildPath "file$i.txt"
+                  Set-Content -Path $testing_file_path -Value "Hello, World! $i"
+              }
+
+              $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+              $sha256sum_exe_path = "C:\Program Files\Git\usr\bin\sha256sum.exe"
+
+              $targeting_asc_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
+              foreach ($file in $targeting_asc_files) {
+                  $file_path = Join-Path $jar_file_directory -ChildPath $file
+                  Write-Host "Adding checksum of sha256 to file: "$file_path
+                  $file_path_sha256 = $file_path + ".sha256"
+                  & $sha256sum_exe_path $file_path  1>$file_path_sha256
+                  if ($lastExitCode -ne 0) {
+                      Write-Host -Object "sha256sum command failed. Exitcode: $exitCode"
+                      exit $lastExitCode
+                  }
+                  Write-Host "Added checksum of sha256 to file: "$file_path
+              }
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'KYLE DEBUG - Publish artifacts'
+        inputs:
+          pathtoPublish: '$(Build.BinariesDirectory)\testing_sha256sum'
+          artifactName: 'testing_sha256sum'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
