@@ -130,30 +130,32 @@ stages:
             $jar_file_directory = "$(Build.BinariesDirectory)\testing_sha256sum"
 
             New-Item -ItemType Directory -Force -Path $jar_file_directory
-            for($i=0; $i -lt 5; $i++) {
+            for ($i = 0; $i -lt 5; $i++) {
                 $testing_file_path = Join-Path $jar_file_directory -ChildPath "file$i.txt"
                 Set-Content -Path $testing_file_path -Value "Hello, World! $i"
             }
-            $PSVersionTable
+
             $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8NoBOM'
             $sha256sum_exe_path = "C:\Program Files\Git\usr\bin\sha256sum.exe"
 
             $targeting_asc_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
-            $original_location=Get-Location
-            Set-Location $jar_file_directory
             foreach ($file in $targeting_asc_files) {
-                #$file_path = Join-Path $jar_file_directory -ChildPath $file
-                #Write-Host "Adding checksum of sha256 to file: "$file_path
-                Write-Host "Adding checksum of sha256 to file: "$file
-                $file_path_sha256 = $file + ".sha256"
-                & $sha256sum_exe_path $file  1>$file_path_sha256
+                $file_path = Join-Path $jar_file_directory -ChildPath $file
+                Write-Host "Adding checksum of sha256 to file: "$file_path
+                $file_path_sha256 = $file_path + ".sha256"
+                & $sha256sum_exe_path $file_path  1>$file_path_sha256
                 if ($lastExitCode -ne 0) {
                     Write-Host -Object "sha256sum command failed. Exitcode: $exitCode"
                     exit $lastExitCode
                 }
+
+                $sha256_file_content_raw = Get-Content -Path $file_path_sha256 -Encoding utf8NoBOM
+                $sha256_value = $sha256_file_content_raw.Split(" ")[0].Trim()
+                $sha256_file_content = $sha256_value + " *" + $file
+                $sha256_file_content | Out-File -FilePath $file_path_sha256
                 Write-Host "Added checksum of sha256 to file: "$file_path
             }
-            Set-Location $original_location
+
 
       - task: PublishBuildArtifacts@1
         displayName: 'KYLE DEBUG - Publish artifacts'
