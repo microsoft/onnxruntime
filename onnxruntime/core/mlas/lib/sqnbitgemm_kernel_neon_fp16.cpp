@@ -933,7 +933,6 @@ SQ4BitGemmKernel_CompFp16(
     const size_t lda_step = lda * m_step;
     const size_t ldb_step = ldb * n_step;
     const size_t ldc_step = StrideN * m_step;
-    const bool n_ge_8 = CountN >= 8;
 
     MLAS_FP16 buffer[StrideM * StrideN];
 
@@ -941,6 +940,7 @@ SQ4BitGemmKernel_CompFp16(
     size_t k = 0, CountK;
     if (k < K) {
         CountK = std::min(K, StrideK);
+        const size_t k8 = k * 8;
         if (Bias) {
             const MLAS_FP16 *b = B, *bias = Bias;
             size_t nn = 0, c = 0;
@@ -949,13 +949,13 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, n_step, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, n_step, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -969,13 +969,13 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 8, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 8, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -990,13 +990,13 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 4, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 4, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -1011,14 +1011,14 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 2, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 // remaining 1M
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 2, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -1033,13 +1033,13 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 1, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, true, 1, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
             }
@@ -1051,13 +1051,13 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, n_step, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, n_step, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
             }
@@ -1068,13 +1068,13 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 8, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 8, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k8, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -1088,14 +1088,14 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 4, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 // remaining 1M
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 4, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -1109,14 +1109,14 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 2, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 // remaining 1M
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 2, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
@@ -1130,14 +1130,14 @@ SQ4BitGemmKernel_CompFp16(
                 size_t mm = 0, cc = c;
                 for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 1, m_step, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
 
                 // remaining 1M
                 if (mm < CountM) {
                     SQ4BitGemmRegisterKernel<StrideN, true, false, 1, 1, k_step>(
-                        a, b, bias, buffer + cc, CountK, lda, ldb
+                        a, b + k, bias, buffer + cc, CountK, lda, ldb
                     );
                 }
             }
@@ -1145,28 +1145,28 @@ SQ4BitGemmKernel_CompFp16(
 
         k += CountK;
         A += CountK;
-        B += n_ge_8 ? CountK * 8 : CountK;
     }
 
     // 2nd+ cache block K, accumulate to buffer.
-    for (; k < K; k += CountK, A += CountK, B += (n_ge_8 ? CountK * 8 : CountK)) {
+    for (; k < K; k += CountK, A += CountK) {
         CountK = std::min(K - k, StrideK);
         const MLAS_FP16* b = B;
         size_t nn = 0, c = 0;
+        const size_t k8 = k * 8;
         for (; nn + n_step <= CountN; nn += n_step) {
             const MLAS_FP16* a = A;
             size_t mm = 0, cc = c;
             for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                 // load buffer, init register accumulator
                 SQ4BitGemmRegisterKernel<StrideN, false, false, n_step, m_step, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k8, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
             // remaining 1M
             if (mm < CountM) {
                 SQ4BitGemmRegisterKernel<StrideN, false, false, n_step, 1, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k8, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
@@ -1181,14 +1181,14 @@ SQ4BitGemmKernel_CompFp16(
             for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                 // load buffer, init register accumulator
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 8, 2, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k8, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
             // remaining 1M
             if (mm < CountM) {
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 8, 1, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k8, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
@@ -1203,14 +1203,14 @@ SQ4BitGemmKernel_CompFp16(
             for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                 // load buffer, init register accumulator
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 4, 2, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
             // remaining 1M
             if (mm < CountM) {
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 4, 1, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
@@ -1225,14 +1225,14 @@ SQ4BitGemmKernel_CompFp16(
             for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                 // load buffer, init register accumulator
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 2, 2, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
             // remaining 1M
             if (mm < CountM) {
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 2, 1, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
@@ -1247,14 +1247,14 @@ SQ4BitGemmKernel_CompFp16(
             for (; mm + m_step <= CountM; mm += m_step, a += lda_step, cc += ldc_step) {
                 // load buffer, init register accumulator
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 2, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
 
             // remaining 1M
             if (mm < CountM) {
                 SQ4BitGemmRegisterKernel<StrideN, false, false, 1, 1, k_step>(
-                    a, B, nullptr, buffer + cc, CountK, lda, ldb
+                    a, b + k, nullptr, buffer + cc, CountK, lda, ldb
                 );
             }
         }
