@@ -902,6 +902,10 @@ export class WebGpuBackend {
     this.sessionStatus = 'default';
   }
 
+  onCreateSession(): void {
+    this.gpuDataManager.onCreateSession();
+  }
+
   onReleaseSession(sessionId: number): void {
     this.unregisterBuffers(sessionId);
     if (this.capturedCommandList.has(sessionId)) {
