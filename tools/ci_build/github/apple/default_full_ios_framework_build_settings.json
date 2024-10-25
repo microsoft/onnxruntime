@@ -24,12 +24,14 @@
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
+            "--use_webgpu",
             "--apple_deploy_target=13.0"
         ],
         "iphonesimulator": [
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
+            "--use_webgpu",
             "--apple_deploy_target=13.0"
         ],
         "macabi":[
