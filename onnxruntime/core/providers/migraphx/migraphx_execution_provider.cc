@@ -1445,7 +1445,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
             auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
             void* output_data = output_tensor.GetTensorMutableRawData();
-            HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
+            HIP_CALL_THROW(hipMemcpyWithStream(output_data,
+                                               gpu_res.data(),
+                                               res_shape.bytes(),
+                                               hipMemcpyDeviceToDevice,
+                                               static_cast<hipStream_t>(rocm_stream)));
           }
         }
       };
