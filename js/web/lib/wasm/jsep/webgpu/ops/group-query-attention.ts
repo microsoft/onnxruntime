@@ -274,18 +274,21 @@ const generatePositionIdsProgramInfo = (
     let is_subsequent_prompt = uniforms.sequence_length > 1 && uniforms.sequence_length != total_sequence_length;
     let is_first_prompt = !is_subsequent_prompt && uniforms.sequence_length == total_sequence_length;
     let batch_idx = global_idx / uniforms.sequence_length;
-    let sequence_idx = global_idx % uniforms.sequence_length;
+    let sequence_idx = i32(global_idx % uniforms.sequence_length);
     var pos_id: ${outputType} = ${outputType}(0);
     if (is_first_prompt == false) {
-      let total_seqlen = u32(${seqLensInputHelper.getByOffset('batch_idx')}) + 1u;
-      let past_seqlen = u32(total_seqlen - uniforms.sequence_length);
+      let total_seqlen = ${seqLensInputHelper.getByOffset('batch_idx')} + 1;
+      let past_seqlen = total_seqlen - i32(uniforms.sequence_length);
       if (past_seqlen + sequence_idx < total_seqlen) {
-        pos_id = ${outputType}(past_seqlen + sequence_idx);
+        // sign extend value and convert to vec2<u32>
+        let value = past_seqlen + sequence_idx;
+        let sign_ext = select(0, 0xFFFFFFF, value < 0);
+        pos_id = ${outputType}(u32(sign_ext), u32(value));
       } else {
-        pos_id = ${outputType}(1);
+        pos_id = ${outputType}(0,1);
       }
     }
-    pos_ids[global_idx] = pos_id;
+    ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
   }
   `;
   };
@@ -331,19 +334,6 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     !k && !v
       ? context.compute(createSplitProgramInfo([q], splitAttributes), { inputs: [q], outputs: [-1, -1, -1] })
       : [q, k!, v!];
-
-  const Q = maybeTransposeToBNSHAndAddBias(
-    context,
-    params.batchSize,
-    params.numHeads,
-    params.sequenceLength,
-    params.headSize,
-    query,
-    undefined,
-    0,
-  );
-  const K = maybeTransposeToBNSH(context, key, params);
-  const V = maybeTransposeToBNSH(context, value, params);
   let qRotary: TensorView | undefined;
   let kRotary: TensorView | undefined;
   if (attributes.doRotary) {
@@ -354,25 +344,40 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     const cosCache = context.inputs[7];
     const sinCache = context.inputs[8];
     const rotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
-      interleaved: false,
+      interleaved: attributes.rotaryInterleaved !== 0,
       numHeads: params.numHeads,
-      rotaryEmbeddingDim: 2 * cosCache.dims[1],
+      rotaryEmbeddingDim: 0,
       scale: attributes.scale,
     });
-
-    qRotary = context.compute(
-      createRotaryEmbeddingProgramInfo([Q, posIds, cosCache, sinCache], rotaryEmbeddingAttributes),
-      { inputs: [Q, posIds, cosCache, sinCache], outputs: [-1] },
-    )[0];
-    kRotary = context.compute(
-      createRotaryEmbeddingProgramInfo([K, posIds, cosCache, sinCache], rotaryEmbeddingAttributes),
-      { inputs: [K, posIds, cosCache, sinCache], outputs: [-1] },
-    )[0];
+    const inputs = [query, posIds, cosCache, sinCache];
+    const outputs = [-1];
+    qRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, rotaryEmbeddingAttributes), {
+      inputs,
+      outputs,
+    })[0];
+    inputs.splice(0, 1, key);
+    kRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, rotaryEmbeddingAttributes), {
+      inputs,
+      outputs,
+    })[0];
   }
+  const Q = maybeTransposeToBNSHAndAddBias(
+    context,
+    params.batchSize,
+    params.numHeads,
+    params.sequenceLength,
+    params.headSize,
+    attributes.doRotary ? qRotary! : query,
+    undefined,
+    0,
+  );
+  const K = maybeTransposeToBNSH(context, attributes.doRotary ? kRotary! : key, params);
+  const V = maybeTransposeToBNSH(context, value, params);
+
   applyAttention(
     context,
-    attributes.doRotary ? qRotary! : Q,
-    attributes.doRotary ? kRotary! : K,
+    Q,
+    K,
     V,
     undefined,
     undefined,
