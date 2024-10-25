@@ -4,19 +4,20 @@
 	import { onMount } from 'svelte';
 	import ImageEvents from '../../images/undraw/image_events.svelte';
 	import converttoort from '../../images/events/converttoort.jpg';
+	import ignite2024 from '../../images/events/ignite2024.png';
 	import Event from './event-post.svelte';
 	import Videogallery from '../components/videogallery.svelte';
 	let upcomingEvents = [
 		{
-			title: 'Microsoft Ignite',
+			title: 'ONNX Runtime at Microsoft Ignite Conference',
 			date: 'November 19th, 2024',
 			blurb:
-				'Discover solutions that help modernize and manage intelligent apps, safeguard data, accelerate productivity, and expand your services, while connecting with partners and growing your community or business.',
+				'ONNX Runtime will be used in the Boost Edge AI session at Microsoft Ignite 2024, as well as behind the scenes as an inference runtime in many other sessions. ONNX Runtime, equipped with NPU acceleration, enables developers to efficiently deploy state-of-the-art models on edge devices including mobile phones.',
 			linkarr: [
-				{ name: 'Event Page', link: 'https://ignite.microsoft.com/en-US/home' },
-				{ name: 'Boost Edge AI (IRL)', link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions' },
+				{ name: 'Microsoft Ignite Page', link: 'https://ignite.microsoft.com/en-US/home' },
+				{ name: 'Boost Edge AI (IRL Session)', link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions' },
 			],
-			image: converttoort,
+			image: ignite2024,
 			imagealt: 'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
 		},]
 	let events = [
