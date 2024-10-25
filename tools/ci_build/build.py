@@ -2072,7 +2072,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 executables.append("onnxruntime_global_thread_pools_test")
                 executables.append("onnxruntime_customopregistration_test")
             for exe in executables:
-                test_output = f"--gtest_filter=*FusedMatMulOpTest* --gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
+                test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
                 run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
