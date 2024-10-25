@@ -43,11 +43,11 @@
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 
 #if defined(_MSC_VER)
-#define DISABLE_DEPRECATED_WARNING \
+#define DISABLE_MSVC_DEPRECATED_WARNING \
   __pragma(warning(push))          \
   __pragma(warning(disable : 4996))
 
-#define ENABLE_DEPRECATED_WARNING \
+#define ENABLE_MSVC_DEPRECATED_WARNING \
   __pragma(warning(pop))
 #else
 #define DISABLE_MSVC_DEPRECATED_WARNING
