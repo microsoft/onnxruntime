@@ -57,9 +57,9 @@ stages:
           EP_NAME: gpu
           CudaVersion: ${{ parameters.cuda_version }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
-            EP_BUILD_FLAGS: --use_dml --enable_wcos --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80" --cmake_extra_defines "CMAKE_SYSTEM_VERSION=10.0.18362.0"
+            EP_BUILD_FLAGS: --use_dml --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            EP_BUILD_FLAGS: --use_dml --enable_wcos --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80" --cmake_extra_defines "CMAKE_SYSTEM_VERSION=10.0.18362.0"
+            EP_BUILD_FLAGS: --use_dml --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-12.6 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
 
   - ${{ if eq(parameters.enable_linux_cuda, true) }}:
       - template: py-linux-gpu-stage.yml
