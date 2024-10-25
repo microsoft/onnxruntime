@@ -5,15 +5,16 @@ pipelines:
     retail:
       source:
         credscan:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         policheck:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         eslint:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         psscriptanalyzer:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         armory:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
+    usedNonDefaultBranch: true
   1299:
     retail:
       source:
