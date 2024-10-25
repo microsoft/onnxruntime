@@ -9,7 +9,7 @@
 #include <random>
 
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 

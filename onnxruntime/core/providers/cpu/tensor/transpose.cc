@@ -8,7 +8,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/framework/op_kernel_type_control_utils.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "utils.h"
 

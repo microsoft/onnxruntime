@@ -7,7 +7,7 @@
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include <functional>
 
 using onnxruntime::concurrency::ThreadPool;

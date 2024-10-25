@@ -9,7 +9,7 @@
 #include "core/framework/int4.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"

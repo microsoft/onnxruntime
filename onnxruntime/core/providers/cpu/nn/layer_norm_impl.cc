@@ -5,7 +5,7 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/force_inline.h"

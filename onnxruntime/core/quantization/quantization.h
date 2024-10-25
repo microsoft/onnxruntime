@@ -8,7 +8,7 @@
 #include <optional>
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 // This header contains utility functions for quantizing and dequantizing
 // values as outlined in the logic in

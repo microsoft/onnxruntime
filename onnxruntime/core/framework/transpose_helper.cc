@@ -4,7 +4,7 @@
 #include "core/framework/copy.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/transpose_helper.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

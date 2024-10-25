@@ -18,7 +18,7 @@
 #include <random>
 
 #include "core/framework/float16.h"
-#include "core/mlas/inc/mlas_q4.h"
+#include "mlas_q4.h"
 
 namespace onnxruntime {
 namespace test {

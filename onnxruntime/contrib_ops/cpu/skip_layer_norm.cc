@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"

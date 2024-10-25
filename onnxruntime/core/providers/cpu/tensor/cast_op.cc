@@ -22,7 +22,7 @@
 #include "Eigen/src/Core/arch/Default/BFloat16.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/common/cpuid_info.h"
 
 namespace onnxruntime {

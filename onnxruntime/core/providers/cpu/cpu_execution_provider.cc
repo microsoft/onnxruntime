@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/int4.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/cpu_contrib_kernels.h"

@@ -224,3 +224,24 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+
+
+set(MLAS_ENABLE_WEBASSEMBLY_THREADS ${onnxruntime_ENABLE_WEBASSEMBLY_THREADS})
+set(MLAS_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING  ${onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING})
+
+FetchContent_Declare(
+    microsoft_mlas
+    URL ${DEP_URL_microsoft_mlas}
+    URL_HASH SHA1=${DEP_SHA1_microsoft_mlas}
+)
+onnxruntime_fetchcontent_makeavailable(microsoft_mlas)
+include_directories(${microsoft_mlas_SOURCE_DIR}/include)
+
+set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
+if(TARGET onnxruntime_mlas_arm64)
+   list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_arm64)
+endif()
+if(TARGET onnxruntime_mlas_x86_64)
+   list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_x86_64)
+endif()
+message("ONNXRUNTIME_MLAS_LIBS: ${ONNXRUNTIME_MLAS_LIBS}")

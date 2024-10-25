@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/common/inlined_containers.h"
 

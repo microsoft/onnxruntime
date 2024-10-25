@@ -5,7 +5,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"

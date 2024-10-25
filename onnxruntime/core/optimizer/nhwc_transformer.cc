@@ -3,7 +3,7 @@
 // Licensed under the MIT License.
 
 #include <deque>
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"

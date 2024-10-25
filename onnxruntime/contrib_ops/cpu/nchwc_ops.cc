@@ -4,7 +4,7 @@
 #include "nchwc_ops.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace onnxruntime {
 using ConvPadVector = ConvAttributes::ConvPadVector;

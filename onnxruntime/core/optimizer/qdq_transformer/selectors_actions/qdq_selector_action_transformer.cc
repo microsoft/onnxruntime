@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 #if !defined(ORT_MINIMAL_BUILD)

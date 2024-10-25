@@ -4,7 +4,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(

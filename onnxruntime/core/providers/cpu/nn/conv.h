@@ -5,7 +5,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace onnxruntime {
 

@@ -575,7 +575,6 @@ if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
-
 if(onnxruntime_ENABLE_ATEN)
   message(STATUS "Aten fallback is enabled.")
   FetchContent_Declare(

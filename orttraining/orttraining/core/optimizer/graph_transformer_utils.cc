@@ -4,7 +4,7 @@
 #include <memory>
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"

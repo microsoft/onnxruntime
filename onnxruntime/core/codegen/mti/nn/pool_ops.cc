@@ -4,7 +4,7 @@
 #include "core/codegen/mti/nn/pool_ops.h"
 
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include <topi/nn/pooling.h>
 

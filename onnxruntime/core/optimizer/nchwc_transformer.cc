@@ -5,7 +5,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <random>
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/util/math.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"

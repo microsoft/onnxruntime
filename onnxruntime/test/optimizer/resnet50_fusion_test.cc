@@ -5,7 +5,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_add_act_fusion.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "gtest/gtest.h"
 #include "graph_transform_test_builder.h"
 #include "test/test_environment.h"

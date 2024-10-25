@@ -5,8 +5,8 @@
 
 #include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
-#include "core/mlas/inc/mlas_q4.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas_q4.h"
+#include "mlas.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"

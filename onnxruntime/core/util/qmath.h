@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"

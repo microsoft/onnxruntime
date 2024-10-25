@@ -13,7 +13,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"

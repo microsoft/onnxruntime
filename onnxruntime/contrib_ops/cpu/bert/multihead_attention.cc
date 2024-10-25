@@ -12,7 +12,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "core/platform/threadpool.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 #include <algorithm>
 #include <type_traits>

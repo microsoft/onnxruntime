@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <functional>
 #include <random>
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 

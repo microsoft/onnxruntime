@@ -4,7 +4,7 @@
 #include "contrib_ops/cpu/cpu_contrib_kernels.h"
 #include "core/graph/constants.h"
 #include "core/framework/int4.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -13,7 +13,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas_q4.h"
+#include "mlas_q4.h"
 
 namespace onnxruntime {
 namespace contrib {

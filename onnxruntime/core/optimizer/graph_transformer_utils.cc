@@ -18,7 +18,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"

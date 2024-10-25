@@ -11,10 +11,10 @@ index c02ac2096d..2bc51298f0 100644
            set(mlas_platform_srcs
              ${mlas_platform_srcs}
              ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
-diff --git a/onnxruntime/core/mlas/inc/mlas.h b/onnxruntime/core/mlas/inc/mlas.h
+diff --git a/onnxruntime/mlas.h b/onnxruntime/mlas.h
 index e46105324a..414c46a1ce 100644
---- a/onnxruntime/core/mlas/inc/mlas.h
-+++ b/onnxruntime/core/mlas/inc/mlas.h
+--- a/onnxruntime/mlas.h
++++ b/onnxruntime/mlas.h
 @@ -82,6 +82,9 @@ Abstract:
  
  #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)

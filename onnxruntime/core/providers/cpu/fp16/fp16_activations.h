@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/framework/float16.h"
 #include "core/providers/cpu/activation/activations.h"
 

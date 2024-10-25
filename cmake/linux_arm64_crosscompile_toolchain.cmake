@@ -1,6 +1,7 @@
  #This file is just a sample. You may need to modify it before using.
  SET(CMAKE_SYSTEM_NAME Linux)
  SET(CMAKE_SYSTEM_VERSION 1)
+ SET(CMAKE_SYSTEM_PROCESSOR aarch64)
  SET(CMAKE_C_COMPILER aarch64-none-linux-gnu-gcc)
  SET(CMAKE_CXX_COMPILER aarch64-none-linux-gnu-g++)
  SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)

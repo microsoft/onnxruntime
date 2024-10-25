@@ -5,7 +5,7 @@
 // This file contains implementation of a fp16 convolution operator.
 //
 
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 

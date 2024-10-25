@@ -10,7 +10,7 @@
 #include "core/providers/op_kernel_type_control.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 
 #include <cmath>
 

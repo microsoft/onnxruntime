@@ -18,7 +18,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/run_options.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"

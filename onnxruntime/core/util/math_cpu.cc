@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <type_traits>
 #include "core/common/narrow.h"
-#include "core/mlas/inc/mlas.h"
+#include "mlas.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
