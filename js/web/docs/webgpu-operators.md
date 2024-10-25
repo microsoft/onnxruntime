@@ -25,7 +25,7 @@ Do not modify directly.*
 | BatchNormalization | ai.onnx(7-8,9-13,14,15+); com.ms.internal.nhwc(7-8,9-13,14,15+) |  |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
-| Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
+| Cast | ai.onnx(6-8,9-12,13-18,19-20,21+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
