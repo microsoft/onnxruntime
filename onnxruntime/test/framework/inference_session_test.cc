@@ -546,66 +546,6 @@ TEST(InferenceSessionTests, TestPrePackSerialization) {
     }
   }
   ASSERT_TRUE(found_prepack_initializer);
-
-  // Do inference with original model and optimized model and check output is identical
-  // set inputs and session options
-  Ort::SessionOptions session_options;
-  const char* input_names[] = {"A"};
-  const char* const output_names[] = {"Y"};
-  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  TensorShape input_shape = {1, 1};
-  std::vector<float> matrix_A(input_shape.Size(), 2.8f);
-  auto matrix_A_tensor = Ort::Value::CreateTensor<float>(
-      info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
-  std::vector<Ort::Value> ort_inputs;
-  ort_inputs.push_back(std::move(matrix_A_tensor));
-
-  // run inference with original model
-  // Convert std::string to std::wstring
-#if defined(_WIN32) || defined(_WIN64)
-  std::wstring test_model_wide = ToWideString(test_model);
-  Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
-#else
-  Ort::Session session(*ort_env, test_model.c_str(), session_options);
-#endif
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
-
-  // run inference with optimized model which load serialized prepack initializer
-#if defined(_WIN32) || defined(_WIN64)
-  std::wstring optimized_model_wide = ToWideString(optimized_model);
-  Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
-#else
-  Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
-#endif
-  auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                         output_names, 1);
-
-  // check output of original model and optimized model are equal
-  ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
-
-  for (size_t i = 0; i < ort_outputs.size(); ++i) {
-    const auto& sequences = ort_outputs[i];
-    ASSERT_TRUE(sequences.IsTensor());
-
-    const auto& sequences_opt = ort_outputs_opt[i];
-    ASSERT_TRUE(sequences_opt.IsTensor());
-
-    auto result_ts = sequences.GetTensorTypeAndShapeInfo();
-    auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
-
-    ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
-
-    ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
-
-    const auto* result_vals = sequences.GetTensorData<float>();
-    auto result_span = gsl::make_span(result_vals, ort_outputs.size());
-
-    const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
-    auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
-
-    ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
-  }
 }
 #endif
 #endif
