@@ -168,7 +168,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const bool feed_past_key = present_key != nullptr && past_key != nullptr && past_key->SizeInBytes() > 0;
   const bool has_present_key = output_count > 1 && past_key;
   const bool has_attention_bias = attention_bias != nullptr;
-  const int tile_size = 12;
+  constexpr int tile_size = 12;
   const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,

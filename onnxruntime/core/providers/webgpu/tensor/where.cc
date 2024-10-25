@@ -31,10 +31,10 @@ Status ComputeOutputShape(const TensorShape& cond_shape,
     if (i < y_rank)
       y_dim = y_shape[y_rank - 1 - i];
 
-    int64_t output_dim = std::max(std::max(cond_dim, x_dim), y_dim);
+    int64_t output_dim = std::max({cond_dim, x_dim, y_dim});
     // special case to handle a dim of 0 which can be broadcast with a 1
     if (output_dim == 1)
-      output_dim = std::min(std::min(cond_dim, x_dim), y_dim);
+      output_dim = std::min({cond_dim, x_dim, y_dim});
 
     const auto node_name = "Where";
     if (cond_dim != output_dim && cond_dim != 1)

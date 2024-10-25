@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-constexpr static const std::string_view STORAGE_TYPE[] = {
+constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "f32",        // Float32
     "vec2<f32>",  // Float32x2
     "vec4<f32>",  // Float32x4
@@ -34,8 +34,9 @@ constexpr static const std::string_view STORAGE_TYPE[] = {
     "vec2<u32>",  // Uint8x8
     "vec4<u32>",  // Uint8x16
 };
+constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
 
-constexpr static const std::string_view VALUE_TYPE[] = {
+constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "f32",         // Float32
     "vec2<f32>",   // Float32x2
     "vec4<f32>",   // Float32x4
@@ -55,8 +56,9 @@ constexpr static const std::string_view VALUE_TYPE[] = {
     "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
     "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
 };
+constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
 
-constexpr static const std::string_view ELEMENT_TYPE[] = {
+constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "f32",   // Float32
     "f32",   // Float32x2
     "f32",   // Float32x4
@@ -76,6 +78,7 @@ constexpr static const std::string_view ELEMENT_TYPE[] = {
     "u32",   // Uint8x8
     "u32",   // Uint8x16
 };
+constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
 
 inline std::string GetIndicesType(int rank) {
   return rank < 2 ? "u32"
