@@ -4,8 +4,22 @@
 	import { onMount } from 'svelte';
 	import ImageEvents from '../../images/undraw/image_events.svelte';
 	import converttoort from '../../images/events/converttoort.jpg';
+	import ignite2024 from '../../images/events/ignite2024.png';
 	import Event from './event-post.svelte';
 	import Videogallery from '../components/videogallery.svelte';
+	let upcomingEvents = [
+		{
+			title: 'ONNX Runtime at Microsoft Ignite Conference',
+			date: 'November 19th, 2024',
+			blurb:
+				'ONNX Runtime will be used in the Boost Edge AI session at Microsoft Ignite 2024, as well as behind the scenes as an inference runtime in many other sessions. ONNX Runtime, equipped with NPU acceleration, enables developers to efficiently deploy state-of-the-art models on edge devices including mobile phones.',
+			linkarr: [
+				{ name: 'Microsoft Ignite Page', link: 'https://ignite.microsoft.com/en-US/home' },
+				{ name: 'Boost Edge AI (IRL Session)', link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions' },
+			],
+			image: ignite2024,
+			imagealt: 'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
+		},]
 	let events = [
 		{
 			title: 'ONNX Runtime Community Meetup',
@@ -61,7 +75,18 @@
 	</div>
 	<div class="pt-5 mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Upcoming Events</h3>
-		<div class="grid gap-4 grid-cols-1 lg:grid-cols-3" />
+		<div class="grid gap-4 grid-cols-1" >
+			{#each upcomingEvents as event, i}
+				<Event
+					title={event.title}
+					description={event.blurb}
+					date={event.date}
+					linkarr={event.linkarr}
+					image={event.image}
+					imagealt={event.imagealt}
+				/>
+			{/each}
+		</div>
 	</div>
 	<div class="mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Past Events</h3>

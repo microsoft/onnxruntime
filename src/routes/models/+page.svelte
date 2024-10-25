@@ -1,33 +1,33 @@
 <script>
 	let modelhubs = [
 		{
-			title: 'ONNX Community (HuggingFace)',
+			title: 'ONNX Community (hosted on Hugging Face)',
 			description:
-				'Join the ONNX community on Hugging Face to access, share, and discuss ONNX models for NLP, vision, and more.',
+				'Access, share, and discuss ONNX models published to Hugging Face by members of the ONNX Community.',
 			url: 'https://huggingface.co/onnx-community',
 			image: 'https://huggingface.co/front/assets/huggingface_logo-noborder.svg',
 			imagealt: 'Hugging Face Logo'
 		},
 		{
-			title: 'Model Zoo (ONNX)',
+			title: 'Model Zoo (hosted on ONNX website)',
 			description:
-				'Explore a wide variety of pre-trained ONNX models for deep learning tasks across multiple domains.',
+				'Explore a wide variety of pre-trained ONNX models curated by the ONNX community.',
 			url: 'https://onnx.ai/models/',
 			image: 'https://onnx.ai/models/assets/logos/onnx.png',
 			imagealt: 'ONNX Model Zoo'
 		},
 		{
-			title: 'AI Hub (Qualcomm)',
+			title: 'Qualcomm ONNX Models (hosted on Hugging Face)',
 			description:
-				'Discover ONNX-compatible AI models optimized for Qualcomm hardware on the AI Hub.',
-			url: 'https://aihub.qualcomm.com/models',
+				'Discover ONNX-compatible models optimized for Qualcomm hardware on Hugging Face.',
+			url: 'https://huggingface.co/qualcomm',
 			image: 'https://logosandtypes.com/wp-content/uploads/2020/08/qualcomm.svg',
 			imagealt: 'Qualcomm AI Hub Logo'
 		},
 		{
-			title: 'ONNX Models (HuggingFace)',
+			title: 'All ONNX Models on Hugging Face',
 			description:
-				'Find trending ONNX models for natural language processing, computer vision, and more on Hugging Face.',
+				'Access all ONNX models available on the Hugging Face Model Hub here!',
 			url: 'https://huggingface.co/models?library=onnx&sort=trending',
 			image: 'https://huggingface.co/front/assets/huggingface_logo-noborder.svg',
 			imagealt: 'Hugging Face Logo'
