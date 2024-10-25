@@ -50,7 +50,6 @@ stages:
   - Linux_Test_CPU_aarch64_stage
   - Packages_Somking_Test
   jobs:
-  jobs:
   - job: Final
     # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
     condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
