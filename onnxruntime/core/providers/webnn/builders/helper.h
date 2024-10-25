@@ -303,6 +303,8 @@ inline bool GetWebNNOpType(const std::string& op_type, std::string& webnn_op_typ
 }
 
 static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> onnx_to_webnn_data_type_map = {
+    {ONNX_NAMESPACE::TensorProto_DataType_INT4, "int4"},
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT4, "uint4"},
     {ONNX_NAMESPACE::TensorProto_DataType_BOOL, "uint8"},
     {ONNX_NAMESPACE::TensorProto_DataType_INT8, "int8"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT8, "uint8"},
