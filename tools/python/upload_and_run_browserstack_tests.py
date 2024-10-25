@@ -78,22 +78,24 @@ if __name__ == "__main__":
         "--test_platform", type=str, help="Testing platform", choices=["espresso", "xcuitest"], required=True
     )
     parser.add_argument(
-        "--app_apk_path",
+        "--app_path",
         type=Path,
         help=(
-            "Path to the app APK. "
-            "Typically, the app APK is in "
+            "Path to the app file. "
+            "For Android, typically, the app APK is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/debug/app-debug.apk"
+            ". For iOS, you will have to build an IPA file from the test app."
         ),
         required=True,
     )
     parser.add_argument(
-        "--test_apk_path",
+        "--test_path",
         type=Path,
         help=(
             "Path to the test APK. "
             "Typically, the test APK is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+            ". For iOS, you will have to create a .zip of the tests."
         ),
         required=True,
     )
@@ -121,13 +123,13 @@ if __name__ == "__main__":
     # Upload the app and test suites
     upload_app_json = upload_apk_parse_json(
         f"https://api-cloud.browserstack.com/app-automate/{args.test_platform}/v2/app",
-        args.app_apk_path,
+        args.app_path,
         browserstack_id,
         browserstack_token,
     )
     upload_test_json = upload_apk_parse_json(
         f"https://api-cloud.browserstack.com/app-automate/{args.test_platform}/v2/test-suite",
-        args.test_apk_path,
+        args.test_path,
         browserstack_id,
         browserstack_token,
     )
