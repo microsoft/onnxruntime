@@ -396,22 +396,22 @@ stages:
 
         - ${{ if eq(parameters.ComboTests, 'true') }}:
           - task: PythonScript@0
-            displayName: 'test'
+            displayName: 'test excludes CUDA'
             condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
               arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
               workingDirectory: '$(Build.BinariesDirectory)'
-            environment:
+            env:
               NO_CUDA_TEST: 1
           - task: PythonScript@0
-            displayName: 'test'
+            displayName: 'test excludes DML'
             condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
               arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
               workingDirectory: '$(Build.BinariesDirectory)'
-            environment:
+            env:
               NO_DML_TEST: 1
         - ${{ else }}:
           - task: PythonScript@0
