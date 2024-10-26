@@ -72,11 +72,10 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: ep_name_alt
-        value:
-        - ${{ if eq(parameters.EP_NAME, directml) }}:
-          'DML'
-        - ${{ else }}:
-          'CUDA'
+        ${{ if eq(parameters.EP_NAME, directml) }}:
+          value: 'DML'
+        ${{ else }}:
+          value: 'CUDA'
 
       steps:
           - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
