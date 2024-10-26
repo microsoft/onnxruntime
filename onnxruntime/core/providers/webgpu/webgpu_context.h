@@ -107,7 +107,7 @@ class WebGpuContext final {
   };
 
   WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : query_type_{TimestampQueryType::None}, instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode} {}
+      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
