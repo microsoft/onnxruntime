@@ -69,17 +69,16 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const We
   }
 }
 
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
-  const auto& input_name = input.Name();
-  const auto* shape_proto = input.Shape();
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger) {
+  const auto& node_arg_name = node_arg.Name();
+  const auto* shape_proto = node_arg.Shape();
   // Optional tensors can be indicated by an empty name, just ignore it.
-  if (input_name.empty()) {
+  if (node_arg_name.empty()) {
     return true;
   }
-  // We do not support input with no shape.
+  // We do not support input/output with no shape.
   if (!shape_proto) {
-    LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has not shape";
+    LOGS(logger, VERBOSE) << "Node arg [" << node_arg_name << "] of [" << parent_name << "] has not shape";
     return false;
   }
 
@@ -87,8 +86,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
     // WebNN doesn't support dynamic shape - use sessionOptions.freeDimensionOverrides to fix the shape.
     if (!dim.has_dim_value()) {
       LOGS(logger, VERBOSE) << "Dynamic shape is not supported, "
-                            << "use sessionOptions.FreeDimensionOverrides to set a fixed shape for input: "
-                            << input_name;
+                            << "use sessionOptions.FreeDimensionOverrides to set a fixed shape: " << node_arg_name;
       return false;
     }
   }
@@ -104,7 +102,12 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   std::vector<std::vector<size_t>> supported_node_groups;
 
   for (const auto* input : graph_viewer.GetInputs()) {
-    if (!IsInputSupported(*input, "graph", logger)) {
+    if (!IsTensorShapeSupported(*input, "graph", logger)) {
+      return supported_node_groups;
+    }
+  }
+  for (const auto* output : graph_viewer.GetOutputs()) {
+    if (!IsTensorShapeSupported(*output, "graph", logger)) {
       return supported_node_groups;
     }
   }
