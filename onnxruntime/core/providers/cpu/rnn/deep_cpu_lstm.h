@@ -28,9 +28,9 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int /*input_index*/) override;
+  std::optional<Tensor> GetPrePackTensor(int /*input_index*/) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -46,11 +46,11 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
   rnn::detail::PackedWeights packed_W_;
   rnn::detail::PackedWeights packed_R_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_w_;
   IAllocatorUniquePtr<void> packed_buffer_r_;
-  Tensor* packed_tensor_w_;
-  Tensor* packed_tensor_r_;
+  std::optional<Tensor> packed_tensor_w_{std::nullopt};
+  std::optional<Tensor> packed_tensor_r_{std::nullopt};
 };
 
 }  // namespace onnxruntime

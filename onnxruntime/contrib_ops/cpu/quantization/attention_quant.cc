@@ -33,9 +33,9 @@ class QAttention : public OpKernel, public AttentionCPUBase {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int input_index) override;
+  std::optional<Tensor> GetPrePackTensor(int input_index) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
  private:
   IAllocatorUniquePtr<void> packed_weights_;
@@ -43,9 +43,9 @@ class QAttention : public OpKernel, public AttentionCPUBase {
   TensorShape weight_shape_;
   bool weights_is_signed_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
-  Tensor* packed_tensor_;
+  std::optional<Tensor> packed_tensor_{std::nullopt};
 };
 
 // These ops are internal-only, so register outside of onnx
@@ -147,24 +147,23 @@ Status QAttention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
 }
 
 template <typename T>
-Tensor* QAttention<T>::GetPrePackTensors(int input_idx) {
+std::optional<Tensor> QAttention<T>::GetPrePackTensor(int input_idx) {
   if (1 != input_idx) {
-    return nullptr;
+    return std::nullopt;
   }
 
-  return packed_tensor_;
+  return std::move(packed_tensor_);
 }
 
 template <typename T>
-Status QAttention<T>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status QAttention<T>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (1 != input_idx) {
     return Status::OK();
   }
 
-  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-  utils::ConvertTensorToPackedBufferAndShape(packed_weights_size_, weight_shape_, 3 * num_heads_, packed_weights_, packed_tensor_->MutableDataRaw());
+  utils::ConvertTensorToPackedBufferAndShape(packed_weights_size_, weight_shape_, packed_weights_, const_cast<void*>(pre_packed_tensor.DataRaw()));
 
-  weights_is_signed_ = packed_tensor_->IsDataType<int8_t>();
+  weights_is_signed_ = pre_packed_tensor.IsDataType<int8_t>();
 
   return Status::OK();
 }

@@ -256,13 +256,6 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     }
   } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider &&
              node_provider_type != kRocmExecutionProvider && node_provider_type != kMIGraphXExecutionProvider) {
-    // TODO: copy between devices? i.e. multiple GPUs
-    if (node_provider_type != onnxruntime::kCpuExecutionProvider &&
-        node_provider_type != onnxruntime::kVitisAIExecutionProvider &&
-        !node_provider_type.empty()) {
-      ORT_THROW("Execution type '", node_provider_type, "' doesn't support memcpy ");
-    }
-
     for (const auto* arg : node.InputDefs()) {
       if (arg->Exists())
         non_provider_input_defs_.insert(arg);

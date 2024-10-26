@@ -23,7 +23,7 @@ class ExternalDataInfo {
 
   const std::string& GetChecksum() const { return checksum_; }
 
-  bool GetPrePacked() const { return prepacked_; }
+  bool GetPrePacked() const noexcept { return prepacked_; }
 
   // If the value of 'offset' or 'length' field is larger the max value of ssize_t, this function will treat it as a
   // wrong value and return FAIL.

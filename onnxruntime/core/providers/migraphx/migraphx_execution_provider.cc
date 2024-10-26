@@ -835,6 +835,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "GlobalMaxPool",
                                                     "Greater",
                                                     "GreaterOrEqual",
+                                                    "GroupNormalization",
+                                                    "GroupQueryAttention",
                                                     "HardSigmoid",
                                                     "HardSwish",
                                                     "Identity",
@@ -842,6 +844,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ImageScaler",
                                                     "InstanceNormalization",
                                                     "IsNan",
+                                                    "LayerNormalization",
                                                     "LeakyRelu",
                                                     "Less",
                                                     "LessOrEqual",
@@ -853,6 +856,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "LSTM",
                                                     "MatMul",
                                                     "MatMulInteger",
+                                                    "MatMulNBits",
                                                     "Max",
                                                     "MaxPool",
                                                     "Mean",
@@ -861,6 +865,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Mul",
                                                     "Multinomial",
                                                     "Neg",
+                                                    "NegativeLogLikelihoodLoss",
                                                     "NonMaxSuppression",
                                                     "NonZero",
                                                     "Not",
@@ -904,8 +909,10 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Shape",
                                                     "Sigmoid",
                                                     "Sign",
+                                                    "SimplifiedLayerNormalization",
                                                     "Sin",
                                                     "Sinh",
+                                                    "SkipSimplifiedLayerNormalization",
                                                     "Slice",
                                                     "Softmax",
                                                     "Softplus",
@@ -1420,7 +1427,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       {
         // lock to avoid race condition
-        std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
 
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
@@ -1438,7 +1445,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
             auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
             void* output_data = output_tensor.GetTensorMutableRawData();
-            HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
+            HIP_CALL_THROW(hipMemcpyWithStream(output_data,
+                                               gpu_res.data(),
+                                               res_shape.bytes(),
+                                               hipMemcpyDeviceToDevice,
+                                               static_cast<hipStream_t>(rocm_stream)));
           }
         }
       };

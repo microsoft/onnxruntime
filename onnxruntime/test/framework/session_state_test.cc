@@ -394,18 +394,20 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Tensor* GetPrePackTensors(int /*input_index*/) override {
+  std::optional<Tensor> GetPrePackTensor(int input_idx) override {
+    ORT_UNUSED_PARAMETER(input_idx);
     ++get_prepack_tensors_count;
 
-    std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
     TensorShape shape = {2};
-    return new Tensor(DataTypeImpl::GetType<float>(), shape, alloc);
+    packed_tensor = Tensor(DataTypeImpl::GetType<float>(), shape, std::make_shared<CPUAllocator>());
+    return std::move(packed_tensor);
   }
 
   int prepack_calls_count = 0;
   int store_pre_packed_weight_calls_count = 0;
   int get_prepack_tensors_count = 0;
   IAllocatorUniquePtr<void> weight_packed_;
+  Tensor packed_tensor;
 };
 
 static void CreateSimpleGraph(Graph& graph) {
@@ -610,10 +612,10 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
-  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+  SessionState::PrePackInitializers pre_packed_initializers;
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager,
-                                                      pre_packed_initializers_name_map));
+                                                      pre_packed_initializers));
 
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
   // check prepacking
@@ -640,16 +642,16 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
     ASSERT_EQ(kernel_if_1->get_prepack_tensors_count, (test_param.test_prepacking && test_param.test_save_prepack_initializer) ? 1 : 0);
   }
 
-  // check pre_packed_initializers_name_map will be set properly when set save_prepacked_constant_initializers
+  // check pre_packed_initializers_to_save will be set properly when set save_prepacked_constant_initializers
   if (!test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
-    ASSERT_EQ(pre_packed_initializers_name_map.size(), size_t(1));
-    ASSERT_EQ(pre_packed_initializers_name_map.count("node_0_input_1"), size_t(1));
-    ASSERT_EQ(pre_packed_initializers_name_map["node_0_input_1"].count("node_0"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.count("node_0_input_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["node_0_input_1"].count("node_0"), size_t(1));
   } else if (test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
-    ASSERT_EQ(pre_packed_initializers_name_map.size(), size_t(1));
-    ASSERT_EQ(pre_packed_initializers_name_map.count("if_shared"), size_t(1));
-    ASSERT_EQ(pre_packed_initializers_name_map["if_shared"].count("if_node_1"), size_t(1));
-    ASSERT_EQ(pre_packed_initializers_name_map["if_shared"].count("if_node_0"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.count("if_shared"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["if_shared"].count("if_node_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["if_shared"].count("if_node_0"), size_t(1));
   }
 }
 

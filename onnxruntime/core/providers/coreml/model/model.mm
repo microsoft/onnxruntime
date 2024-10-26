@@ -120,6 +120,10 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
         data_type = MLMultiArrayDataTypeFloat32;
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        data_type = MLMultiArrayDataTypeFloat16;
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
         data_type = MLMultiArrayDataTypeInt32;
         break;
@@ -174,6 +178,16 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   return Status::OK();
 }
 
+template <typename T>
+void StridedCopy(const T* src_buffer, T* dst_buffer, size_t block_size,
+                 size_t num_blocks, size_t src_stride, size_t dst_stride) {
+  for (size_t idx = 0; idx < num_blocks; ++idx) {
+    std::copy_n(src_buffer, block_size, dst_buffer);
+    src_buffer += src_stride;
+    dst_buffer += dst_stride;
+  }
+}
+
 Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
                               const MLMultiArray* array,
                               const int64_t num_blocks, const int64_t block_size, const int64_t stride,
@@ -196,25 +210,21 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       const auto* src_buffer = static_cast<const float*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<float*>(tensor_buffer);
-      const auto block_byte_size = block_size * sizeof(float);
+      StridedCopy<float>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
-      for (int64_t idx = 0; idx < num_blocks; ++idx) {
-        memcpy(dst_buffer, src_buffer, block_byte_size);
-        src_buffer += stride;
-        dst_buffer += block_size;
-      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+      const auto* src_buffer = static_cast<const uint16_t*>(mlmultiarray_buffer);
+      auto* dst_buffer = static_cast<uint16_t*>(tensor_buffer);
+      StridedCopy<uint16_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
+
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       const auto* src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<int32_t*>(tensor_buffer);
-      const auto block_byte_size = block_size * sizeof(int32_t);
-
-      for (int64_t idx = 0; idx < num_blocks; ++idx) {
-        memcpy(dst_buffer, src_buffer, block_byte_size);
-        src_buffer += stride;
-        dst_buffer += block_size;
-      }
+      StridedCopy<int32_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
       break;
     }
@@ -384,10 +394,16 @@ Status Execution::LoadModel() {
 
       compiled_model_path_ = [compileUrl path];
 
-      MLModelConfiguration* config = [MLModelConfiguration alloc];
-      config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
-                                ? MLComputeUnitsCPUOnly
-                                : MLComputeUnitsAll;
+      MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
+
+      if (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY) {
+        config.computeUnits = MLComputeUnitsCPUOnly;
+      } else if (coreml_flags_ & COREML_FLAG_USE_CPU_AND_GPU) {
+        config.computeUnits = MLComputeUnitsCPUAndGPU;
+      } else {
+        config.computeUnits = MLComputeUnitsAll;
+      }
+
       model_ = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
       if (error != nil || model_ == nil) {

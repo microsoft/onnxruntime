@@ -80,7 +80,7 @@ stages:
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: 10.4.0.26-1.cuda11.8
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: 10.4.0.26-1.cuda12.5
+        value: 10.4.0.26-1.cuda12.6
     steps:
     - checkout: self
       clean: true

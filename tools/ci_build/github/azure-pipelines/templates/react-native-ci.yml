@@ -24,6 +24,10 @@ parameters:
   type: string
   default: ''
 
+- name: enable_code_sign
+  displayName: Use GPG to sign the jars
+  type: boolean
+
 stages:
 - stage: Build_Packages
   displayName: Build Packages
@@ -36,6 +40,7 @@ stages:
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'For_React_Native'
+      enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
 
@@ -53,9 +58,9 @@ stages:
     steps:
     - template: use-xcode-version.yml
     - task: UsePythonVersion@0
-      displayName: Use python 3.9
+      displayName: Use python 3.12
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
@@ -108,9 +113,9 @@ stages:
       condition: always()
     - template: use-xcode-version.yml
     - task: UsePythonVersion@0
-      displayName: Use python 3.9
+      displayName: Use python 3.12
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
@@ -123,7 +128,7 @@ stages:
 
     - task: NodeTool@0
       inputs:
-        versionSpec: '18.x'
+        versionSpec: '20.x'
 
     - script:
         brew install coreutils ninja npm yarn

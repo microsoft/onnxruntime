@@ -234,7 +234,7 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
-std::string GetPrepackedInitializerName(const std::string initializer_name, const std::string kernel_name);
+std::string GetPrepackedInitializerName(const std::string& initializer_name, const std::string& node_name);
 
 IAllocatorUniquePtr<void> StoreSizeTInBuffer(size_t input, AllocatorPtr alloc);
 
@@ -242,33 +242,26 @@ size_t RetriveSizeTFromBuffer(IAllocatorUniquePtr<void> buffer);
 
 size_t CalculateTensorShapeVectorMemoryUsage(TensorShapeVector& tensor_shape_vector);
 
-Tensor* ConvertPackedBufferAndShapeToTensor(onnxruntime::AllocatorPtr& alloc,
-                                         const onnxruntime::Tensor& weights,
-                                         size_t packed_weights_size_,
-                                         TensorShape weight_shape_,
-                                         int weight_size_factor,
-                                         void* original_packed_buffer,
-                                         IAllocatorUniquePtr<void>& packed_buffer);
+Tensor ConvertPackedBufferAndShapeToTensor(onnxruntime::AllocatorPtr& alloc,
+                                           const onnxruntime::Tensor& weights,
+                                           size_t packed_weights_size_,
+                                           TensorShape weight_shape_,
+                                           int weight_size_factor,
+                                           void* original_packed_buffer,
+                                           IAllocatorUniquePtr<void>& packed_buffer);
 
-Tensor* ConvertPackedBufferAndShapeToTensorWithFlag(onnxruntime::AllocatorPtr& alloc,
-                                                    const onnxruntime::Tensor& weights,
-                                                    size_t packed_weights_size_,
-                                                    TensorShape weight_shape_,
-                                                    int weight_size_factor,
-                                                    void* original_packed_buffer,
-                                                    IAllocatorUniquePtr<void>& packed_buffer,
-                                                    const char flag);
+Tensor ConvertPackedBufferAndShapeToTensorWithFlag(onnxruntime::AllocatorPtr& alloc,
+                                                   const onnxruntime::Tensor& weights,
+                                                   size_t packed_weights_size_,
+                                                   TensorShape weight_shape_,
+                                                   int weight_size_factor,
+                                                   void* original_packed_buffer,
+                                                   IAllocatorUniquePtr<void>& packed_buffer,
+                                                   const char flag);
 
 void ConvertTensorToPackedBufferAndShape(size_t& packed_weights_size_,
                                          TensorShape& weight_shape_,
-                                         int weight_size_factor,
                                          IAllocatorUniquePtr<void>& packed_weights_,
-                                         void* buffer_start);
-
-void ConvertTensorToPackedBufferPtrAndShape(size_t& packed_weights_size_,
-                                         TensorShape& weight_shape_,
-                                         int weight_size_factor,
-                                         BufferUniquePtr& packed_weights_,
                                          void* buffer_start);
 
 

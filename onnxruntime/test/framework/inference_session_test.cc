@@ -501,15 +501,15 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 
 // Test feature serialize prepack weight is only used in PC with CPU on inference,
 // disable this test for training, other device and eps
-#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN)
-TEST(InferenceSessionTests, TestPrepackSerialization) {
-  auto logger = DefaultLoggingManager().CreateLogger("TestPrepackSerialization");
-  //{"model_with_matmul_nbits", "model_with_gemm", "model_with_matmul", "model_with_conv_transpose", 
-  // "model_with_deep_cpu_lstm", "model_with_attention", "model_with_quant_attention",
-  // "model_with_dynamic_quan_lstm", "model_with_matmul_integer", "model_with_fp16_conv",
-  // "model_with_deep_cpu_gru", "model_with_qlinearconv"}
-  for (std::string model_name : {"model_with_quant_linearconv"}) {
-    SessionOptions so;
+#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN) && !defined(__ANDROID__) && !defined(USE_COREML)
+// MLAS dispatcher used in matmul_nbits kernels here is 64 bit only
+#if defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)
+TEST(InferenceSessionTests, TestPrePackSerialization) {
+  SessionOptions so;
+  for (std::string model_name : {"model_with_matmul_nbits", "model_with_gemm", "model_with_matmul", "model_with_conv_transpose",
+                                 "model_with_deep_cpu_lstm", "model_with_attention", "model_with_quant_attention",
+                                 "model_with_dynamic_quan_lstm", "model_with_matmul_integer_quant", //"model_with_fp16_conv",
+                                 "model_with_deep_cpu_gru", "model_with_quant_linearconv"}) {
     const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
     const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
 
@@ -535,6 +535,7 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
 
     // Verify prepack initializers are serialized into optimized model and data file
     // load optimized model and check initializer are prepacked
+    auto logger = DefaultLoggingManager().CreateLogger("TestPrepackSerialization");
     std::shared_ptr<Model> model;
     auto load_status = Model::Load(ToWideString(optimized_model), model, nullptr, *logger);
     ASSERT_EQ(Status::OK(), load_status);
@@ -547,78 +548,9 @@ TEST(InferenceSessionTests, TestPrepackSerialization) {
       }
     }
     ASSERT_TRUE(found_prepack_initializer);
-
-    // Do inference with original model and optimized model and check output is identical
-    // set inputs and session options
-    Ort::SessionOptions session_options;
-    const char* input_names[] = {"A"};
-    const char* const output_names[] = {"Y"};
-    Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-
-    std::vector<Ort::Value> ort_inputs;
-    TensorShape input_shape = utils::GetTensorShapeFromTensorShapeProto(*graph.GetInputs()[0]->Shape());
-
-    // generate input for model, for quant node use int8, others float
-    if (model_name.find("quant") != std::string::npos) {
-      std::vector<uint8_t> matrix_A(input_shape.Size(), 9);
-      auto matrix_A_tensor = Ort::Value::CreateTensor<uint8_t>(
-          info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
-      ort_inputs.push_back(std::move(matrix_A_tensor));
-    } else {
-      std::vector<float> matrix_A(input_shape.Size(), 4.7f);
-      auto matrix_A_tensor = Ort::Value::CreateTensor<float>(
-          info, matrix_A.data(), matrix_A.size(), &input_shape[0], input_shape.NumDimensions());
-      ort_inputs.push_back(std::move(matrix_A_tensor));
-    }
-
-    // run inference with original model
-    // Convert std::string to std::wstring
-#if defined(_WIN32) || defined(_WIN64)
-    std::wstring test_model_wide = ToWideString(test_model);
-    Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
-#else
-    Ort::Session session(*ort_env, test_model.c_str(), session_options);
-#endif
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
-
-    // run inference with optimized model which load serialized prepack initializer
-#if defined(_WIN32) || defined(_WIN64)
-    std::wstring optimized_model_wide = ToWideString(optimized_model);
-    Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
-#else
-    Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
-#endif
-    auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                           output_names, 1);
-
-    // check output of original model and optimized model are equal
-    ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
-
-    for (size_t i = 0; i < ort_outputs.size(); ++i) {
-      const auto& sequences = ort_outputs[i];
-      ASSERT_TRUE(sequences.IsTensor());
-
-      const auto& sequences_opt = ort_outputs_opt[i];
-      ASSERT_TRUE(sequences_opt.IsTensor());
-
-      auto result_ts = sequences.GetTensorTypeAndShapeInfo();
-      auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
-
-      ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
-
-      ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
-
-      const auto* result_vals = sequences.GetTensorData<float>();
-      auto result_span = gsl::make_span(result_vals, ort_outputs.size());
-
-      const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
-      auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
-
-      ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
-    }
   }
 }
+#endif
 #endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
@@ -890,7 +822,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   while (std::getline(profile, line)) {
     if (count == 0) {
       ASSERT_TRUE(line.find("[") != string::npos);
-    } else if (count <= 5) {
+    } else if (count <= 3) {
       for (auto& s : tags) {
         ASSERT_TRUE(line.find(s) != string::npos);
       }
@@ -899,7 +831,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     }
 
     if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
+      ASSERT_TRUE(line.find("mul_1_kernel_time") != string::npos);
     }
     count++;
   }

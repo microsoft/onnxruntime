@@ -7,6 +7,7 @@
 #include "core/framework/data_types.h"
 #include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/session_state.h"
 #include "test/test_environment.h"
 #include "test_utils.h"
 #include "test/util/include/asserts.h"
@@ -38,7 +39,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
                                const std::filesystem::path& output_external_init_file,
                                size_t initializer_size_threshold,
                                const Graph::OffsetAlignmentInfo& align_info,
-                               std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map,
+                               Graph::PrePackedTensorProtoToSave& pre_packed_initializers_tensor_proto,
                                bool save_prepacked_constant_initializers = false) {
   auto logger = DefaultLoggingManager().CreateLogger("LoadSaveAndCompareModel");
   std::shared_ptr<Model> model;
@@ -46,7 +47,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
   std::filesystem::remove(output_onnx);
   std::filesystem::remove(output_external_init_file);
   ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, output_external_init_file, initializer_size_threshold,
-                                                          align_info, save_prepacked_constant_initializers, pre_packed_initializers_name_map));
+                                                          align_info, save_prepacked_constant_initializers, pre_packed_initializers_tensor_proto));
 
   std::shared_ptr<Model> model_from_external;
   ORT_RETURN_IF_ERROR(Model::Load(output_onnx.native(), model_from_external, nullptr, *logger));
@@ -119,15 +120,15 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
 // Original model does not have external initializers
 TEST(SaveWithExternalInitializers, Mnist) {
   Graph::OffsetAlignmentInfo align_info;
-  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/mnist.onnx"), ORT_TSTR(""), ORT_TSTR("testdata/mnist_with_external_initializers.onnx"), ORT_TSTR("mnist_external_initializers.bin"), 100, align_info, pre_packed_initializers_name_map));
+  Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/mnist.onnx"), ORT_TSTR(""), ORT_TSTR("testdata/mnist_with_external_initializers.onnx"), ORT_TSTR("mnist_external_initializers.bin"), 100, align_info, pre_packed_initializers_tensor_proto));
 }
 
 // Original model has external initializers
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
   Graph::OffsetAlignmentInfo align_info;
-  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_name_map));
+  Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_tensor_proto));
 }
 
 // Original model has external initializers, align offset
@@ -135,8 +136,8 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
   Graph::OffsetAlignmentInfo align_info;
   align_info.align_offset = true;
   align_info.align_threshold = 0;
-  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_name_map));
+  Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info, pre_packed_initializers_tensor_proto));
 }
 
 // Original model has external initializers, align offset and serialize prepacked external initializer to model file
@@ -147,10 +148,10 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffsetAndSa
   std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
   TensorShape shape = {178};
   // prepack both initializers for test purpose
-  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
-  pre_packed_initializers_name_map["MatMul.Weight"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<uint8_t>(), shape, alloc)}};
-  pre_packed_initializers_name_map["scales"] = {{"MatMul_0", new Tensor(DataTypeImpl::GetType<float>(), shape, alloc)}};
-  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/prepack/model_with_matmul_nbits.onnx"), ORT_TSTR("model_with_matmul_nbits.onnx.data"), ORT_TSTR("testdata/prepack/model_with_matmul_nbits_opt.onnx"), ORT_TSTR("model_with_matmul_nbits_opt.onnx.data"), 0, align_info, pre_packed_initializers_name_map, true));
+  Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
+  pre_packed_initializers_tensor_proto["MatMul.Weight"]["MatMul_0"] = utils::TensorToTensorProto(Tensor(DataTypeImpl::GetType<uint8_t>(), shape, alloc), "MatMul.Weight:MatMul_0");
+  pre_packed_initializers_tensor_proto["scales"]["MatMul_0"] = utils::TensorToTensorProto(Tensor(DataTypeImpl::GetType<float>(), shape, alloc), "scales:MatMul_0");
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/prepack/model_with_matmul_nbits.onnx"), ORT_TSTR("model_with_matmul_nbits.onnx.data"), ORT_TSTR("testdata/prepack/model_with_matmul_nbits_opt.onnx"), ORT_TSTR("model_with_matmul_nbits_opt.onnx.data"), 0, align_info, pre_packed_initializers_tensor_proto, true));
 }
 
 }  // namespace test

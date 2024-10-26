@@ -303,19 +303,23 @@ Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
 }
 
 template <typename T>
-Tensor* Gemm<T>::GetPrePackTensors(int /*input_index*/) {
-  return nullptr;
+std::optional<Tensor> Gemm<T>::GetPrePackTensor(int /*input_index*/) {
+  return std::nullopt;
 }
 
 template <>
-Tensor* Gemm<float>::GetPrePackTensors(int /*input_index*/) {
-  return packed_tensor_;
+std::optional<Tensor> Gemm<float>::GetPrePackTensor(int input_index) {
+  if (input_index == 1) {
+    return std::move(packed_tensor_);
+  }
+
+  return std::nullopt;
 }
 
 template <typename T>
-Status Gemm<T>::SetPrePackTensors(int input_idx, const Tensor* /*pre_packed_tensor*/) {
+Status Gemm<T>::SetPrePackTensor(int input_idx, const Tensor& /*pre_packed_tensor*/) {
   if (input_idx == 1) {
-    packed_tensor_ = nullptr;
+    packed_tensor_ = std::nullopt;
     packed_b_ = nullptr;
   }
 
@@ -323,11 +327,10 @@ Status Gemm<T>::SetPrePackTensors(int input_idx, const Tensor* /*pre_packed_tens
 }
 
 template <>
-Status Gemm<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status Gemm<float>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
     size_t packed_b_size_;
-    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, packed_b_, const_cast<void*>(pre_packed_tensor.DataRaw()));
   }
 
   return Status::OK();

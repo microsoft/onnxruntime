@@ -249,7 +249,7 @@ Status GetMinimalBuildOptimizationHandling(
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
-OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
 onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
@@ -371,7 +371,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_id_ = global_session_id_.fetch_add(1);
 
 #ifdef _WIN32
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   active_sessions_[global_session_id_++] = this;
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
@@ -725,7 +725,7 @@ InferenceSession::~InferenceSession() {
 
   // Unregister the session and ETW callbacks
 #ifdef _WIN32
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
   logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
 #endif
@@ -745,7 +745,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding an EP is pointless as the graph as already been partitioned so no nodes will be assigned to
@@ -759,12 +759,12 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
-  if (provider_type == onnxruntime::kDmlExecutionProvider) {
-    // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  if (provider_type == onnxruntime::kDmlExecutionProvider || provider_type == onnxruntime::kWebGpuExecutionProvider) {
+    // DML and WebGPU memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
       LOGS(*session_logger_, INFO)
-          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
-          << "So disabling it for this session since it uses the DML Execution Provider.";
+          << "Having memory pattern enabled is not supported while using " << provider_type << ". "
+          << "So disabling it for this session since it uses " << provider_type << ".";
       session_options_.enable_mem_pattern = false;
     }
 
@@ -876,7 +876,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
 
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding a transformer now is pointless as the graph as already been transformed
@@ -940,7 +940,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     tp = session_profiler_.Start();
   }
   ORT_TRY {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
       return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -1396,7 +1396,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
     Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -1520,7 +1520,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 }
 
 bool InferenceSession::IsInitialized() const {
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
   return is_inited_;
 }
 
@@ -1673,7 +1673,7 @@ common::Status InferenceSession::Initialize() {
     bool have_cpu_ep = false;
 
     {
-      std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
+      std::lock_guard<std::mutex> initial_guard(session_mutex_);
 
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
@@ -1711,7 +1711,7 @@ common::Status InferenceSession::Initialize() {
     }
 
     // re-acquire mutex
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializers.empty()) {
@@ -2027,15 +2027,11 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    // hashmap pre_packed_initializers_name_map is used to store prepacked initializers during model save.
-    // During session_state finalize, constant initializers will be prepacked and stored in this hashmap,
-    // later these prepacked initializers will be serialized into ONNX data file (in method Model::SaveWithExternalInitializers).
-    // ORT will load ONNX data file with prepacked initializers in inference run and no need to do prepack again.
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    SessionState::PrePackInitializers pre_packed_initializers;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
-                                             pre_packed_initializers_name_map,
+                                             pre_packed_initializers,
                                              !saving_model,
                                              saving_ort_format));
 
@@ -2073,16 +2069,37 @@ common::Status InferenceSession::Initialize() {
           align_info.align_offset = true;
           bool save_prepacked_constant_initializers =
               session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
+          Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
           if (save_prepacked_constant_initializers) {
             LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
                                             << "Use this option only when run model inference on PC with CPU."
                                             << "Make sure to save and load model in same device as prepack is device specific."
+                                            << "Note: this feature in only work with ONNX model format."
                                             << "Process of use this option is like below:"
                                             << "1. Optimize model with external data file with save_prepacked_constant_initializers on:"
                                             << "       sample: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  ' 1 ')"
                                             << "   With save_prepacked_constant_initializers option, prepacked initializer will be serialized into data file."
                                             << "2. Load optimized model and external data file in same device, no prepack is need."
                                             << "3. Run inference with optimized model.";
+
+            if (fbs::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)) {
+              ORT_RETURN_IF_ERROR_SESSIONID_(
+                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                  "Unable to serialize prepacked external constant initializer for ORT format model."
+                                  "Please use ONNX format model with save_prepacked_constant_initializers."));
+            }
+
+            // convert pre_packed_initializers to tensorproto format and save to external data file
+            for (const auto& name_item_pair : pre_packed_initializers.pre_packed_initializers_to_save) {
+              auto initializer_name = name_item_pair.first;
+
+              for (const auto& kernel_name_initializer_item_pair : name_item_pair.second) {
+                auto kernel_name = kernel_name_initializer_item_pair.first;
+                auto prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer_name, kernel_name);
+
+                pre_packed_initializers_tensor_proto[initializer_name][kernel_name] = utils::TensorToTensorProto(kernel_name_initializer_item_pair.second, prepacked_initializer_name);
+              }
+            }
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
@@ -2090,7 +2107,7 @@ common::Status InferenceSession::Initialize() {
                                                                              optimized_model_external_initializers_min_size_in_bytes,
                                                                              align_info,
                                                                              save_prepacked_constant_initializers,
-                                                                             pre_packed_initializers_name_map));
+                                                                             pre_packed_initializers_tensor_proto));
         }
       }
     }
@@ -2496,6 +2513,24 @@ struct ThreadPoolSpinningSwitch {
 };
 }  // namespace
 
+Status InferenceSession::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                             gsl::span<const char* const> values) {
+  Status retval = Status::OK();
+
+  if (!is_inited_) {
+    LOGS(*session_logger_, ERROR) << "Session was not initialized";
+    return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+  }
+
+  // TODO: only call SetEpDynamicOptions for all providers in-use
+  for (auto& xp : execution_providers_) {
+    auto status = xp->SetEpDynamicOptions(keys, values);
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  return retval;
+}
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
@@ -2587,7 +2622,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
-      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
+      std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
       if (is_concurrent_run_supported_ == false) {
         sequential_run_lock.emplace(session_mutex_);
       }
@@ -2840,7 +2875,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2852,7 +2887,7 @@ std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetada
 
 std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2865,7 +2900,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
 
 std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2878,7 +2913,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableI
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2890,7 +2925,7 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
 
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
@@ -3274,7 +3309,7 @@ IOBinding* SessionIOBinding::Get() {
 void InferenceSession::LogAllSessions() {
   const Env& env = Env::Default();
 
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
 

@@ -1149,6 +1149,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
 
+  // Since one constant initializer could be used by different kernels
+  // and prepacked differently, use an unordered_map to store prepacked
+  // initializer in format of <[initializer_name], <[node_name], [prepacked_initializer]>>
+  typedef std::unordered_map<std::string, std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto>> PrePackedTensorProtoToSave;
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
@@ -1183,8 +1188,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
   @param align_info offset alignment info.
-  @param save_prepacked_constant_initializers whether to save prepacked initializer into onnx data file.
-  @param pre_packed_initializers_name_map hashmap used to store all the prepacked initializers.
+  @param save_prepacked_constant_initializers whether to save prepacked initializer into external data file.
+         If set false to this boolean, prepacked initializer will not be saved into onnxruntime data file,
+         we keep constant initializer as it is.
+  @param pre_packed_initializers struct used to store all the prepacked initializers.
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
@@ -1192,15 +1199,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                                   size_t initializer_size_threshold,
                                                                   const OffsetAlignmentInfo& align_info,
                                                                   bool save_prepacked_constant_initializers,
-                                                                  std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>>& pre_packed_initializers_name_map) const;
+                                                                  PrePackedTensorProtoToSave& pre_packed_initializers) const;
 
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold) const {
     OffsetAlignmentInfo default_options;
-    std::unordered_map<std::string, std::unordered_map<std::string, Tensor*>> pre_packed_initializers_name_map;
+    PrePackedTensorProtoToSave pre_packed_initializers;
     return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options,
-                                                false, pre_packed_initializers_name_map);
+                                                false, pre_packed_initializers);
   }
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
@@ -1521,8 +1528,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        size_t tensor_bytes_size,
                                        int64_t& external_offset,
                                        std::ofstream& external_stream,
-                                       const std::vector<uint8_t>& raw_data,
-                                       ONNX_NAMESPACE::TensorProto* output_proto,
+                                       gsl::span<const uint8_t> raw_data,
+                                       ONNX_NAMESPACE::TensorProto& output_proto,
                                        const std::filesystem::path& external_file_path,
                                        const ONNX_NAMESPACE::TensorProto& initializer,
                                        bool is_prepacked);

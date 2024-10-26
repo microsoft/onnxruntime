@@ -34,9 +34,9 @@ class QLinearConv : public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int input_index) override;
+  std::optional<Tensor> GetPrePackTensor(int input_index) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
  private:
   enum InputTensors : int {
@@ -308,11 +308,11 @@ class QLinearConv : public OpKernel {
   bool channels_last_{false};
   std::vector<int32_t> column_sums_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   IAllocatorUniquePtr<void> packed_buffer_reorder_;
-  Tensor* packed_tensor_;
-  Tensor* packed_tensor_reorder_;
+  std::optional<Tensor> packed_tensor_{std::nullopt};
+  std::optional<Tensor> packed_tensor_reorder_{std::nullopt};
 };
 
 // uint8_t kernel supports weight being either uint8_t or int8_t
@@ -425,11 +425,11 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                                         group_output_channels,
                                         kernel_size)) {
     if (save_prepacked_initializers) {
-      ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(alloc, tensor, packed_W_size_, W_shape_,
-                                                              is_symmetric_conv_ ? 1 : SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)),
-                                                              packed_W_buffer_, packed_tensor_, '1',
-                                                              is_symmetric_conv_ ? '0' : '1', column_sums_,
-                                                              prepacked_weights, packed_buffer_);
+      packed_tensor_ = ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(alloc, tensor, packed_W_size_, W_shape_,
+                                                                               is_symmetric_conv_ ? 1 : SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)),
+                                                                               packed_W_buffer_, '1',
+                                                                               is_symmetric_conv_ ? '0' : '1', column_sums_,
+                                                                               prepacked_weights, packed_buffer_);
     }
 
     is_packed = true;
@@ -481,8 +481,8 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
       }
 
       if (save_prepacked_initializers) {
-        ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(alloc, tensor, packed_W_size_, W_shape_, SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)), packed_W_buffer_,
-                                                                packed_tensor_, '1', '2', column_sums_, prepacked_weights, packed_buffer_);
+        packed_tensor_ = ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(alloc, tensor, packed_W_size_, W_shape_, SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)), packed_W_buffer_,
+                                                                                 '1', '2', column_sums_, prepacked_weights, packed_buffer_);
       }
 
       is_W_packed_ = true;
@@ -525,10 +525,10 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                 reordered_w_data_size);
 
     std::vector<int64_t> packed_weights_dims = {static_cast<int64_t>((buffer_size - 1) / tensor.DataType()->Size()) + 1};
-    packed_tensor_reorder_ = new Tensor(tensor.DataType(),
-                                        TensorShape(packed_weights_dims),
-                                        packed_buffer_reorder_.get(),
-                                        OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    packed_tensor_reorder_ = Tensor(tensor.DataType(),
+                                    TensorShape(packed_weights_dims),
+                                    packed_buffer_reorder_.get(),
+                                    OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   }
 
   is_W_packed_ = true;
@@ -536,13 +536,12 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
   return Status::OK();
 }
 
-void ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::AllocatorPtr & alloc,
+Tensor ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::AllocatorPtr& alloc,
                                                              const onnxruntime::Tensor& weights,
                                                              size_t& packed_weights_size_,
                                                              TensorShape weight_shape_,
                                                              int weight_size_factor,
                                                              IAllocatorUniquePtr<void>& packed_weights_,
-                                                             Tensor*& packed_tensor_,
                                                              const char flag,
                                                              const char is_symmetric,
                                                              std::vector<int32_t>& column_sums_,
@@ -595,10 +594,10 @@ void ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::Alloca
               packed_weights_size_ * weight_size_factor);
 
   std::vector<int64_t> packed_weights_dims = {static_cast<int64_t>((buffer_size - 1) / weights.DataType()->Size()) + 1};
-  packed_tensor_ = new Tensor(weights.DataType(),
-                              TensorShape(packed_weights_dims),
-                              packed_buffer_.get(),
-                              OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  return Tensor(weights.DataType(),
+                TensorShape(packed_weights_dims),
+                packed_buffer_.get(),
+                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 }
 
 template <typename ActType>
@@ -623,25 +622,23 @@ Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniqueP
 }
 
 template <typename ActType>
-Tensor* QLinearConv<ActType>::GetPrePackTensors(int input_index) {
+std::optional<Tensor> QLinearConv<ActType>::GetPrePackTensor(int input_index) {
   if (input_index != 3) {
-    return nullptr;
+    return std::nullopt;
   }
 
-  return packed_tensor_ != nullptr ? packed_tensor_ : packed_tensor_reorder_;
+  return packed_tensor_ != std::nullopt ? std::move(packed_tensor_) : std::move(packed_tensor_reorder_);
 }
 
 template <typename ActType>
-Status QLinearConv<ActType>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status QLinearConv<ActType>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx != 3) {
     return Status::OK();
   }
 
-  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-
   AllocatorPtr alloc = std::make_shared<CPUAllocator>();
 
-  if (*static_cast<char*>(packed_tensor_->MutableDataRaw()) == '1') {
+  if (*static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) == '1') {
     // buffer of packed_tensor is combine of:
     // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
     // 2. char indicate whether this is symmetric: 0 - is symmetric conv, 1 - is symmetric gemm, other - is not symmetric
@@ -649,14 +646,14 @@ Status QLinearConv<ActType>::SetPrePackTensors(int input_idx, const Tensor* pre_
     // 4. weight shape: first vector memory size, then vector content
     // 5. column_sums_: first size of vector, then content of vector
     // 6. original packed_weights buffer
-    auto is_symmetric_conv = *(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 1);
+    auto is_symmetric_conv = *(static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) + 1);
     if (is_symmetric_conv == '0') {
       is_symmetric_conv_ = true;
     } else if (is_symmetric_conv == '1') {
       is_symmetric_gemm_ = true;
     }
 
-    void* buffer_start = static_cast<void*>(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 2);
+    void* buffer_start = static_cast<void*>(static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) + 2);
     packed_W_size_ = *static_cast<size_t*>(buffer_start);
     size_t weight_shape_buffer_size = *(static_cast<size_t*>(buffer_start) + 1);
     auto weight_shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, weight_shape_buffer_size, true);
@@ -685,12 +682,12 @@ Status QLinearConv<ActType>::SetPrePackTensors(int input_idx, const Tensor* pre_
                 static_cast<char*>(buffer_start) + 3 * sizeof(size_t) + weight_shape_buffer_size + column_sums_buffer_size,
                 packed_W_size_);
 
-    is_W_signed_ = packed_tensor_->IsDataType<int8_t>();
+    is_W_signed_ = pre_packed_tensor.IsDataType<int8_t>();
   } else {
     // buffer of packed_tensor is combine of:
     // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
     // 2. original packed reordered w buffer
-    reordered_W_buffer_ = BufferUniquePtr(static_cast<void*>(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 1));
+    reordered_W_buffer_ = BufferUniquePtr(static_cast<void*>(static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) + 1));
   }
   is_W_packed_ = true;
 

@@ -21,9 +21,9 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int input_index) override;
+  std::optional<Tensor> GetPrePackTensor(int input_index) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -41,11 +41,11 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   bool is_W_signed_;
   bool is_R_signed_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_w_;
   IAllocatorUniquePtr<void> packed_buffer_r_;
-  Tensor* packed_tensor_w_;
-  Tensor* packed_tensor_r_;
+  std::optional<Tensor> packed_tensor_w_{std::nullopt};
+  std::optional<Tensor> packed_tensor_r_{std::nullopt};
 };
 
 Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights,
@@ -156,29 +156,27 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
   return Status::OK();
 }
 
-Tensor* DynamicQuantizeLSTM::GetPrePackTensors(int input_index) {
+std::optional<Tensor> DynamicQuantizeLSTM::GetPrePackTensor(int input_index) {
   if (input_index == 1) {
-    return packed_tensor_w_;
+    return std::move(packed_tensor_w_);
   } else if (input_index == 2) {
-    return packed_tensor_r_;
+    return std::move(packed_tensor_r_);
   } else {
-    return nullptr;
+    return std::nullopt;
   }
 }
 
-Status DynamicQuantizeLSTM::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status DynamicQuantizeLSTM::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   AllocatorPtr alloc;
 
   if (input_idx == 1) {
-    packed_tensor_w_ = const_cast<Tensor*>(pre_packed_tensor);
-    utils::ConvertTensorToPackedBufferAndShape(packed_W_.weights_size_, packed_W_.shape_, num_directions_, packed_W_.buffer_, packed_tensor_w_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_W_.weights_size_, packed_W_.shape_, packed_W_.buffer_, const_cast<void*>(pre_packed_tensor.DataRaw()));
     packed_W_.buffer_size_ = packed_W_.weights_size_ * num_directions_;
-    is_W_signed_ = packed_tensor_w_->IsDataType<int8_t>();
+    is_W_signed_ = pre_packed_tensor.IsDataType<int8_t>();
   } else if (input_idx == 2) {
-    packed_tensor_r_ = const_cast<Tensor*>(pre_packed_tensor);
-    utils::ConvertTensorToPackedBufferAndShape(packed_R_.weights_size_, packed_R_.shape_, num_directions_, packed_R_.buffer_, packed_tensor_r_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_R_.weights_size_, packed_R_.shape_, packed_R_.buffer_, const_cast<void*>(pre_packed_tensor.DataRaw()));
     packed_R_.buffer_size_ = packed_R_.weights_size_ * num_directions_;
-    is_R_signed_ = packed_tensor_r_->IsDataType<int8_t>();
+    is_R_signed_ = pre_packed_tensor.IsDataType<int8_t>();
   }
 
   return Status::OK();

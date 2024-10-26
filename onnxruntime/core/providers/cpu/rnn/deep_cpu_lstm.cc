@@ -282,22 +282,20 @@ Status DeepCpuLstmOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
   return Status::OK();
 }
 
-Tensor* DeepCpuLstmOp::GetPrePackTensors(int input_index) {
+std::optional<Tensor> DeepCpuLstmOp::GetPrePackTensor(int input_index) {
   if (input_index == 1) {
-    return packed_tensor_w_;
+    return std::move(packed_tensor_w_);
   } else { //input_index == 2
-    return packed_tensor_r_;
+    return std::move(packed_tensor_r_);
   }
 }
 
-Status DeepCpuLstmOp::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status DeepCpuLstmOp::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_tensor_w_ = const_cast<Tensor*>(pre_packed_tensor);
-    utils::ConvertTensorToPackedBufferAndShape(packed_W_.weights_size_, packed_W_.shape_, num_directions_, packed_W_.buffer_, packed_tensor_w_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_W_.weights_size_, packed_W_.shape_, packed_W_.buffer_, const_cast<void*>(pre_packed_tensor.DataRaw()));
     packed_W_.buffer_size_ = packed_W_.weights_size_ * num_directions_;
   } else if (input_idx == 2) {
-    packed_tensor_r_ = const_cast<Tensor*>(pre_packed_tensor);
-    utils::ConvertTensorToPackedBufferAndShape(packed_R_.weights_size_, packed_R_.shape_, num_directions_, packed_R_.buffer_, packed_tensor_r_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_R_.weights_size_, packed_R_.shape_, packed_R_.buffer_, const_cast<void*>(pre_packed_tensor.DataRaw()));
     packed_R_.buffer_size_ = packed_R_.weights_size_ * num_directions_;
   }
 

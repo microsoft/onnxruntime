@@ -323,10 +323,10 @@ Status DeepCpuGruOp::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr a
   return Status::OK();
 }
 
-Tensor* onnxruntime::DeepCpuGruOp::ConvertZRAndHPrePackWeightToTensor(onnxruntime::AllocatorPtr& alloc,
-                                                                      const onnxruntime::Tensor& tensor,
-                                                                      bool share_prepacked_weights,
-                                                                      PrePackedWeights* prepacked_weights) {
+Tensor onnxruntime::DeepCpuGruOp::ConvertZRAndHPrePackWeightToTensor(onnxruntime::AllocatorPtr& alloc,
+                                                                     const onnxruntime::Tensor& tensor,
+                                                                     bool share_prepacked_weights,
+                                                                     PrePackedWeights* prepacked_weights) {
   // buffer of packed_tensor is combine of:
   // 1. packed_weights_size_ of pre_packed_recurrent_ZR_
   // 2. packed_weights_size_ of pre_packed_recurrent_H_
@@ -377,10 +377,10 @@ Tensor* onnxruntime::DeepCpuGruOp::ConvertZRAndHPrePackWeightToTensor(onnxruntim
               pre_packed_recurrent_H_.weights_size_ * num_directions_);
 
   std::vector<int64_t> packed_weights_dims = {static_cast<int64_t>((buffer_size - 1) / tensor.DataType()->Size()) + 1};
-  return new Tensor(tensor.DataType(),
-                    TensorShape(packed_weights_dims),
-                    packed_buffer_recurrent_.get(),
-                    OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  return Tensor(tensor.DataType(),
+                TensorShape(packed_weights_dims),
+                packed_buffer_recurrent_.get(),
+                OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 }
 
 Status DeepCpuGruOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
@@ -400,29 +400,27 @@ Status DeepCpuGruOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pre
   return Status::OK();
 }
 
-Tensor* DeepCpuGruOp::GetPrePackTensors(int input_index) {
+std::optional<Tensor> DeepCpuGruOp::GetPrePackTensor(int input_index) {
   if (input_index == 1) {
-    return packed_tensor_;
+    return std::move(packed_tensor_);
   } else if (input_index == 2) {
-    return packed_tensor_recurrent_;
+    return std::move(packed_tensor_recurrent_);
   }
-  return nullptr;
+  return std::nullopt;
 }
 
-Status DeepCpuGruOp::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status DeepCpuGruOp::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-    utils::ConvertTensorToPackedBufferAndShape(pre_packed_input_weights_.weights_size_, pre_packed_input_weights_.shape_, num_directions_, pre_packed_input_weights_.buffer_, packed_tensor_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(pre_packed_input_weights_.weights_size_, pre_packed_input_weights_.shape_, pre_packed_input_weights_.buffer_, const_cast<void*>(pre_packed_tensor.DataRaw()));
     pre_packed_input_weights_.buffer_size_ = pre_packed_input_weights_.weights_size_ * num_directions_;
   } else if (input_idx == 2) {
-    packed_tensor_recurrent_ = const_cast<Tensor*>(pre_packed_tensor);
-    ConvertTensorToZRAndHPrePackWeights();
+    ConvertTensorToZRAndHPrePackWeights(const_cast<void*>(pre_packed_tensor.DataRaw()));
   }
 
   return Status::OK();
 }
 
-void onnxruntime::DeepCpuGruOp::ConvertTensorToZRAndHPrePackWeights() {
+void onnxruntime::DeepCpuGruOp::ConvertTensorToZRAndHPrePackWeights(void* tesnor_data_raw) {
   // buffer of packed_tensor is combine of:
   // 1. packed_weights_size_ of pre_packed_recurrent_ZR_
   // 2. packed_weights_size_ of pre_packed_recurrent_H_
@@ -433,38 +431,34 @@ void onnxruntime::DeepCpuGruOp::ConvertTensorToZRAndHPrePackWeights() {
   // 7. pre_packed_recurrent_ZR_ packed_weights buffer
   // 8. pre_packed_recurrent_H_ packed_weights buffer
   AllocatorPtr alloc = std::make_shared<CPUAllocator>();
-  pre_packed_recurrent_ZR_.weights_size_ = *static_cast<size_t*>(packed_tensor_recurrent_->MutableDataRaw());
+  pre_packed_recurrent_ZR_.weights_size_ = *static_cast<size_t*>(tesnor_data_raw);
   pre_packed_recurrent_ZR_.buffer_size_ = pre_packed_recurrent_ZR_.weights_size_ * num_directions_;
-  pre_packed_recurrent_H_.weights_size_ = *(static_cast<size_t*>(packed_tensor_recurrent_->MutableDataRaw()) + 1);
+  pre_packed_recurrent_H_.weights_size_ = *(static_cast<size_t*>(tesnor_data_raw) + 1);
   pre_packed_recurrent_H_.buffer_size_ = pre_packed_recurrent_H_.weights_size_ * num_directions_;
 
-  size_t weight_shape_buffer_size_ZR = *(static_cast<size_t*>(packed_tensor_recurrent_->MutableDataRaw()) + 2);
-  size_t weight_shape_buffer_size_H = *(static_cast<size_t*>(packed_tensor_recurrent_->MutableDataRaw()) + 3);
+  size_t weight_shape_buffer_size_ZR = *(static_cast<size_t*>(tesnor_data_raw) + 2);
+  size_t weight_shape_buffer_size_H = *(static_cast<size_t*>(tesnor_data_raw) + 3);
   auto weight_shape_buffer_ZR = IAllocator::MakeUniquePtr<void>(alloc, weight_shape_buffer_size_ZR, true);
   auto weight_shape_buffer_H = IAllocator::MakeUniquePtr<void>(alloc, weight_shape_buffer_size_H, true);
 
   std::memcpy(weight_shape_buffer_ZR.get(),
-              static_cast<char*>(packed_tensor_recurrent_->MutableDataRaw()) + 4 * sizeof(size_t),
+              static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t),
               weight_shape_buffer_size_ZR);
   auto weight_shape_vector = static_cast<const InlinedVector<int64_t>*>(weight_shape_buffer_ZR.get());
   pre_packed_recurrent_ZR_.shape_ = TensorShape(*weight_shape_vector);
 
   std::memcpy(weight_shape_buffer_H.get(),
-              static_cast<char*>(packed_tensor_recurrent_->MutableDataRaw()) + 4 * sizeof(size_t) + weight_shape_buffer_size_ZR,
+              static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) + weight_shape_buffer_size_ZR,
               weight_shape_buffer_size_H);
   auto weight_shape_vector_H = static_cast<const InlinedVector<int64_t>*>(weight_shape_buffer_H.get());
   pre_packed_recurrent_H_.shape_ = TensorShape(*weight_shape_vector_H);
 
-  pre_packed_recurrent_ZR_.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, pre_packed_recurrent_ZR_.buffer_size_, true);
-  pre_packed_recurrent_H_.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, pre_packed_recurrent_H_.buffer_size_, true);
-  std::memcpy(pre_packed_recurrent_ZR_.buffer_.get(),
-              static_cast<char*>(packed_tensor_recurrent_->MutableDataRaw()) + 4 * sizeof(size_t) +
-                  weight_shape_buffer_size_ZR + weight_shape_buffer_size_H,
-              pre_packed_recurrent_ZR_.buffer_size_);
-  std::memcpy(pre_packed_recurrent_H_.buffer_.get(),
-              static_cast<char*>(packed_tensor_recurrent_->MutableDataRaw()) + 4 * sizeof(size_t) +
-                  weight_shape_buffer_size_ZR + weight_shape_buffer_size_H + pre_packed_recurrent_ZR_.buffer_size_,
-              pre_packed_recurrent_H_.buffer_size_);
+  pre_packed_recurrent_ZR_.buffer_ = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) +
+                                                         weight_shape_buffer_size_ZR + weight_shape_buffer_size_H,
+                                                     BufferDeleter());
+  pre_packed_recurrent_H_.buffer_ = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) +
+                                                        weight_shape_buffer_size_ZR + weight_shape_buffer_size_H + pre_packed_recurrent_ZR_.buffer_size_,
+                                                    BufferDeleter());
 }
 
 Status DeepCpuGruOp::Compute(OpKernelContext* context) const {

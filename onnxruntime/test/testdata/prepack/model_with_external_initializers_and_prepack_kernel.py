@@ -9,9 +9,9 @@ from onnx import TensorProto, helper
 from onnx.external_data_helper import set_external_data
 from onnx.numpy_helper import from_array
 
-M = 2
-K = 3
-N = 4
+M = 1
+K = 1
+N = 1
 q_cols = 1
 q_rows = 1
 q_scale_size = 1
@@ -63,7 +63,7 @@ def GenerateMatmulNBitsModel(model_name, external_data_name):  # noqa: N802
         [A],
         [Y],
         [
-            create_external_data_tensor([[171]], external_data_name, TensorProto.UINT8),
+            create_external_data_tensor(np.random.rand(M, K).astype(np.uint8), external_data_name, TensorProto.UINT8),
             create_internal_data_tensor(np.array([1.5], dtype=np.float32), "scales", TensorProto.FLOAT),
         ],
     )
@@ -366,8 +366,8 @@ def GenerateDynamicQuantizeLSTMModel(model_name, external_data_name_w, external_
             create_external_data_tensor(np.random.rand(1, 16, 2).astype(np.float32), 'initial_h', TensorProto.FLOAT),
             create_external_data_tensor(np.random.rand(1, 16, 2).astype(np.float32), 'initial_c', TensorProto.FLOAT),
             create_external_data_tensor(np.random.rand(1, 6).astype(np.float32), 'P', TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1, 8).astype(np.float32), 'W_scale', TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1, 8).astype(np.uint8), 'W_zero_point', TensorProto.UINT8),
+            create_internal_data_tensor(np.random.rand(1, 8).astype(np.float32), 'W_scale', TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1, 8).astype(np.uint8), 'W_zero_point', TensorProto.UINT8),
             create_external_data_tensor(np.random.rand(1, 8).astype(np.float32), 'R_scale', TensorProto.FLOAT),
             create_external_data_tensor(np.random.rand(1, 16).astype(np.uint8), 'R_zero_point', TensorProto.UINT8),
         ],

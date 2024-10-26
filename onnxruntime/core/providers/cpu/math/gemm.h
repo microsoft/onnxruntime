@@ -29,9 +29,9 @@ class Gemm : protected GemmBase, public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int /*input_index*/) override;
+  std::optional<Tensor> GetPrePackTensor(int /*input_index*/) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
   static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
@@ -46,9 +46,9 @@ class Gemm : protected GemmBase, public OpKernel {
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
-  Tensor* packed_tensor_;
+  std::optional<Tensor> packed_tensor_{std::nullopt};
 
   // For fused gemm + activation
   std::unique_ptr<functors::ElementWiseRangedTransform<T>> activation_;

@@ -125,26 +125,25 @@ Status ConvTranspose<float>::UseSharedPrePackedBuffers(std::vector<BufferUniqueP
 }
 
 template <typename T>
-Tensor* ConvTranspose<T>::GetPrePackTensors(int /*input_index*/) {
-  return nullptr;
+std::optional<Tensor> ConvTranspose<T>::GetPrePackTensor(int /*input_index*/) {
+  return std::nullopt;
 }
 
 template <>
-Tensor* ConvTranspose<float>::GetPrePackTensors(int /*input_index*/) {
-  return packed_tensor_;
+std::optional<Tensor> ConvTranspose<float>::GetPrePackTensor(int /*input_index*/) {
+  return std::move(packed_tensor_);
 }
 
 template <typename T>
-Status ConvTranspose<T>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status ConvTranspose<T>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   return Status::OK();
 }
 
 template <>
-Status ConvTranspose<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status ConvTranspose<float>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
     size_t packed_b_size_;
-    utils::ConvertTensorToPackedBufferPtrAndShape(packed_b_size_, filter_shape_, 1, transposed_filter_, packed_tensor_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, filter_shape_, transposed_filter_, const_cast<void*>(pre_packed_tensor.DataRaw()));
   }
 
   return Status::OK();

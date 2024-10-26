@@ -86,20 +86,19 @@ class MatMulIntegerBase : public OpKernel {
     return Status::OK();
   }
 
-  Tensor* GetPrePackTensors(int input_idx) {
+  std::optional<Tensor> GetPrePackTensor(int input_idx) {
     if (input_idx == GetBIdx()) {
-      return packed_tensor_;
+      return std::move(packed_tensor_);
     } else {
-      return nullptr;
+      return std::nullopt;
     }
   }
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
     if (input_idx == GetBIdx()) {
-      packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
       size_t packed_b_size_;
-      utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
-      b_is_signed_ = packed_tensor_->IsDataType<int8_t>();
+      utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, packed_b_, const_cast<void*>(pre_packed_tensor.DataRaw()));
+      b_is_signed_ = pre_packed_tensor.IsDataType<int8_t>();
     }
 
     return Status::OK();
@@ -155,9 +154,9 @@ class MatMulIntegerBase : public OpKernel {
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
-  Tensor* packed_tensor_;
+  std::optional<Tensor> packed_tensor_{std::nullopt};
 };
 
 }  // namespace onnxruntime

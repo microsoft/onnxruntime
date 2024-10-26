@@ -228,15 +228,14 @@ Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
   return Status::OK();
 }
 
-Tensor* MatMul<float>::GetPrePackTensors(int /*input_index*/) {
-  return packed_tensor_;
+std::optional<Tensor> MatMul<float>::GetPrePackTensor(int /*input_index*/) {
+  return std::move(packed_tensor_);
 }
 
-Status MatMul<float>::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status MatMul<float>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx == 1) {
-    packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
     size_t packed_b_size_;
-    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, 1, packed_b_, packed_tensor_->MutableDataRaw());
+    utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, packed_b_, const_cast<void*>(pre_packed_tensor.DataRaw()));
   }
 
   return Status::OK();

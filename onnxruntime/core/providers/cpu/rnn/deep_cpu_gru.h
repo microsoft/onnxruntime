@@ -68,17 +68,17 @@ class DeepCpuGruOp final : public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int input_index) override;
+  std::optional<Tensor> GetPrePackTensor(int input_index) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
   ~DeepCpuGruOp() override = default;
 
  private:
-  Tensor* ConvertZRAndHPrePackWeightToTensor(onnxruntime::AllocatorPtr& alloc, const onnxruntime::Tensor& tensor, 
+  Tensor ConvertZRAndHPrePackWeightToTensor(onnxruntime::AllocatorPtr& alloc, const onnxruntime::Tensor& tensor, 
                                           bool share_prepacked_weights, PrePackedWeights* prepacked_weights);
 
-  void ConvertTensorToZRAndHPrePackWeights();
+  void ConvertTensorToZRAndHPrePackWeights(void* tesnor_data_raw);
 
   bool TryPackInputWeights(const Tensor& weight, AllocatorPtr& alloc);
 
@@ -102,11 +102,11 @@ class DeepCpuGruOp final : public OpKernel {
   // recurrent_weights_H_ fwd, followed by bwd
   rnn::detail::PackedWeights pre_packed_recurrent_H_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   IAllocatorUniquePtr<void> packed_buffer_recurrent_;
-  Tensor* packed_tensor_;
-  Tensor* packed_tensor_recurrent_;
+  std::optional<Tensor> packed_tensor_{std::nullopt};
+  std::optional<Tensor> packed_tensor_recurrent_{std::nullopt};
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;

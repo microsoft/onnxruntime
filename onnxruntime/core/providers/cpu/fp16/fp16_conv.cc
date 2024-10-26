@@ -53,15 +53,16 @@ class FusedConvFp16 final : public OpKernel {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool save_prepacked_initializers,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  Tensor* GetPrePackTensors(int input_idx) override;
+  std::optional<Tensor> GetPrePackTensor(int input_idx) override;
 
-  Status SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
  protected:
   bool channels_last_{false};
@@ -105,12 +106,13 @@ class FusedConvFp16 final : public OpKernel {
   bool is_W_packed_{false};
   BufferUniquePtr reordered_W_buffer_;
   // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from onnx data file
+  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
-  Tensor* packed_tensor_;
+  std::optional<Tensor> packed_tensor_{std::nullopt};
 };
 
 Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool /*save_prepacked_initializers*/,
                               bool save_prepacked_initializers,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
@@ -256,29 +258,27 @@ Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
   return Status::OK();
 }
 
-Tensor* FusedConvFp16::GetPrePackTensors(int input_idx) {
+std::optional<Tensor> FusedConvFp16::GetPrePackTensor(int input_idx) {
   if (input_idx != 1) {
-    return nullptr;
+    return std::nullopt;
   } else {
-    return packed_tensor_;
+    return std::move(packed_tensor_);
   }
 }
 
-Status FusedConvFp16::SetPrePackTensors(int input_idx, const Tensor* pre_packed_tensor) {
+Status FusedConvFp16::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
   if (input_idx != 1) {
     // only the filter tensor is packed
     return Status::OK();
   }
 
-  packed_tensor_ = const_cast<Tensor*>(pre_packed_tensor);
-
-  auto buffer_start = static_cast<void*>(static_cast<char*>(packed_tensor_->MutableDataRaw()) + 1);
-  if (*static_cast<char*>(packed_tensor_->MutableDataRaw()) == '1') {
-    utils::ConvertTensorToPackedBufferPtrAndShape(packed_W_size_, W_shape_, SafeInt<size_t>(static_cast<size_t>(conv_attrs_.group)), packed_W_buffer_, buffer_start);
+  auto buffer_start = static_cast<void*>(static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) + 1);
+  if (*static_cast<char*>(const_cast<void*>(pre_packed_tensor->DataRaw())) == '1') {
+    utils::ConvertTensorToPackedBufferAndShape(packed_W_size_, W_shape_, packed_W_buffer_, buffer_start);
   } else {
     size_t reorder_packed_W_size_;
     TensorShape reorder_W_shape_;
-    utils::ConvertTensorToPackedBufferPtrAndShape(reorder_packed_W_size_, reorder_W_shape_, 1, reordered_W_buffer_, buffer_start);
+    utils::ConvertTensorToPackedBufferAndShape(reorder_packed_W_size_, reorder_W_shape_, reordered_W_buffer_, buffer_start);
   }
   is_W_packed_ = true;
 
