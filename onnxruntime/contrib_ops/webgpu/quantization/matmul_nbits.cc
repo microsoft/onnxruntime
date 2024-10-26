@@ -158,7 +158,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                  "  }\n";
   } else {
     const std::string quantized_data_type = QuantizedDataType(a.NumComponents());
-    const int output_element_number = y.NumComponents() * SafeInt<int>(output_number_);
+    const int output_element_number = y.NumComponents() * gsl::narrow<int>(output_number_);
 
     const uint32_t shared_memory_size = output_number_ * WORKGROUP_SIZE;
     std::string offset = "workgroup_idx * " + std::to_string(output_number_);
@@ -334,16 +334,16 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
   auto* y = context.Output(0, helper.OutputShape());
-  const uint32_t data_size = SafeInt<uint32_t>(y->Shape().Size());
+  const uint32_t data_size = gsl::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
   }
 
-  const uint32_t batch_count = SafeInt<uint32_t>(helper.OutputOffsets().size());
-  const uint32_t M = SafeInt<uint32_t>(helper.M());
-  const uint32_t N = SafeInt<uint32_t>(helper.N());
-  const uint32_t K = SafeInt<uint32_t>(helper.K());
-  const uint32_t block_size = SafeInt<uint32_t>(block_size_);
+  const uint32_t batch_count = gsl::narrow<uint32_t>(helper.OutputOffsets().size());
+  const uint32_t M = gsl::narrow<uint32_t>(helper.M());
+  const uint32_t N = gsl::narrow<uint32_t>(helper.N());
+  const uint32_t K = gsl::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = gsl::narrow<uint32_t>(block_size_);
   constexpr uint32_t nbits = 4;
 
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
@@ -358,7 +358,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   // const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;
   constexpr uint32_t output_number = 1;
-  MatMulNBitsProgram program{output_number, SafeInt<int>(components_b), has_zero_points, use_block32};
+  MatMulNBitsProgram program{output_number, gsl::narrow<int>(components_b), has_zero_points, use_block32};
 
   if (use_block32) {
     components = 1;
@@ -377,10 +377,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   TensorShape reshaped_y_shape{batch_count, M, N / components};
 
   program
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, SafeInt<int>(components_a)},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, SafeInt<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, gsl::narrow<int>(components_a)},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, gsl::narrow<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
                   {scales, ProgramTensorMetadataDependency::None}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, SafeInt<int>(components)})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(components)})
       .AddUniformVariable({block_size})
       .CacheHint(std::to_string(output_number));
   if (has_zero_points) {

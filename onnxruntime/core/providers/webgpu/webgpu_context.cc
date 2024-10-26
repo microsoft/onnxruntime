@@ -275,7 +275,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   }
 
   auto append_shape_uniforms = [&shape_uniforms, program_artifact](size_t i, const TensorShape& shape) {
-    SafeInt<int> expected_rank = program_artifact->shape_uniform_ranks[i];
+    int expected_rank = gsl::narrow<int>(program_artifact->shape_uniform_ranks[i]);
     if (expected_rank > 0) {
       ORT_RETURN_IF(expected_rank != shape.NumDimensions(),
                     "Invalid program artifact: variable[", i, "] rank mismatch. Expected: ", (int)expected_rank,
@@ -284,9 +284,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       std::vector<uint32_t> dims(expected_rank);
       std::vector<uint32_t> stride(expected_rank - 1);
       for (size_t j = 0; j < expected_rank; ++j) {
-        dims[j] = SafeInt<uint32_t>(shape[j]);
+        dims[j] = gsl::narrow<uint32_t>(shape[j]);
         if (j < expected_rank - 1) {
-          stride[j] = SafeInt<uint32_t>(shape.SizeFromDimension(j + 1));
+          stride[j] = gsl::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
         }
       }
 

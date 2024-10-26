@@ -31,7 +31,7 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), input_tensor->Shape(), output_dims, output_shape));
 
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t data_size = SafeInt<uint32_t>(output_shape.Size());
+  uint32_t data_size = gsl::narrow<uint32_t>(output_shape.Size());
   ExpandProgram program{};
   program
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})

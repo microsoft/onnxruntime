@@ -5,7 +5,6 @@
 #include <string>
 #include <sstream>
 
-#include "core/common/safeint.h"
 #include "core/providers/webgpu/shader_variable.h"
 
 #include "core/providers/webgpu/string_macros.h"
@@ -92,7 +91,7 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
     : name_(name),
       type_(type),
       num_components_{NumberOfComponents(type)},
-      rank_{SafeInt<int>(dims.NumDimensions())},
+      rank_{gsl::narrow<int>(dims.NumDimensions())},
       dims_{dims},
       usage_(usage),
       indices_type_{GetIndicesType(rank_)},

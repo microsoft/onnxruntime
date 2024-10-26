@@ -11,7 +11,6 @@
 
 #include <webgpu/webgpu_cpp.h>
 
-#include "core/common/safeint.h"
 #include "core/framework/tensor_shape.h"
 
 #include "core/providers/webgpu/program.h"

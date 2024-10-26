@@ -55,7 +55,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   assert(input_tensor->Shape().GetDims().size() == 3);
   assert(output_tensor->Shape().GetDims().size() == 4);
 
-  uint32_t data_size = SafeInt<uint32_t>(output_tensor->Shape().Size());
+  uint32_t data_size = gsl::narrow<uint32_t>(output_tensor->Shape().Size());
   const int batch_offset = num_heads * sequence_length * head_size;
   const int sequence_offset = num_heads * head_size;
   const int head_offset = head_size;

@@ -22,7 +22,7 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  uint32_t output_size = SafeInt<uint32_t>(n);
+  uint32_t output_size = gsl::narrow<uint32_t>(n);
   RangeProgram program{};
   program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
