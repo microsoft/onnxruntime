@@ -123,6 +123,8 @@ class ShaderIndicesHelper {
   TensorShape dims_;
 
   mutable ShaderUsage usage_;
+  // the pointers stored here are owned by the ShaderHelper instance that also owns this ShaderIndicesHelper instance.
+  // these instances are kept valid during the lifetime of the ShaderHelper instance.
   mutable std::set<const ShaderIndicesHelper*> broadcasted_to_;
 
   // unlike storage/element/value type, indices type is not a string view to a constant string. so we need to store it.
