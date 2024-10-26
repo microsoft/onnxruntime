@@ -72,7 +72,7 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: ep_name_alt
-        ${{ if eq(parameters.EP_NAME, directml) }}:
+        (parameters.EP_NAME, 'directml') }}:
           value: 'DML'
         ${{ else }}:
           value: 'CUDA'
