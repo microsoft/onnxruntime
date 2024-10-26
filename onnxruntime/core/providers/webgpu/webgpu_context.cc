@@ -655,6 +655,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(int context_id,
 
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
+    GSL_SUPPRESS(r.11)
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, validation_mode));
     it = contexts_.emplace(context_id, std::move(context)).first;
   } else if (context_id != 0) {
