@@ -117,10 +117,6 @@ class WebGpuContext final {
   wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
 
-  TimestampQueryType query_type_;
-  wgpu::QuerySet query_set_;
-  wgpu::Buffer query_resolve_buffer_;
-
   struct PendingKernelInfo {
     PendingKernelInfo(std::string_view kernel_name,
                       std::string_view program_name,
@@ -151,13 +147,7 @@ class WebGpuContext final {
     wgpu::Buffer query_buffer;
   };
 
-  // info of kernels pending submission for a single batch
-  std::vector<PendingKernelInfo> pending_kernels_;
-  // info of queries pending appending to profiling events
-  std::vector<PendingQueryInfo> pending_queries_;
-
-  uint64_t gpu_timestamp_offset_ = 0;
-  bool is_profiling_ = false;
+  friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
 
@@ -175,10 +165,22 @@ class WebGpuContext final {
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
-  friend class WebGpuContextFactory;
 
   uint32_t num_pending_dispatches_ = 0;
   const uint32_t max_num_pending_dispatches_ = 16;
+
+  // profiling
+  TimestampQueryType query_type_;
+  wgpu::QuerySet query_set_;
+  wgpu::Buffer query_resolve_buffer_;
+
+  // info of kernels pending submission for a single batch
+  std::vector<PendingKernelInfo> pending_kernels_;
+  // info of queries pending appending to profiling events
+  std::vector<PendingQueryInfo> pending_queries_;
+
+  uint64_t gpu_timestamp_offset_ = 0;
+  bool is_profiling_ = false;
 };
 
 }  // namespace webgpu
