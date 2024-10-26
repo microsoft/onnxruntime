@@ -65,9 +65,13 @@ stages:
           targetPath: $(Build.ArtifactStagingDirectory)
           artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
       variables:
-        GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-        VSGenerator: 'Visual Studio 17 2022'
-        CUDA_MODULE_LOADING: 'LAZY'
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      - name: CUDA_MODULE_LOADING
+        value: 'LAZY'
+
       steps:
           - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
             displayName: 'Clean Agent Directories'
@@ -190,7 +194,7 @@ stages:
             TargetPath: '$(Build.ArtifactStagingDirectory)'
 
         - task: PowerShell@2
-          displayName: 'Install ONNX'
+          displayName: 'Install Third Party Dependencies'
           inputs:
             filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
             workingDirectory: '$(Build.BinariesDirectory)'
@@ -203,6 +207,6 @@ stages:
             Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
             Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data
             cd $(Agent.TempDirectory)\ort_test_data
-            python onnx_backend_test_series.py
+            python onnx_backend_test_series.py --devices DML
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
