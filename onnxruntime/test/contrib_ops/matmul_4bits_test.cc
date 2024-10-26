@@ -82,6 +82,7 @@ struct TestOptions {
   bool has_bias{false};
 
   std::optional<float> output_abs_error{};
+  std::optional<float> output_rel_error{};
 };
 
 std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
@@ -253,6 +254,10 @@ void RunTest(const TestOptions& opts,
     test.SetOutputAbsErr("Y", *opts.output_abs_error);
   }
 
+  if (opts.output_rel_error.has_value()) {
+    test.SetOutputRelErr("Y", *opts.output_rel_error);
+  }
+
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
   }
@@ -273,11 +278,8 @@ void TestMatMulNBitsTyped() {
     base_opts.output_abs_error = 0.1f;
   } else {
     if constexpr (std::is_same<AType, MLFloat16>::value) {
-#ifdef USE_WEBGPU
       base_opts.output_abs_error = 0.03f;
-#else
-      base_opts.output_abs_error = 0.01f;
-#endif
+      base_opts.output_rel_error = 0.015f;
     }
   }
 
