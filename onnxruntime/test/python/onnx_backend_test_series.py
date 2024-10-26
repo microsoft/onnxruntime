@@ -105,7 +105,7 @@ def load_jsonc(basename: str):
     return json.loads("\n".join(lines))
 
 
-def create_backend_test(devices:list[str] = None, test_name=None):
+def create_backend_test(devices: list[str] = None, test_name=None):
     """Creates an OrtBackendTest and adds its TestCase's to global scope so unittest will find them."""
 
     overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
@@ -198,10 +198,10 @@ def parse_args():
     parser.add_argument(
         "--devices",
         type=str,
-        choices=["CPU", "CUDA", "MIGRAPHX", "DNNL", "DML", "OPENVINO_GPU", "OPENVINO_CPU", "OPENVINO_NPU","OPENVINO"],
+        choices=["CPU", "CUDA", "MIGRAPHX", "DNNL", "DML", "OPENVINO_GPU", "OPENVINO_CPU", "OPENVINO_NPU", "OPENVINO"],
         nargs="+",  # allows multiple values
         default=["CPU"],  # default to ["CPU"] if no input is given
-        help="Select one or more devices CPU, CUDA, MIGRAPHX, DNNL, DML, OPENVINO_GPU, OPENVINO_CPU, OPENVINO_NPU, OPENVINO"
+        help="Select one or more devices CPU, CUDA, MIGRAPHX, DNNL, DML, OPENVINO_GPU, OPENVINO_CPU, OPENVINO_NPU, OPENVINO",
     )
 
     # parse just our args. python unittest has its own args and arg parsing, and that runs inside unittest.main()
@@ -214,5 +214,5 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    create_backend_test(args.devices,args.test_name)
+    create_backend_test(args.devices, args.test_name)
     unittest.main()
