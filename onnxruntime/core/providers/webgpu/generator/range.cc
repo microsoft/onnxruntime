@@ -13,6 +13,7 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
   T limit = context.Input<Tensor>(1)->Data<T>()[0];
   T delta = context.Input<Tensor>(2)->Data<T>()[0];
 
+  GSL_SUPPRESS(io.2)  // Ignore warning about potential overflow in (limit - start)
   int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
   if (n <= 0) {
     n = 0;
