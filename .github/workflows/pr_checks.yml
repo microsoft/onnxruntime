@@ -34,12 +34,16 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt
+
+      - name: Update PATH
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies and run lintrunner on all files
         run: |
-	  export PATH=$HOME/.local/bin:$PATH
-	  set -e
+          set -e
           python -m pip install --user -r requirements-dev.txt
-          python -m pip install --user lintrunner lintrunner-adapters
+          python -m pip install --user lintrunner lintrunner-adapters	  
           lintrunner init
           lintrunner f --all-files -v
           exit 0

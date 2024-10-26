@@ -98,11 +98,18 @@ class MatMulNBits final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
+  void ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor, int input_idx);
+
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  std::optional<Tensor> GetPrePackTensor(int /*input_idx*/) override;
+
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
 
  private:
   const size_t K_;
@@ -119,6 +126,8 @@ class MatMulNBits final : public OpKernel {
   size_t packed_b_size_{0};
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
+  std::optional<Tensor> packed_tensor_{std::nullopt};
+  MLDataType prepack_tensor_data_type_;
 
   bool has_zp_input_{false};
 
@@ -149,7 +158,21 @@ class MatMulNBits final : public OpKernel {
 };
 
 template <typename T1>
+void MatMulNBits<T1>::ConvertPrepackWeightIntoTensor(const onnxruntime::Tensor& tensor, int input_idx) {
+  if (input_idx == InputIndex::B) {
+    prepack_tensor_data_type_ = tensor.DataType();
+  }
+
+  TensorShapeVector weights_dims = {static_cast<int64_t>((packed_b_size_ - 1) / prepack_tensor_data_type_->Size()) + 1};
+  packed_tensor_ = Tensor(prepack_tensor_data_type_,
+                          TensorShape(weights_dims),
+                          packed_b_.get(),
+                          OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+}
+
+template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                bool save_prepacked_initializers,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -185,11 +208,16 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_AMD64_IX86
   }
 
+  if (save_prepacked_initializers) {
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
+  }
+
   return Status::OK();
 }
 
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                       bool save_prepacked_initializers,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -237,6 +265,34 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       is_packed = false;
     }
 #endif  // MLAS_TARGET_AMD64_IX86
+  }
+
+  if (save_prepacked_initializers) {
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
+  }
+
+  return Status::OK();
+}
+
+template <typename T1>
+std::optional<Tensor> MatMulNBits<T1>::GetPrePackTensor(int input_idx) {
+  // For this kernel, prepack is performed on input_B, and possibly scales, zeros_points.
+  // During compute process, scales and zeros_points will keep as it is and only use prepacked
+  // buffer to replace input_B.
+  // Inorder to cope with this logic, we need to return latest prepacked buffer and only serialize
+  // the latest one. So, we need to always return packed_tensor_ here not only for input_B.
+  ORT_UNUSED_PARAMETER(input_idx);
+  return std::move(packed_tensor_);
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
+  if (input_idx == 1) {
+    // pre_packed_tensor is constant initialized tensor and its lifecycle is managed by session_state,
+    // session_state will release memory from pre_packed_tensor. packed_b_ will not release memory so
+    // pass empty/default buffer deleter here.
+    // const_cast here is temporary, will fix in follow up PR.
+    packed_b_ = BufferUniquePtr(const_cast<void*>(pre_packed_tensor.DataRaw()), BufferDeleter());
   }
 
   return Status::OK();
