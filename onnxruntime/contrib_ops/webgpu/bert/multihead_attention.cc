@@ -350,7 +350,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                                int total_sequence_length) {
   const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0;
   const bool has_present_value = output_count > 1 && past_value != nullptr;
-  const int tile_size = 12;
+  constexpr int tile_size = 12;
 
   VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},

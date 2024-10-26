@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-size_t NormalizeBufferSize(size_t size) {
+constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
 }
 

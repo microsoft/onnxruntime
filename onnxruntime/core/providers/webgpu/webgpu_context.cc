@@ -346,7 +346,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
   // max_alignment_of_field to 16 since the underlying buffer has been rounded up to 16.
-  const size_t max_alignment_of_field = 16;
+  constexpr size_t max_alignment_of_field = 16;
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;

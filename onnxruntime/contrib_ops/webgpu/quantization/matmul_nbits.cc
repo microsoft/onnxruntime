@@ -61,7 +61,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
     const uint32_t tile_size = WorkgroupSizeX() * components_b_ * 8;  // each uint32 has 8 data.
     const uint32_t a_length_per_tile = tile_size / a.NumComponents();
-    const uint32_t block_size = 32;
+    constexpr uint32_t block_size = 32;
     const uint32_t blocks_per_tile = tile_size / block_size;
     shader.AdditionalImplementation() << "var<workgroup> sub_a: array<input_a_value_t, " << a_length_per_tile << ">;\n"
                                       << "var<workgroup> inter_results: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n";
@@ -344,7 +344,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t N = SafeInt<uint32_t>(helper.N());
   const uint32_t K = SafeInt<uint32_t>(helper.K());
   const uint32_t block_size = SafeInt<uint32_t>(block_size_);
-  const uint32_t nbits = 4;
+  constexpr uint32_t nbits = 4;
 
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
   const uint32_t blob_size = (block_size / 8) * nbits;
@@ -357,12 +357,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const bool has_zero_points = zero_points != nullptr;
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   // const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;
-  const uint32_t output_number = 1;
+  constexpr uint32_t output_number = 1;
   MatMulNBitsProgram program{output_number, SafeInt<int>(components_b), has_zero_points, use_block32};
 
   if (use_block32) {
     components = 1;
-    const uint32_t workgroup_size = 128;
+    constexpr uint32_t workgroup_size = 128;
     const uint32_t workgroup_y = N % 8 == 0 ? 8 : N % 4 == 0 ? 4
                                                              : 1;
     const uint32_t workgroup_x = workgroup_size / workgroup_y;
