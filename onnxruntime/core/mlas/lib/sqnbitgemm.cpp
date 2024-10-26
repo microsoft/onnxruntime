@@ -608,12 +608,13 @@ SQ4BitGemm_CompFp16(
     const size_t lda = DataParams->lda;
     const size_t ldc = DataParams->ldc;
     const size_t k_blk_num = MlasDivRoundup(K, BlkLen);
-    const size_t ldb = k_blk_num * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t qldb = k_blk_num * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t ldb = k_blk_num * BlkLen;
     const size_t k_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blk_num);
 
     const MLAS_FP16* A = DataParams->A + RangeStartM * lda;
     MLAS_FP16* C = DataParams->C + RangeStartM * ldc + RangeStartN;
-    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * qldb;
     const MLAS_FP16* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blk_num;
     const std::byte* QuantBZeroPoint =
         (DataParams->QuantBZeroPoint == nullptr)
@@ -625,7 +626,7 @@ SQ4BitGemm_CompFp16(
     constexpr size_t StrideN = 32;
     constexpr size_t StrideM = 64;
 
-    size_t bufsize = k_blk_num * BlkLen * StrideN * sizeof(MLAS_FP16);
+    size_t bufsize = ldb * StrideN * sizeof(MLAS_FP16);
     MlasThreadedBufAlloc(bufsize);
     auto* dequant_b = reinterpret_cast<MLAS_FP16*>(ThreadedBufHolder.get());
 
@@ -649,7 +650,7 @@ SQ4BitGemm_CompFp16(
             c += CountM * ldc;
         }
 
-        QuantBData += CountN * ldb;
+        QuantBData += CountN * qldb;
         QuantBScale += CountN * k_blk_num;
         QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + CountN * k_zp_bytes : nullptr;
         Bias = Bias ? Bias + CountN : nullptr;
