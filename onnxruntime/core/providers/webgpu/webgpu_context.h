@@ -34,6 +34,8 @@ class WebGpuContextFactory {
                                       ValidationMode validation_mode);
   static WebGpuContext& GetContext(int context_id);
 
+  static void Cleanup();
+
  private:
   WebGpuContextFactory() {}
 

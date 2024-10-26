@@ -674,5 +674,14 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   return *it->second;
 }
 
+void WebGpuContextFactory::Cleanup() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  contexts_.clear();
+}
+
+void CleanupWebGpuContexts() {
+  WebGpuContextFactory::Cleanup();
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime
