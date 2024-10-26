@@ -25,6 +25,8 @@ const onnxDataTypeToWebnnDataType = new Map<DataType, MLOperandDataType>([
   [DataType.uint32, 'uint32'],
   [DataType.int64, 'int64'],
   [DataType.uint64, 'uint64'],
+  [DataType.int4, 'int4'],
+  [DataType.uint4, 'uint4'],
   [DataType.int8, 'int8'],
   [DataType.uint8, 'uint8'],
   [DataType.bool, 'uint8'],
@@ -214,6 +216,8 @@ export class WebNNBackend {
       case 'int8':
         bufferView = new Int8Array(buffer);
         break;
+      case 'int4':
+      case 'uint4':
       case 'uint8':
         bufferView = new Uint8Array(buffer);
         break;
