@@ -73,10 +73,10 @@ stages:
         value: 'LAZY'
       - name: ep_name_alt
         value:
-          ${{ if eq(parameters.EP_NAME, directml) }}:
-            'DML'
-          ${{ else }}:
-            'CUDA'
+        - ${{ if eq(parameters.EP_NAME, directml) }}:
+          'DML'
+        - ${{ else }}:
+          'CUDA'
 
       steps:
           - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
