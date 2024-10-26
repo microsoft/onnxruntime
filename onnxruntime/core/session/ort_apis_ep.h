@@ -43,11 +43,11 @@ ORT_API_STATUS_IMPL(OrtGraph_GetIthOutputName, const OrtGraphViewer* graph, size
 
 ORT_API_STATUS_IMPL(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i, _Out_ int32_t* out);
 
-ORT_API_STATUS_IMPL(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef** tensor, _Out_ bool* ret);
+ORT_API_STATUS_IMPL(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef** tensor);
 
 ORT_API_STATUS_IMPL(OrtGraph_ReleaseInitializerTensor, OrtTensorRef* tensor);
 
-ORT_API_STATUS_IMPL(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret);
+ORT_API_STATUS_IMPL(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out);
 
 ORT_API_STATUS_IMPL(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
 
