@@ -50,5 +50,6 @@ public:
 DML_OP_DEFINE_CREATION_FUNCTION(Cast, DmlOperatorCast);
 DML_OP_DEFINE_CREATION_FUNCTION(CastLike15, DmlOperatorCast);
 DML_OP_DEFINE_CREATION_FUNCTION(CastLike19, DmlOperatorCast);
+DML_OP_DEFINE_CREATION_FUNCTION(CastLike21, DmlOperatorCast);
 
 } // namespace Dml
