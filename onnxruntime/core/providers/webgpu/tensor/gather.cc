@@ -25,7 +25,7 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "  var data_indices : data_indices_t;\n";
   for (int i = 0, j = 0; i < data.Rank(); i++) {
-    if (i == SafeInt<int>(axis_)) {
+    if (static_cast<uint32_t>(i) == axis_) {
       shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
       j += indices.Rank();
     } else {

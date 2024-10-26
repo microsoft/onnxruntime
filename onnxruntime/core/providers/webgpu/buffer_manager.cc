@@ -191,9 +191,8 @@ class BucketCacheManager : public IBufferCacheManager {
     std::sort(buckets_keys_.begin(), buckets_keys_.end());
 
 #ifndef NDEBUG  // if debug build
-    for (size_t i = 0; i < buckets_keys_.size(); ++i) {
-      ORT_ENFORCE(buckets_keys_[i] % 16 == 0, "Bucket sizes must be multiples of 16.");
-    }
+    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
+                "Bucket sizes must be multiples of 16.");
 
     for (size_t i = 1; i < buckets_keys_.size(); ++i) {
       ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
