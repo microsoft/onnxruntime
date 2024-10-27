@@ -367,11 +367,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
-#ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-  active_sessions_[session_id_] = this;
-#endif
-
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
 
@@ -508,6 +503,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 
 #ifdef _WIN32
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  active_sessions_[session_id_] = this;
+
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
   callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
       [](LPCGUID SourceId,
