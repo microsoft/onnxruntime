@@ -741,8 +741,8 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
     String no_cuda_test = System.getenv("NO_CUDA_TEST");
-    if (no_cuda_test == null || no_cuda_test.isEmpty() || no_cuda_test != "1") {
-      if(System.getProperty("USE_CUDA") == "1") {
+    if (no_cuda_test == null || no_cuda_test.isEmpty() || ! no_cuda_test.equals("1")) {
+      if (System.getProperty("USE_CUDA").equals("1")) {
         System.out.println("Skipping DirectML test because CUDA EP test is enabled.");
         return;
       }
