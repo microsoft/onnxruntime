@@ -15,57 +15,55 @@ namespace contrib {
 namespace webgpu {
 
 struct WebgpuAttentionParameters {
-  WebgpuAttentionParameters(AttentionParameters parameters):
-    is_gqa_parameters_(false),
-    batch_size_(parameters.batch_size),
-    sequence_length_(parameters.sequence_length),
-    kv_sequence_length_(parameters.kv_sequence_length),
-    past_sequence_length_(parameters.past_sequence_length),
-    total_sequence_length_(parameters.total_sequence_length),
-    max_sequence_length_(parameters.max_sequence_length),
-    input_hidden_size_(parameters.input_hidden_size),
-    hidden_size_(parameters.hidden_size),
-    head_size_(parameters.head_size),
-    v_hidden_size_(parameters.v_hidden_size),
-    v_head_size_(parameters.v_head_size),
-    num_heads_(parameters.num_heads),
-    is_unidirectional_(parameters.is_unidirectional),
-    past_present_share_buffer_(parameters.past_present_share_buffer),
-    do_rotary_(parameters.do_rotary),
-    broadcast_attn_bias_dim_0_(parameters.broadcast_attn_bias_dim_0),
-    broadcast_attn_bias_dim_1_(parameters.broadcast_attn_bias_dim_1),
-    mask_filter_value_(parameters.mask_filter_value),
-    scale_(parameters.scale),
-    mask_type_(parameters.mask_type),
-    qkv_format_(parameters.qkv_format) {
-    }
+  WebgpuAttentionParameters(AttentionParameters parameters) : is_gqa_parameters_(false),
+                                                              batch_size_(parameters.batch_size),
+                                                              sequence_length_(parameters.sequence_length),
+                                                              kv_sequence_length_(parameters.kv_sequence_length),
+                                                              past_sequence_length_(parameters.past_sequence_length),
+                                                              total_sequence_length_(parameters.total_sequence_length),
+                                                              max_sequence_length_(parameters.max_sequence_length),
+                                                              input_hidden_size_(parameters.input_hidden_size),
+                                                              hidden_size_(parameters.hidden_size),
+                                                              head_size_(parameters.head_size),
+                                                              v_hidden_size_(parameters.v_hidden_size),
+                                                              v_head_size_(parameters.v_head_size),
+                                                              num_heads_(parameters.num_heads),
+                                                              is_unidirectional_(parameters.is_unidirectional),
+                                                              past_present_share_buffer_(parameters.past_present_share_buffer),
+                                                              do_rotary_(parameters.do_rotary),
+                                                              broadcast_attn_bias_dim_0_(parameters.broadcast_attn_bias_dim_0),
+                                                              broadcast_attn_bias_dim_1_(parameters.broadcast_attn_bias_dim_1),
+                                                              mask_filter_value_(parameters.mask_filter_value),
+                                                              scale_(parameters.scale),
+                                                              mask_type_(parameters.mask_type),
+                                                              qkv_format_(parameters.qkv_format) {
+  }
 
-    WebgpuAttentionParameters(onnxruntime::contrib::GroupQueryAttentionParameters parameters):
-    is_gqa_parameters_(true),
-    batch_size_(parameters.batch_size),
-    sequence_length_(parameters.sequence_length),
-    total_sequence_length_(parameters.total_sequence_length),
-    hidden_size_(parameters.hidden_size),
-    head_size_(parameters.head_size),
-    num_heads_(parameters.num_heads),
-    do_rotary_(parameters.do_rotary),
-    seqlen_past_kv_cache_(parameters.seqlen_past_kv_cache),
-    seqlen_present_kv_cache_(parameters.seqlen_present_kv_cache),
-    kv_hidden_size_(parameters.kv_hidden_size),
-    kv_num_heads_(parameters.kv_num_heads),
-    num_splits_(parameters.num_splits),
-    rotary_dim_(parameters.rotary_dim),
-    rotary_interleaved_(parameters.rotary_interleaved),
-    use_smooth_softmax_(parameters.use_smooth_softmax),
-    softcap_(parameters.softcap),
-    zeros_count_(parameters.zeros_count),
-    zero_ptr_(parameters.zero_ptr),
-    n_reps(parameters.num_heads / parameters.kv_num_heads),
-    qkv_format_(parameters.qkv_format) {
-   }
+  WebgpuAttentionParameters(onnxruntime::contrib::GroupQueryAttentionParameters parameters) : is_gqa_parameters_(true),
+                                                                                              batch_size_(parameters.batch_size),
+                                                                                              sequence_length_(parameters.sequence_length),
+                                                                                              total_sequence_length_(parameters.total_sequence_length),
+                                                                                              hidden_size_(parameters.hidden_size),
+                                                                                              head_size_(parameters.head_size),
+                                                                                              num_heads_(parameters.num_heads),
+                                                                                              do_rotary_(parameters.do_rotary),
+                                                                                              seqlen_past_kv_cache_(parameters.seqlen_past_kv_cache),
+                                                                                              seqlen_present_kv_cache_(parameters.seqlen_present_kv_cache),
+                                                                                              kv_hidden_size_(parameters.kv_hidden_size),
+                                                                                              kv_num_heads_(parameters.kv_num_heads),
+                                                                                              num_splits_(parameters.num_splits),
+                                                                                              rotary_dim_(parameters.rotary_dim),
+                                                                                              rotary_interleaved_(parameters.rotary_interleaved),
+                                                                                              use_smooth_softmax_(parameters.use_smooth_softmax),
+                                                                                              softcap_(parameters.softcap),
+                                                                                              zeros_count_(parameters.zeros_count),
+                                                                                              zero_ptr_(parameters.zero_ptr),
+                                                                                              n_reps(parameters.num_heads / parameters.kv_num_heads),
+                                                                                              qkv_format_(parameters.qkv_format) {
+  }
 
   bool is_gqa_parameters_;
-   int batch_size_ = 0;
+  int batch_size_ = 0;
   int sequence_length_ = 0;
   int kv_sequence_length_ = 0;     // input sequence length of K or V
   int past_sequence_length_ = 0;   // sequence length in past state of K or V
@@ -85,15 +83,16 @@ struct WebgpuAttentionParameters {
   bool broadcast_attn_bias_dim_1_ = false;
   float mask_filter_value_;
   float scale_;
-  bool use_tf32_ = false;;
+  bool use_tf32_ = false;
+  ;
   // The following members are in onnxruntime::contrib::GroupQueryAttentionParameters
   // and not in onnxruntime::contrib::AttentionParameters
   int seqlen_past_kv_cache_ = 0;     // sequence length of past kv tensor
   int seqlen_present_kv_cache_ = 0;  // sequence length of present kv tensor
   int kv_hidden_size_ = 0;
   int kv_num_heads_ = 0;
-  int num_splits_ = 0;          // number of splits for splitkv
-  int rotary_dim_ = 0;          // rotary embedding dimension
+  int num_splits_ = 0;  // number of splits for splitkv
+  int rotary_dim_ = 0;  // rotary embedding dimension
   int local_window_size_ = 0;
   bool kv_share_buffer_ = false;
   bool is_packed_qkv_ = false;
@@ -102,14 +101,15 @@ struct WebgpuAttentionParameters {
   bool rotary_interleaved_ = false;
   bool use_smooth_softmax_ = false;
   float softcap_ = 0.0;
-  int zeros_count_ = 0;;
+  int zeros_count_ = 0;
+  ;
   int* zero_ptr_ = nullptr;
   // Computed values
   int n_reps = 1;
   AttentionMaskType mask_type_ = MASK_NONE;
   AttentionQkvFormat qkv_format_ = UNKNOWN;
-  };
+};
 
-}
-}
-}
+}  // namespace webgpu
+}  // namespace contrib
+}  // namespace onnxruntime
