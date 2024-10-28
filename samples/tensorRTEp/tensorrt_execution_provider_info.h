@@ -4,7 +4,8 @@
 #pragma once
 
 #include <string>
-#include "core/framework/provider_options.h"
+#include "provider_options.h"
+#include "common.h"
 
 #define TRT_DEFAULT_OPTIMIZER_LEVEL 3
 
