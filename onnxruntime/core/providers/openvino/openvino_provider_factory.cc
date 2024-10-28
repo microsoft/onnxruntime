@@ -7,6 +7,7 @@
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 
 namespace onnxruntime {
@@ -54,6 +55,14 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   bool so_export_ep_ctx_blob = config_options_.GetConfigOrDefault("ep.context_enable", "0") == "1";
   bool so_epctx_embed_mode = config_options_.GetConfigOrDefault("ep.context_embed_mode", "1") == "1";
   std::string so_cache_path = config_options_.GetConfigOrDefault("ep.context_file_path", "").c_str();
+  bool so_allow_stripping_qdq = config_options_.GetConfigOrDefault(kOrtSessionOptionsAllowStrippingQDQ, "0") == "1";
+
+  if (so_allow_stripping_qdq && !enable_qdq_optimizer_) {
+    LOGS_DEFAULT(WARNING) << "[OpenVINO] enable_qdq_optimizer is set to false with provider option but is enabled at "
+                          << "session level with " << kOrtSessionOptionsAllowStrippingQDQ << " set to true. "
+                          << "Override it with session options.";
+    enable_qdq_optimizer_ = so_allow_stripping_qdq;
+  }
 
   if (so_export_ep_ctx_blob && !so_cache_path.empty()) {
     cache_dir_ = so_cache_path;

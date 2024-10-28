@@ -63,6 +63,13 @@ static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.di
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enable_quant_qdq_cleanup";
 
+// Allow stripping Q and DQ nodes from a quantized model to fallback to a floating point model.
+// This can be used when a session is created with a quantized model but the EP or the device does not support it.
+// Option values:
+// - "0": disabled. [DEFAULT]
+// - "1": enabled.
+static const char* const kOrtSessionOptionsAllowStrippingQDQ = "session.allow_stripping_qdq_nodes";
+
 // Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
