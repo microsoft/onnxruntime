@@ -61,10 +61,9 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
 
   std::vector<std::unique_ptr<IExecutionProvider>> test_eps;
 #ifdef USE_CUDA
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    test_eps.emplace_back(DefaultCudaExecutionProvider());
   }
-  test_eps.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   test_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
@@ -125,7 +124,9 @@ void RunTestForTraining(const std::vector<int64_t>& input_dims) {
 
     std::vector<std::unique_ptr<IExecutionProvider>> dropout_eps;
 #ifdef USE_CUDA
-    dropout_eps.emplace_back(DefaultCudaExecutionProvider());
+    if (DefaultCudaExecutionProvider() != nullptr) {
+        dropout_eps.emplace_back(DefaultCudaExecutionProvider());
+    }
 #elif USE_ROCM
     dropout_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
