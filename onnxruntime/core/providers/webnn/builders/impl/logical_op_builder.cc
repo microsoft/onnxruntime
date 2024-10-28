@@ -61,22 +61,11 @@ bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 
-  if (input_defs.size() == 0 || input_defs.size() > 2) {
-      LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires 1 or 2 inputs, actual: "
-                            << input_defs.size();
-      return false;
-  }
-
-  if (input_defs.size() == 1 && op_type != "Not") {
-      LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires 2 inputs, actual: "
-                            << input_defs.size();
-      return false;
-  }
-
-  if (input_defs.size() == 2 && op_type == "Not") {
-      LOGS(logger, VERBOSE) << "Not [" << name << "] requires 1 input, actual: "
-                            << input_defs.size();
-      return false;
+  size_t expected_input_count = (op_type == "Not") ? 1 : 2;
+  if (input_defs.size() != expected_input_count) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "] expected input count: "
+                          << expected_input_count << ", actual: " << input_defs.size();
+    return false;
   }
 
   return true;
