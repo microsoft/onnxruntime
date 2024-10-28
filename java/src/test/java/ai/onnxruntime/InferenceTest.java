@@ -740,7 +740,7 @@ public class InferenceTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
-    if (System.getProperty("USE_CUDA") != "1") {
+    if (System.getenv("USE_CUDA") != "1") {
       runProvider(OrtProvider.DIRECT_ML);
     } else if(System.getProperty("USE_CUDA") == "1" && System.getenv("NO_CUDA_TEST") == "1" ) {
       runProvider(OrtProvider.DIRECT_ML);
