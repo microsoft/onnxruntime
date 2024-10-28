@@ -62,6 +62,7 @@ class DeepCpuGruOp final : public OpKernel {
 
  private:
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
