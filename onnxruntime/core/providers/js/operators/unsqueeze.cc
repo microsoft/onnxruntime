@@ -26,7 +26,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedDataTypes())
-        .Alias(0, 0),
+        .Alias(0, 0)
         .InputMemoryType(OrtMemTypeCPU, 1),
     Unsqueeze);
 
