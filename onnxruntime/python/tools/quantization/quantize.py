@@ -192,12 +192,6 @@ class StaticQuantConfig(QuantConfig):
                         removed if activations are asymmetrically quantized. Keeping these activations is necessary if
                         optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
                         operators from the model.
-                    QDQDontQuantizeWeights = True/False:
-                        Default is False. If true, does not quantize any ONNX initializers (only activations). Otherwise,
-                        the default behavior is to quantize all ONNX initializers.
-                    QDQDontQuantizeActivations = True/False:
-                        Default is False. If true, does not quantize any activation tensors. Otherwise,
-                        the default behavior is to quantize all activation tensors.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -444,12 +438,6 @@ def quantize_static(
                     removed if activations are asymmetrically quantized. Keeping these activations is necessary if
                     optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
                     operators from the model.
-                QDQDontQuantizeWeights = True/False:
-                    Default is False. If true, does not quantize any ONNX initializers (only activations). Otherwise,
-                    the default behavior is to quantize all ONNX initializers.
-                QDQDontQuantizeActivations = True/False:
-                    Default is False. If true, does not quantize any activation tensors. Otherwise,
-                    the default behavior is to quantize all activation tensors.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
@@ -519,46 +507,43 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
-    tensors_range = None
-    skip_calibration = quant_format is QuantFormat.QDQ and extra_options.get("QDQDontQuantizeActivations", False)
-    if not skip_calibration:
-        with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-            if isinstance(model_input, onnx.ModelProto):
-                output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
-                onnx.save_model(
-                    model_input,
-                    output_path,
-                    save_as_external_data=True,
-                )
-                model_input = output_path
-
-            calibrator = create_calibrator(
-                Path(model_input),
-                op_types_to_quantize,
-                augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
-                calibrate_method=calibrate_method,
-                use_external_data_format=use_external_data_format,
-                extra_options=calib_extra_options,
+    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        if isinstance(model_input, onnx.ModelProto):
+            output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            onnx.save_model(
+                model_input,
+                output_path,
+                save_as_external_data=True,
             )
+            model_input = output_path
 
-            stride = extra_options.get("CalibStridedMinMax", None)
-            if stride:
-                total_data_size = len(calibration_data_reader)
-                if total_data_size % stride != 0:
-                    raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+        calibrator = create_calibrator(
+            Path(model_input),
+            op_types_to_quantize,
+            augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
+            calibrate_method=calibrate_method,
+            use_external_data_format=use_external_data_format,
+            extra_options=calib_extra_options,
+        )
 
-                for start in range(0, total_data_size, stride):
-                    end_index = start + stride
-                    calibration_data_reader.set_range(start_index=start, end_index=end_index)
-                    calibrator.collect_data(calibration_data_reader)
-            else:
+        stride = extra_options.get("CalibStridedMinMax", None)
+        if stride:
+            total_data_size = len(calibration_data_reader)
+            if total_data_size % stride != 0:
+                raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+
+            for start in range(0, total_data_size, stride):
+                end_index = start + stride
+                calibration_data_reader.set_range(start_index=start, end_index=end_index)
                 calibrator.collect_data(calibration_data_reader)
-            tensors_range = calibrator.compute_data()
-            if not isinstance(tensors_range, TensorsData):
-                raise TypeError(
-                    f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
-                )
-            del calibrator
+        else:
+            calibrator.collect_data(calibration_data_reader)
+        tensors_range = calibrator.compute_data()
+        if not isinstance(tensors_range, TensorsData):
+            raise TypeError(
+                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+            )
+        del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 
