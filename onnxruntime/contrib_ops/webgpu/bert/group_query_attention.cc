@@ -78,7 +78,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                 parameters.kv_sequence_length_, parameters.head_size_});
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, nullptr, past_key, past_value, output, present_key,
-                        present_value, parameters, context, seqlen_k, total_seqlen_tensor);
+                          present_value, parameters, context, seqlen_k, total_seqlen_tensor);
   }
   TensorShape k_new_shape(k_new_dims);
   Tensor K = context.CreateGPUTensor(key->DataType(), k_new_shape);

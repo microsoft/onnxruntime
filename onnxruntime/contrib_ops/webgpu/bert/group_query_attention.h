@@ -16,7 +16,7 @@ using namespace onnxruntime::webgpu;
 
 class GroupQueryAttention final : public WebGpuKernel {
  public:
-  GroupQueryAttention(const OpKernelInfo& info): WebGpuKernel(info) {
+  GroupQueryAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
     num_heads_ = static_cast<int>(num_heads);
@@ -46,7 +46,6 @@ class GroupQueryAttention final : public WebGpuKernel {
 
   bool use_smooth_softmax_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
-
 };
 
 }  // namespace webgpu
