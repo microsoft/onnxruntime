@@ -98,6 +98,7 @@ jobs:
             set -ex; \
             env; \
             ccache -s; \
+            sudo rm -rf onnxruntime/python/tools/kernel_explorer/kernels/__pycache__; \
             python tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -233,6 +234,7 @@ jobs:
             set -ex; \
             python --version; \
             ls /opt/miniconda/envs/rocm-ci/lib/; \
+            sudo rm -rf /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/kernels/__pycache__; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
