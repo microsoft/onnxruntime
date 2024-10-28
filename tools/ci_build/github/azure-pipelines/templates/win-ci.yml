@@ -96,6 +96,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
+    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -119,6 +120,23 @@ stages:
         submodules: none
 
       - template: telemetry-steps.yml
+
+      - task: PythonScript@0
+        displayName: 'KYLE - Test Enviroment Variables'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\kyle_test.py'
+          workingDirectory: '$(Build.BinariesDirectory)'
+        env:
+          ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+          KYLE_ENV: "Hello, World!"
+
+      - task: PowerShell@2
+        displayName: 'KYLE - End Pipeline Running'
+        inputs:
+          targetType: 'inline'
+          script: |
+            exit 1
+          workingDirectory: '$(Build.BinariesDirectory)'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
