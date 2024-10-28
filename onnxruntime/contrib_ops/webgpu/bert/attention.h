@@ -7,7 +7,7 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
-#include "contrib_ops/webgpu/bert/webgpu_attention_common.h"
+#include "contrib_ops/webgpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -41,8 +41,8 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-                        bool has_attention_bias, int tile_size, int components, bool has_seqlen_k = false, bool has_total_seqlen_tensor = false)
-      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), has_seqlen_k_(has_seqlen_k), has_total_seqlen_tensor_(has_total_seqlen_tensor) {
+                        bool has_attention_bias, int tile_size, int components, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -65,14 +65,14 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   bool has_attention_bias_;
   int tile_size_;
   int components_;
-  bool has_seqlen_k_;
-  bool has_total_seqlen_tensor_;
+  const Tensor* seqlen_k_;
+  const Tensor* total_seqlen_tensor_;
 };
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  public:
-  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, bool has_seqlen_k = false, bool has_total_seqlen_tensor = false)
-      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), has_seqlen_k_(has_seqlen_k), has_total_seqlen_tensor_(has_total_seqlen_tensor) {
+  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
+      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -87,14 +87,14 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  private:
   int work_group_size_;
   int components_;
-  bool has_seqlen_k_;
-  bool has_total_seqlen_tensor_;
+  const Tensor* seqlen_k_;
+  const Tensor* total_seqlen_tensor_;
 };
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
-  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool has_seqlen_k = false, bool has_total_seqlen_tensor = false)
-      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), has_seqlen_k_(has_seqlen_k), has_total_seqlen_tensor_(has_total_seqlen_tensor) {
+  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
+      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -103,7 +103,7 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"head_size", ProgramUniformVariableDataType::Uint32}
+                                          {"head_size", ProgramUniformVariableDataType::Uint32},
                                           {"v_hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -115,8 +115,8 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   bool feed_past_value_;
   bool has_present_value_;
   int tile_size_;
-  bool has_seqlen_k_;
-  bool has_total_seqlen_tensor_;
+  const Tensor* seqlen_k_;
+  const Tensor* total_seqlen_tensor_;
 };
 
 }  // namespace webgpu
