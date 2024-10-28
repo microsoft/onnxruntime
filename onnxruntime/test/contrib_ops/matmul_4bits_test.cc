@@ -545,9 +545,11 @@ TEST(MatMulNBits, Float16Large) {
   // machines we tested on. All consumer-grade machines from Nvidia/AMD/Intel seem to pass these tests with an
   // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
-  float abs_error = 0.3f;
+
+  float abs_error = 0.05f;
   if (DefaultDmlExecutionProvider() != nullptr) {
-    abs_error = 0.05f;
+    // it means the ep is dml in runtime, the abs_error is changed to 0.3f
+    abs_error = 0.3f;
   }
 #else
   float abs_error = 0.05f;
