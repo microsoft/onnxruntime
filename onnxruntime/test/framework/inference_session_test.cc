@@ -996,6 +996,9 @@ static void TestBindHelper(const std::string& log_str,
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
     auto provider = DefaultCudaExecutionProvider();
+    if (provider == nullptr) {
+      return;
+    }
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif

@@ -13,6 +13,10 @@ namespace test {
 int GetCudaArchitecture();
 
 inline bool HasCudaEnvironment(int min_cuda_architecture) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return false;
+  }
+
   if (DefaultCudaExecutionProvider().get() == nullptr) {
     return false;
   }
