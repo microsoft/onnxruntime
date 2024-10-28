@@ -894,6 +894,9 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1036,6 +1039,9 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1143,6 +1149,9 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1235,6 +1244,9 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -2007,6 +2019,9 @@ TEST_F(PlannerTest, TestCpuIf) {
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(sess.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_STATUS_OK(sess.Load());
   ASSERT_STATUS_OK(sess.Initialize());
@@ -2071,6 +2086,9 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/issue_19480.onnx"));
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   status = sess.Load();
   status = sess.Initialize();

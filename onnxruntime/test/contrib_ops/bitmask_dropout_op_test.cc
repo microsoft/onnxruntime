@@ -61,6 +61,9 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
 
   std::vector<std::unique_ptr<IExecutionProvider>> test_eps;
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   test_eps.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   test_eps.emplace_back(DefaultRocmExecutionProvider());
