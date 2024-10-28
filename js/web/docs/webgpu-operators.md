@@ -74,7 +74,7 @@ Do not modify directly.*
 | MultiHeadAttention | com.microsoft(1+) | need implementing mask and past/present |
 | Neg | ai.onnx(6-12,13+) |  |
 | Not | ai.onnx(1+) |  |
-| Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
+| Pad | ai.onnx(2-10,11-12,13-17,18,19-20,21+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | QuickGelu | com.microsoft(1+) |  |
 | Range | ai.onnx(11+) |  |
