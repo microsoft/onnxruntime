@@ -39,7 +39,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    13, 21,
+    13, 20,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
