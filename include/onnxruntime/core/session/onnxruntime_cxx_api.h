@@ -972,8 +972,7 @@ struct ModelMetadata : detail::Base<OrtModelMetadata> {
   using Base = detail::Base<OrtModelMetadata>;
   using Base::Base;
 
-  explicit ModelMetadata(std::nullptr_t) {}                                           ///< Create an empty ModelMetadata object, must be assigned a valid one to be used
-  explicit ModelMetadata(OrtModelMetadata* p) : detail::Base<OrtModelMetadata>{p} {}  ///< Used for interop with the C API
+  explicit ModelMetadata(std::nullptr_t) {}  ///< Create an empty ModelMetadata object, must be assigned a valid one to be used
 
   /** \brief Returns a copy of the producer name.
    *
