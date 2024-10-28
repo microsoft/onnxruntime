@@ -27,7 +27,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedDataTypes())
         .Alias(0, 0),
-        InputMemoryType(OrtMemTypeCPU, 1),
+        .InputMemoryType(OrtMemTypeCPU, 1),
     Squeeze);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
