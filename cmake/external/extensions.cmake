@@ -42,6 +42,9 @@ if (NOT onnxruntime_EXTENSIONS_OVERRIDDEN)
     extensions
     URL ${DEP_URL_extensions}
     URL_HASH SHA1=${DEP_SHA1_extensions}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/extensions-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/extensions-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/extensions-download
   )
   onnxruntime_fetchcontent_makeavailable(extensions)
 else()
@@ -62,4 +65,3 @@ onnxruntime_add_include_to_target(noexcep_operators ${PROTOBUF_LIB} ${ABSEIL_LIB
 
 add_dependencies(ocos_operators ${onnxruntime_EXTERNAL_DEPENDENCIES})
 add_dependencies(ortcustomops ${onnxruntime_EXTERNAL_DEPENDENCIES})
-

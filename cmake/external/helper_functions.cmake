@@ -146,7 +146,6 @@ macro(onnxruntime_fetchcontent_makeavailable)
     else()
       unset(__cmake_haveFpArgs)
     endif()
-
     FetchContent_GetProperties(${__cmake_contentName})
     if(NOT ${__cmake_contentNameLower}_POPULATED)
       FetchContent_Populate(${__cmake_contentName})

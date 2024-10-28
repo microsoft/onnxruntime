@@ -36,10 +36,13 @@ include(external/abseil-cpp.cmake)
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-    re2
-    URL ${DEP_URL_re2}
-    URL_HASH SHA1=${DEP_SHA1_re2}
-    FIND_PACKAGE_ARGS NAMES re2
+  re2
+  URL ${DEP_URL_re2}
+  URL_HASH SHA1=${DEP_SHA1_re2}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/re2-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/re2-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/re2-download
+  FIND_PACKAGE_ARGS NAMES re2
 )
 onnxruntime_fetchcontent_makeavailable(re2)
 
@@ -66,6 +69,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     googletest
     URL ${DEP_URL_googletest}
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/googletest-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/googletest-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/googletest-download
     FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
   )
   FetchContent_MakeAvailable(googletest)
@@ -81,17 +87,22 @@ if (onnxruntime_BUILD_BENCHMARKS)
     google_benchmark
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/google_benchmark-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/google_benchmark-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/google_benchmark-download
     FIND_PACKAGE_ARGS NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
-
 
 if(onnxruntime_USE_MIMALLOC)
   FetchContent_Declare(
     mimalloc
     URL ${DEP_URL_mimalloc}
     URL_HASH SHA1=${DEP_SHA1_mimalloc}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/mimalloc-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/mimalloc-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/mimalloc-download
     FIND_PACKAGE_ARGS NAMES mimalloc
   )
   FetchContent_MakeAvailable(mimalloc)
@@ -99,10 +110,13 @@ endif()
 
 #Protobuf depends on utf8_range
 FetchContent_Declare(
-    utf8_range
-    URL ${DEP_URL_utf8_range}
-    URL_HASH SHA1=${DEP_SHA1_utf8_range}
-    FIND_PACKAGE_ARGS NAMES utf8_range
+  utf8_range
+  URL ${DEP_URL_utf8_range}
+  URL_HASH SHA1=${DEP_SHA1_utf8_range}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/utf8_range-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/utf8_range-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/utf8_range-download
+  FIND_PACKAGE_ARGS NAMES utf8_range
 )
 
 set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
@@ -122,7 +136,14 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     # Using CMAKE_CROSSCOMPILING is not recommended for Apple target devices.
     # https://cmake.org/cmake/help/v3.26/variable/CMAKE_CROSSCOMPILING.html
     # To keep it simple, just download and use the universal protoc binary for all Apple host builds.
-    FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
+    FetchContent_Declare(
+      protoc_binary
+      URL ${DEP_URL_protoc_mac_universal}
+      URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal}
+      SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-src
+      BINARY_DIR ${CMAKE_BINARY_DIR}/deps/protoc_binary-build
+      DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-download
+    )
     FetchContent_Populate(protoc_binary)
     if(protoc_binary_SOURCE_DIR)
       message(STATUS "Use prebuilt protoc")
@@ -133,10 +154,24 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     message(STATUS "CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
     if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
       if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
+        FetchContent_Declare(
+          protoc_binary
+          URL ${DEP_URL_protoc_win64}
+          URL_HASH SHA1=${DEP_SHA1_protoc_win64}
+          SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-src
+          BINARY_DIR ${CMAKE_BINARY_DIR}/deps/protoc_binary-build
+          DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-download
+        )
         FetchContent_Populate(protoc_binary)
       elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
+        FetchContent_Declare(
+          protoc_binary
+          URL ${DEP_URL_protoc_win32}
+          URL_HASH SHA1=${DEP_SHA1_protoc_win32}
+          SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-src
+          BINARY_DIR ${CMAKE_BINARY_DIR}/deps/protoc_binary-build
+          DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-download
+        )
         FetchContent_Populate(protoc_binary)
       endif()
 
@@ -147,13 +182,34 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
       endif()
     elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
       if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64})
+        FetchContent_Declare(
+          protoc_binary
+          URL ${DEP_URL_protoc_linux_x64}
+          URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64}
+          SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-src
+          BINARY_DIR ${CMAKE_BINARY_DIR}/deps/protoc_binary-build
+          DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-download
+        )
         FetchContent_Populate(protoc_binary)
       elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86})
+        FetchContent_Declare(
+          protoc_binary
+          URL ${DEP_URL_protoc_linux_x86}
+          URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86}
+          SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-src
+          BINARY_DIR ${CMAKE_BINARY_DIR}/deps/protoc_binary-build
+          DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-download
+        )
         FetchContent_Populate(protoc_binary)
       elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
+        FetchContent_Declare(
+          protoc_binary
+          URL ${DEP_URL_protoc_linux_aarch64}
+          URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64}
+          SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-src
+          BINARY_DIR ${CMAKE_BINARY_DIR}/deps/protoc_binary-build
+          DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/protoc_binary-download
+        )
         FetchContent_Populate(protoc_binary)
       endif()
 
@@ -185,7 +241,7 @@ endif()
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -196,6 +252,9 @@ FetchContent_Declare(
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/Protobuf-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/Protobuf-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/Protobuf-download
   FIND_PACKAGE_ARGS NAMES Protobuf protobuf
 )
 
@@ -270,6 +329,9 @@ FetchContent_Declare(
   date
   URL ${DEP_URL_date}
   URL_HASH SHA1=${DEP_SHA1_date}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/date-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/date-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/date-download
   FIND_PACKAGE_ARGS 3...<4 NAMES date
 )
 onnxruntime_fetchcontent_makeavailable(date)
@@ -278,6 +340,9 @@ FetchContent_Declare(
   mp11
   URL ${DEP_URL_mp11}
   URL_HASH SHA1=${DEP_SHA1_mp11}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/mp11-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/mp11-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/mp11-download
   FIND_PACKAGE_ARGS NAMES Boost
 )
 onnxruntime_fetchcontent_makeavailable(mp11)
@@ -293,10 +358,13 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
 
 FetchContent_Declare(
-    nlohmann_json
-    URL ${DEP_URL_json}
-    URL_HASH SHA1=${DEP_SHA1_json}
-    FIND_PACKAGE_ARGS 3.10 NAMES nlohmann_json
+  nlohmann_json
+  URL ${DEP_URL_json}
+  URL_HASH SHA1=${DEP_SHA1_json}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/nlohmann_json-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/nlohmann_json-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/nlohmann_json-download
+  FIND_PACKAGE_ARGS 3.10 NAMES nlohmann_json
 )
 onnxruntime_fetchcontent_makeavailable(nlohmann_json)
 
@@ -358,7 +426,10 @@ if (CPUINFO_SUPPORTED)
         pytorch_cpuinfo
         URL ${DEP_URL_pytorch_cpuinfo}
         URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
+        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 --input=${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
+        SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pytorch_cpuinfo-src
+        BINARY_DIR ${CMAKE_BINARY_DIR}/deps/pytorch_cpuinfo-build
+        DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pytorch_cpuinfo-download
         FIND_PACKAGE_ARGS NAMES cpuinfo
       )
   else()
@@ -366,6 +437,9 @@ if (CPUINFO_SUPPORTED)
         pytorch_cpuinfo
         URL ${DEP_URL_pytorch_cpuinfo}
         URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pytorch_cpuinfo-src
+        BINARY_DIR ${CMAKE_BINARY_DIR}/deps/pytorch_cpuinfo-build
+        DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pytorch_cpuinfo-download
         FIND_PACKAGE_ARGS NAMES cpuinfo
       )
   endif()
@@ -386,6 +460,9 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
     URL ${DEP_URL_pytorch_cpuinfo}
     URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
     SOURCE_SUBDIR deps/clog
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pytorch_clog-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/pytorch_clog-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pytorch_clog-download
     FIND_PACKAGE_ARGS NAMES cpuinfo
   )
   set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
@@ -405,7 +482,10 @@ if(onnxruntime_USE_CUDA)
     GSL
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/GSL-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/GSL-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/GSL-download
     FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
@@ -413,6 +493,9 @@ else()
     GSL
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/GSL-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/GSL-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/GSL-download
     FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 endif()
@@ -424,9 +507,12 @@ find_path(safeint_SOURCE_DIR NAMES "SafeInt.hpp")
 if(NOT safeint_SOURCE_DIR)
   unset(safeint_SOURCE_DIR)
   FetchContent_Declare(
-      safeint
-      URL ${DEP_URL_safeint}
-      URL_HASH SHA1=${DEP_SHA1_safeint}
+    safeint
+    URL ${DEP_URL_safeint}
+    URL_HASH SHA1=${DEP_SHA1_safeint}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/safeint-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/safeint-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/safeint-download
   )
 
   # use fetch content rather than makeavailable because safeint only includes unconditional test targets
@@ -446,18 +532,21 @@ set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
-  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers.patch)
+  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers.patch)
 else()
  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND "")
 endif()
 
 #flatbuffers 1.11.0 does not have flatbuffers::IsOutRange, therefore we require 1.12.0+
 FetchContent_Declare(
-    flatbuffers
-    URL ${DEP_URL_flatbuffers}
-    URL_HASH SHA1=${DEP_SHA1_flatbuffers}
-    PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
-    FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers flatbuffers
+  flatbuffers
+  URL ${DEP_URL_flatbuffers}
+  URL_HASH SHA1=${DEP_SHA1_flatbuffers}
+  PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/flatbuffers-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/flatbuffers-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/flatbuffers-download
+  FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers flatbuffers
 )
 
 onnxruntime_fetchcontent_makeavailable(flatbuffers)
@@ -495,7 +584,7 @@ else()
 endif()
 
 if(Patch_FOUND)
-  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
 else()
   set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
 endif()
@@ -505,6 +594,9 @@ FetchContent_Declare(
   URL ${DEP_URL_onnx}
   URL_HASH SHA1=${DEP_SHA1_onnx}
   PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/onnx-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/onnx-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/onnx-download
   FIND_PACKAGE_ARGS NAMES ONNX onnx
 )
 if (NOT onnxruntime_MINIMAL_BUILD)
@@ -582,6 +674,9 @@ if(onnxruntime_ENABLE_ATEN)
     dlpack
     URL ${DEP_URL_dlpack}
     URL_HASH SHA1=${DEP_SHA1_dlpack}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/dlpack-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/dlpack-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/dlpack-download
     FIND_PACKAGE_ARGS NAMES dlpack
   )
   # We can't use onnxruntime_fetchcontent_makeavailable since some part of the the dlpack code is Linux only.
@@ -596,6 +691,9 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
     cxxopts
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/cxxopts-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/cxxopts-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/cxxopts-download
     FIND_PACKAGE_ARGS NAMES cxxopts
   )
   set(CXXOPTS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -608,7 +706,10 @@ if (onnxruntime_USE_COREML)
     coremltools
     URL ${DEP_URL_coremltools}
     URL_HASH SHA1=${DEP_SHA1_coremltools}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/coremltools-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/coremltools-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/coremltools-download
   )
   # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
   FetchContent_Populate(coremltools)
@@ -619,7 +720,10 @@ if (onnxruntime_USE_WEBGPU)
     dawn
     URL ${DEP_URL_dawn}
     URL_HASH SHA1=${DEP_SHA1_dawn}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/dawn-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/dawn-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/dawn-download
   )
 
   # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
@@ -656,7 +760,8 @@ if (onnxruntime_USE_WEBGPU)
 
     # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
     set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
-    # We are currently always using the D3D12 backend.
+
+    # Dawn D3D11 backend used for compatible mode. TBD if that we need compatible mode.
     set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
   endif()
 

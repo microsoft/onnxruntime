@@ -126,6 +126,13 @@ def _openvino_verify_device_type(device_read):
 
     return device_read
 
+def get_cmake_version():
+    # Run the command and capture its output
+    result = subprocess.run(['cmake', '--version'], capture_output=True, text=True)
+
+    # Extract the version string from the output
+    version_string = result.stdout.strip()
+    return(version_string)
 
 def parse_arguments():
     class Parser(argparse.ArgumentParser):
@@ -769,6 +776,7 @@ def parse_arguments():
 
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
+    parser.add_argument("--update_deps", action="store_true", help="Download or Update deps.")
 
     if not is_windows():
         parser.add_argument(
@@ -966,6 +974,7 @@ def generate_build_tree(
     cmake_path,
     source_dir,
     build_dir,
+    deps_src_dir,
     cuda_home,
     cudnn_home,
     rocm_home,
@@ -1171,6 +1180,12 @@ def generate_build_tree(
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
         if cudnn_home:
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+
+    if not args.update_deps:
+        cmake_args.append("-DFETCHCONTENT_FULLY_DISCONNECTED=ON")
+
+    if version_to_tuple(get_cmake_version()) >= (3, 30):
+        cmake_args.append("-DFETCHCONTENT_BASE_DIR=" + deps_src_dir)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
@@ -1427,7 +1442,7 @@ def generate_build_tree(
 
         # default path of onnxruntime-extensions, using git submodule
         for config in configs:
-            onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
+            onnxruntime_extensions_path = os.path.join(deps_src_dir, "extensions-src")
             onnxruntime_extensions_path = os.path.abspath(onnxruntime_extensions_path)
 
             if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
@@ -1649,9 +1664,9 @@ def generate_build_tree(
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
             os.environ["PATH"] = (
-                os.path.join(config_build_dir, "_deps", "tvm-build")
+                os.path.join(get_config_build_dir(build_dir, config), "deps", "tvm-build")
                 + os.pathsep
-                + os.path.join(config_build_dir, "_deps", "tvm-src")
+                + os.path.join(deps_src_dir, "tvm-src")
                 + os.pathsep
                 + os.path.dirname(sys.executable)
                 + os.pathsep
@@ -2050,7 +2065,7 @@ def run_ios_tests(args, source_dir, config, cwd):
         )
 
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, deps_src_dir):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -2086,7 +2101,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if args.enable_pybind:
             python_path = None
             if args.use_tvm:
-                python_path = str((Path(build_dir) / config / "_deps" / "tvm-src" / "python").resolve())
+                python_path = str((Path(deps_src_dir) / "tvm-src" / "python").resolve())
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
@@ -2209,12 +2224,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, "onnxruntime_test_python_keras.py"], cwd=cwd, dll_path=dll_path)
 
 
-def tvm_run_python_tests(build_dir, configs):
+def tvm_run_python_tests(build_dir, configs, deps_src_dir):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+        python_path = os.path.join(deps_src_dir, "tvm-src", "python")
         run_subprocess(
             [sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, python_path=os.path.abspath(python_path)
         )
@@ -2697,6 +2712,7 @@ def main():
     build_dir = args.build_dir
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
+    deps_src_dir = os.path.join(build_dir, "_deps");
 
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
@@ -2855,6 +2871,7 @@ def main():
             cmake_path,
             source_dir,
             build_dir,
+            deps_src_dir,
             cuda_home,
             cudnn_home,
             rocm_home,
@@ -2893,7 +2910,7 @@ def main():
             source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
             setup_test_data(source_onnx_model_dir, "models", build_dir, configs)
 
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, deps_src_dir)
 
         # TODO(agladyshev):
         # to support Windows, we need to update .github/workflows/windows.yml

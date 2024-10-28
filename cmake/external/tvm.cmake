@@ -5,6 +5,9 @@ if (onnxruntime_USE_TVM)
     tvm
     GIT_REPOSITORY https://github.com/apache/tvm.git
     GIT_TAG        2379917985919ed3918dc12cad47f469f245be7a
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/tvm-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/tvm-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/tvm-download
   )
 
   FetchContent_GetProperties(tvm)
