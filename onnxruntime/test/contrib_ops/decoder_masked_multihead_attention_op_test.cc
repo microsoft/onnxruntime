@@ -76,7 +76,7 @@ template <typename T>
 float ToFloat(T val);
 
 template <>
-float ToFloat(float val) {
+constexpr float ToFloat(float val) {
   return val;
 }
 
@@ -753,6 +753,8 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   int hidden_size = head_size * num_heads;
 
   OpTester tester("DecoderMaskedMultiHeadAttention", 1, onnxruntime::kMSDomain);
+  FixedPatternValueGenerator generator{};
+  RandomValueGenerator random{};
 
   // Attributes
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -864,7 +866,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   if (std::is_same<T, MLFloat16>::value) {
     tester.SetOutputTolerance(0.005f);
   } else {
-    tester.SetOutputTolerance(0.001f, 0.001f);
+    tester.SetOutputTolerance(0.0001f, 0.0001f);
   }
 
   {
