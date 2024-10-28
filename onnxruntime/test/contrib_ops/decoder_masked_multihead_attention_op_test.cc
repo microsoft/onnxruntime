@@ -15,9 +15,6 @@ namespace onnxruntime {
 
 namespace test {
 
-// This op is currently only supported on CUDA- so test it only for CUDA
-#ifdef USE_CUDA
-
 template <typename T>
 static std::vector<T> CreateOnes(int size) {
   std::vector<T> f;
@@ -496,6 +493,9 @@ std::vector<T> Softmax_QK_Transpose_V(T* softmax_qk_transpose_matrix,
   return output;
 }
 
+// Currently we only support CUDA for DecoderMaskedSelfAttention
+#ifdef USE_CUDA
+
 template <typename T>
 static void TestDecoderMaskedSelfAttention() {
   // The kernel is only supported on CC 5.3 or higher GPUs
@@ -644,6 +644,8 @@ static void TestDecoderMaskedSelfAttention() {
   }
 }
 
+#endif  // USE_CUDA
+
 template <typename T>
 static std::vector<T> CalculateOutputQK(const std::vector<T>& q, const std::vector<T>& k,
                                         const std::vector<int32_t>& mask_index, const std::vector<T>& attention_bias,
@@ -788,7 +790,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     tester.AddOutput<T>("output", {batch_size, 1, hidden_size}, output);
     tester.AddOptionalOutputEdge<T>();  // optional present_key
     tester.AddOptionalOutputEdge<T>();  // optional present_value
-    tester.AddOutput<T>("qk", {batch_size, num_heads, 1, kv_sequence_length}, output_qk);
+    tester.AddOutput<float>("qk", {batch_size, num_heads, 1, kv_sequence_length}, output_qk_float);
   } else {
     int max_sequence_length = past_sequence_length + 10;
     int total_sequence_length = past_sequence_length + 1;
@@ -880,6 +882,8 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   }
 }
 
+#ifdef USE_CUDA
+
 TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
   TestDecoderMaskedSelfAttention<float>();
 }
@@ -904,6 +908,8 @@ TEST(DecoderMaskedMultiHeadAttentionTest, cuda_self_attn_fp16) {
   TestDecoderMaskedMultiHeadAttention<MLFloat16>(/* is_cross_attn = */ false);
 }
 
+#endif
+
 TEST(DecoderMaskedMultiHeadAttentionTest, cpu_cross_attn_fp32) {
   TestDecoderMaskedMultiHeadAttention<float>(/* is_cross_attn = */ true, /* use_cuda = */ false);
 }
@@ -911,8 +917,6 @@ TEST(DecoderMaskedMultiHeadAttentionTest, cpu_cross_attn_fp32) {
 TEST(DecoderMaskedMultiHeadAttentionTest, cpu_self_attn_fp32) {
   TestDecoderMaskedMultiHeadAttention<float>(/* is_cross_attn = */ false, /* use_cuda = */ false);
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
