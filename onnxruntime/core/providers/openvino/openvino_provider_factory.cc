@@ -57,6 +57,12 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   std::string so_cache_path = config_options_.GetConfigOrDefault("ep.context_file_path", "").c_str();
   bool so_allow_stripping_qdq = config_options_.GetConfigOrDefault(kOrtSessionOptionsAllowStrippingQDQ, "0") == "1";
 
+  if (!so_allow_stripping_qdq && enable_qdq_optimizer_) {
+    ORT_THROW(
+        MakeString("[ERROR] [OpenVINO] provider option enable_qdq_optimizer is set to true but session option ",
+                   kOrtSessionOptionsAllowStrippingQDQ, " is not set to true. ",
+                   "This will break some optimizations precondition."));
+  }
   if (so_allow_stripping_qdq && !enable_qdq_optimizer_) {
     LOGS_DEFAULT(WARNING) << "[OpenVINO] enable_qdq_optimizer is set to false with provider option but is enabled at "
                           << "session level with " << kOrtSessionOptionsAllowStrippingQDQ << " set to true. "
