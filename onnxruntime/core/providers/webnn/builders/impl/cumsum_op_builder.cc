@@ -26,7 +26,7 @@ class CumSumOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -60,7 +60,6 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                         const Node& node,
-                                        WebnnDeviceType device_type,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
