@@ -511,9 +511,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 
 TEST(MatMulNBits, Float16Cuda) {
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
-  auto has_gidx_options = {true, false};
+  std::vector<bool> has_gidx_options = {true, false};
   if (DefaultDmlExecutionProvider() != nullptr) {
-    has_gidx_options = {false};
+    has_gidx_options.assign(1, false);
   }
 #else
   auto has_gidx_options = {false};
