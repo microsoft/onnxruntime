@@ -58,7 +58,7 @@ Do not modify directly.*
 | GreaterOrEqual | ai.onnx(12-15,16+) |  |
 | GroupQueryAttention | com.microsoft(1+) |  |
 | HardSigmoid | ai.onnx(6+) |  |
-| If | ai.onnx(1-10,11-12,13-18,19+) |  |
+| If | ai.onnx(1-10,11-12,13-18,19-20,21+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(1-16,17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
