@@ -83,9 +83,9 @@ Do not modify directly.*
 | ReduceL2 | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceLogSum | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceLogSumExp | ai.onnx(1-10,11-12,13-17,18+) |  |
-| ReduceMax | ai.onnx(1-10,11,12,13-17,18-19,20+) |  |
+| ReduceMax | ai.onnx(1-10,11,12,13-17,18+) |  |
 | ReduceMean | ai.onnx(1-10,11-12,13-17,18+) |  |
-| ReduceMin | ai.onnx(1-10,11,12,13-17,18-19,20+) |  |
+| ReduceMin | ai.onnx(1-10,11,12,13-17,18+) |  |
 | ReduceProd | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceSum | ai.onnx(1-10,11-12,13+) |  |
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
