@@ -3103,8 +3103,8 @@ TEST(QDQTransformerTests, Clip) {
 }
 
 // Test that the ClipQuantFusion and ReluQuantFusion transformer never runs for OpenVINO.
-TEST(QDQTransformerTests, ClipReluQuantFusion_ExceptOpenVINO) {
-  auto test_case = [&](bool should_fuse, bool is_openvino, int8_t zp, bool is_relu = true) {
+TEST(QDQTransformerTests, ClipReluQuantFusion_DisabledOnQDQStripping) {
+  auto test_case = [&](bool should_fuse, int8_t zp, bool is_relu = true) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<int8_t>({1, 2, 2, 2},
                                                   {-4, -3, -2, 0, 1, 2, 3, 4});
@@ -3141,11 +3141,19 @@ TEST(QDQTransformerTests, ClipReluQuantFusion_ExceptOpenVINO) {
 
     constexpr float epsilon = std::numeric_limits<float>::epsilon();
 
-    std::unique_ptr<IExecutionProvider> ep = nullptr;
-    if (is_openvino) {
-      ep = DefaultOpenVINOExecutionProvider();
-      EXPECT_NE(ep, nullptr);
-    }
+    TransformerTester(build_test_case, check_relu_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      18,
+                      epsilon,
+                      epsilon);
+
+    // Regardless of whether the precondition of Clip/ReluQuantFusion is met, the optimizer must not apply the fusion
+    // if kOrtSessionOptionsAllowStrippingQDQ is set
+    should_fuse = false;
+    auto add_session_options = [&](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsAllowStrippingQDQ, "1"));
+    };
     TransformerTester(build_test_case, check_relu_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
@@ -3153,20 +3161,13 @@ TEST(QDQTransformerTests, ClipReluQuantFusion_ExceptOpenVINO) {
                       epsilon,
                       epsilon,
                       /*transformer=*/nullptr,
-                      /*add_session_options=*/{},
-                      /*disabled_optimizers=*/{},
-                      std::move(ep));
+                      add_session_options);
   };
 
-  test_case(/*should_fuse=*/true, /*is_openvino=*/false, /*zp=*/-128);                    // ReluQuantFusion applicable
-  test_case(/*should_fuse=*/false, /*is_openvino=*/false, /*zp=*/10);                     // ReluQuantFusion inapplicable
-  test_case(/*should_fuse=*/true, /*is_openvino=*/false, /*zp=*/0, /*is_relu=*/false);    // ClipQuantFusion applicable
-  test_case(/*should_fuse=*/false, /*is_openvino=*/false, /*zp=*/10, /*is_relu=*/false);  // ClipQuantFusion inapplicable
-
-#if defined(USE_OPENVINO)
-  test_case(/*should_fuse=*/false, /*is_openvino=*/true, /*zp=*/-128);                  // OpenVINO does not fuse Relu
-  test_case(/*should_fuse=*/false, /*is_openvino=*/true, /*zp=*/0, /*is_relu=*/false);  // OpenVINO does not fuse Clip
-#endif
+  test_case(/*should_fuse=*/true, /*zp=*/-128);                    // ReluQuantFusion applicable
+  test_case(/*should_fuse=*/false, /*zp=*/10);                     // ReluQuantFusion inapplicable
+  test_case(/*should_fuse=*/true, /*zp=*/0, /*is_relu=*/false);    // ClipQuantFusion applicable
+  test_case(/*should_fuse=*/false, /*zp=*/10, /*is_relu=*/false);  // ClipQuantFusion inapplicable
 }
 
 TEST(QDQTransformerTests, Concat) {
