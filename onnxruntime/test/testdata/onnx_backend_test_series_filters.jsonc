@@ -724,7 +724,11 @@
         //Bug: DML EP does not execute operators with an empty input tensor
         //TODO: Resolve as a graph implementation that returns a constant inf tensor with appropriate strides
         "^test_reduce_min_empty_set_cpu",
-        "^test_*_cuda"
+        "^test_reduce_min_empty_set_cuda",
+        "^test_asin_example_cuda",
+        "^test_dynamicquantizelinear_cuda",
+        "^test_dynamicquantizelinear_expanded_cuda",
+        "^test_convtranspose_autopad_same_cuda"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
