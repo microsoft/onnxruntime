@@ -1759,10 +1759,9 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    bool have_openvino_ep = execution_providers_.Get(onnxruntime::kOpenVINOExecutionProvider) != nullptr;
-    if (have_openvino_ep) {
-      LOGS(*session_logger_, INFO) << "Excluding ClipQuantFusion and ReluQuantFusion for OpenVINO provider.";
-      std::cout<< "Excluding ClipQuantFusion and ReluQuantFusion for OpenVINO provider." << std::endl;
+    if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsAllowStrippingQDQ, "0") == "1") {
+      LOGS(*session_logger_, INFO) << "Session option " << kOrtSessionOptionsAllowStrippingQDQ << " is set to true. "
+                                   << "Excluding ClipQuantFusion and ReluQuantFusion from optimizations";
       optimizers_to_disable_.insert("ClipQuantRewrite");
       optimizers_to_disable_.insert("ReluQuantRewrite");
     }
