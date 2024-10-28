@@ -217,7 +217,6 @@ stages:
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
-                      python3 -V; \
                       ls /opt/python; \
                       which python3.12; \
                       python3.12 /onnxruntime_src/tools/ci_build/build.py \
