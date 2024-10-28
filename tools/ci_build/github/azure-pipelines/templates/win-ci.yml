@@ -121,12 +121,6 @@ stages:
 
       - template: telemetry-steps.yml
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.12'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
-
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
