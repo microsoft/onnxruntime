@@ -125,7 +125,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_DML
   const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
   if (no_dml_ep_test != "1") {
-    return nullptr;
+     return nullptr;
   }
 #endif
   OrtCUDAProviderOptionsV2 provider_options{};
