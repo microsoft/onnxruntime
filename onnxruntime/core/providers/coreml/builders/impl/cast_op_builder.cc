@@ -16,8 +16,6 @@ class CastOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
-  bool is_support_fused(const Node& node, const OpBuilderInputParams& input_params,
-                        const logging::Logger& logger) const;
 
   bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
                               const logging::Logger& logger) const override;
@@ -41,10 +39,11 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "cast");
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
     NodeAttrHelper helper(node);
-    const auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
+    auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
     std::string to_dtype = "";
-    if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32) {
+    if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32 || cast_to_type == ONNX_NAMESPACE::TensorProto::INT64) {
       to_dtype = "int32";
+      cast_to_type = ONNX_NAMESPACE::TensorProto::INT32;
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
       to_dtype = "fp32";
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
@@ -56,7 +55,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     }
 
     AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
     model_builder.AddOperation(std::move(op));
   }
 #endif
@@ -66,25 +65,13 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 
 bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
-  bool is_supported = is_support_fused(node, input_params, logger);
-
-  if (input_params.create_mlprogram) {
-    // cast only support int64 input when the prec_node is ArgMax
-    int32_t input_type;
-    GetType(*node.InputDefs()[0], input_type, logger);
-    if (!is_supported && input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      return false;
-    }
-  }
-
-  return is_supported;
-}
-
-bool CastOpBuilder::is_support_fused(const Node& node, const OpBuilderInputParams& input_params,
-                                     const logging::Logger& logger) const {
   if (node.GetInputEdgesCount() == 0) {
     LOGS(logger, VERBOSE) << "Cast has no preceding nodes.";
     return false;
+  }
+
+  if (input_params.create_mlprogram) {
+    return true;
   }
 
   const auto& prec_node = node.InputEdgesBegin()->GetNode();
@@ -134,11 +121,11 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
-    if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+    if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) &&
         (output_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+         output_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
          output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
       return true;

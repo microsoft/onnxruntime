@@ -121,7 +121,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
 
   EPVerificationParams verification_params{};
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
 
   RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
                             MakeCoreMLExecutionProvider(),

@@ -41,20 +41,10 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
     AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", bool(keepdims)));
-    if (node.GetOutputEdgesCount() == 1) {
-      auto it = node.OutputEdgesBegin();
-      const auto* next_node_in_partition = &(it->GetNode());
-      // If Argmax's successive node is a Cast from int64 to int32 output, we fuse it
-      if (next_node_in_partition != nullptr && next_node_in_partition->OpType() == "Cast") {
-        // Skip the cast's input/argmax's output
-        AddOperationOutput(*op, *next_node_in_partition->OutputDefs()[0]);
-        model_builder.AddOperation(std::move(op));
-        return Status::OK();
-      }
-    }
-    // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.cast
+
+    int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     // the output of ArgMax must be int32
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
     model_builder.AddOperation(std::move(op));
   } else
 #endif  // (COREML_ENABLE_MLPROGRAM)
@@ -101,6 +91,12 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node,
     return false;
   }
 
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (input_params.create_mlprogram) {
+    return true;
+  }
+#endif
+
   // If there are multiple downstream nodes and cast (toint32) is one of them
   // not supported, exit here
   // Otherwise, for general multiple downstream nodes, supported
@@ -118,27 +114,6 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node,
       }
     }
   }
-
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram) {
-    if (node.GetOutputEdgesCount() == 1) {
-      auto it = node.OutputEdgesBegin();
-      const auto& op_type = it->GetNode().OpType();
-      if (op_type == "Cast") {
-        // Check if the output type of cast node is int32
-        NodeAttrHelper output_helper(it->GetNode());
-        const auto cast_to_type = output_helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
-        if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32) {
-          return true;
-        } else {
-          return false;
-        }
-      }
-    } else {
-      return false;
-    }
-  }
-#endif
 
   return true;
 }
