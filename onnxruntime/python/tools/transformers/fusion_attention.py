@@ -173,16 +173,15 @@ class FusionAttention(Fusion):
             Tuple[int, int]: num_heads and hidden_size
         """
         # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
-        q_shape = self.model.get_initializer(reshape_q.input[1])
-        if q_shape is None:
+        q_shape_value = self.model.get_constant_value(reshape_q.input[1])
+        if q_shape_value is None:
             concat = self.model.get_parent(reshape_q, 1)
             if concat is not None and concat.op_type == "Concat":
                 return self.get_num_heads_and_hidden_size_from_concat(concat)
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        q_shape_value = NumpyHelper.to_array(q_shape)
-        if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
+        if (not isinstance(q_shape_value, np.ndarray)) or len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
             logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
@@ -1051,12 +1050,14 @@ class FusionAttention(Fusion):
         is_distill = False
         is_distill_add = False
         is_no_mask_attention = False
+        is_sdpa = False
         qk_paths = {
             "path1": (["Softmax", "Add", "Div", "MatMul"], [0, 0, None, 0]),
             "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, None, 0]),
             "path3": (["Softmax", "Where", "MatMul", "Div"], [0, 0, 2, 0]),
             "path4": (["Softmax", "Add", "Where", "MatMul"], [0, 0, 0, 2]),
             "path5": (["Softmax", "Div", "MatMul"], [0, 0, 0]),
+            "sdpa": (["Softmax", "Add", "MatMul", "Mul", "Sqrt"], [0, 0, None, 0, 1]),
         }
 
         qk_nodes = None
@@ -1066,10 +1067,12 @@ class FusionAttention(Fusion):
                 continue
             if k == "path3":
                 is_distill = True
-            if k == "path4":
+            elif k == "path4":
                 is_distill_add = True
-            if k == "path5":
+            elif k == "path5":
                 is_no_mask_attention = True
+            elif k == "sdpa":
+                is_sdpa = True
             break
 
         if qk_nodes is None:
@@ -1079,19 +1082,22 @@ class FusionAttention(Fusion):
         add_qk = None
         matmul_qk = None
         where_qk = None
+        after_q = matmul_qk
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
             (_, add_qk, where_qk, matmul_qk) = qk_nodes
         elif is_no_mask_attention:
             (_, _, matmul_qk) = qk_nodes
+        elif is_sdpa:
+            (_, add_qk, matmul_qk, after_q, _) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
-        q_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, None])
+        q_nodes = self.model.match_parent_path(after_q, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, None])
         if q_nodes is None:
             q_nodes = self.model.match_parent_path(
-                matmul_qk,
+                after_q,
                 ["Div", "Transpose", "Reshape", "Add", "MatMul"],
                 [0, 0, 0, 0, None],
             )
@@ -1102,7 +1108,15 @@ class FusionAttention(Fusion):
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
-        k_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, None])
+        after_k = matmul_qk
+        if is_sdpa:
+            mul_k_nodes = self.model.match_parent_path(matmul_qk, ["Mul", "Sqrt"], [1, None])
+            if mul_k_nodes is None:
+                logger.debug("fuse_attention: failed to match mul sqrt q path")
+                return
+            (after_k, _) = mul_k_nodes
+
+        k_nodes = self.model.match_parent_path(after_k, ["Transpose", "Reshape", "Add", "MatMul"],[0 if is_sdpa else 1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(
                 matmul_qk,
@@ -1148,11 +1162,9 @@ class FusionAttention(Fusion):
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,
                 [
-                    (
-                        ["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
-                        [None, 0, 1, 0, 0],
-                    ),
+                    (["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0, 0]),
                     (["Mul", "Sub", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0]),
+                    (["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0, 0]),
                 ],
                 output_name_to_node,
             )
@@ -1160,7 +1172,7 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match mask path")
             return
 
-        if not is_no_mask_attention and len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+        if not is_no_mask_attention and len(mask_nodes) > 1:
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             if mul_val != -10000:
                 self.mask_filter_value = mul_val
