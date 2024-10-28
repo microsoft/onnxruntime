@@ -83,7 +83,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, attention_bias, past_key, past_value, output, present_key,
-                          present_value, parameters, nullptr, nullptr, context);
+                          present_value, parameters, context);
   }
 
   TensorShapeVector k_new_dims({parameters.batch_size_, parameters.num_heads_,
@@ -102,7 +102,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
-                        present_value, parameters, nullptr, nullptr, context);
+                        present_value, parameters, context);
 }
 
 }  // namespace webgpu

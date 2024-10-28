@@ -457,7 +457,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, const Tensor* seqlen_k, const Tensor* total_seqlen_tensor, onnxruntime::webgpu::ComputeContext& context) {
+                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k, const Tensor* total_seqlen_tensor) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
   const int total_sequence_length = past_sequence_length + parameters.kv_sequence_length_;

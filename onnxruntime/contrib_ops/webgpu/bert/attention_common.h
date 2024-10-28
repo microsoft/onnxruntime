@@ -101,13 +101,13 @@ struct WebgpuAttentionParameters {
   bool is_first_prompt_ = false;       // indicates whether this is first decoding step
   bool rotary_interleaved_ = false;
   bool use_smooth_softmax_ = false;
-  float softcap_;
+  float softcap_ = 0.0;
   int zeros_count_ = 0;;
   int* zero_ptr_ = nullptr;
   // Computed values
   int n_reps = 1;
-  AttentionMaskType mask_type_;
-  AttentionQkvFormat qkv_format_;
+  AttentionMaskType mask_type_ = MASK_NONE;
+  AttentionQkvFormat qkv_format_ = UNKNOWN;
   };
 
 }

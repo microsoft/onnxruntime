@@ -20,7 +20,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, const Tensor* seqlen_k, const Tensor* total_seqlen_tensor, onnxruntime::webgpu::ComputeContext& context);
+                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr);
 
 class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> {
  public:
