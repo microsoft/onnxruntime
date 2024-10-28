@@ -7,9 +7,6 @@
 from __future__ import annotations
 
 import os
-
-# Allow running this test script without installing onnxruntime package.
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,13 +22,8 @@ from op_test_utils import (
     create_clip_node,
 )
 
-# from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
-# from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
-
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "python", "tools"))
-from quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
-from quantization.calibrate import CalibrationMethod, TensorData, TensorsData
+from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
+from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
 
 class TestQDQFormat(unittest.TestCase):
