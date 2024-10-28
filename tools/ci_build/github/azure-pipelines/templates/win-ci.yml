@@ -127,23 +127,6 @@ stages:
           addToPath: true
           architecture: ${{ parameters.buildArch }}
 
-      - task: PythonScript@0
-        displayName: 'KYLE - Test Enviroment Variables'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\kyle_test.py'
-          workingDirectory: '$(Build.BinariesDirectory)'
-        env:
-          ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-          KYLE_ENV: "Hello, World!"
-
-      - task: PowerShell@2
-        displayName: 'KYLE - End Pipeline Running'
-        inputs:
-          targetType: 'inline'
-          script: |
-            exit 1
-          workingDirectory: '$(Build.BinariesDirectory)'
-
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
