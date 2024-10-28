@@ -85,6 +85,12 @@ stages:
               addToPath: true
               architecture: 'x64'
 
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
+
+
           - template: ../templates/download-deps.yml
 
           - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
