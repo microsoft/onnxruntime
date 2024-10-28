@@ -79,6 +79,16 @@
 	];
 	let blogs = [
 		{
+			title: 'Democratizing AI Model optimization with the new Olive CLI',
+			date: 'October 30th, 2024',
+			blurb:
+				"Optimizing AI models for the ONNX Runtime using the new Olive CLI ",
+			link: 'blogs/olive-cli',
+			image: Phi3SmallMediumImage,
+			imgalt:
+				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
+		},
+		{
 			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
 			date: 'May 21th, 2024',
 			blurb:
