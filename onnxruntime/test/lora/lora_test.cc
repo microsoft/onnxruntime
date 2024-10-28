@@ -205,7 +205,7 @@ TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
     GTEST_SKIP() << "Skip This Test Due to this EP is null";
   }
 #ifdef USE_DML
-  if (DefaultDmlExecutionProvider() == nullptr) {
+  if (DefaultDmlExecutionProvider() != nullptr) {
     GTEST_SKIP() << "It should not run with DML EP";
   }
 #endif
@@ -246,7 +246,7 @@ TEST(LoraAdapterTest, VerifyDmlDeviceCopy) {
     GTEST_SKIP() << "Skip This Test Due to this EP is null";
   }
 #ifdef USE_CUDA
-  if (DefaultCudaExecutionProvider() == nullptr) {
+  if (DefaultCudaExecutionProvider() != nullptr) {
     GTEST_SKIP() << "It should not run with CUDA EP";
   }
 #endif
