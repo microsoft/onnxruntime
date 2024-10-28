@@ -770,12 +770,18 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
 
   if (is_cross_attn) {
     auto key = CreateRandom<T>(batch_size * num_heads * kv_sequence_length * head_size);
+    std::vector<T> reordered_key;
+    if (use_cuda) {
+      reordered_key = ReorderKVCache<T>(key, batch_size, num_heads,
+                                        kv_sequence_length, head_size, kv_sequence_length, false);
+    }
     auto value = CreateRandom<T>(batch_size * num_heads * kv_sequence_length * head_size);
-    tester.AddInput<T>("key", {batch_size, num_heads, kv_sequence_length, head_size}, key);
+    tester.AddInput<T>("key", {batch_size, num_heads, kv_sequence_length, head_size}, (use_cuda ? reordered_key : key));
     tester.AddInput<T>("value", {batch_size, num_heads, kv_sequence_length, head_size},
                        CreateRandom<T>(batch_size * num_heads * kv_sequence_length * head_size));
 
-    auto mask_index = CreateOnes<int32_t>(batch_size * kv_sequence_length);
+    const std::vector<int64_t> mask_index_dims = {batch_size, kv_sequence_length};
+    auto mask_index = generator.Discrete<int32_t>(mask_index_dims, AsSpan({0, 1}));
     tester.AddInput<int32_t>("mask_index", {batch_size, kv_sequence_length}, mask_index);
 
     // Calculate Softmax(Q * K^T + (Optional) mask) * V
@@ -804,9 +810,15 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     tester.AddInput<T>("key", {batch_size, 1, hidden_size}, key);
     tester.AddInput<T>("value", {batch_size, 1, hidden_size}, value);
 
-    auto mask_index = CreateOnes<int32_t>(batch_size * total_sequence_length);
-    auto attention_bias = CreateValues<T>(total_sequence_length, 0);
+    const std::vector<int64_t> mask_index_dims = {batch_size, total_sequence_length};
+    auto mask_index = generator.Discrete<int32_t>(mask_index_dims, AsSpan({0, 1}));
     tester.AddInput<int32_t>("mask_index", {batch_size, total_sequence_length}, mask_index);
+    std::vector<int64_t> attention_bias_dims = {1, 1, 1, total_sequence_length};
+    auto attention_bias_float = random.Gaussian<float>(attention_bias_dims, 0.0f, 0.3f);
+    std::vector<T> attention_bias(attention_bias_float.size());
+    for (size_t i = 0; i < attention_bias.size(); ++i) {
+      attention_bias[i] = static_cast<T>(attention_bias_float[i]);
+    }
     tester.AddInput<T>("attention_bias", {1, 1, 1, total_sequence_length}, attention_bias);
 
     auto past_key = CreateRandom<T>(batch_size * num_heads * max_sequence_length * head_size);
