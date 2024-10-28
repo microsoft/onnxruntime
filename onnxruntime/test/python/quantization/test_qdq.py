@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 import os
+
+# Allow running this test script without installing onnxruntime package.
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,8 +25,13 @@ from op_test_utils import (
     create_clip_node,
 )
 
-from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
-from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
+# from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
+# from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
+
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "python", "tools"))
+from quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
+from quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
 
 class TestQDQFormat(unittest.TestCase):
@@ -1724,6 +1732,99 @@ class TestQDQ4bit(TestQDQFormat):
         td = TensorData(lowest=np.array([0.1], dtype=np.float32), highest=np.array([1.1], dtype=np.float32))
         new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, {"td": td})
         write_calibration_table(new_calibrate_tensors_range)
+
+
+class TestQDQPrequantWeights(TestQDQFormat):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.prequant_weight")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        # cls._tmp_dir_path = cls._tmp_model_dir.name
+        cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def build_conv_test_model(
+        self,
+        inp_shape: list[int],
+        weight_quant_data: np.ndarray,
+        weight_scale_data: np.ndarray,
+        weight_zp_data: np.ndarray,
+        bias_data: np.ndarray,
+    ):
+        """
+        Builds a model with a Conv that has a quantized weight input.
+        """
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, inp_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, None)
+        weight_quant = onnx.numpy_helper.from_array(weight_quant_data, "weight_quant")
+        weight_scale = onnx.numpy_helper.from_array(weight_scale_data, "weight_scale")
+        weight_zp = onnx.numpy_helper.from_array(weight_zp_data, "weight_zp")
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        dq_node = onnx.helper.make_node(
+            "DequantizeLinear", ["weight_quant", "weight_scale", "weight_zp"], ["weight_dequant"], name="DQ0"
+        )
+        conv_node = onnx.helper.make_node("Conv", ["input_0", "weight_dequant", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph(
+            [dq_node, conv_node],
+            "ConvPreQuantWeight",
+            [input_0],
+            [output_0],
+            initializer=[weight_quant, weight_scale, weight_zp, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+
+        return onnx.shape_inference.infer_shapes(model)
+
+    def test_quantize_with_prequantized_weights(self):
+        """
+        Test quantization of model with pre-quantized weights.
+        """
+        float_model_path = os.path.join(self._tmp_dir_path, "conv.f32.prequant_weight.onnx")
+        qdq_model_path = os.path.join(self._tmp_dir_path, "conv.all_quant_2.qdq.onnx")
+
+        inp_shape = [1, 2, 100, 100]
+        weight_shape = [2, 2, 20, 20]
+
+        # range = 3.0, scale = 3/15, zp = 0
+        weight_scale_data = np.array(3 / 15, dtype=np.float32)
+        weight_zp_data = np.array(0, dtype=np.int8)
+        weight_data = np.linspace(-1.5, 1.5, num=1600, dtype=np.float32).reshape(weight_shape)
+        weight_quant_data = weight_data / weight_scale_data
+        weight_quant_data = weight_quant_data.astype(np.int8)
+
+        bias_data = np.array([-10.0, 10.0], dtype=np.float32)
+        float_model = self.build_conv_test_model(
+            inp_shape, weight_quant_data, weight_scale_data, weight_zp_data, bias_data
+        )
+
+        onnx.checker.check_model(float_model, True)
+        onnx.save_model(float_model, float_model_path)
+
+        # Check that the input model only has a pre-quantized weight
+        f32_node_counts = {"QuantizeLinear": 0, "DequantizeLinear": 1}
+        check_op_type_count(self, float_model_path, **f32_node_counts)
+
+        data_reader = self.input_feeds(3, {"input_0": inp_shape}, np.float32)
+
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+            op_types_to_quantize=["Conv"],
+        )
+
+        # The final model should have everything quantized
+        qdq_node_counts = {"QuantizeLinear": 2, "DequantizeLinear": 4}
+        check_op_type_count(self, qdq_model_path, **qdq_node_counts)
 
 
 if __name__ == "__main__":

@@ -180,7 +180,10 @@ class QDQQuantizer(BaseQuantizer):
         # The default behavior is that multiple nodes can share a QDQ pair as their inputs.
         # In TRT, QDQ pair can`t be shared between nodes, so it will create dedicated QDQ pairs for each node.
         self.dedicated_qdq_pair = extra_options.get("DedicatedQDQPair", False)
-        self.tensor_to_its_receiving_nodes = {}
+        self.tensor_to_its_receiving_nodes: dict[str, list[onnx.NodeProto]] = {}
+        self.tensor_to_producing_dq: dict[str, onnx.NodeProto] = {}
+        self.dont_quantize_weights = extra_options.get("QDQDontQuantizeWeights", False)
+        self.dont_quantize_activations = extra_options.get("QDQDontQuantizeActivations", False)
 
         # Let user set channel axis for specific op type and it's effective only when per channel quantization is supported and per_channel is True.
         self.qdq_op_type_per_channel_support_to_axis = extra_options.get("QDQOpTypePerChannelSupportToAxis", {})
@@ -370,6 +373,9 @@ class QDQQuantizer(BaseQuantizer):
         self.model.remove_nodes(self.nodes_to_remove)
 
     def quantize_model(self):
+        if self.dont_quantize_activations and self.dont_quantize_weights:
+            raise RuntimeError("Nothing to quantize: user disabled quantization of activations and intializers")
+
         for node in self.model.nodes():
             if self.should_quantize_node(node):
                 op_quantizer = CreateQDQQuantizer(self, node)
@@ -379,6 +385,9 @@ class QDQQuantizer(BaseQuantizer):
                     if tensor_name not in self.tensor_to_its_receiving_nodes:
                         self.tensor_to_its_receiving_nodes[tensor_name] = []
                     self.tensor_to_its_receiving_nodes[tensor_name].append(node)
+            if node.op_type == DEQUANT_OP_NAME:
+                for tensor_name in node.output:
+                    self.tensor_to_producing_dq[tensor_name] = node
 
         self._quantize_normal_tensors()
         self._quantize_sharing_param_tensors()
@@ -755,6 +764,34 @@ class QDQQuantizer(BaseQuantizer):
             original_quantized_value, converted_quantized_value, convert_recv_nodes
         )
 
+    def _try_get_const_dq_that_produces_tensor(self, tensor_name: str) -> onnx.NodeProto | None:
+        """
+        Returns the DequantizeLinear node that consumes an initializer and produces the specified tensor.
+        Returns None if such a DQ node does not exist.
+
+        Ex: Returns the node 'DequantizeLinear_0' for the tensor named 'dequant_weight' if the following node
+        sequence exists in the original input model:
+          (quantized_weight -> DequantizeLinear_0 -> dequant_weight)
+        """
+        producer_node = self.tensor_to_producing_dq.get(tensor_name, None)
+        if (
+            producer_node
+            and producer_node.op_type == DEQUANT_OP_NAME
+            and self.is_input_a_initializer(producer_node.input[0])
+        ):
+            return producer_node
+        return None
+
+    def _is_tensor_a_dequantized_initializer(self, tensor_name: str) -> bool:
+        """
+        Returns true if the given tensor is a dequantized initializer.
+
+        Ex: Returns true for the tensor named 'dequant_weight' if the following node sequence
+        exists in the original input model:
+          (quantized_weight -> DequantizeLinear_0 -> dequant_weight)
+        """
+        return bool(self._try_get_const_dq_that_produces_tensor(tensor_name))
+
     def _quantize_normal_tensors(self):
         """
         Adds Q/DQ ops to tensors (activations and weights) that have been marked for quantization by op quantizers.
@@ -767,8 +804,20 @@ class QDQQuantizer(BaseQuantizer):
                 # Quantize the input
                 initializer = find_by_name(tensor_name, self.model.initializer())
                 if initializer:
-                    self._add_qdq_pair_for_initializer(initializer, tensor_info.tensor_type, tensor_info.axis)
+                    if not self.dont_quantize_weights:
+                        self._add_qdq_pair_for_initializer(initializer, tensor_info.tensor_type, tensor_info.axis)
                 else:
+                    # Check if this tensor is already a dequantized value. If so, skip it.
+                    # This happens if the original input model already has some quantized weights.
+                    # Ex: (quantized_weight -> DequantizeLinear -> this_tensor)
+                    if self._is_tensor_a_dequantized_initializer(tensor_name):
+                        del self.tensors_to_quantize[tensor_name]
+                        continue
+
+                    if self.dont_quantize_activations:
+                        del self.tensors_to_quantize[tensor_name]
+                        continue
+
                     tensor_qparam_initializers = self._make_tensor_scale_zp_initializers(tensor_name)
                     if not tensor_qparam_initializers:
                         raise ValueError(
@@ -820,6 +869,12 @@ class QDQQuantizer(BaseQuantizer):
                     if self.is_input_a_initializer(tensor_name):
                         raise ValueError("Quantization parameter shared mode is not supported for weight yet")
 
+                    if self._is_tensor_a_dequantized_initializer(tensor_name):
+                        raise ValueError(f"Tensor {tensor_name} is a dequantized weight; will not additional Q/DQ ops")
+
+                    if self.dont_quantize_activations:
+                        continue
+
                     # Need to check if this tensor's quant_type is converted for some consumers.
                     # If so, create new scale/zp initializers for these consumers.
                     converted_qparam_inits = None
@@ -855,6 +910,11 @@ class QDQQuantizer(BaseQuantizer):
         """
         Adds DQ ops (or Cast) for bias tensors that have been marked for quantization by op quantizers.
         """
+        if self.dont_quantize_activations or self.dont_quantize_weights:
+            # User disabled quantization of activations or initializers/weights. We need both to quantize
+            # biases.
+            return
+
         for bias_name, bias_info in self.bias_to_quantize.items():
             if bias_name in self.quantized_value_map:
                 continue
@@ -1038,10 +1098,21 @@ class QDQQuantizer(BaseQuantizer):
         if bias_name in self.quantized_value_map:
             return self.quantized_value_map[bias_name].original.q_name
 
-        # get scale for weight
-        weight_scale_name = self.quantized_value_map[bias_info.weight_name].original.scale_name
-        weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
-        weight_scale = tensor_proto_to_array(weight_initializer)
+        # get name of scale initializer for weight
+        weight_scale_name = None
+        if bias_info.weight_name in self.quantized_value_map:
+            weight_scale_name = self.quantized_value_map[bias_info.weight_name].original.scale_name
+        else:
+            const_dq_node = self._try_get_const_dq_that_produces_tensor(bias_info.weight_name)
+            if not const_dq_node:
+                raise ValueError(
+                    f"Unable to quantize bias '{bias_name}' because the weight "
+                    f"'{bias_info.weight_name}' is not produced by a DQ that consumes an initializer"
+                )
+            weight_scale_name = const_dq_node.input[1]
+
+        weight_scale_initializer = find_by_name(weight_scale_name, self.model.initializer())
+        weight_scale = tensor_proto_to_array(weight_scale_initializer)
 
         # get scale for input
         input_scale_name = (
