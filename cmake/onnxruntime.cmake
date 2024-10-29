@@ -149,7 +149,7 @@ endif()
 
 if (NOT WIN32)
   if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    target_link_options(onnxruntime PRIVATE  " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
+    target_link_options(onnxruntime PRIVATE  "-Wl,-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         MACOSX_RPATH TRUE
