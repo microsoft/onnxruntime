@@ -69,7 +69,7 @@
 				<a rel="noopener noreferrer" target="_blank" href={modelhub.url} class="card-body">
 					<div class="grid grid-cols-5">
                         <div class="h-full">
-                            <img src={modelhub.image} alt={modelhub.imagealt} class="w-24 h-24" />
+                            <img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
                         </div>
 						<div class="col-span-4">
 							<h2 class="card-title text-white">{modelhub.title}</h2>
