@@ -130,8 +130,12 @@ std::optional<Tensor> ConvTranspose<T>::GetPrePackTensor(int /*input_index*/) {
 }
 
 template <>
-std::optional<Tensor> ConvTranspose<float>::GetPrePackTensor(int /*input_index*/) {
-  return std::move(packed_tensor_);
+std::optional<Tensor> ConvTranspose<float>::GetPrePackTensor(int input_index) {
+  if (input_index == 1) {
+    return std::move(packed_tensor_);
+  }
+
+  return std::nullopt;
 }
 
 template <typename T>

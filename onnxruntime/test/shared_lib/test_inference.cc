@@ -52,6 +52,7 @@
 #include <wil/result.h>
 #include <DirectML.h>
 #include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+#include "test_inference.h"
 
 using Microsoft::WRL::ComPtr;
 #endif
@@ -4605,99 +4606,154 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   mock_gqa.ReleaseAliasMap(input_index, output_index);
 }
 
-TEST(CApiTest, Serialize_PrePack_Initializers) {
-  for (std::string model_name : {"model_with_matmul_nbits", "model_with_gemm", "model_with_matmul", "model_with_conv_transpose",
-                                 "model_with_deep_cpu_lstm", "model_with_attention", "model_with_quant_attention",
-                                 "model_with_dynamic_quan_lstm", "model_with_matmul_integer_quant", //"model_with_fp16_conv",
-                                 "model_with_deep_cpu_gru", "model_with_quant_linearconv"}) {
-    const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
-    const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
-    std::string external_initializer_file_name = model_name + "_opt.onnx.data";
+// Test feature serialize prepack weight is only used in PC with CPU on inference,
+// disable this test for training, other device and eps
+#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN) && !defined(__ANDROID__) && !defined(USE_COREML)
+// MLAS dispatcher used in matmul_nbits kernels here is 64 bit only
+#if defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)
+void RunInferenceWithAndWithoutSerializePrepackWeightAndCompare(std::string model_name) {
+  const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
+  const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
+  std::string external_initializer_file_name = model_name + "_opt.onnx.data";
 
-    // Generate optimized with prepacked weights serialized
-    Ort::SessionOptions session_options_opt;
-    session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, external_initializer_file_name.c_str());
-    session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "0");
-    session_options_opt.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1");
+  // Generate optimized with prepacked weights serialized
+  Ort::SessionOptions session_options_opt;
+  session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, external_initializer_file_name.c_str());
+  session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "0");
+  session_options_opt.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1");
+  session_options_opt.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
 
 #if defined(_WIN32) || defined(_WIN64)
-    std::wstring test_model_wide = onnxruntime::ToWideString(test_model);
-    session_options_opt.SetOptimizedModelFilePath(onnxruntime::ToWideString(optimized_model).c_str());
-    Ort::Session session_opt_model(*ort_env, test_model_wide.c_str(), session_options_opt);
+  std::wstring test_model_wide = onnxruntime::ToWideString(test_model);
+  session_options_opt.SetOptimizedModelFilePath(onnxruntime::ToWideString(optimized_model).c_str());
+  Ort::Session session_opt_model(*ort_env, test_model_wide.c_str(), session_options_opt);
 #else
-    session_options_opt.SetOptimizedModelFilePath(optimized_model.c_str());
-    Ort::Session session_opt_model(*ort_env, test_model.c_str(), session_options_opt);
+  session_options_opt.SetOptimizedModelFilePath(optimized_model.c_str());
+  Ort::Session session_opt_model(*ort_env, test_model.c_str(), session_options_opt);
 #endif
 
-    // Do inference with original model and optimized model and check output is identical
-    // set inputs and session options
-    Ort::SessionOptions session_options;
-    const char* input_names[] = {"A"};
-    const char* const output_names[] = {"Y"};
-    Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  // Do inference with original model and optimized model and check output is identical
+  // set inputs and session options
+  Ort::SessionOptions session_options;
+  const char* input_names[] = {"A"};
+  const char* const output_names[] = {"Y"};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-    std::vector<Ort::Value> ort_inputs;
-    std::vector<int64_t> input_0_dims = {1, 1};
+  // get dim of first input-A from model
+  auto in0 = session_opt_model.GetInputTypeInfo(0);
+  auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
+  auto input_0_dims = in0_ttsi.GetShape();
+  auto product = std::accumulate(input_0_dims.begin(), input_0_dims.end(), (int64_t)1, std::multiplies<int64_t>());
 
-    // generate input for model, for quant node use int8, others float
-    if (model_name.find("quant") != std::string::npos) {
-      std::vector<uint8_t> input_0_data = {4};
-      ort_inputs.emplace_back(
-          Ort::Value::CreateTensor<uint8_t>(info, const_cast<uint8_t*>(input_0_data.data()),
+  std::vector<Ort::Value> ort_inputs;
+
+  // generate input for model, for quant node use int8, others float
+  if (model_name.find("quant") != std::string::npos) {
+    std::vector<uint8_t> input_0_data(product, 5);
+    ort_inputs.emplace_back(
+        Ort::Value::CreateTensor<uint8_t>(info, const_cast<uint8_t*>(input_0_data.data()),
                                           input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
-    } else {
-      std::vector<float> input_0_data = {1.3f};
-      ort_inputs.emplace_back(
-          Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
-                                          input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
-    }
+  } else {
+    std::vector<float> input_0_data(product, 5.0f);
+    ort_inputs.emplace_back(
+        Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                        input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+  }
 
-    // run inference with original model
-    // Convert std::string to std::wstring
+  // run inference with original model
+  // Convert std::string to std::wstring
 #if defined(_WIN32) || defined(_WIN64)
-    Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
+  Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
 #else
-    Ort::Session session(*ort_env, test_model.c_str(), session_options);
+  Ort::Session session(*ort_env, test_model.c_str(), session_options);
 #endif
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                 output_names, 1);
 
-    // run inference with optimized model which load serialized prepack initializer
+  // run inference with optimized model which load serialized prepack initializer
 #if defined(_WIN32) || defined(_WIN64)
-    std::wstring optimized_model_wide = onnxruntime::ToWideString(optimized_model);
-    Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
+  std::wstring optimized_model_wide = onnxruntime::ToWideString(optimized_model);
+  Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
 #else
-    Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
+  Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
 #endif
-    auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                           output_names, 1);
+  auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                         output_names, 1);
 
-    // check output of original model and optimized model are equal
-    ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
+  // check output of original model and optimized model are equal
+  ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
 
-    for (size_t i = 0; i < ort_outputs.size(); ++i) {
-      const auto& sequences = ort_outputs[i];
-      ASSERT_TRUE(sequences.IsTensor());
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
+    const auto& sequences = ort_outputs[i];
+    ASSERT_TRUE(sequences.IsTensor());
 
-      const auto& sequences_opt = ort_outputs_opt[i];
-      ASSERT_TRUE(sequences_opt.IsTensor());
+    const auto& sequences_opt = ort_outputs_opt[i];
+    ASSERT_TRUE(sequences_opt.IsTensor());
 
-      auto result_ts = sequences.GetTensorTypeAndShapeInfo();
-      auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
+    auto result_ts = sequences.GetTensorTypeAndShapeInfo();
+    auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
 
-      ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
+    ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
 
-      ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
+    ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
 
-      const auto* result_vals = sequences.GetTensorData<float>();
-      auto result_span = gsl::make_span(result_vals, ort_outputs.size());
+    const auto* result_vals = sequences.GetTensorData<float>();
+    auto result_span = gsl::make_span(result_vals, ort_outputs.size());
 
-      const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
-      auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
+    const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
+    auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
 
-      ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end(), nan_equal));
-    }
-
-    std::cout << model_name << " succeed!" << std::endl;
+    ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end(), nan_equal));
   }
 }
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Matmul_nbits) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul_nbits");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Gemm) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_gemm");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Conv_transpose) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_conv_transpose");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Attention) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_attention");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Quant_Attention) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_quant_attention");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Dynamic_Quant_lstm) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_dynamic_quan_lstm");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Deep_cpu_lstm) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_deep_cpu_lstm");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Matmul_integer_quant) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul_integer_quant");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Deep_Cpu_Gru) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_deep_cpu_gru");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Quant_LinearConv) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_quant_linearconv");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Matmul) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_fp16_conv) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_fp16_conv");
+}
+
+#endif
+#endif

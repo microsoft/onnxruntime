@@ -188,7 +188,7 @@ def GenerateConvTransposeModel(model_name, external_data_name):  # noqa: N802
         [output],
         [
             create_external_data_tensor(np.random.rand(3, 6, 3, 3).astype(np.float32), external_data_name, TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(3).astype(np.float32), "bias", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(3).astype(np.float32), "bias", TensorProto.FLOAT),
         ],
     )
 
@@ -272,7 +272,7 @@ def GenerateAttentionModel(model_name, external_data_name):  # noqa: N802
         [output],
         [
             create_external_data_tensor(np.random.rand(8, 6).astype(np.float32), external_data_name, TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(6).astype(np.float32), "bias", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(6).astype(np.float32), "bias", TensorProto.FLOAT),
         ],
     )
 
@@ -314,9 +314,9 @@ def GenerateQAttentionModel(model_name, external_data_name):  # noqa: N802
         [output],
         [
             create_external_data_tensor(np.random.rand(8, 6).astype(np.uint8), external_data_name, TensorProto.UINT8),
-            create_external_data_tensor(np.random.rand(6).astype(np.float32), "bias", TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1).astype(np.float32), "input_scale", TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1).astype(np.float32), "weight_scale", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(6).astype(np.float32), "bias", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1).astype(np.float32), "input_scale", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1).astype(np.float32), "weight_scale", TensorProto.FLOAT),
         ],
     )
 
@@ -361,15 +361,15 @@ def GenerateDynamicQuantizeLSTMModel(model_name, external_data_name_w, external_
         [
             create_external_data_tensor(np.random.rand(1, 8, 8).astype(np.uint8), external_data_name_w, TensorProto.UINT8),
             create_external_data_tensor(np.random.rand(1, 2, 8).astype(np.uint8), external_data_name_r, TensorProto.UINT8),
-            create_external_data_tensor(np.random.rand(1, 16).astype(np.float32), 'B', TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(16).astype(np.int32), 'sequence_lens', TensorProto.INT32),
-            create_external_data_tensor(np.random.rand(1, 16, 2).astype(np.float32), 'initial_h', TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1, 16, 2).astype(np.float32), 'initial_c', TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1, 6).astype(np.float32), 'P', TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1, 16).astype(np.float32), 'B', TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(16).astype(np.int32), 'sequence_lens', TensorProto.INT32),
+            create_internal_data_tensor(np.random.rand(1, 16, 2).astype(np.float32), 'initial_h', TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1, 16, 2).astype(np.float32), 'initial_c', TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1, 6).astype(np.float32), 'P', TensorProto.FLOAT),
             create_internal_data_tensor(np.random.rand(1, 8).astype(np.float32), 'W_scale', TensorProto.FLOAT),
             create_internal_data_tensor(np.random.rand(1, 8).astype(np.uint8), 'W_zero_point', TensorProto.UINT8),
-            create_external_data_tensor(np.random.rand(1, 8).astype(np.float32), 'R_scale', TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1, 16).astype(np.uint8), 'R_zero_point', TensorProto.UINT8),
+            create_internal_data_tensor(np.random.rand(1, 8).astype(np.float32), 'R_scale', TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1, 16).astype(np.uint8), 'R_zero_point', TensorProto.UINT8),
         ],
     )
 
@@ -545,12 +545,12 @@ def GenerateQLinearConvModel(model_name, external_data_name):  # noqa: N802
         [output],
         [
             create_external_data_tensor(np.random.rand(10, 4, 4, 8).astype(np.uint8), external_data_name, TensorProto.UINT8),
-            create_external_data_tensor(np.random.rand(1).astype(np.float32), "x_scale", TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1).astype(np.uint8), "x_zero_point", TensorProto.UINT8),
-            create_external_data_tensor(np.random.rand(1).astype(np.float32), "w_scale", TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1).astype(np.uint8), "w_zero_point", TensorProto.UINT8),
-            create_external_data_tensor(np.random.rand(1).astype(np.float32), "y_scale", TensorProto.FLOAT),
-            create_external_data_tensor(np.random.rand(1).astype(np.uint8), "y_zero_point", TensorProto.UINT8),
+            create_internal_data_tensor(np.random.rand(1).astype(np.float32), "x_scale", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1).astype(np.uint8), "x_zero_point", TensorProto.UINT8),
+            create_internal_data_tensor(np.random.rand(1).astype(np.float32), "w_scale", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1).astype(np.uint8), "w_zero_point", TensorProto.UINT8),
+            create_internal_data_tensor(np.random.rand(1).astype(np.float32), "y_scale", TensorProto.FLOAT),
+            create_internal_data_tensor(np.random.rand(1).astype(np.uint8), "y_zero_point", TensorProto.UINT8),
         ],
     )
 

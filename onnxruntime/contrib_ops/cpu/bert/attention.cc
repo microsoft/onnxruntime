@@ -314,10 +314,6 @@ void Attention<T>::ConvertTensorToPrePackWeight(void* tesnor_data_raw) {
   auto weight_shape_vector = static_cast<const InlinedVector<int64_t>*>(weight_shape_buffer.get());
   weight_shape_ = TensorShape(*weight_shape_vector);
 
-  for (int i = 0; i < 3; ++i) {
-    packed_weights_[i] = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_size_[i] * num_heads_, true);
-  }
-
   packed_weights_[0] = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) + weight_shape_buffer_size,
                                        BufferDeleter());
   packed_weights_[1] = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) + weight_shape_buffer_size +

@@ -285,9 +285,11 @@ Status DeepCpuLstmOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
 std::optional<Tensor> DeepCpuLstmOp::GetPrePackTensor(int input_index) {
   if (input_index == 1) {
     return std::move(packed_tensor_w_);
-  } else { //input_index == 2
+  } else if (input_index == 2) {
     return std::move(packed_tensor_r_);
   }
+
+  return std::nullopt;
 }
 
 Status DeepCpuLstmOp::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
