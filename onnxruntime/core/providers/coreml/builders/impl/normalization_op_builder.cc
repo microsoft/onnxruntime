@@ -113,8 +113,8 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
   // groupnorm --> reshape [b, num_groups, c // (num_groups), h, w] --> layer_norm --> reshape [b, c, h, w]->mul(scale)->add(bias)
 
   // scale and bias is required for group-norm by the onnx spec
-  const auto& scale_tensor = *input_params.graph_viewer.GetConstantInitializer(input_defs[1]->Name());
-  const auto& bias_tensor = *input_params.graph_viewer.GetConstantInitializer(input_defs[2]->Name());
+  const auto& scale_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name());
+  const auto& bias_tensor = *model_builder.GetConstantInitializer(input_defs[2]->Name());
 
   const auto eps = helper.Get("epsilon", 1e-5f);
   int64_t num_groups = helper.Get("num_groups", 1);  // GroupNorm
