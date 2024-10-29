@@ -726,6 +726,7 @@ SQ4BitGemmKernel_CompFp16_Kernel(
     size_t ldc
 ) {
     Registerx2<CountN> r;
+    constexpr size_t b_step = CountN == 8 ? 8 : 1;
 
     if constexpr (CountM == 2) {
         r.accu00 = r.accu10 = PrepareAccumulator<CountN>(Bias);
@@ -734,7 +735,7 @@ SQ4BitGemmKernel_CompFp16_Kernel(
     }
 
     size_t k = 0;
-    for (; k + 8 <= K; k += 8, A += 8, B += 64) {
+    for (; k + 8 <= K; k += 8, A += 8, B += b_step * 8) {
         r.accu00 = SQ4BitGemmMicroKernel<CountN, 1, 8>(A, B, ldb, r.accu00);
         if constexpr (CountM == 2) {
             r.accu10 = SQ4BitGemmMicroKernel<CountN, 1, 8>(A + lda, B, ldb, r.accu10);
@@ -746,7 +747,7 @@ SQ4BitGemmKernel_CompFp16_Kernel(
         if constexpr (CountM == 2) {
             r.accu10 = SQ4BitGemmMicroKernel<CountN, 1, 4>(A + lda, B, ldb, r.accu10);
         }
-        k += 4, A += 4, B += 32;
+        k += 4, A += 4, B += b_step * 4;
     }
 
     if (k + 2 <= K) {
@@ -754,7 +755,7 @@ SQ4BitGemmKernel_CompFp16_Kernel(
         if constexpr (CountM == 2) {
             r.accu10 = SQ4BitGemmMicroKernel<CountN, 1, 2>(A + lda, B, ldb, r.accu10);
         }
-        k += 2, A += 2, B += 16;
+        k += 2, A += 2, B += b_step * 2;
     }
 
     if (k < K) {
