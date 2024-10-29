@@ -53,4 +53,4 @@ python3 -m pip install --no-index --find-links /build/whl $PYTHON_PACKAGE_NAME
 cd /build/$BUILD_CONFIG
 # Restore file permissions
 xargs -a perms.txt chmod a+x
-python3 /onnxruntime_src/tools/ci_build/build.py $BUILD_ARGS --ctest_path ''
+python3 /onnxruntime_src/tools/ci_build/build.py $BUILD_ARGS
