@@ -282,8 +282,7 @@ const generatePositionIdsProgramInfo = (
       if (past_seqlen + sequence_idx < total_seqlen) {
         // sign extend value and convert to vec2<u32>
         let value = past_seqlen + sequence_idx;
-        let sign_ext = select(0, 0xFFFFFFF, value < 0);
-        pos_id = ${outputType}(u32(sign_ext), u32(value));
+        pos_id = ${outputType}(u32(extractBits(value, 31, 1)), u32(value));
       } else {
         pos_id = ${outputType}(0,1);
       }
@@ -376,8 +375,8 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
 
   applyAttention(
     context,
-    Q,
-    K,
+    attributes.doRotary ? qRotary! : Q,
+    attributes.doRotary ? kRotary! : K,
     V,
     undefined,
     undefined,
