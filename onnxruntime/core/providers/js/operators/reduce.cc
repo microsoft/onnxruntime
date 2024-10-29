@@ -21,14 +21,14 @@ namespace js {
 // REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT to set input memory type.
 // i.e. we cannot use REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL to version 18 when the opset version is increased.
 #define REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, sinceVersion, endVersion) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                     \
-      ReduceOp,                                                                          \
-      kOnnxDomain,                                                                       \
-      sinceVersion, endVersion,                                                          \
-      kJsExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create())                                                      \
-          .TypeConstraint("T", JsepSupportedFloatTypes())
-          .InputMemoryType(OrtMemTypeCPU, 1),                               \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                        \
+      ReduceOp,                                                                                             \
+      kOnnxDomain,                                                                                          \
+      sinceVersion, endVersion,                                                                             \
+      kJsExecutionProvider,                                                                                 \
+      (*KernelDefBuilder::Create())                                                                         \
+          .TypeConstraint("T", JsepSupportedFloatTypes())                                                   \
+          .InputMemoryType(OrtMemTypeCPU, 1),                                                               \
       ReduceOp<true>);
 
 #define REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceOp, sinceVersion) \
