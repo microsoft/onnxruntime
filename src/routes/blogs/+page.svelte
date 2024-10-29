@@ -79,6 +79,16 @@
 	];
 	let blogs = [
 		{
+			title: 'Enhancing team collaboration during AI model optimization with the Olive Shared Cache',
+			date: 'October 30th, 2024',
+			blurb:
+				"Learn how to use Olive's shared cache to enhance team collaboration when optimizing AI models",
+			link: 'blogs/olive-shared-cache',
+			image: Phi3SmallMediumImage,
+			imgalt:
+				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
+		},
+		{
 			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
 			date: 'May 21th, 2024',
 			blurb:
