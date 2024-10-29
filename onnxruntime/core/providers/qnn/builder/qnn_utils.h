@@ -12,6 +12,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/node_unit.h"
 #include "core/util/qmath.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -103,6 +104,24 @@ Status Quantize(const double double_value,
                 const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
+
+// NCHW shape to channel last
+Status NchwShapeToNhwc(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& nhwc_shape);
+
+// NCHW shape to HWCN shape, required for Conv weight
+Status NchwShapeToHwcn(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& hwcn_shape);
+
+// CNHW shape to HWCN shape, required for Conv weight
+Status CnhwShapeToHwcn(const std::vector<uint32_t>& cnhw_shape, std::vector<uint32_t>& hwcn_shape);
+
+Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper, const onnx::TensorProto& initializer,
+                               std::vector<uint8_t>& transposed_data, bool is_3d = false);
+
+Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper, const onnx::TensorProto& initializer,
+                               std::vector<uint8_t>& transposed_data, bool is_3d = false);
+
+Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper, std::vector<uint32_t>& data_shape,
+                             const onnx::TensorProto& initializer, std::vector<uint8_t>& transposed_data);
 
 }  // namespace utils
 }  // namespace qnn

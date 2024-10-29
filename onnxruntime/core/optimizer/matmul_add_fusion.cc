@@ -130,7 +130,6 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
       k = dim_k.dim_value();
       n = dim_n.dim_value();
-      ORT_ENFORCE(shape_values.back() == k);
       m = std::accumulate(shape_values.begin(), shape_values.end() - 1, static_cast<int64_t>(1),
                           std::multiplies<int64_t>());
     }
@@ -167,8 +166,10 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     auto gemm_output_defs = add_node.MutableOutputDefs();
+    Node* input_node = nullptr;
+    Node* output_node = nullptr;
     if (need_reshape) {
-      auto add_reshape = [&](const std::vector<int64_t>& shape, Graph& graph, bool is_input) {
+      auto add_reshape = [&](const std::vector<int64_t>& shape, Graph& graph, bool is_input) -> Node* {
         const std::string name = is_input ? "gemm_input" : "gemm_output";
         ONNX_NAMESPACE::TensorProto shape_initializer_proto;
         shape_initializer_proto.set_name(graph.GenerateNodeName(name + "_shape"));
@@ -187,23 +188,47 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                            {is_input ? gemm_input_defs[0] : new_arg, shape_arg},
                                            {is_input ? new_arg : gemm_output_defs[0]});
         reshape_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
-        return new_arg;
+        return &reshape_node;
       };
 
-      gemm_input_defs[0] = add_reshape({m, k}, graph, true);
+      input_node = add_reshape({m, k}, graph, true);
+      gemm_input_defs[0] = input_node->MutableOutputDefs()[0];
       shape_values.back() = n;
-      gemm_output_defs[0] = add_reshape(shape_values, graph, false);
+      output_node = add_reshape(shape_values, graph, false);
+      gemm_output_defs[0] = output_node->MutableInputDefs()[0];
     }
 
     Node& gemm_node = graph.AddNode(graph.GenerateNodeName(matmul_node.Name() + "/MatMulAddFusion/"), "Gemm",
                                     "fused Matmul and Add", gemm_input_defs, gemm_output_defs);
-
-    // Assign provider to this new node. Provider should be same as the provider for old node.
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
+    if (need_reshape) {
+      graph.AddEdge(input_node->Index(), gemm_node.Index(), 0, 0);
+      graph.AddEdge(gemm_node.Index(), output_node->Index(), 0, 0);
+    } else {
+      input_node = &gemm_node;
+      output_node = &gemm_node;
+    }
+
+    auto matmul_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(matmul_node);
+    for (auto cur = matmul_input_edges.cbegin(), end = matmul_input_edges.cend(); cur != end; ++cur) {
+      if (cur->dst_arg_index == 0) {
+        graph.AddEdge(cur->src_node, input_node->Index(), cur->src_arg_index, 0);
+      } else if (cur->dst_arg_index == 1) {
+        graph.AddEdge(cur->src_node, gemm_node.Index(), cur->src_arg_index, 1);
+      }
+    }
+    graph_utils::GraphEdge::RemoveGraphEdges(graph, matmul_input_edges);
+    auto add_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(add_node);
+    for (auto cur = add_input_edges.cbegin(), end = add_input_edges.cend(); cur != end; ++cur) {
+      if (cur->dst_arg_index == 1) {
+        graph.AddEdge(cur->src_node, gemm_node.Index(), cur->src_arg_index, 2);
+      }
+    }
+    graph_utils::GraphEdge::RemoveGraphEdges(graph, add_input_edges);
     graph_utils::RemoveNodeOutputEdges(graph, matmul_node);
+    graph_utils::ReplaceDownstreamNodeInput(graph, add_node, 0, *output_node, 0);
     graph.RemoveNode(matmul_node.Index());
-    graph_utils::RemoveNodeOutputEdges(graph, add_node);
     graph.RemoveNode(add_node.Index());
 
     modified = true;
