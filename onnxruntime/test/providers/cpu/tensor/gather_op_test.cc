@@ -122,17 +122,19 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
                          4.0f, 5.0f, 6.0f, 7.0f,
                          0.0f, 0.0f, 0.0f, 0.0f});
 
-  // On GPU, just set the value to 0 instead of report error. exclude all other providers
-#if defined(USE_CUDA)
-  if (DefaultCudaExecutionProvider() != nullptr) {
-    test.ConfigEp(DefaultCudaExecutionProvider())
-        .ConfigEp(DefaultRocmExecutionProvider())
-        .RunWithConfig();
-  } else {
-    test.ConfigEp(DefaultRocmExecutionProvider())
-        .RunWithConfig();
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
   }
 #endif
+  // On GPU, just set the value to 0 instead of report error. exclude all other providers
+  test
+#if defined(USE_CUDA)
+      .ConfigEp(DefaultCudaExecutionProvider())
+#else
+      .ConfigEp(DefaultRocmExecutionProvider())
+#endif
+      .RunWithConfig();
 }
 #endif
 
