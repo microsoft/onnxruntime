@@ -17,6 +17,14 @@
 			imagealt: 'ONNX Model Zoo'
 		},
 		{
+			title: 'AMD Models (hosted on Hugging Face)',
+			description:
+				'Various quark-quantized models are graciously provided by AMD, ready to run using the ONNX Runtime generate() api!',
+			url: 'https://huggingface.co/amd',
+			image: 'https://cdn-avatars.huggingface.co/v1/production/uploads/647fcd2cdd29d0de8120db74/Og-6kJn0Hkjy5s0TnUWt_.png',
+			imagealt: 'AMD Logo on Hugging Face'
+		},
+		{
 			title: 'Qualcomm ONNX Models (hosted on Hugging Face)',
 			description:
 				'Discover ONNX-compatible models optimized for Qualcomm hardware on Hugging Face.',
@@ -61,7 +69,7 @@
 				<a rel="noopener noreferrer" target="_blank" href={modelhub.url} class="card-body">
 					<div class="grid grid-cols-5">
                         <div class="h-full">
-                            <img src={modelhub.image} alt={modelhub.imagealt} class="w-24 h-24" />
+                            <img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
                         </div>
 						<div class="col-span-4">
 							<h2 class="card-title text-white">{modelhub.title}</h2>
