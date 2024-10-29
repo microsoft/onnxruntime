@@ -38,6 +38,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/force_cpu.h"
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/gather_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
@@ -141,6 +142,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
+      rules.push_back(std::make_unique<ForceCpu>());
       break;
 
     case TransformerLevel::Level3:
