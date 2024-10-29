@@ -123,7 +123,7 @@ else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
   endif()
   if (onnxruntime_USE_CUDA)
-    target_link_options(onnxruntime PRIVATE "-Wl,-rpath=\\$ORIGIN")
+    target_link_options(onnxruntime PRIVATE "-Wl,-rpath=$ORIGIN")
   endif()
 endif()
 
