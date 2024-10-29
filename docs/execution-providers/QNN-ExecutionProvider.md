@@ -124,8 +124,13 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 
 |`"enable_htp_fp16_precision"`|Description [Example](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification)|
 |---|---|
-|'0'|default.|
-|'1'|Enable the float32 model to be inferenced with fp16 precision.|
+|'0'|disabled. Inferenced with fp32 precision if it's fp32 model.|
+|'1'|default. Enable the float32 model to be inferenced with fp16 precision.|
+
+|`"offload_graph_io_quantization"`|Description|
+|---|---|
+|'0'|default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.|
+|'1'|Enabled. Offload quantization and dequantization of graph I/O to CPU EP.|
 
 ## Supported ONNX operators
 
@@ -502,3 +507,20 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 ## Error handling
 ### HTP SubSystem Restart - [SSR](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_backend.html#subsystem-restart-ssr-)
 QNN EP returns StatusCode::ENGINE_ERROR regarding QNN HTP SSR issue. Uppper level framework/application should recreate Onnxruntime session if this error detected during session run.
+
+
+## Add new operator support in QNN EP
+To enable new operator support in EP, areas to visit:
+1. QDQ script support this Op?
+2. Onnxruntime QDQ node unit support this Op?
+3. Is it layout sensitive operator?
+3.1 Registered in LayoutTransformer?
+https://github.com/microsoft/onnxruntime/blob/6d464748ba7fed2275ecba3a7406298cabc93438/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L2168
+3.2 NHWC op schema registered?
+Example error message:
+<lambda_acc29b18d21b7c13448c4952cd957a60>::operator ()] Model face_det_qdq failed to load:Fatal error: com.ms.internal.nhwc:BatchNormalization(9) is not a registered function/op
+Example PR: https://github.com/microsoft/onnxruntime/pull/15278
+
+Example PRs to enable new operators:
+Non-layout sensitive operator. [Enable Hardsigmoid for QNN EP using SDK support direct support](https://github.com/microsoft/onnxruntime/pull/20956)
+Layout sensitive operator. [Add InstanceNormalization operator to QNN EP])(https://github.com/microsoft/onnxruntime/pull/14867)
