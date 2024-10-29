@@ -27,7 +27,13 @@ ONNX_OPERATOR_KERNEL_EX(
     MultiHeadAttention);
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
-    : WebGpuKernel(info), AttentionBase(info, false) {
+    : WebGpuKernel(info) {
+  int64_t num_heads = 0;
+  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
+  num_heads_ = static_cast<int>(num_heads);
+  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
   ORT_ENFORCE(!is_unidirectional_, "Unidirectional MHA does not support webgpu kernel");
 }
 
