@@ -7,9 +7,6 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
-#include "contrib_ops/webgpu/bert/attention.h"
-
-#include "contrib_ops/cpu/bert/attention_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,7 +14,7 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MultiHeadAttention final : public WebGpuKernel, public AttentionBase {
+class MultiHeadAttention final : public WebGpuKernel {
  public:
   MultiHeadAttention(const OpKernelInfo& info);
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
