@@ -72,7 +72,7 @@ dependencies {
 	testImplementation 'junit:junit:4.+'
 	androidTestImplementation 'androidx.test.ext:junit:1.1.3'
 	androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
-	implementation(name: "onnxruntime-android", ext: "aar")
+	//implementation(name: "onnxruntime-android", ext: "aar")
 
 	androidTestImplementation 'androidx.test:runner:1.4.0'
 	androidTestImplementation 'androidx.test:rules:1.4.0'
@@ -80,7 +80,8 @@ dependencies {
 
 	// QNN only dependencies
 	if (qnnVersion != null) {
-		implementation "com.qualcomm.qti:qnn-runtime:$qnnVersion"
+		//implementation "com.qualcomm.qti:qnn-runtime:$qnnVersion"
+		implementation "com.microsoft.onnxruntime:onnxruntime-android-qnn:1.20.0-rc1"
 	}
 
 }
