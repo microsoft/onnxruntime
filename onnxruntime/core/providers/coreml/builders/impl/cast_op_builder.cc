@@ -30,9 +30,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 // This is a special handling case for ArgMax Op, where argmax is followed by a cast to int32 type.
 // The ArgMax is fused with the Cast node and produces an int32 output.
 #if defined(COREML_ENABLE_MLPROGRAM)
-  auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  // TensorProto_DataType_INT64 is not supported in CoreML MLProgram, only when the predeceased node is ArgMax
-  if (model_builder.CreateMLProgram() && input_dtype != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.cast
 
@@ -43,6 +41,10 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     std::string to_dtype = "";
     if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32 || cast_to_type == ONNX_NAMESPACE::TensorProto::INT64) {
       to_dtype = "int32";
+      // CoreML doesn't support int64 while onnx used int64 in index input/output
+      // we have two solutions for this: 1) if cast is the first/last node in graph partition,
+      // we will convert the input/output to int32 forcely
+      // 2) if cast is a middle node of graph-parition, we just treat int64 as int32.
       cast_to_type = ONNX_NAMESPACE::TensorProto::INT32;
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
       to_dtype = "fp32";
@@ -122,6 +124,7 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) &&
         (output_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
