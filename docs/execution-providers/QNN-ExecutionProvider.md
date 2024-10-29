@@ -519,8 +519,8 @@ To enable new operator support in EP, areas to visit:
 3.2 NHWC op schema registered?
 Example error message:
 <lambda_acc29b18d21b7c13448c4952cd957a60>::operator ()] Model face_det_qdq failed to load:Fatal error: com.ms.internal.nhwc:BatchNormalization(9) is not a registered function/op
-Example PR: https://github.com/microsoft/onnxruntime/pull/15278
+[Example PR](https://github.com/microsoft/onnxruntime/pull/15278)
 
 Example PRs to enable new operators:
 Non-layout sensitive operator. [Enable Hardsigmoid for QNN EP using SDK support direct support](https://github.com/microsoft/onnxruntime/pull/20956)
-Layout sensitive operator. [Add InstanceNormalization operator to QNN EP])(https://github.com/microsoft/onnxruntime/pull/14867)
+Layout sensitive operator. [Add InstanceNormalization operator to QNN EP](https://github.com/microsoft/onnxruntime/pull/14867)
