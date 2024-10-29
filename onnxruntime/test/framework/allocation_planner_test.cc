@@ -1279,6 +1279,12 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
 // Test MultiStream scenario for the graph:
 // node1(CPU ep)->node2(CPU ep)->node3(CUDA ep)->node4(CPU ep)
 TEST_F(PlannerTest, MultiStream) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
+
   ONNX_NAMESPACE::TensorProto tensor;
   tensor.add_dims(1);
   tensor.add_float_data(1.0f);
@@ -1297,6 +1303,7 @@ TEST_F(PlannerTest, MultiStream) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1324,6 +1331,11 @@ TEST_F(PlannerTest, MultiStream) {
 //      node3
 // All 3 nodes are CUDA EP, node1 is in stream0, node2 is in stream1, node3 is in stream2
 TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernelAdd = KernelDefBuilder().SetName("Add").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
@@ -1365,6 +1377,11 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
 // stream 1: node2 (CPU EP)
 // node1's output, which is consumed by both node2 and node3, is in CPU.
 TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   MemcpyToHostInCuda_TransposeInCudaAndCpu("./testdata/multi_stream_models/memcpyToHost_same_stream_with_transpose.json");
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 5) << "stream 0 has 5 steps";
@@ -1386,6 +1403,11 @@ TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
 // TODO(leca): there is a bug in the corresponding graph that node2 will be visited twice when traversing node1's output nodes
 // (see: for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) in BuildExecutionPlan()). We can just break the loop and don't need the extra variables once it is fixed
 TEST_F(PlannerTest, MultiStreamMultiOutput) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("RNN").Provider(kCudaExecutionProvider).SinceVersion(7).Build();
   std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2");
   std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1), Arg(Graph_input2), Arg(Graph_input3)}, output1{Arg(Arg1), Arg(Arg2)}, input2{Arg(Arg1), Arg(Arg2)}, output2{Arg(Arg3)};
@@ -1423,6 +1445,11 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
 // TODO(leca): the ideal case is there is only 1 wait step before launching node3,
 // as there is a specific order between node1 and node2 if they are in the same stream, thus node3 will only need to wait the latter one
 TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
   std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1)}, input2{Arg(Graph_input2)}, output1{Arg(Arg1)}, output2{Arg(Arg2)}, input3{Arg(Arg1), Arg(Arg2)}, output3{Arg(Arg3)};
@@ -1460,6 +1487,11 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
 TEST_F(PlannerTest, ParaPlanCreation) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   auto* graph_in_shape = graph_in_type.mutable_tensor_type()->mutable_shape();
@@ -1901,6 +1933,12 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
+
   const char* type = "DeviceBasedPartitioner";
   constexpr size_t type_len = 22;
 
@@ -1974,6 +2012,12 @@ TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
 
 // Load with partition config where a node is missing, session load expected to fail.
 TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
+
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
@@ -1994,6 +2038,11 @@ TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
 
 // Load with partition config where streams and devices has mismatch
 TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
@@ -2082,6 +2131,12 @@ TEST_F(PlannerTest, TestCpuIf) {
 //    onnx.save(model, 'issue_19480.onnx')
 //
 TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
+
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 

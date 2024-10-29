@@ -2113,6 +2113,11 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 #ifdef USE_CUDA
 // disable it, since we are going to enable parallel execution with cuda ep
 TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
@@ -2120,9 +2125,6 @@ TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so, GetEnvironment()};
 
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 
   ASSERT_STATUS_OK(session_object.Load(model_uri));
@@ -2139,6 +2141,12 @@ TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
 }
 
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
+
   OrtArenaCfg arena_cfg;
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 
