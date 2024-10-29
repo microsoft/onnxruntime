@@ -209,4 +209,9 @@ stages:
             cd $(Agent.TempDirectory)\ort_test_data
             python onnx_backend_test_series.py --devices DML
           workingDirectory: '$(Build.sourcesDirectory)'
-          displayName: 'Run Python Tests'
+          displayName: 'Run Python DML Tests'
+
+        - powershell: |
+            python onnx_backend_test_series.py
+          workingDirectory: '$(Agent.TempDirectory)\ort_test_data'
+          displayName: 'Run Python CUDA Tests'

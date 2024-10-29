@@ -156,6 +156,10 @@ def create_backend_test(devices: list[str], test_name=None):
         # and the nodes are assigned to only the CUDA EP (which supports these tests)
         if (backend.supports_device("DML") and not backend.supports_device("GPU")) or "DML" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_pure_DML")
+            os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider,CUDAExecutionProvider"
+        else:
+            # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
+            os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
         filters = (
             current_failing_tests
@@ -168,8 +172,6 @@ def create_backend_test(devices: list[str], test_name=None):
         backend_test.exclude("(" + "|".join(filters) + ")")
         print("excluded tests:", filters)
 
-        # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
-        os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
