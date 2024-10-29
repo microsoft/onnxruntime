@@ -59,7 +59,6 @@ jobs:
     clean: true
     submodules: recursive
 
-
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
@@ -98,7 +97,6 @@ jobs:
             set -ex; \
             env; \
             ccache -s; \
-            sudo rm -rf onnxruntime/python/tools/kernel_explorer/kernels/__pycache__; \
             python tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -150,6 +148,14 @@ jobs:
   timeoutInMinutes: 120
 
   steps:
+  - task: CmdLine@2
+    inputs:
+      script: |
+        sudo rm -rf /home/ciagent/gpu0/_work/3/s
+        sudo rm -rf /home/ciagent/gpu0/_work/3/b
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Force clean up an agent directory'
+
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:
@@ -171,6 +177,8 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
+        sudo chown -R $(id -u):$(id -g) $(Build.SourcesDirectory)
+        sudo chown -R $(id -u):$(id -g) $(Build.BinariesDirectory)
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
@@ -212,6 +220,8 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
+        sudo chown -R $(id -u):$(id -g) $(Build.SourcesDirectory)
+        sudo chown -R $(id -u):$(id -g) $(Build.BinariesDirectory)
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
@@ -234,7 +244,6 @@ jobs:
             set -ex; \
             python --version; \
             ls /opt/miniconda/envs/rocm-ci/lib/; \
-            sudo rm -rf /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/kernels/__pycache__; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
