@@ -116,7 +116,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
                                "let kv_head_idx = head_idx / uniforms.n_reps;\n"
                                "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
-                               "let batch_idx = workgroup_id.z / uniforms.num_heads;:\n"
+                               "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
                                "let m = workgroup_id.y * TILE_SIZE;\n"
                                "let n = workgroup_id.x * TILE_SIZE;\n"
                                "let sequence_length = uniforms.M;\n"
