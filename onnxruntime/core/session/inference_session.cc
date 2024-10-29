@@ -3284,6 +3284,10 @@ void InferenceSession::LogAllSessions() {
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
 
+    if (!session) {
+      continue;
+    }
+
     auto model = session->model_;
     if (nullptr != model) {
       onnxruntime::Graph& graph = model->MainGraph();
@@ -3292,10 +3296,6 @@ void InferenceSession::LogAllSessions() {
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
           graph.DomainToVersionMap(), graph.Name(), model->MetaData(),
           session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
-    }
-
-    if (!session) {
-      continue;
     }
 
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
