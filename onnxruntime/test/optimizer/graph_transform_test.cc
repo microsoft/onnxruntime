@@ -4139,6 +4139,38 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, ReshapeFusion_Contiguous_Reshape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{8, 16, 32}});
+    auto* shape_initializer = builder.MakeInitializer<int64_t>({4}, {2, 4, 16, 32});
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* reshape_out = builder.MakeIntermediate();
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("Reshape", {input_arg, shape_initializer}, {reshape_out});
+    builder.AddNode("Unsqueeze", {reshape_out, axes_initializer}, {unsqueeze_out});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Unsqueeze"] == 0);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 // Test eliminating redundant Concat-Slice pattern.
 TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "concat_slice_basic_test.onnx";

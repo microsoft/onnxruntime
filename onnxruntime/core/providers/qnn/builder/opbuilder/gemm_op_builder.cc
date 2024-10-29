@@ -113,10 +113,8 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_trans_flag.at(input_i)) {
         ORT_RETURN_IF_ERROR(quantize_param.HandleTranspose<size_t>(std::vector<size_t>({1, 0})));
-        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
-                                                  input_shape,
-                                                  *input_tensor,
-                                                  unpacked_tensor));
+        ORT_RETURN_IF_ERROR(
+            utils::TwoDimensionTranspose(qnn_model_wrapper, input_shape, *input_tensor, unpacked_tensor));
       } else {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
       }
