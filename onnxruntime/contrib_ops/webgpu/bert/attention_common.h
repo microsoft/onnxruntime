@@ -81,8 +81,8 @@ struct WebgpuAttentionParameters {
   bool do_rotary_ = false;
   bool broadcast_attn_bias_dim_0_ = false;
   bool broadcast_attn_bias_dim_1_ = false;
-  float mask_filter_value_;
-  float scale_;
+  float mask_filter_value_ = -10000.0f;
+  float scale_ = 0.0f;
   bool use_tf32_ = false;
   ;
   // The following members are in onnxruntime::contrib::GroupQueryAttentionParameters
@@ -109,6 +109,14 @@ struct WebgpuAttentionParameters {
   AttentionMaskType mask_type_ = MASK_NONE;
   AttentionQkvFormat qkv_format_ = UNKNOWN;
 };
+
+Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_heads, int sequence_length,
+                         int head_size, const Tensor* input_tensor, const Tensor* bias, int bias_offset, Tensor* output_tensor);
+
+Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
+                      const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
+                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr);
+
 
 }  // namespace webgpu
 }  // namespace contrib

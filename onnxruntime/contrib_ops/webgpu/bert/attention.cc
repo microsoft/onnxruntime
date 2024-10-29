@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
-#include "contrib_ops/webgpu/bert/attention_common.h"
+#include "contrib_ops/webgpu/bert/attention.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
