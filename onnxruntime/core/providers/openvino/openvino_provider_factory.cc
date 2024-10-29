@@ -60,7 +60,7 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   if (so_allow_stripping_qdq && !enable_qdq_optimizer_) {
     LOGS_DEFAULT(WARNING) << "[OpenVINO] enable_qdq_optimizer is set to false with provider option but is enabled at "
                           << "session level with " << kOrtSessionOptionsAllowStrippingQDQ << " set to true. "
-                          << "Override it with session options.";
+                          << "Overriding based on session options and setting enabled_qdq_optimizer to true.";
     enable_qdq_optimizer_ = so_allow_stripping_qdq;
   }
 
