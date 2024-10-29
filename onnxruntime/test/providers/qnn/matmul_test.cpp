@@ -198,6 +198,26 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp) {
                     ExpectedEPNodeAssignment::All, 18);
 }
 
+TEST_F(QnnCPUBackendTests, MatMulOp_2D_x_2D_Initializer) {
+  RunMatMulOpOpTest(TestInputDef<float>({2, 3}, false, {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f}),
+                    TestInputDef<float>({3, 2}, true, {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f}),
+                    ExpectedEPNodeAssignment::All, 18);
+}
+
+TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_3D_x_2D) {
+  RunMatMulOpOpTest(
+      TestInputDef<float>({2, 2, 3}, false,
+                          {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f, -10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f}),
+      TestInputDef<float>({3, 2}, false, {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f}), ExpectedEPNodeAssignment::All, 18);
+}
+
+TEST_F(QnnCPUBackendTests, MatMulOp_3D_x_2D_Initializer) {
+  RunMatMulOpOpTest(
+      TestInputDef<float>({2, 2, 3}, false,
+                          {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f, -10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f}),
+      TestInputDef<float>({3, 2}, true, {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f}), ExpectedEPNodeAssignment::All, 18);
+}
+
 // Test MatMul broadcasting
 // Failed randomly on Linux
 // Value of: expected_tensor.DataAsSpan<float>()
