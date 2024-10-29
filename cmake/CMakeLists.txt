@@ -1359,7 +1359,7 @@ endif()
 #Adjust warning flags
 set_msvc_c_cpp_compiler_warning_level(4)
 
-set(onnxruntime_DELAYLOAD_FLAGS "")
+set(onnxruntime_DELAYLOAD_FLAGS )
 
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}

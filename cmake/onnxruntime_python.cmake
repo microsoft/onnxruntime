@@ -110,17 +110,17 @@ if (onnxruntime_USE_NCCL)
 endif()
 
 if(APPLE)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list -Xlinker ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
+  target_link_options(onnxruntime_pybind11_state PRIVATE  "-Wl,-exported_symbols_list" "-Wl,${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
+    target_link_options(onnxruntime_pybind11_state PRIVATE  "-Wl,--version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds" "-Wl, --gc-sections")
   else()
     if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-      set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --gc-sections")
+      target_link_options(onnxruntime_pybind11_state PRIVATE  "-Wl,--version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds" "-Wl,--gc-sections")
     endif()
   endif()
 else()
-  set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
+  target_link_options(onnxruntime_pybind11_state PRIVATE  "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
@@ -203,7 +203,7 @@ set(onnxruntime_pybind11_state_dependencies
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 
 if (MSVC)
-  target_link_options(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
+  target_link_options(onnxruntime_pybind11_state PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
   # if MSVC, pybind11 undefines _DEBUG in pybind11/detail/common.h, which causes the pragma in pyconfig.h
   # from the python installation to require the release version of the lib
   # e.g. from a python 3.10 install:
@@ -220,16 +220,14 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -Xlinker -undefined -Xlinker dynamic_lookup")
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE "-Wl,-undefined" "-Wl,dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_options(onnxruntime_pybind11_state ${ONNXRUNTIME_SO_LINK_FLAG})
-
   if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-     set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+     target_link_libraries(onnxruntime_pybind11_state PRIVATE "-Wl,-rpath=\\$ORIGIN")
   endif()
 endif()
 
