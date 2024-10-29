@@ -690,7 +690,12 @@ public class InferenceTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
   public void testCUDA() throws OrtException {
-    runProvider(OrtProvider.CUDA);
+    String no_cuda_test = Optional.ofNullable(System.getenv("NO_CUDA_TEST")).orElse("0");
+    if (!no_cuda_test.equals("1")) {
+      runProvider(OrtProvider.CUDA);
+    } else {
+      System.out.println("Skipping CUDA test because NO_CUDA_TEST is set.");
+    }
   }
 
   @Test
@@ -740,14 +745,11 @@ public class InferenceTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
-    String no_cuda_test = System.getenv("NO_CUDA_TEST");
-    if (no_cuda_test == null || no_cuda_test.isEmpty() || !no_cuda_test.equals("1")) {
-      if (System.getProperty("USE_CUDA").equals("1")) {
-        System.out.println("Skipping DirectML test because CUDA EP test is enabled.");
-        return;
-      }
+    String no_dml_test = Optional.ofNullable(System.getenv("NO_DML_TEST")).orElse("0");;
+    if (!no_dml_test.equals("1")) {
+      runProvider(OrtProvider.DIRECT_ML);
     } else {
-      runProvider(OrtProvider.CORE_ML);
+      System.out.println("Skipping DML test because NO_DML_TEST is set.");
     }
   }
 
