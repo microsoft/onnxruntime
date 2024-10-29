@@ -99,11 +99,11 @@ jobs:
 
          # Mount qnn volume if building qnn android package
         if [[ ${{ parameters.packageName }} == *qnn* ]]; then
-          # QnnSDKVersionYaml is stage variable set in download_linux_qnn_sdk.yml
-          echo QNN Version: $(Set_QnnSDKVersionYaml.QnnSDKVersionYaml)
+          # QnnSDKExtractedVersion  is stage variable set in download_linux_qnn_sdk.yml
+          echo QNN Version: $(Get_QnnSDKExtractedVersion.QnnSDKExtractedVersion )
           QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
           USE_QNN="1"
-          QNN_VERSION=$(Set_QnnSDKVersionYaml.QnnSDKVersionYaml)
+          QNN_VERSION=$(Get_QnnSDKExtractedVersion.QnnSDKExtractedVersion )
         else
           QNN_VOLUME=""
           USE_QNN="0"

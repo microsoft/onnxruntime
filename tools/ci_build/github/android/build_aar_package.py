@@ -114,6 +114,7 @@ def _build_aar(args):
                 qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
             else:
                 raise ValueError("Error: QNN SDK version not found in sdk.yaml file.")
+
         base_build_command += ["--qnn_home=" + qnn_home]
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:

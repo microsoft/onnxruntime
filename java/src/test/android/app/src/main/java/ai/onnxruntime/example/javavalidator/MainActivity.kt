@@ -10,7 +10,7 @@ class MainActivity : AppCompatActivity() {
         if (BuildConfig.IS_QNN_BUILD) {
             val adspLibraryPath = applicationContext.applicationInfo.nativeLibraryDir
             // set the path variable to the native library directory
-            // so that the any native libraries downloaded as dependencies
+            // so that any native libraries downloaded as dependencies
             // (like qnn libs) are found
             Os.setenv("ADSP_LIBRARY_PATH", adspLibraryPath, true)
         }

@@ -94,7 +94,7 @@ stages:
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
       artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
-      publish_executables: '1'
+      publish_executables: '0'
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)

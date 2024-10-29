@@ -28,8 +28,8 @@ jobs:
   variables:
   - name: runCodesignValidationInjection
     value: false
-  - name: QnnSDKVersionYaml
-    value: $[ dependencies.Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}.outputs['Set_QnnSDKVersionYaml.QnnSDKVersionYaml'] ]
+  - name: QnnSDKExtractedVersion
+    value: $[ dependencies.Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}.outputs['Get_QnnSDKExtractedVersion.QnnSDKExtractedVersion '] ]
   timeoutInMinutes: 90
   dependsOn:
     - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
@@ -79,13 +79,13 @@ jobs:
       parameters:
         stop: true
 
-  - script: |
-        set -e -x
-        # build apks for qnn package as they are not built in the emulator test step
-        $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnSDKVersionYaml) --stacktrace
-    displayName: Build QNN APK
-    workingDirectory: $(Build.BinariesDirectory)/android_test/android
-    condition: contains('${{ parameters.packageName }}', 'qnn')
+  - ${{ else }}:
+    - script: |
+          set -e -x
+          # build apks for qnn package as they are not built in the emulator test step
+          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnSDKExtractedVersion ) --stacktrace
+      displayName: Build QNN APK
+      workingDirectory: $(Build.BinariesDirectory)/android_test/android
 
   # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
   - script: |
