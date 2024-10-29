@@ -104,6 +104,9 @@ FetchContent_Declare(
     directx_headers
     URL ${DEP_URL_directx_headers}
     URL_HASH SHA1=${DEP_SHA1_directx_headers}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/directx_headers-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/directx_headers-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/directx_headers-download
 )
 
 FetchContent_Populate(directx_headers)

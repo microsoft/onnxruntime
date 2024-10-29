@@ -7,6 +7,9 @@ FetchContent_Declare(
   microsoft_wil
   URL ${DEP_URL_microsoft_wil}
   URL_HASH SHA1=${DEP_SHA1_microsoft_wil}
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/microsoft_wil-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/microsoft_wil-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/microsoft_wil-download
   FIND_PACKAGE_ARGS NAMES wil
 )
 

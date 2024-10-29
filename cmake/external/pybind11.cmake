@@ -1,8 +1,11 @@
 FetchContent_Declare(
     pybind11_project
     URL ${DEP_URL_pybind11}
-	URL_HASH SHA1=${DEP_SHA1_pybind11}
-	FIND_PACKAGE_ARGS 2.6 NAMES pybind11
+	  URL_HASH SHA1=${DEP_SHA1_pybind11}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pybind11_project-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/pybind11_project-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pybind11_project-download
+	  FIND_PACKAGE_ARGS 2.6 NAMES pybind11
 )
 onnxruntime_fetchcontent_makeavailable(pybind11_project)
 

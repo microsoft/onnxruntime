@@ -8,13 +8,19 @@ else ()
             eigen
             URL ${DEP_URL_eigen}
             URL_HASH SHA1=${DEP_SHA1_eigen}
-            PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/eigen/eigen-aix.patch
+            PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/eigen/eigen-aix.patch
+            SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/eigen-src
+            BINARY_DIR ${CMAKE_BINARY_DIR}/deps/eigen-build
+            DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/eigen-download
         )
     else()
         FetchContent_Declare(
             eigen
             URL ${DEP_URL_eigen}
             URL_HASH SHA1=${DEP_SHA1_eigen}
+            SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/eigen-src
+            BINARY_DIR ${CMAKE_BINARY_DIR}/deps/eigen-build
+            DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/eigen-download
         )
     endif()
 

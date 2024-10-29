@@ -18,7 +18,14 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
 endif()
 
 # fp16 depends on psimd
-FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
+FetchContent_Declare(
+    psimd
+    URL ${DEP_URL_psimd}
+    URL_HASH SHA1=${DEP_SHA1_psimd}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/psimd-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/psimd-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/psimd-download
+)
 onnxruntime_fetchcontent_makeavailable(psimd)
 set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
 
@@ -41,7 +48,7 @@ block(PROPAGATE fp16_PATCH_COMMAND)
   if(fp16_PATCH_REQUIRED)
     message(STATUS "Applying fp16 patch.")
     set(fp16_PATCH_FILE ${PROJECT_SOURCE_DIR}/patches/fp16/remove_math_h_dependency_from_fp16_h.patch)
-    set(fp16_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${fp16_PATCH_FILE})
+    set(fp16_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${fp16_PATCH_FILE})
   else()
     set(fp16_PATCH_COMMAND "")
   endif()
@@ -52,15 +59,32 @@ FetchContent_Declare(
     URL ${DEP_URL_fp16}
     URL_HASH SHA1=${DEP_SHA1_fp16}
     PATCH_COMMAND ${fp16_PATCH_COMMAND}
-    )
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/fp16-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/fp16-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/fp16-download
+)
 onnxruntime_fetchcontent_makeavailable(fp16)
 
 # pthreadpool depends on fxdiv
-FetchContent_Declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv})
+FetchContent_Declare(
+    fxdiv
+    URL ${DEP_URL_fxdiv}
+    URL_HASH SHA1=${DEP_SHA1_fxdiv}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/fxdiv-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/fxdiv-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/fxdiv-download
+)
 onnxruntime_fetchcontent_makeavailable(fxdiv)
 set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 
-FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
+FetchContent_Declare(
+    pthreadpool
+    URL ${DEP_URL_pthreadpool}
+    URL_HASH SHA1=${DEP_SHA1_pthreadpool}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pthreadpool-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/pthreadpool-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/pthreadpool-download
+)
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
 # ---  Determine target processor
@@ -114,15 +138,28 @@ if(ORT_TARGET_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL 
   # kleidiAI use CMAKE_SYSTEM_PROCESSOR to determine whether includes aarch64/arm64 ukernels
   # https://gitlab.arm.com/kleidi/kleidiai/-/blob/main/CMakeLists.txt#L134
   set(CMAKE_SYSTEM_PROCESSOR arm64)
-  FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
+  FetchContent_Declare(
+      kleidiai
+      URL ${DEP_URL_kleidiai}
+      URL_HASH SHA1=${DEP_SHA1_kleidiai}
+      SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/kleidiai-src
+      BINARY_DIR ${CMAKE_BINARY_DIR}/deps/kleidiai-build
+      DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/kleidiai-download
+  )
   onnxruntime_fetchcontent_makeavailable(kleidiai)
   set(KLEIDIAI_SOURCE_DIR ${kleidiai_SOURCE_DIR})
 endif()
 
 
-FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
-                     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
-                    )
+FetchContent_Declare(
+    googlexnnpack
+    URL ${DEP_URL_googlexnnpack}
+    URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/googlexnnpack-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/googlexnnpack-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/googlexnnpack-download
+)
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
 set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)

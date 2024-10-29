@@ -5,6 +5,10 @@ include(FetchContent)
 FetchContent_Declare(composable_kernel
   URL ${DEP_URL_composable_kernel}
   URL_HASH SHA1=${DEP_SHA1_composable_kernel}
+
+  SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/composable_kernel-src
+  BINARY_DIR ${CMAKE_BINARY_DIR}/deps/composable_kernel-build
+  DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/composable_kernel-download
   PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_CLANG} &&
                 ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_GFX12X}
 )

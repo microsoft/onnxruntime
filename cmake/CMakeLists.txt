@@ -17,6 +17,11 @@ cmake_policy(SET CMP0104 OLD)
 # Enable Hot Reload for MSVC compilers if supported.
 cmake_policy(SET CMP0141 NEW)
 
+# Disable subbuild system with CMP0168 NEW
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
+  cmake_policy(SET CMP0168 NEW)
+endif()
+
 # Project
 project(onnxruntime C CXX ASM)
 
@@ -381,10 +386,22 @@ if (onnxruntime_USE_ROCM)
 endif()
 
 
+get_filename_component(BUILD_DIR_NO_CONFIG "${CMAKE_BINARY_DIR}" DIRECTORY)
 
 # Single output director for all binaries
-set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
-
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if (isMultiConfig)
+  foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+    string( TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG )
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/lib CACHE PATH "Single output directory for all libararies.")
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/archive CACHE PATH "Single output directory for all archives.")
+  endforeach(OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES)
+else()
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "Single output directory for all libararies.")
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/arch CACHE PATH "Single output directory for all librarries." )
+endif()
 
 include(FetchContent)
 
@@ -630,6 +647,9 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd5054")
     # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
     list(APPEND ORT_WARNING_FLAGS "/w15038")
+
+    # This flag helps pass eigen3 build.
+    list(APPEND ORT_WARNING_FLAGS "/wd4996")
 
     # set linker flags to minimize the binary size.
     if (MSVC)

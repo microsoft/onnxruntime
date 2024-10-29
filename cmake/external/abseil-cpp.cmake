@@ -10,7 +10,7 @@ set(ABSL_BUILD_TESTING OFF)
 set(ABSL_BUILD_TEST_HELPERS OFF)
 set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 if(Patch_FOUND AND WIN32)
-  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)
+  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 --input=${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)
 else()
   set(ABSL_PATCH_COMMAND "")
 endif()
@@ -27,6 +27,9 @@ FetchContent_Declare(
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+    SOURCE_DIR ${BUILD_DIR_NO_CONFIG}/_deps/abseil_cpp-src
+    BINARY_DIR ${CMAKE_BINARY_DIR}/deps/abseil_cpp-build
+    DOWNLOAD_DIR ${BUILD_DIR_NO_CONFIG}/_deps/abseil_cpp-download
     FIND_PACKAGE_ARGS 20240722 NAMES absl
 )
 
