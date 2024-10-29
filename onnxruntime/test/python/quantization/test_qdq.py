@@ -1732,8 +1732,8 @@ class TestQDQPrequantWeights(TestQDQFormat):
         cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.prequant_weight")
 
         # Note: swap with the commented line if you want to see the models in local test dir.
-        # cls._tmp_dir_path = cls._tmp_model_dir.name
-        cls._tmp_dir_path = "."
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
 
     @classmethod
     def tearDownClass(cls):
