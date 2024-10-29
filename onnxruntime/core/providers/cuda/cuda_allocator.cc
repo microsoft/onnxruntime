@@ -24,9 +24,6 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
 }
 
 void CUDAAllocator::SetDevice(bool throw_when_fail) const {
-#if defined(USE_CUDA) && defined(USE_DML)
-  LOGS_DEFAULT(WARNING) << "CUDA SetDevice is called";
-#endif
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {

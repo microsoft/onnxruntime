@@ -52,9 +52,6 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
 
 struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
-#if defined(USE_CUDA) && defined(USE_DML)
-    LOGS_DEFAULT(WARNING) << "CUDA SetCurrentGpuDeviceId is called";
-#endif
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
     if (cuda_err != cudaSuccess) {
@@ -115,9 +112,7 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
-#if defined(USE_CUDA) && defined(USE_DML)
-    LOGS_DEFAULT(WARNING) << "CUDA CopyGpuToCpu is called";
-#endif
+
     // Current CUDA device.
     int device;
     CUDA_CALL_THROW(cudaGetDevice(&device));
