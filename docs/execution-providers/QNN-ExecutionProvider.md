@@ -464,14 +464,14 @@ If user creates the QNN context binary .bin file weight sharing from QNN toolcha
 
 ### Inference with QNN resource sharing workflow
 OnnxRuntime inference session need to have resource sharing enabled (set session option ep.share_ep_contexts to 1) to use the dumped Qnn context model with weight sharing enabled.
-- Create OnnxRuuntime inference session with ep.share_ep_contexts=1, loads the model1.onnx_ctx.onnx model.
+- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1.onnx_ctx.onnx model.
   - The session loads the model1.onnx_ctx.onnx model.
   - The shared place is empty.
   - EPContext node1 in model1.onnx_ctx.onnx specifies that it uses Qnn_graph1
   - QNN EP loads the qnn_ctx.bin and deserialize the binary to get Qnn graphs (Qnn_graph1, Qnn_graph2).
   - Uses Qnn_graph1 for this OnnxRuntime session.
   - Put the Qnn_graph2 into the shared place.
-- Create OnnxRuuntime inference session with ep.share_ep_contexts=1, loads the model2.onnx_ctx.onnx model.
+- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model2.onnx_ctx.onnx model.
   - The session loads the model2.onnx_ctx.onnx model.
   - The EPContext node2 in model2.onnx_ctx.onnx specifies that it uses Qnn_graph2.
   - The shared place has Qnn_graph2.
