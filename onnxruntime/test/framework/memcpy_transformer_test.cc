@@ -106,11 +106,23 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+  }
+#else
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                                            std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
+
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
@@ -161,7 +173,14 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
+
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                                            std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
@@ -281,7 +300,13 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                                            std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
@@ -323,7 +348,13 @@ TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) 
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                                            std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
@@ -425,7 +456,13 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                                            std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;

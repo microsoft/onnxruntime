@@ -123,13 +123,16 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
                          0.0f, 0.0f, 0.0f, 0.0f});
 
   // On GPU, just set the value to 0 instead of report error. exclude all other providers
-  test
 #if defined(USE_CUDA)
-      .ConfigEp(DefaultCudaExecutionProvider())
-#else
-      .ConfigEp(DefaultRocmExecutionProvider())
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    test.ConfigEp(DefaultCudaExecutionProvider())
+        .ConfigEp(DefaultRocmExecutionProvider())
+        .RunWithConfig();
+  } else {
+    test.ConfigEp(DefaultRocmExecutionProvider())
+        .RunWithConfig();
+  }
 #endif
-      .RunWithConfig();
 }
 #endif
 
