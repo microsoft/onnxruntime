@@ -103,11 +103,11 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
         } else if (device.Type() == OrtDevice::DML) {
 #if USE_DML
-      // InputDeflist is null because OrtValue creation is not tied to a specific model
-      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
-      CreateGenericMLValue(
-        nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
+          CreateGenericMLValue(
+              nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
       throw std::runtime_error(
           "Can't allocate memory on the DML device using this package of OnnxRuntime. "
