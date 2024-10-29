@@ -419,14 +419,15 @@ std::vector<T> Softmax_QK_Transpose(T* qk_transpose_matrix, int batch_size, int 
   }
 
   std::vector<T> softmax_qk_transpose;
-  softmax_qk_transpose.resize(batch_size * num_heads * sequence_length * total_sequence_length, static_cast<T>(0.f));
+  softmax_qk_transpose.resize(static_cast<size_t>(batch_size) * num_heads * sequence_length * total_sequence_length,
+                              static_cast<T>(0.f));
 
   for (int b = 0; b < batch_size; ++b) {
     for (int n = 0; n < num_heads; ++n) {
       int base_offset = (b * num_heads * sequence_length * total_sequence_length) +
                         (n * sequence_length * total_sequence_length);
 
-      float max = std::numeric_limits<float>::min();
+      float max = std::numeric_limits<float>::lowest();
       for (int s = 0; s < total_sequence_length; ++s) {
         auto val = ToFloat(qk_transpose_matrix[base_offset + s]);
         if (val > max) {
@@ -655,7 +656,7 @@ static std::vector<T> CalculateOutputQK(const std::vector<T>& q, const std::vect
   // mask_index (B, L), (optional) attention_bias (1, 1, 1, L)
   float scale = 1 / sqrt(static_cast<float>(head_size));
   std::vector<T> output_qk;
-  output_qk.resize(batch_size * num_heads * sequence_length, static_cast<T>(0.f));
+  output_qk.resize(static_cast<size_t>(batch_size) * num_heads * sequence_length, static_cast<T>(0.f));
   for (int b = 0; b < batch_size; ++b) {
     for (int n = 0; n < num_heads; ++n) {
       for (int s = 0; s < sequence_length; ++s) {
@@ -682,7 +683,7 @@ static std::vector<T> CalculateOutput(const std::vector<T>& softmax, const std::
                                       int num_heads, int sequence_length, int max_sequence_length, int head_size) {
   // softmax (B, N, 1, L) v (B, N, L(M), H) -> output (B, N, 1, H)
   std::vector<T> output;
-  output.resize(batch_size * num_heads * head_size, static_cast<T>(0.f));
+  output.resize(static_cast<size_t>(batch_size) * num_heads * head_size, static_cast<T>(0.f));
   for (int b = 0; b < batch_size; ++b) {
     for (int n = 0; n < num_heads; ++n) {
       for (int h = 0; h < head_size; ++h) {
@@ -853,7 +854,6 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
 
       const std::vector<int64_t> cache_indir_dims = {batch_size, beam_width, max_sequence_length};
       auto value_candidates = ValueRange<int32_t>(beam_width);
-      FixedPatternValueGenerator generator{};
       auto cache_indir = generator.Discrete<int32_t>(cache_indir_dims, value_candidates);
       tester.AddInput<int32_t>("cache_indirection", cache_indir_dims, cache_indir);
 
