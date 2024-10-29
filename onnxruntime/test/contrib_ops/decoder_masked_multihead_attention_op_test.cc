@@ -413,7 +413,7 @@ std::vector<T> QK_Transpose(T* q_matrix, T* k_transpose_matrix,
 // Softmax_QK_Transpose
 template <typename T>
 std::vector<T> Softmax_QK_Transpose(T* qk_transpose_matrix, int batch_size, int num_heads,
-                                    int sequence_length, int total_sequence_length, int head_size) {
+                                    int sequence_length, int total_sequence_length) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }
@@ -596,7 +596,7 @@ static void TestDecoderMaskedSelfAttention() {
                                         total_sequence_length, head_size);
 
     auto softmax_qk_transpose = Softmax_QK_Transpose<T>(qk_transpose.data(), batch_size, num_heads,
-                                                        sequence_length, total_sequence_length, head_size);
+                                                        sequence_length, total_sequence_length);
 
     auto present = MergeReorderedKVCacheWithK<T>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
                                                  num_heads, past_sequence_length, max_sequence_length, head_size);
@@ -793,8 +793,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     for (size_t i = 0; i < output_qk.size(); ++i) {
       output_qk_float[i] = static_cast<float>(output_qk[i]);
     }
-    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_size, num_heads,
-                                           1, kv_sequence_length, head_size);
+    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_size, num_heads, 1, kv_sequence_length);
     auto output = CalculateOutput<T>(softmax, value, batch_size, num_heads,
                                      kv_sequence_length, kv_sequence_length, head_size);
 
@@ -870,8 +869,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     auto output_qk = CalculateOutputQK<T>(query, (beam_width > 1 ? mod_merged_key : merged_key),
                                           mask_index, attention_bias,
                                           batch_size, num_heads, total_sequence_length, max_sequence_length, head_size);
-    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(),
-                                           batch_size, num_heads, 1, total_sequence_length, head_size);
+    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_size, num_heads, 1, total_sequence_length);
     auto output = CalculateOutput<T>(softmax, (beam_width > 1 ? mod_merged_value : merged_value),
                                      batch_size, num_heads, total_sequence_length, max_sequence_length, head_size);
 
