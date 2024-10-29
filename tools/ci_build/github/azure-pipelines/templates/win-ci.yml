@@ -401,7 +401,7 @@ stages:
               arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
               workingDirectory: '$(Build.BinariesDirectory)'
             env:
-              NO_CUDA_TEST: 1
+              NO_CUDA_TEST: '1'
           - task: PythonScript@0
             displayName: 'test excludes DML'
             condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
@@ -410,7 +410,7 @@ stages:
               arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
               workingDirectory: '$(Build.BinariesDirectory)'
             env:
-              NO_DML_TEST: 1
+              NO_DML_TEST: '1'
         - ${{ else }}:
           - task: PythonScript@0
             displayName: 'test'
