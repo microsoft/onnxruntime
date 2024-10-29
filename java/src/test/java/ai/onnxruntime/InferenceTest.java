@@ -650,7 +650,14 @@ public class InferenceTest {
     int providersSize = providers.size();
     assertTrue(providersSize > 0);
     assertTrue(providers.contains(OrtProvider.CPU));
-
+    String no_cuda_test = Optional.ofNullable(System.getenv("NO_CUDA_TEST")).orElse("0");
+    if (no_cuda_test.equals("1") && providers.contains(OrtProvider.CUDA)) {
+      providers.remove(OrtProvider.CUDA);
+    }
+    String no_dml_test = Optional.ofNullable(System.getenv("NO_DML_TEST")).orElse("0");
+    if (no_dml_test.equals("1") && providers.contains(OrtProvider.DIRECT_ML)) {
+      providers.remove(OrtProvider.DIRECT_ML);
+    }
     // Check that the providers are a copy of the original, note this does not enable the DNNL
     // provider
     providers.add(OrtProvider.DNNL);
