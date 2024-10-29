@@ -124,6 +124,7 @@ MlasIsSQNBitGemmAvailable(
  * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM
  * implementation. If zero, no intermediate workspace is required.
  *
+ * @tparam      T               data type of input A
  * @param[in]   M               row size of matrix A and C
  * @param[in]   N               column size of matrix B and C
  * @param[in]   K               column size of matrix A and row size of matrix B

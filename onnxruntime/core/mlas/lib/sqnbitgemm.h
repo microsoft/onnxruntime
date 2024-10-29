@@ -365,8 +365,9 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       K                   the number of columns of A matrix and rows of B matrix.
      * @param       lda                 the leading dimension of A.
      * @param       ldb                 the leading dimension of B.
+     * @param       ldc                 the leading dimension of C.
      */
-    using SQ4BitGemmKernel_CompFp16_Fn = std::function<void(
+    using SQ4BitGemmKernel_CompFp16_Remainder_Fn = std::function<void(
         const MLAS_FP16* A,
         const MLAS_FP16* B,
         const MLAS_FP16* Bias,
@@ -376,10 +377,21 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t K,
         size_t lda,
         size_t ldb,
-        size_t ldc,
-        const size_t StrideM,
-        const size_t StrideN
+        size_t ldc
     )>;
 
-    SQ4BitGemmKernel_CompFp16_Fn SQ4BitGemmKernel_CompFp16;
+    SQ4BitGemmKernel_CompFp16_Remainder_Fn SQ4BitGemmKernel_CompFp16_Remainder;
+
+    typedef void(SQ4BitGemmKernel_CompFp16_8N_2M_Fn)(
+        const MLAS_FP16* A,
+        const MLAS_FP16* B,
+        const MLAS_FP16* Bias,
+        MLAS_FP16* C,
+        size_t K,
+        size_t lda,
+        size_t ldb,
+        size_t ldc
+    );
+
+    SQ4BitGemmKernel_CompFp16_8N_2M_Fn* SQ4BitGemmKernel_CompFp16_8N_2M = nullptr;
 };

@@ -416,6 +416,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
 
   template <size_t M, size_t N, size_t K, size_t BlkLen, bool UseBias>
   void TestSQ4BitGemmKernel() {
+    static_assert(M <= 2 && N <= 8);
     constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkNum * BlkLen;
 
@@ -424,9 +425,16 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     InitializeBuffer(B, -0.25f, 0.25f);
     InitializeBuffer(bias, -5.0f, 5.0f);
 
-    GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
-        A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N, 64, 32
-    );
+    if constexpr (M == 2 && N == 8) {
+      GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_8N_2M(
+          A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), K, K, ldb, N
+      );
+    } else {
+      GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_Remainder(
+          A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N
+      );
+    }
+
     MatMul<M, N, K, ldb, UseBias>(A, B, bias, ref);
     Check<N, M, N>(C, ref);
   }
@@ -448,29 +456,31 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     TestSQ4BitGemmKernel<M, 1, 15, 16, true>();
     TestSQ4BitGemmKernel<M, 1, 31, 16, false>();
     TestSQ4BitGemmKernel<M, 1, 31, 16, true>();
+    TestSQ4BitGemmKernel<M, 7, 1, 16, false>();
+    TestSQ4BitGemmKernel<M, 7, 1, 16, true>();
+    TestSQ4BitGemmKernel<M, 7, 15, 16, false>();
+    TestSQ4BitGemmKernel<M, 7, 15, 16, true>();
+    TestSQ4BitGemmKernel<M, 7, 31, 16, false>();
+    TestSQ4BitGemmKernel<M, 7, 31, 16, true>();
     TestSQ4BitGemmKernel<M, 8, 1, 16, false>();
     TestSQ4BitGemmKernel<M, 8, 1, 16, true>();
-    TestSQ4BitGemmKernel<M, 8, 16, 16, false>();
-    TestSQ4BitGemmKernel<M, 8, 16, 16, true>();
-    TestSQ4BitGemmKernel<M, 9, 31, 16, false>();
-    TestSQ4BitGemmKernel<M, 9, 31, 16, true>();
-    TestSQ4BitGemmKernel<M, 9, 33, 32, false>();
-    TestSQ4BitGemmKernel<M, 9, 33, 32, true>();
-    TestSQ4BitGemmKernel<M, 15, 33, 16, false>();
-    TestSQ4BitGemmKernel<M, 15, 33, 16, true>();
-    TestSQ4BitGemmKernel<M, 23, 71, 16, false>();
-    TestSQ4BitGemmKernel<M, 23, 71, 16, true>();
-    TestSQ4BitGemmKernel<M, 17, 96, 128, false>();
-    TestSQ4BitGemmKernel<M, 17, 96, 128, true>();
-    TestSQ4BitGemmKernel<M, 31, 519, 16, false>();
-    TestSQ4BitGemmKernel<M, 31, 519, 16, true>();
+    TestSQ4BitGemmKernel<M, 8, 15, 16, false>();
+    TestSQ4BitGemmKernel<M, 8, 15, 16, true>();
+    TestSQ4BitGemmKernel<M, 8, 31, 16, false>();
+    TestSQ4BitGemmKernel<M, 8, 31, 16, true>();
+    TestSQ4BitGemmKernel<M, 7, 63, 128, false>();
+    TestSQ4BitGemmKernel<M, 7, 63, 128, true>();
+    TestSQ4BitGemmKernel<M, 7, 511, 128, false>();
+    TestSQ4BitGemmKernel<M, 7, 511, 128, true>();
+    TestSQ4BitGemmKernel<M, 8, 63, 128, false>();
+    TestSQ4BitGemmKernel<M, 8, 63, 128, true>();
+    TestSQ4BitGemmKernel<M, 8, 511, 128, false>();
+    TestSQ4BitGemmKernel<M, 8, 511, 128, true>();
   }
 
   void ExecuteShort(void) override {
     ExecuteShort_T<1>();
-    ExecuteShort_T<7>();
-    ExecuteShort_T<23>();
-    ExecuteShort_T<63>();
+    ExecuteShort_T<2>();
   }
 };
 

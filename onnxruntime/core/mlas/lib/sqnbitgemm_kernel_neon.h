@@ -88,9 +88,8 @@ Q4BitBlkDequantBForSgemm_CompFp16(
     size_t BlockCountK
 );
 
-template <size_t StrideM, size_t StrideN>
 void
-SQ4BitGemmKernel_CompFp16(
+SQ4BitGemmKernel_CompFp16_Remainder(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const MLAS_FP16* Bias,
@@ -100,9 +99,20 @@ SQ4BitGemmKernel_CompFp16(
     size_t K,
     size_t lda,
     size_t ldb,
-    size_t ldc,
-    const size_t stride_M,
-    const size_t stride_N
+    size_t ldc
+);
+
+template <size_t CountN, size_t CountM>
+typename std::enable_if_t<((CountN == 8 || CountN == 4 || CountN == 2 || CountN == 1) && (CountM == 1 || CountM == 2)), void>
+SQ4BitGemmKernel_CompFp16_Kernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* C,
+    size_t K,
+    size_t lda,
+    size_t ldb,
+    size_t ldc
 );
 
 // CompInt8 declarations
