@@ -156,10 +156,15 @@ def create_backend_test(devices: list[str], test_name=None):
         # and the nodes are assigned to only the CUDA EP (which supports these tests)
         if (backend.supports_device("DML") and not backend.supports_device("GPU")) or "DML" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_pure_DML")
+            # exclude CUDA EP when DML test is running.
             os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider,CUDAExecutionProvider"
+        elif backend.supports_device("DML") and "DML" not in devices:
+            # exclude DML EP when CUDA test is running.
+            os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider,DmlExecutionProvider"
         else:
             # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
             os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
+
 
         filters = (
             current_failing_tests
