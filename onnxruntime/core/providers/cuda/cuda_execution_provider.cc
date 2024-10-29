@@ -173,6 +173,9 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
                                                           ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
                                                           OrtArenaCfg* /*default_memory_arena_cfg*/) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  LOGS_DEFAULT(WARNING) << "CUDA PerThreadContext is called";
+#endif
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 #ifndef USE_CUDA_MINIMAL
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
@@ -277,6 +280,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       tuning_context_(this, &info_.tunable_op) {
 #ifndef ENABLE_CUDA_NHWC_OPS
   ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
+#endif
+
+#if defined(USE_CUDA) && defined(USE_DML)
+  LOGS_DEFAULT(WARNING) << "CUDA ctor is called";
 #endif
 
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));

@@ -245,6 +245,9 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                cudnnHandle_t external_cudnn_handle,
                                cublasHandle_t external_cublas_handle,
                                const CUDAExecutionProviderInfo& ep_info) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  LOGS_DEFAULT(WARNING) << "CUDA RegisterCudaStreamHandles is called";
+#endif
   // wait cuda notification on cuda ep
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
