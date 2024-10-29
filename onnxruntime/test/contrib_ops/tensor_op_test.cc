@@ -248,7 +248,7 @@ TEST(UnfoldTensorOpTest, LastDim) {
 #ifdef USE_CUDA
   if (DefaultCudaExecutionProvider() != nullptr) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
-   }
+  }
 #endif
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
