@@ -128,7 +128,7 @@ def _openvino_verify_device_type(device_read):
 
 def get_cmake_version():
     # Run the command and capture its output
-    result = subprocess.run(['cmake', '--version'], capture_output=True, text=True)
+    result = subprocess.run(['cmake', '--version'], capture_output=True, text=True, check=True)
 
     # Extract the version string from the output
     version_string = result.stdout.strip()
@@ -2712,7 +2712,7 @@ def main():
     build_dir = args.build_dir
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
-    deps_src_dir = os.path.join(build_dir, "_deps");
+    deps_src_dir = os.path.join(build_dir, "_deps")
 
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
