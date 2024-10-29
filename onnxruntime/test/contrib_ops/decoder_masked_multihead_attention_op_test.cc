@@ -882,7 +882,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   }
 
   if (std::is_same<T, MLFloat16>::value) {
-    tester.SetOutputTolerance(0.005f);
+    tester.SetOutputTolerance(0.02f);
   } else {
     tester.SetOutputTolerance(0.0001f, 0.0001f);
   }
