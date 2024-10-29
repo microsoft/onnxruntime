@@ -745,7 +745,7 @@ public class InferenceTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
-    String no_dml_test = Optional.ofNullable(System.getenv("NO_DML_TEST")).orElse("0");;
+    String no_dml_test = Optional.ofNullable(System.getenv("NO_DML_TEST")).orElse("0");
     if (!no_dml_test.equals("1")) {
       runProvider(OrtProvider.DIRECT_ML);
     } else {
