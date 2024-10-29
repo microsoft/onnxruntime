@@ -767,14 +767,24 @@ SQ4BitGemmKernel_CompFp16_Kernel(
 
     if constexpr (CountN == 8) {
         MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C), r.accu00);
-    } else {
+    } else if constexpr (CountN == 4) {
         MlasStoreFloat16x4(reinterpret_cast<_mlas_fp16_*>(C), r.accu00);
+    } else {
+        MlasStoreLaneFloat16x4<0>(C, r.accu00);
+        if constexpr (CountN == 2) {
+            MlasStoreLaneFloat16x4<1>(C + 1, r.accu00);
+        }
     }
     if constexpr (CountM == 2) {
         if constexpr (CountN == 8) {
             MlasStoreFloat16x8(reinterpret_cast<_mlas_fp16_*>(C + ldc), r.accu10);
-        } else {
+        } else if constexpr (CountN == 4) {
             MlasStoreFloat16x4(reinterpret_cast<_mlas_fp16_*>(C + ldc), r.accu10);
+        } else {
+            MlasStoreLaneFloat16x4<0>(C + ldc, r.accu10);
+            if constexpr (CountN == 2) {
+                MlasStoreLaneFloat16x4<1>(C + ldc + 1, r.accu10);
+            }
         }
     }
 }
