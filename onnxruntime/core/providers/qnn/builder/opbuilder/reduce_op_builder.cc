@@ -6,15 +6,15 @@
 #include <array>
 #include <vector>
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
-#include "core/framework/endian_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
 #include "onnx/defs/data_type_utils.h"
-
-#include "base_op_builder.h"
+#include "core/providers/common.h"
+#include "core/framework/endian_utils.h"
+#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -25,6 +25,7 @@ enum ReduceOpType {
   REDUCE_OP_TYPE_MEAN,
   REDUCE_OP_TYPE_PROD,
   REDUCE_OP_TYPE_SUM,
+  REDUCE_OP_TYPE_L2,
 
   REDUCE_OP_TYPE_COUNT,
   REDUCE_OP_TYPE_UNKNOWN,
@@ -41,6 +42,8 @@ ReduceOpType GetReduceOpType(const std::string& op_type) {
     return REDUCE_OP_TYPE_PROD;
   } else if (op_type == "ReduceSum") {
     return REDUCE_OP_TYPE_SUM;
+  } else if (op_type == "ReduceL2") {
+    return REDUCE_OP_TYPE_L2;
   } else {
     return REDUCE_OP_TYPE_UNKNOWN;
   }
@@ -84,7 +87,8 @@ const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_
     18,  // ReduceMin
     18,  // ReduceMean
     18,  // ReduceProd
-    13   // ReduceSum
+    13,  // ReduceSum
+    18,  // ReduceL2
 };
 
 Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -245,10 +249,50 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  if (node_unit.OpType() == "ReduceL2") {
+    const auto& input = node_unit.Inputs()[0];
+    const auto& output = node_unit.Outputs()[0];
+    std::vector<uint32_t> input_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input.node_arg, input_shape), "Cannot get shape");
+    std::vector<uint32_t> output_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_shape), "Cannot get shape");
+    QnnQuantParamsWrapper output_quantize_param;
+    ORT_RETURN_IF_ERROR(output_quantize_param.Init(qnn_model_wrapper, output));
+    bool is_quantized_tensor = output.quant_param.has_value();
+    const auto* type_proto = output.node_arg.TypeAsProto();
+    Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
+    const std::string input_name = input_names[0];
+    const std::string pow2_name = input_name + "_ort_qnn_ep_pow2";
+    QnnTensorWrapper pow2_tensorwrapper(pow2_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, output_quantize_param.Copy(),
+                                        std::move(input_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(pow2_tensorwrapper)), "AddTensorWrapper failed");
+    ORT_RETURN_IF_NOT(
+        qnn_model_wrapper.CreateQnnNode(pow2_name, QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_ELEMENT_WISE_MULTIPLY,
+                                        {input_name, input_name}, {pow2_name}, {}, do_op_validation),
+        "CreateQnnNode failed");
+    const std::string reduce_name = input_name + "_ort_qnn_ep_pow2_sum";
+    QnnTensorWrapper reduce_tensorwrapper(reduce_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type,
+                                          output_quantize_param.Copy(), std::vector<uint32_t>(output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reduce_tensorwrapper)), "AddTensorWrapper failed");
+    ORT_RETURN_IF_NOT(
+        qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit), QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_REDUCE_SUM,
+                                        {pow2_name}, {reduce_name}, std::move(param_tensor_names), do_op_validation),
+        "CreateQnnNode failed");
+    Qnn_TensorType_t output_tensor_type =
+        qnn_model_wrapper.IsGraphOutput(output.node_arg.Name()) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    QnnTensorWrapper sqrt_tensorwrapper(output.node_arg.Name(), output_tensor_type, qnn_data_type,
+                                        std::move(output_quantize_param), std::move(output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(sqrt_tensorwrapper)), "AddTensorWrapper failed");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(input_name + "_ort_qnn_ep_pow2_sum_sqrt",
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_ELEMENT_WISE_SQUARE_ROOT,
+                                                      {reduce_name}, {output.node_arg.Name()}, {}, do_op_validation),
+                      "CreateQnnNode failed");
+  } else {
+    ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
+                                       std::move(param_tensor_names), logger, do_op_validation,
+                                       GetQnnOpType(node_unit.OpType())));
+  }
 
   return Status::OK();
 }
