@@ -21,7 +21,9 @@ plist_file_content = """
 """
 if __name__ == "__main__":
     # handle cli args
-    parser = argparse.ArgumentParser("Generates a PList file to the relevant destination")
+    parser = argparse.ArgumentParser(
+        "Generates a PList file to the relevant destination. This PList file contains the properties to allow a user to generate an IPA file for the ios-package-test. "
+    )
 
     parser.add_argument("--dest_file", type=str, help="Path to output the PList file to.", required=True)
     parser.add_argument(
