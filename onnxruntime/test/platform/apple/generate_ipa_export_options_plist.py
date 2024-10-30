@@ -1,5 +1,4 @@
 import argparse
-import os
 
 plist_file_content = """
 <?xml version="1.0" encoding="UTF-8"?>
@@ -25,14 +24,26 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Generates a PList file to the relevant destination")
 
     parser.add_argument("--dest_file", type=str, help="Path to output the PList file to.", required=True)
-    parser.add_argument("--apple_team_id", type=str, help="The Team ID associated with the provisioning profile. You should be able to find this from the Apple developer portal under Membership.", required=True)
-    parser.add_argument("--provisioning_profile_uuid", type=str, help="The Provisioning Profile UUID, which is the filename of the installed provisioning profile without the .mobileprovision extension. ", required=True)
+    parser.add_argument(
+        "--apple_team_id",
+        type=str,
+        help="The Team ID associated with the provisioning profile. You should be able to find this from the Apple developer portal under Membership.",
+        required=True,
+    )
+    parser.add_argument(
+        "--provisioning_profile_uuid",
+        type=str,
+        help="The Provisioning Profile UUID, which is the filename of the installed provisioning profile without the .mobileprovision extension. ",
+        required=True,
+    )
 
     args = parser.parse_args()
 
-    formatted_plist = plist_file_content.format(team_id = args.apple_team_id, provisioning_profile_uuid = args.provisioning_profile_uuid)
+    formatted_plist = plist_file_content.format(
+        team_id=args.apple_team_id, provisioning_profile_uuid=args.provisioning_profile_uuid
+    )
 
-    with open(args.dest_file, 'w') as file:
+    with open(args.dest_file, "w") as file:
         file.write(formatted_plist)
 
     print("Wrote plist file to ", args.dest_file)
