@@ -221,7 +221,11 @@ stages:
         - template: jobs/steps/py_packaging_test_step.yml
           parameters:
             EP_NAME: DML
+            PYTHON_VERSION: ${{ parameters.PYTHON_VERSION }}
 
         - template: jobs/steps/py_packaging_test_step.yml
           parameters:
             EP_NAME: CUDA
+            PYTHON_VERSION: ${{ parameters.PYTHON_VERSION }}
+
+

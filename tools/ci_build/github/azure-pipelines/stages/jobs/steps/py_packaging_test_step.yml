@@ -3,6 +3,9 @@ parameters:
   type: string
   default: CPU
 
+- name: PYTHON_VERSION
+  type: string
+
 steps:
 - powershell: |
     python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
