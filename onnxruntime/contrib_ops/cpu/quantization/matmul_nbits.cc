@@ -125,9 +125,26 @@ class MatMulNBits final : public OpKernel {
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  std::optional<Tensor> GetPrePackTensor(int /*input_idx*/) override;
+  std::optional<Tensor> GetPrePackTensor(int /*input_idx*/) override {
+    // For this kernel, prepack is performed on input_B, and possibly scales, zeros_points.
+    // During compute process, scales and zeros_points will keep as it is and only use prepacked
+    // buffer to replace input_B.
+    // Inorder to cope with this logic, we need to return latest prepacked buffer and only serialize
+    // the latest one. So, we need to always return packed_tensor_ here not only for input_B.
+    return std::move(packed_tensor_);
+  }
 
-  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override;
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override {
+    if (input_idx == 1) {
+      // pre_packed_tensor is constant initialized tensor and its lifecycle is managed by session_state,
+      // session_state will release memory from pre_packed_tensor. packed_b_ will not release memory so
+      // pass empty/default buffer deleter here.
+      // const_cast here is temporary, will fix in follow up PR.
+      packed_b_ = BufferUniquePtr(const_cast<void*>(pre_packed_tensor.DataRaw()), BufferDeleter());
+    }
+
+    return Status::OK();
+  }
 
  private:
   const size_t K_;
@@ -237,7 +254,7 @@ Status MatMulNBits<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-bool save_prepacked_initializers,
+                                       bool save_prepacked_initializers,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -259,6 +276,10 @@ bool save_prepacked_initializers,
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nullptr);
     is_packed = true;
+  }
+
+  if (save_prepacked_initializers) {
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
   }
 
   return Status::OK();
@@ -318,30 +339,6 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 
   if (save_prepacked_initializers) {
     ConvertPrepackWeightIntoTensor(tensor, input_idx);
-  }
-
-  return Status::OK();
-}
-
-template <typename T1>
-std::optional<Tensor> MatMulNBits<T1>::GetPrePackTensor(int input_idx) {
-  // For this kernel, prepack is performed on input_B, and possibly scales, zeros_points.
-  // During compute process, scales and zeros_points will keep as it is and only use prepacked
-  // buffer to replace input_B.
-  // Inorder to cope with this logic, we need to return latest prepacked buffer and only serialize
-  // the latest one. So, we need to always return packed_tensor_ here not only for input_B.
-  ORT_UNUSED_PARAMETER(input_idx);
-  return std::move(packed_tensor_);
-}
-
-template <typename T1>
-Status MatMulNBits<T1>::SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
-  if (input_idx == 1) {
-    // pre_packed_tensor is constant initialized tensor and its lifecycle is managed by session_state,
-    // session_state will release memory from pre_packed_tensor. packed_b_ will not release memory so
-    // pass empty/default buffer deleter here.
-    // const_cast here is temporary, will fix in follow up PR.
-    packed_b_ = BufferUniquePtr(const_cast<void*>(pre_packed_tensor.DataRaw()), BufferDeleter());
   }
 
   return Status::OK();
