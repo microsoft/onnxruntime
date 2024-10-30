@@ -15,6 +15,7 @@ steps:
     Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data
     cd $(Agent.TempDirectory)\ort_test_data
     python onnx_backend_test_series.py --devices ${{ parameters.EP_NAME }}
+    cd $(Agent.TempDirectory)
     Remove-Item -Path $(Agent.TempDirectory)\ort_test_data -Recurse -Force
   workingDirectory: '$(Build.sourcesDirectory)'
   displayName: 'Run Python Tests with ${{ parameters.EP_NAME }} EP'
