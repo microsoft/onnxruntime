@@ -835,6 +835,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "GlobalMaxPool",
                                                     "Greater",
                                                     "GreaterOrEqual",
+                                                    "GroupNormalization",
                                                     "GroupQueryAttention",
                                                     "HardSigmoid",
                                                     "HardSwish",
@@ -843,6 +844,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ImageScaler",
                                                     "InstanceNormalization",
                                                     "IsNan",
+                                                    "LayerNormalization",
                                                     "LeakyRelu",
                                                     "Less",
                                                     "LessOrEqual",
@@ -913,6 +915,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "SkipSimplifiedLayerNormalization",
                                                     "Slice",
                                                     "Softmax",
+                                                    "SoftmaxCrossEntropyLoss",
                                                     "Softplus",
                                                     "Softsign",
                                                     "SpaceToDepth",
@@ -1021,15 +1024,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
 
     if (unsupported_nodes.size() > 10) {
-      return result;
-    }
-
-    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
-    // so if a model contain any of these operators, fall back to CPU
-    std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
-    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-          return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-        })) {
       return result;
     }
 
@@ -1425,7 +1419,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       {
         // lock to avoid race condition
-        std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
 
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
@@ -1443,7 +1437,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
             auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
             void* output_data = output_tensor.GetTensorMutableRawData();
-            HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
+            HIP_CALL_THROW(hipMemcpyWithStream(output_data,
+                                               gpu_res.data(),
+                                               res_shape.bytes(),
+                                               hipMemcpyDeviceToDevice,
+                                               static_cast<hipStream_t>(rocm_stream)));
           }
         }
       };

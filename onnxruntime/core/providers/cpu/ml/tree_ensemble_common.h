@@ -4,7 +4,7 @@
 #pragma once
 
 #include "tree_ensemble_aggregator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
 
