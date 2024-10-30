@@ -84,7 +84,7 @@ if __name__ == "__main__":
             "Path to the app file. "
             "For Android, typically, the app file (the APK) is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/debug/app-debug.apk"
-            ". For iOS, you will have to build an IPA file from the test app."
+            ". For iOS, you will have to build an IPA file from the test app, which is built from the .xcarchive path"
         ),
         required=True,
     )
@@ -95,7 +95,7 @@ if __name__ == "__main__":
             "Path to the test suite file. "
             "Typically, the test APK is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-            ". For iOS, you will have to create a .zip of the tests."
+            ". For iOS, you will have to create a .zip of the tests. After manually building the tests, the tests that you need to zip will be in {{DerivedDataFolderPath}}/Build/Products"
         ),
         required=True,
     )
