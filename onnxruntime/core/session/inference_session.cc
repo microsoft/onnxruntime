@@ -1662,6 +1662,23 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
     }
   }
 }
+
+// This function is called when the session is being initialized.
+// For now, this function only checks for invalid combination of DML EP with other EPs.
+// TODO: extend this function to check for other invalid combinations of EPs.
+common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() const {
+  // DML EP is only allowed with CPU EP
+  bool has_dml_ep = execution_providers_.Get(kDmlExecutionProvider) != nullptr;
+  if (has_dml_ep) {
+    const auto& ep_list = execution_providers_.GetIds();
+    for (const auto& ep : ep_list) {
+      if (ep == kDmlExecutionProvider || ep == kCpuExecutionProvider) continue;
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "DML EP can be used with only CPU EP.");
+    }
+  }
+  return Status::OK();
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
@@ -1718,6 +1735,11 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
       execution_providers_.SetCpuProviderWasImplicitlyAdded(true);
     }
+
+    // Check for the presence of an invalid combination of execution providers in the session
+    // For e.g. we don't support DML EP and other GPU EPs to be present in the same session
+    // This check is placed here because it serves as a common place for all language bindings.
+    ORT_RETURN_IF_ERROR_SESSIONID_(HasInvalidCombinationOfExecutionProviders());
 
     // re-acquire mutex
     std::lock_guard<std::mutex> l(session_mutex_);
