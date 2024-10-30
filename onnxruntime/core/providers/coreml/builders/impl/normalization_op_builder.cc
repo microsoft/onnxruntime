@@ -52,11 +52,9 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
 #if defined(COREML_ENABLE_MLPROGRAM)
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
-  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& scale_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name())
 
-  const auto& scale_tensor = *initializers.at(input_defs[1]->Name());
-
-  const auto eps = helper.Get("epsilon", 1e-5f);
+                                  const auto eps = helper.Get("epsilon", 1e-5f);
 
   std::vector<int64_t> input_shape;
   // GetShape will never fail as we have already verified the input shape in IsOpSupportedImpl
@@ -82,8 +80,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
     }
     AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name() + "gamma", scale_tensor));
     if (input_defs.size() > 2) {
-      const auto& bias_tensor = *initializers.at(input_defs[2]->Name());
-      AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name() + "beta", bias_tensor));
+      const auto& bias_tensor = *model_builder.GetConstantInitializer(input_defs[2]->Name())
+                                     AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name() + "beta", bias_tensor));
     }
 
     if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
