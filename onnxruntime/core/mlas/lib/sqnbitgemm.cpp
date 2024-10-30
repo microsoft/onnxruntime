@@ -644,6 +644,12 @@ SQ4BitGemm_CompFp16(
                 a, dequant_b, Bias, c, K, lda, ldb, ldc
             );
 
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM + m, RangeStartN + n, StrideM, StrideN, ldc
+                );
+            }
+
             a += StrideM * lda;
             c += StrideM * ldc;
         }
@@ -652,6 +658,12 @@ SQ4BitGemm_CompFp16(
             GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_Remainder(
                 a, dequant_b, Bias, c, 1, StrideN, K, lda, ldb, ldc
             );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM + m, RangeStartN + n, 1, StrideN, ldc
+                );
+            }
         }
 
         QuantBData += StrideN * qldb;
@@ -673,6 +685,12 @@ SQ4BitGemm_CompFp16(
             GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_Remainder(
                 a, dequant_b, Bias, c, countM, RangeCountN - n, K, lda, ldb, ldc
             );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM + m, RangeStartN + n, countM, RangeCountN - n, ldc
+                );
+            }
 
             a += countM * lda;
             c += countM * ldc;
