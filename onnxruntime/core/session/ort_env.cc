@@ -17,6 +17,14 @@
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
+#ifdef USE_WEBGPU
+namespace onnxruntime {
+namespace webgpu {
+void CleanupWebGpuContexts();
+}  // namespace webgpu
+}  // namespace onnxruntime
+#endif
+
 std::unique_ptr<OrtEnv> OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
 std::mutex OrtEnv::m_;
@@ -26,6 +34,10 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 }
 
 OrtEnv::~OrtEnv() {
+#ifdef USE_WEBGPU
+  webgpu::CleanupWebGpuContexts();
+#endif
+
 // We don't support any shared providers in the minimal build yet
 #if !defined(ORT_MINIMAL_BUILD)
   UnloadSharedProviders();
