@@ -123,8 +123,8 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
 #ifdef USE_DML
-  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
-  if (no_dml_ep_test != "1") {
+  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
+  if (no_cuda_ep_test == "1") {
     return nullptr;
   }
 #endif
@@ -331,8 +331,8 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
 #ifdef USE_CUDA
-  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
-  if (no_cuda_ep_test != "1") {
+  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
+  if (no_dml_ep_test == "1") {
     return nullptr;
   }
 #endif
