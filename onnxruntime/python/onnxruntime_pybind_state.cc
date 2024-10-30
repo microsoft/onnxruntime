@@ -288,11 +288,9 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
-#ifdef USE_DML
-      return DML;
-#else
       return CUDA;
-#endif
+    case OrtDevice::DML:
+      return DML;
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
@@ -1579,7 +1577,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
-      .def_static("dml", []() { return OrtDevice::GPU; })
+      .def_static("dml", []() { return OrtDevice::DML; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
