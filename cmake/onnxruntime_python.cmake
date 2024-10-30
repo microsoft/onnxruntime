@@ -227,7 +227,7 @@ elseif (APPLE)
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
   if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-     target_link_libraries(onnxruntime_pybind11_state PRIVATE "-Wl,-rpath=$ORIGIN")
+     target_link_libraries(onnxruntime_pybind11_state PRIVATE "-Wl,-rpath='$ORIGIN'")
   endif()
 endif()
 
