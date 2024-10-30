@@ -13,10 +13,9 @@
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
 
-#if CUDNN_MAJOR < 9
-// if compiled with cuDNN 8 we want to use the legacy cuDNN API
+// Use the legacy cuDNN API as fallback when cuDNN frontend failed.
 #include "conv_8.h"
-#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -250,11 +249,10 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   s_.workspace_bytes = s_.cudnn_fe_graph->get_workspace_size();
   return Status::OK();
 }
-
 #endif
 
 template <typename T, bool Layout>
-Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected) const {
+Status Conv<T, Layout>::UpdateState_v9(OpKernelContext* context, bool bias_expected) const {
   constexpr bool channels_last = Layout;
 
   // set X
@@ -457,9 +455,10 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
 }
 
 template <typename T, bool Layout>
-Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
+Status Conv<T, Layout>::ComputeInternal_v9(OpKernelContext* context) const {
   std::lock_guard<std::mutex> lock(s_.mutex);
-  ORT_RETURN_IF_ERROR(UpdateState(context));
+
+  ORT_RETURN_IF_ERROR(UpdateState_v9(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
   }
@@ -505,6 +504,33 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+template <typename T, bool Layout>
+Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
+  if (!use_v9_) {
+    return ComputeInternal_v8(context);
+  }
+
+  Status status = ComputeInternal_v9(context);
+  if (!status.IsOK()) {
+    use_v9_ = false;
+
+    LOGS_DEFAULT(ERROR) << status.ErrorMessage()
+                        << " Conv v9 failed and falling back to v8...";
+    return ComputeInternal_v8(context);
+  }
+
+  return status;
+}
+
+#else  // CUDNN_MAJOR >= 9
+
+template <typename T, bool Layout>
+Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
+  return ComputeInternal_v8(context);
+}
+
+#endif
 
 CudnnConvolutionDescriptor::CudnnConvolutionDescriptor() : desc_(nullptr) {
 }
@@ -563,7 +589,6 @@ Status CudnnConvolutionDescriptor::Set(
 
   return Status::OK();
 }
-#endif
 
 #ifndef DISABLE_CONTRIB_OPS
 // template instantiation for NhwcConv

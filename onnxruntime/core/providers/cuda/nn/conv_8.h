@@ -66,7 +66,7 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 }
 
 template <typename T, bool NHWC>
-Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
+Status Conv<T, NHWC>::UpdateState_v8(OpKernelContext* context, bool bias_expected) const {
   // set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -386,9 +386,9 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 }
 
 template <typename T, bool NHWC>
-Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
+Status Conv<T, NHWC>::ComputeInternal_v8(OpKernelContext* context) const {
   std::lock_guard<std::mutex> lock(s_.mutex);
-  ORT_RETURN_IF_ERROR(UpdateState(context));
+  ORT_RETURN_IF_ERROR(UpdateState_v8(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
   }
@@ -423,62 +423,5 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-CudnnConvolutionDescriptor::CudnnConvolutionDescriptor() : desc_(nullptr) {
-}
-
-CudnnConvolutionDescriptor::~CudnnConvolutionDescriptor() {
-  if (desc_ != nullptr) {
-    cudnnDestroyConvolutionDescriptor(desc_);
-    desc_ = nullptr;
-  }
-}
-
-Status CudnnConvolutionDescriptor::Set(
-    size_t rank,
-    const gsl::span<const int64_t>& pads,
-    const gsl::span<const int64_t>& strides,
-    const gsl::span<const int64_t>& dilations,
-    int groups,
-    cudnnConvolutionMode_t mode,
-    cudnnDataType_t data_type,
-    bool use_tf32) {
-  if (!desc_)
-    CUDNN_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
-
-  InlinedVector<int, kTensorShapeSmallBufferElementsSize> pad_dims(rank);
-  InlinedVector<int, kTensorShapeSmallBufferElementsSize> stride_dims(rank);
-  InlinedVector<int, kTensorShapeSmallBufferElementsSize> dilation_dims(rank);
-  for (size_t i = 0; i < rank; i++) {
-    pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
-    stride_dims[i] = gsl::narrow_cast<int>(strides[i]);
-    dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
-  }
-
-  // This piece of code is copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
-  // Setting math_type to CUDNN_DATA_FLOAT for half input
-  cudnnDataType_t math_type = data_type;
-  if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
-      desc_,
-      gsl::narrow_cast<int>(rank),
-      pad_dims.data(),
-      stride_dims.data(),
-      dilation_dims.data(),
-      mode,
-      math_type));
-
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(desc_, groups));
-
-  // Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
-  // See Note [behavior of cudnnFind and cudnnGet] at /pytorch/aten/src/ATen/native/cudnn/Conv_v7.cpp
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
-  if (data_type == CUDNN_DATA_HALF) {
-    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
-  } else if (data_type == CUDNN_DATA_FLOAT && !use_tf32) {
-    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
-  }
-
-  return Status::OK();
-}
 }  // namespace cuda
 }  // namespace onnxruntime

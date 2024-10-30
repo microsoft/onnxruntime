@@ -225,11 +225,12 @@ class Conv : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
+  Status ComputeInternal_v8(OpKernelContext* context) const;
+  Status UpdateState_v8(OpKernelContext* context, bool bias_expected = false) const;
+
   inline IAllocatorUniquePtr<void> GetWorkSpace(onnxruntime::Stream* stream) const {
     return GetScratchBuffer<void>(s_.workspace_bytes, stream);
   }
-
-  Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
 
 #if !defined(__CUDACC__) && CUDNN_MAJOR >= 9
   Status CreateCudnnFeExecutionPlan(const onnxruntime::TensorShapeVector& x_dims,
@@ -247,6 +248,12 @@ class Conv : public CudaKernel {
                                     const bool fuse_act,
                                     const bool w_in_nhwc,
                                     const bool use_tf32) const;
+#endif
+
+#if CUDNN_MAJOR >= 9
+  Status ComputeInternal_v9(OpKernelContext* context) const;
+  Status UpdateState_v9(OpKernelContext* context, bool bias_expected = false) const;
+  mutable bool use_v9_ = true;
 #endif
 
   ConvAttributes conv_attrs_;
