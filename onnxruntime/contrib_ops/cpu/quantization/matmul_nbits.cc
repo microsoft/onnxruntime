@@ -208,7 +208,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-bool save_prepacked_initializers,
+                                       bool save_prepacked_initializers,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
@@ -230,6 +230,10 @@ bool save_prepacked_initializers,
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nullptr);
     is_packed = true;
+  }
+
+  if (save_prepacked_initializers) {
+    ConvertPrepackWeightIntoTensor(tensor, input_idx);
   }
 
   return Status::OK();
