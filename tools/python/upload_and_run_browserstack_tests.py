@@ -82,7 +82,7 @@ if __name__ == "__main__":
         type=Path,
         help=(
             "Path to the app file. "
-            "For Android, typically, the app APK is in "
+            "For Android, typically, the app file (the APK) is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/debug/app-debug.apk"
             ". For iOS, you will have to build an IPA file from the test app."
         ),
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         "--test_path",
         type=Path,
         help=(
-            "Path to the test APK. "
+            "Path to the test suite file. "
             "Typically, the test APK is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
             ". For iOS, you will have to create a .zip of the tests."
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         help="List of devices to run the tests on. For more info, "
-        "see https://www.browserstack.com/docs/app-automate/espresso/specify-devices",
+        "see https://www.browserstack.com/docs/app-automate/espresso/specify-devices (Android) or https://www.browserstack.com/docs/app-automate/xcuitest/specify-devices (iOS)",
         required=True,
     )
 

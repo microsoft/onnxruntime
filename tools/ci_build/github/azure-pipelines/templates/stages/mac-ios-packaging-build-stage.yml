@@ -123,21 +123,18 @@ stages:
       displayName: "Create .zip file of the tests"
 
     - script: |
-        python $(Build.SourcesDirectory)/tools/python/generate_plist.py --dest_file "exportOptions.plist"
+        python $(Build.SourcesDirectory)/onnxruntime/test/platform/apple/generate_ipa_export_options_plist.py --dest_file "exportOptions.plist" --apple_team_id $(APPLE_TEAM_ID) --provisioning_profile_uuid $(APPLE_PROV_PROFILE_UUID)
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "Generate .plist file for the .ipa file"
-      env:
-        PROVISIONING_PROFILE_UUID: '$(APPLE_PROV_PROFILE_UUID)'
-        APPLE_TEAM_ID: '$(APPLE_TEAM_ID)'
 
     - task: Xcode@5
       inputs:
         actions: 'archive'
-        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
+        xcWorkspacePath: 'apple_package_test.xcworkspace'
         packageApp: true
         archivePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
         exportOptions: 'plist'
-        exportOptionsPlist: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/exportOptions.plist'
+        exportOptionsPlist: 'exportOptions.plist'
         configuration: 'Debug'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
@@ -158,8 +155,6 @@ stages:
           -exportPath $(Build.ArtifactStagingDirectory)/test_ipa
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "Create .ipa file"
-      env:
-        DEVELOPER_DIR: /Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer
 
     # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
     # so that users can attempt to locally debug
