@@ -148,6 +148,7 @@ option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algor
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
+option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 
 # Options related to reducing the binary size produced by the build
 # XNNPACK EP requires the internal NHWC contrib ops to be available, so this option must be OFF when onnxruntime_USE_XNNPACK is ON
@@ -958,6 +959,9 @@ if (onnxruntime_USE_WEBGPU)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBGPU=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WEBGPU=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES webgpu)
+  if (onnxruntime_USE_EXTERNAL_DAWN)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_EXTERNAL_DAWN=1)
+  endif()
 endif()
 if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
