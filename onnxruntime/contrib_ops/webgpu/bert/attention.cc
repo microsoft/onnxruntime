@@ -42,8 +42,8 @@ Status TransferBSDToBNSHProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
 Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_heads, int sequence_length,
                          int head_size, const Tensor* input_tensor, const Tensor* bias, int bias_offset, Tensor* output_tensor) {
-  assert(input_tensor->Shape().GetDims().size() == 3);
-  assert(output_tensor->Shape().GetDims().size() == 4);
+  ORT_ENFORCE(input_tensor->Shape().GetDims().size() == 3);
+  ORT_ENFORCE(output_tensor->Shape().GetDims().size() == 4);
 
   uint32_t data_size = SafeInt<uint32_t>(output_tensor->Shape().Size());
   const int batch_offset = num_heads * sequence_length * head_size;
