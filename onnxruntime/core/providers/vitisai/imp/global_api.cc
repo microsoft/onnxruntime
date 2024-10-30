@@ -45,8 +45,8 @@ using namespace onnxruntime;
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
-  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
-      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
+  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
   uint32_t (*vaip_get_version)();
   void (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
@@ -74,7 +74,7 @@ struct OrtVitisAIEpAPI {
     ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
 #endif
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "initialize_onnxruntime_vitisai_ep", (void**)&initialize_onnxruntime_vitisai_ep));
-    auto status = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options", (void**)&compile_onnx_model_with_options);
+    auto status = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_error_handling", (void**)&compile_onnx_model_vitisai_ep_with_error_handling);
     if (!status.IsOK()) {
       ::onnxruntime::LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status);
@@ -97,10 +97,20 @@ static vaip_core::OrtApiForVaip the_global_api;
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
+void change_status_with_error(void* status_ptr, int error_code, const char* error_msg) {
+  auto status = reinterpret_cast<Status*>(status_ptr);
+  *status = Status(onnxruntime::common::ONNXRUNTIME, error_code, error_msg);
+}
+
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
-    const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger, const ProviderOptions& options) {
+    const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options) {
   auto model_path = graph_viewer.ModelPath().string();
-  return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path, graph_viewer.GetGraph(), options));
+  Status status = Status::OK();
+  auto status_ptr = reinterpret_cast<void*>(&status);
+  auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error));
+  if (!status.IsOK()) {
+  }
+  return ret;
 }
 
 std::optional<std::vector<Node*>> create_ep_context_nodes(
