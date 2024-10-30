@@ -71,7 +71,7 @@ struct DataTransfer {
       return ep->Sync();
     } else {
       return Status::OK();
-    }   
+    }
   }
 };
 }  // namespace

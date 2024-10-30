@@ -77,5 +77,3 @@ stages:
     build_py_parameters: ${{ parameters.build_py_parameters }}
     cmake_build_type: ${{ parameters.cmake_build_type }}
     qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
-    publish_symbols: true
-
