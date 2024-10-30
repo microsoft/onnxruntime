@@ -816,7 +816,8 @@ SQ4BitGemmKernel_CompFp16_Remainder(
             } else {
                 SQ4BitGemmKernel_CompFp16_Kernel<4, 1>(A, B, Bias, C, K, lda, ldb, ldc);
             }
-            n += 4, B += 4 * ldb, Bias += 4, C += 4;
+            n += 4, B += 4 * ldb, C += 4;
+            if (Bias) Bias += 4;
         }
 
         if (n + 2 <= CountN) {
@@ -825,7 +826,8 @@ SQ4BitGemmKernel_CompFp16_Remainder(
             } else {
                 SQ4BitGemmKernel_CompFp16_Kernel<2, 1>(A, B, Bias, C, K, lda, ldb, ldc);
             }
-            n += 2, B += 2 * ldb, Bias += 2, C += 2;
+            n += 2, B += 2 * ldb, C += 2;
+            if (Bias) Bias += 2;
         }
 
         if (n < CountN) {
