@@ -748,6 +748,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 #ifdef USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -773,7 +776,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
-  bool has_api_info = false;
+  [[maybe_unused]] bool has_api_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
@@ -785,13 +788,15 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
                                          lines[i].find("hipLaunch") != string::npos;
 #endif
+#ifdef USE_WEBGPU
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos;
+#endif
     }
   }
 
-#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+// Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
+#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || (defined(USE_WEBGPU) && !defined(__APPLE__))
   ASSERT_TRUE(has_api_info);
-#else
-  ASSERT_TRUE(has_api_info || true);
 #endif
 }
 
