@@ -15,8 +15,8 @@ authorsLink:
     'https://www.linkedin.com/in/devangpatel/',
     'https://www.linkedin.com/in/samuel-kemp-a9253724/'
    ]
-image: 'https://artwork.lfaidata.foundation/projects/onnx/stacked/color/onnx-stacked-color.png'
-imageSquare: 'https://artwork.lfaidata.foundation/projects/onnx/stacked/color/onnx-stacked-color.png'
+image: ''
+imageSquare: ''
 url: 'https://onnxruntime.ai/blogs/olive-shared-cache'
 ---
 

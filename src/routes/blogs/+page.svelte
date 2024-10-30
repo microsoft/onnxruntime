@@ -18,6 +18,7 @@
 	import Phi3OnDeviceImage from '../../images/blogs/phi-3-on-device_blog_thumbnail.png';
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
+	import OliveSharedCache from '../../images/blogs/olive-shared-cache-user-flow.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -51,9 +52,9 @@
 			blurb:
 				"Learn how to use Olive's shared cache to enhance team collaboration when optimizing AI models",
 			link: 'blogs/olive-shared-cache',
-			image: Phi3SmallMediumImage,
+			image: OliveSharedCache,
 			imgalt:
-				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
+				'Team Flow for Olive shared cache'
 		},
 		{
 			title: 'Accelerating LightGlue Inference with ONNX Runtime and TensorRT',
