@@ -130,7 +130,7 @@ stages:
     - task: Xcode@5
       inputs:
         actions: 'archive'
-        xcWorkspacePath: 'apple_package_test.xcworkspace'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
         packageApp: true
         archivePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
         exportOptions: 'plist'
