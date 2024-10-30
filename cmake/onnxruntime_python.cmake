@@ -220,7 +220,8 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  target_link_options(onnxruntime_pybind11_state PRIVATE "LINKER:-undefined" "LINKER:-dynamic_lookup")
+  # The following flag no longer works
+  #target_link_options(onnxruntime_pybind11_state PRIVATE "LINKER:-undefined,dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
