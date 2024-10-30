@@ -122,9 +122,7 @@ else()
   else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
   endif()
-  if (onnxruntime_USE_CUDA)
-    target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
-  endif()
+  target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
@@ -139,17 +137,17 @@ target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
   if (APPLE)
-    target_link_options(onnxruntime PRIVATE "-Wl,-dead_strip")
+    target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
   elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    target_link_options(onnxruntime PRIVATE  "-Wl,--version-script=${SYMBOL_FILE}" "-Wl,--no-undefined" "-Wl,--gc-sections")
+    target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
   endif()
 else()
   target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
 endif()
 
-if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    target_link_options(onnxruntime PRIVATE  "-Wl,-exported_symbols_list,${SYMBOL_FILE}")
+
+if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         MACOSX_RPATH TRUE
@@ -159,10 +157,8 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
-  endif()
 endif()
+
 
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
