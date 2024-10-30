@@ -280,8 +280,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Trilu", "triangular"},
     {"Unsqueeze", "reshape"},
     {"Where", "where"},
-    {"Xor", "logicalXor"}
-};
+    {"Xor", "logicalXor"}};
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder,
                           const WebnnDeviceType device_type) {
