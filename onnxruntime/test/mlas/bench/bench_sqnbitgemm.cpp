@@ -158,8 +158,8 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
                                                                         static_cast<int32_t>(CompFp32));
 
   RunSQNBitGemmBenchmark<AType, BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
-                                      static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
-                                      state);
+                                             static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
+                                             state);
 
   std::ostringstream s;
   s << "BlkBitWidth:" << BlkBitWidth << "/BlkLen:" << BlkLen
