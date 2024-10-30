@@ -303,12 +303,12 @@ export const createSession = async (
           if (context) {
             wasm.currentContext = context as MLContext;
           } else if (gpuDevice) {
-            wasm.currentContext = await navigator.ml.createContext(gpuDevice);
+            wasm.currentContext = await wasm.jsepCreateMLContext!(gpuDevice);
           } else {
-            wasm.currentContext = await navigator.ml.createContext({ deviceType, powerPreference });
+            wasm.currentContext = await wasm.jsepCreateMLContext!({ deviceType, powerPreference });
           }
         } else {
-          wasm.currentContext = await navigator.ml.createContext();
+          wasm.currentContext = await wasm.jsepCreateMLContext!();
         }
         break;
       }
