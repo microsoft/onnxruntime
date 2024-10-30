@@ -177,10 +177,10 @@ void addOrtValueMethods(pybind11::module& m) {
         } else if (device.Type() == OrtDevice::DML) {
 #if USE_DML
           onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToDmlMemCpy);
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToDmlMemCpy);
 #else
           throw std::runtime_error(
               "Unsupported GPU (DML) device: Cannot find the supported GPU (DML) device.");
