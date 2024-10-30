@@ -347,6 +347,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
                             << "let m = global_id.y;\n"
                             << "let n = global_id.x;\n"
+                            << "let offsetA = workgroup_id.z * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.K;\n";
   std::ostringstream oss;
@@ -356,11 +357,11 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let vOffset = abs_kv_head_idx * uniforms.N * uniforms.kv_sequence_length + n;\n";
 
   if (feed_past_value_ && has_present_value_) {
-    shader.MainFunctionBody() << "let pastValueOffset = abs_kv_head_idx * uniforms.N * uniforms.past_sequence_length + n\n";
+    shader.MainFunctionBody() << "let pastValueOffset = abs_kv_head_idx * uniforms.N * uniforms.past_sequence_length + n;\n";
   }
 
   if (has_present_value_) {
-    shader.MainFunctionBody() << "let presentValueOffset = head_idx * uniforms.N * uniforms.K + n;\n";
+    shader.MainFunctionBody() << "let presentValueOffset = abs_kv_head_idx * uniforms.N * uniforms.K + n;\n";
   }
 
   shader.MainFunctionBody() << "var value = probs_element_t(0);\n"
@@ -379,13 +380,13 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length) {\n"
-                              << "      tileV[idx] = v[vOffset + (w + local_id.y) * uniforms.N];\n"
+                              << "      tileK[idx] = v[vOffset + (w + local_id.y) * uniforms.N];\n"
                               << "    }\n";
   }
 
   if (has_present_value_) {
     shader.MainFunctionBody() << "    if (w + local_id.y < present_sequence_length) {\n"
-                              << "      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileV[idx];\n"
+                              << "      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];\n"
                               << "    }\n";
   }
 
@@ -398,8 +399,6 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "}\n";
 
   shader.MainFunctionBody() << "// we need to transpose output from BNSH_v to BSND_v\n"
-                            << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                            << "let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;\n"
                             << "if (m < uniforms.M && n < uniforms.N) {\n"
                             << "  let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size + "
                             << "  m * uniforms.v_hidden_size + head_idx * uniforms.N + n;\n"
