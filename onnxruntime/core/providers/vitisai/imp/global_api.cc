@@ -109,6 +109,7 @@ vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> c
   auto status_ptr = reinterpret_cast<void*>(&status);
   auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error));
   if (!status.IsOK()) {
+    ORT_THROW(status);
   }
   return ret;
 }
