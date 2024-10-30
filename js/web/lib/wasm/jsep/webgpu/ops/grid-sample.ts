@@ -194,7 +194,9 @@ const computePixel = (output: IndicesHelper, dataType: string, attributes: GridS
 
 const createGridSampleProgramInfo = (inputs: readonly TensorView[], attributes: GridSampeAttributes): ProgramInfo => {
   const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length);
-  const grid = inputVariable('grid', inputs[1].dataType, inputs[1].dims.length);
+  // discard last dimension for using vec2 to access grid data
+  const gridShape = [inputs[1].dims[0], inputs[1].dims[1], inputs[1].dims[2]];
+  const grid = inputVariable('grid', inputs[1].dataType, gridShape.length, 2);
   let outputShape = [inputs[0].dims[0], inputs[0].dims[1], inputs[1].dims[1], inputs[1].dims[2]];
   if (attributes.format === 'NHWC') {
     outputShape = [inputs[0].dims[0], inputs[1].dims[1], inputs[1].dims[2], inputs[0].dims[3]];
@@ -206,7 +208,7 @@ const createGridSampleProgramInfo = (inputs: readonly TensorView[], attributes: 
 
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
-    ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims, outputShape),
+    ...createTensorShapeVariables(inputs[0].dims, gridShape, outputShape),
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -240,12 +242,10 @@ const createGridSampleProgramInfo = (inputs: readonly TensorView[], attributes: 
       let border = vec4<f32>(x_min, y_min, x_max, y_max);
 
       let indices = ${output.offsetToIndices('global_idx')};
-      var grid_x_Indices = vec4<u32>(indices[${idxN}], indices[${idxH}], indices[${idxW}], 0);
-      var grid_y_Indices = vec4<u32>(indices[${idxN}], indices[${idxH}], indices[${idxW}], 1);
-      let nx = ${grid.getByIndices('grid_x_Indices')};
-      let ny = ${grid.getByIndices('grid_y_Indices')};
-      var x = gs_denormalize(f32(nx), W_in);
-      var y = gs_denormalize(f32(ny), H_in);
+      var grid_indices = vec3<u32>(indices[${idxN}], indices[${idxH}], indices[${idxW}]);
+      let nxy = ${grid.getByIndices('grid_indices')};
+      var x = gs_denormalize(f32(nxy[0]), W_in);
+      var y = gs_denormalize(f32(nxy[1]), H_in);
 
       ${computePixel(output, dataType, attributes)}
   }`;

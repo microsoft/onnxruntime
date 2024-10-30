@@ -9,7 +9,7 @@ namespace js {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     GridSample,
     kMSInternalNHWCDomain,
-    16, 20,
+    16, 19,
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", JsepSupportedDataTypes())
@@ -19,7 +19,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     GridSample,
     kOnnxDomain,
-    16, 20,
+    16, 19,
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", JsepSupportedDataTypes())
