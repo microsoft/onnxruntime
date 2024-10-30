@@ -117,7 +117,6 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
                       WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr);
 
-
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

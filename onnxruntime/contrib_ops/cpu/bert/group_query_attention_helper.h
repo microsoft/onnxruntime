@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-template <typename T=Tensor>
+template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,
                    const T* value,
@@ -266,7 +266,7 @@ Status CheckInputs(const T* query,
   return Status::OK();
 }
 
-template <typename T=Tensor>
+template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,
                    const T* value,
