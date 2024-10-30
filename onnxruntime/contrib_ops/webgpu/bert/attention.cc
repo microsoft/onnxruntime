@@ -68,8 +68,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   return context.RunProgram(program);
 };
 
-std::string InitVarStub(const Tensor* seqlens_k, const Tensor* total_seqlen_tensor, bool init_past_sequence_length) {
-  std::ostringstream ss;
+void InitVarStub(const Tensor* seqlens_k, const Tensor* total_seqlen_tensor, bool init_past_sequence_length, std::ostringstream& ss) {
   if (seqlens_k != nullptr && total_seqlen_tensor != nullptr) {
     ss << "let total_sequence_length_input = u32(total_seqlen_tensor[0]);\n";
     ss << "let present_sequence_length = max(total_sequence_length_input, uniforms.past_sequence_length);\n";
@@ -86,7 +85,6 @@ std::string InitVarStub(const Tensor* seqlens_k, const Tensor* total_seqlen_tens
     }
     ss << "let present_sequence_length = total_sequence_length;\n";
   }
-  return ss.str();
 }
 
 Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -123,8 +121,9 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "var total_sequence_length = uniforms.N;\n"
                                "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
                                "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n";
-
-  shader.MainFunctionBody() << InitVarStub(seqlen_k_, total_seqlen_tensor_, true);
+  std::ostringstream oss;
+  InitVarStub(seqlen_k_, total_seqlen_tensor_, true, oss);
+  shader.MainFunctionBody() << oss.str();
 
   if (feed_past_key_ && has_present_key_) {
     shader.MainFunctionBody() << "let pastKeyOffset = abs_kv_head_idx * uniforms.past_sequence_length * uniforms.K;\n";
@@ -249,8 +248,10 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
                             << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
                             << "let sequence_length = uniforms.sequence_length;\n"
-                            << "var total_sequence_length = uniforms.total_sequence_length;\n"
-                            << InitVarStub(seqlen_k_, total_seqlen_tensor_, true).c_str()
+                            << "var total_sequence_length = uniforms.total_sequence_length;\n";
+  std::ostringstream oss;
+  InitVarStub(seqlen_k_, total_seqlen_tensor_, true, oss);
+  shader.MainFunctionBody() << oss.str()
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = (global_idx / " << work_group_size_ << ") * uniforms.total_sequence_length + local_offset;\n"
                             << "let seq_causal_length = " << (seqlen_k_ ? "past_sequence_length + workgroup_id.y + 1" : "total_sequence_length") << ";\n"
@@ -347,8 +348,10 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let m = global_id.y;\n"
                             << "let n = global_id.x;\n"
                             << "let sequence_length = uniforms.M;\n"
-                            << "var total_sequence_length = uniforms.K;\n"
-                            << InitVarStub(seqlen_k_, total_seqlen_tensor_, true).c_str()
+                            << "var total_sequence_length = uniforms.K;\n";
+  std::ostringstream oss;
+  InitVarStub(seqlen_k_, total_seqlen_tensor_, true, oss);
+  shader.MainFunctionBody() << oss.str()
                             << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
                             << "let vOffset = abs_kv_head_idx * uniforms.N * uniforms.kv_sequence_length + n;\n";
 
