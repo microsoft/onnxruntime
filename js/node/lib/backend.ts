@@ -3,12 +3,14 @@
 
 import { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } from 'onnxruntime-common';
 
-import { Binding, binding } from './binding';
+import { Binding, binding, initOrt } from './binding';
 
 class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
 
   constructor(pathOrBuffer: string | Uint8Array, options: InferenceSession.SessionOptions) {
+    initOrt();
+
     this.#inferenceSession = new binding.InferenceSession();
     if (typeof pathOrBuffer === 'string') {
       this.#inferenceSession.loadModel(pathOrBuffer, options);
@@ -27,10 +29,12 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   readonly outputNames: string[];
 
   startProfiling(): void {
-    // TODO: implement profiling
+    // startProfiling is a no-op.
+    //
+    // if sessionOptions.enableProfiling is true, profiling will be enabled when the model is loaded.
   }
   endProfiling(): void {
-    // TODO: implement profiling
+    this.#inferenceSession.endProfiling();
   }
 
   async run(
