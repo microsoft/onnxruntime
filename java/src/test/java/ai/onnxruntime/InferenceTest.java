@@ -650,14 +650,7 @@ public class InferenceTest {
     int providersSize = providers.size();
     assertTrue(providersSize > 0);
     assertTrue(providers.contains(OrtProvider.CPU));
-    String no_cuda_test = Optional.ofNullable(System.getenv("NO_CUDA_TEST")).orElse("0");
-    if (no_cuda_test.equals("1") && providers.contains(OrtProvider.CUDA)) {
-      providers.remove(OrtProvider.CUDA);
-    }
-    String no_dml_test = Optional.ofNullable(System.getenv("NO_DML_TEST")).orElse("0");
-    if (no_dml_test.equals("1") && providers.contains(OrtProvider.DIRECT_ML)) {
-      providers.remove(OrtProvider.DIRECT_ML);
-    }
+
     // Check that the providers are a copy of the original, note this does not enable the DNNL
     // provider
     providers.add(OrtProvider.DNNL);
@@ -697,12 +690,7 @@ public class InferenceTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
   public void testCUDA() throws OrtException {
-    String no_cuda_test = Optional.ofNullable(System.getenv("NO_CUDA_TEST")).orElse("0");
-    if (!no_cuda_test.equals("1")) {
-      runProvider(OrtProvider.CUDA);
-    } else {
-      System.out.println("Skipping CUDA test because NO_CUDA_TEST is set.");
-    }
+    runProvider(OrtProvider.CUDA);
   }
 
   @Test
@@ -749,15 +737,11 @@ public class InferenceTest {
     runProvider(OrtProvider.CORE_ML);
   }
 
+  @Disabled("DirectML Java API hasn't been supported yet")
   @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
-    String no_dml_test = Optional.ofNullable(System.getenv("NO_DML_TEST")).orElse("0");
-    if (!no_dml_test.equals("1")) {
-      runProvider(OrtProvider.DIRECT_ML);
-    } else {
-      System.out.println("Skipping DML test because NO_DML_TEST is set.");
-    }
+    runProvider(OrtProvider.DIRECT_ML);
   }
 
   @Test
