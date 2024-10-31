@@ -1,0 +1,39 @@
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+index c01d64e40f..0f1f4beae4 100644
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -464,13 +464,15 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice vkPhysica
+         DAWN_ASSERT(usedKnobs.HasExt(DeviceExt::ShaderFloat16Int8) &&
+                     mDeviceInfo.shaderFloat16Int8Features.shaderFloat16 == VK_TRUE &&
+                     usedKnobs.HasExt(DeviceExt::_16BitStorage) &&
+-                    mDeviceInfo._16BitStorageFeatures.storageBuffer16BitAccess == VK_TRUE &&
++                    mDeviceInfo._16BitStorageFeatures.storageBuffer16BitAccess == VK_TRUE /*&&
+                     mDeviceInfo._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess ==
+-                        VK_TRUE);
++                        VK_TRUE*/);
+
+         usedKnobs.shaderFloat16Int8Features.shaderFloat16 = VK_TRUE;
+         usedKnobs._16BitStorageFeatures.storageBuffer16BitAccess = VK_TRUE;
+-        usedKnobs._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess = VK_TRUE;
++        if (mDeviceInfo._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess == VK_TRUE) {
++            usedKnobs._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess = VK_TRUE;
++        }
+         if (mDeviceInfo._16BitStorageFeatures.storageInputOutput16 == VK_TRUE) {
+             usedKnobs._16BitStorageFeatures.storageInputOutput16 = VK_TRUE;
+         }
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+index f9902776c7..8d64da750f 100644
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -252,8 +252,9 @@ void PhysicalDevice::InitializeSupportedFeaturesImpl() {
+     if (mDeviceInfo.HasExt(DeviceExt::ShaderFloat16Int8) &&
+         mDeviceInfo.HasExt(DeviceExt::_16BitStorage) &&
+         mDeviceInfo.shaderFloat16Int8Features.shaderFloat16 == VK_TRUE &&
+-        mDeviceInfo._16BitStorageFeatures.storageBuffer16BitAccess == VK_TRUE &&
+-        mDeviceInfo._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess == VK_TRUE) {
++        mDeviceInfo._16BitStorageFeatures.storageBuffer16BitAccess == VK_TRUE /*&&
++        WebGPU EP needs to ensure we don't put fp16 values in uniforms when this patch is applied.
++        mDeviceInfo._16BitStorageFeatures.uniformAndStorageBuffer16BitAccess == VK_TRUE*/) {
+         // TODO(crbug.com/tint/2164): Investigate crashes in f16 CTS tests to enable on NVIDIA.
+         if (!gpu_info::IsNvidia(GetVendorId())) {
+             EnableFeature(Feature::ShaderF16);

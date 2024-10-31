@@ -792,6 +792,12 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       LOGS(*GetLogger(), INFO) << "Force CPU execution for node: " << node.Name();
       continue;
     }
+
+    if (node.Name() == "/model/embed_tokens/Gather") {
+      LOGS(*GetLogger(), INFO) << "Exclude " << node.Name();
+      continue;
+    }
+
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }

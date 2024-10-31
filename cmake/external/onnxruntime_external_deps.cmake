@@ -662,6 +662,16 @@ if (onnxruntime_USE_WEBGPU)
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
+  if (ANDROID)
+    # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+    # in the uniform and converting to fp16 before using.
+    execute_process(COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1
+                    INPUT_FILE ${PROJECT_SOURCE_DIR}/patches/dawn/uniformAndStorageBuffer16BitAccess.patch
+                    WORKING_DIRECTORY ${dawn_SOURCE_DIR}
+                    COMMAND_ERROR_IS_FATAL ANY)
+    add_compile_definitions(ORT_WEBGPU_NO_FP16_IN_UNIFORMS)
+  endif()
+
   if (NOT onnxruntime_USE_EXTERNAL_DAWN)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
   endif()

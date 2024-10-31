@@ -418,6 +418,7 @@ std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const {
   constexpr const char* toggles[] = {
       "use_dxc",
       "allow_unsafe_apis",
+      "vulkan_use_storage_input_output_16",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
