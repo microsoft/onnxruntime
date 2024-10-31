@@ -524,3 +524,48 @@ To enable new operator support in EP, areas to visit:
 - Non-layout sensitive operator. [Enable Hardsigmoid for QNN EP using SDK support direct support](https://github.com/microsoft/onnxruntime/pull/20956)
 
 - Layout sensitive operator. [Add InstanceNormalization operator to QNN EP](https://github.com/microsoft/onnxruntime/pull/14867)
+
+
+## Mixed precision support
+The following figure demonstrates an example of mixed precision model.
+<p align="center"><img width="100%" src="../../images/quantization_mixed_precision_1.png" alt="mixed precision model"/></p>
+A mixed precision QDQ model consists of regions with different activation/weight quantization data types. The boundary between regions converts between activation quantization data types (e.g., uint8 to uint16) using a DQ to Q sequence.
+
+The ability to specify regions with different quantization data types enables exploring the tradeoffs between accuracy and latency. A higher integer precision may improve accuracy at the expense of latency, so selectively promoting certain regions to a higher precision can aid in achieving a desirable balance in key metrics.
+
+The following figure shows a model with a region that has been promoted to 16-bit from the default 8-bit activation type.
+<p align="center"><img width="100%" src="../../images/quantization_mixed_precision_2.png" alt="mixed precision layers"/></p>
+
+This model is quantized to uint8 precision, but tensor "Op4_out" is quantized to 16-bit. This can be achieved by specifying the following initial tensor quantization overrides:
+
+```
+# Op4_out could be an inaccurate tensor that should be upgraded to 16bit
+initial_overrides = {"Op4_out": [{"quant_type": QuantType.QUInt16}]}
+
+qnn_config = get_qnn_qdq_config(
+    float_model_path,
+    data_reader,
+    activation_type=QuantType.QUInt8,
+    weight_type=QuantType.QUInt8,
+    init_overrides=initial_overrides,  # These initial overrides will be "fixed"
+)
+```
+
+The above snippet generates the following "fixed" overrides (get via qnn_config.extra_options["TensorQuantOverrides"]):
+
+```
+overrides = {
+  “Op2_out”: [{“quant_type”: QUInt8, “convert”: {“quant_type”: QUInt16, “recv_nodes”: {“Op4”}}}],
+  “Op3_out”: [{“quant_type”: QUInt8, “convert”: {“quant_type”: QUInt16, “recv_nodes”: {“Op5”}}}],
+  “Op4_out”: [{“quant_type”: QUInt16}],
+  “Op5_out”: [{“quant_type”: QUInt16, “convert”: {“quant_type”: QUInt8, “recv_nodes”: {“Op6”}}}]
+}
+```
+
+After the override, the model works like this:
+
+- Op2’s output is consumed by Op4, Op7, and Op8. Op4 consumes the converted u16 type, while Op7 and Op8 consume the original u8 type.
+- Op3’s output is converted from u8 to u16. Op5 consumes the converted u16 type.
+- Op4’s output is just u16 (not converted).
+- Op5’s output is converted from u16 to u8. Op6 consumes the u8 type.
+
