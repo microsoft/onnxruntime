@@ -63,7 +63,7 @@ def GenerateMatmulNBitsModel(model_name, external_data_name):  # noqa: N802
         [A],
         [Y],
         [
-            create_external_data_tensor(np.random.rand(M, K).astype(np.uint8), external_data_name, TensorProto.UINT8),
+            create_external_data_tensor([[171]], external_data_name, TensorProto.UINT8),
             create_internal_data_tensor(np.array([1.5], dtype=np.float32), "scales", TensorProto.FLOAT),
         ],
     )

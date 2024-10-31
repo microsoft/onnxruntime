@@ -4622,6 +4622,7 @@ void RunInferenceWithAndWithoutSerializePrepackWeightAndCompare(std::string mode
   session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "0");
   session_options_opt.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1");
   session_options_opt.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  session_options_opt.DisableCpuMemArena();
 
 #if defined(_WIN32) || defined(_WIN64)
   std::wstring test_model_wide = onnxruntime::ToWideString(test_model);
@@ -4707,20 +4708,8 @@ void RunInferenceWithAndWithoutSerializePrepackWeightAndCompare(std::string mode
   }
 }
 
-TEST(CApiTest, Serialize_PrePack_Initializers_Matmul_nbits) {
-  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul_nbits");
-}
-
-TEST(CApiTest, Serialize_PrePack_Initializers_Gemm) {
-  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_gemm");
-}
-
 TEST(CApiTest, Serialize_PrePack_Initializers_Conv_transpose) {
   RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_conv_transpose");
-}
-
-TEST(CApiTest, Serialize_PrePack_Initializers_Attention) {
-  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_attention");
 }
 
 TEST(CApiTest, Serialize_PrePack_Initializers_Quant_Attention) {
@@ -4753,6 +4742,18 @@ TEST(CApiTest, Serialize_PrePack_Initializers_Matmul) {
 
 TEST(CApiTest, Serialize_PrePack_Initializers_fp16_conv) {
   RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_fp16_conv");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Matmul_nbits) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul_nbits");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Gemm) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_gemm");
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers_Attention) {
+  RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_attention");
 }
 
 #endif

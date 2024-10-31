@@ -271,7 +271,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     ConvertPrepackWeightIntoTensor(tensor, input_idx);
   }
 
-return Status::OK();
+  return Status::OK();
 }
 
 template <typename T1>

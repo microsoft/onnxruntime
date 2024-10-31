@@ -236,9 +236,7 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
 std::string GetPrepackedInitializerName(const std::string& initializer_name, const std::string& node_name);
 
-IAllocatorUniquePtr<void> StoreSizeTInBuffer(size_t input, AllocatorPtr alloc);
-
-size_t RetriveSizeTFromBuffer(IAllocatorUniquePtr<void> buffer);
+size_t GetMemoryAlignedOffset(size_t current_offset);
 
 size_t CalculateTensorShapeVectorMemoryUsage(TensorShapeVector& tensor_shape_vector);
 

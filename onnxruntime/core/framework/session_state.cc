@@ -409,6 +409,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
       auto kernel = GetMutableKernel(node.Index());
       auto kernel_name = kernel->Info().node().Name();
       int input_idx = 0;
+      bool is_kernel_prepacked = false;
       for (auto& input_def : node.InputDefs()) {
         if (input_def->Exists()) {
           const std::string& input_name = input_def->Name();
@@ -420,7 +421,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
             if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
               std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-              if (constant_initialized_tensors.count(ort_value_idx)) {
+              if (constant_initialized_tensors.count(ort_value_idx) && !is_kernel_prepacked) {
                 bool is_packed = false;
                 const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
 
@@ -431,6 +432,11 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                 // apply pre-packed tensor to kernel so kernel can use it directly
                 if (pre_packed_initializers.pre_packed_initializer_names_read_from_file.count(input_name) != 0) {
                   is_packed = true;
+
+                  // kernel like Matmul_nbits will call prepack multiple times with input_B and possibly scales/zero_points.
+                  // If prepacked weights already read from ONNX data file (this happens we ORT reads data file with prepacked
+                  // weights serialized), only need to set prepacked weights once to kernel.
+                  is_kernel_prepacked = kernel->Info().GetKernelDef().OpName() == "MatMulNBits";
                   ORT_THROW_IF_ERROR(kernel->SetPrePackTensor(input_idx, const_initialized_tensor));
                 }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
