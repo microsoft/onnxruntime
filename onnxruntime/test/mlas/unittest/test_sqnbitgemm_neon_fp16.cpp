@@ -302,7 +302,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
     InitializeBuffer(input);
     InitializeBuffer(zero_points);
     InitializeBuffer(scales);
-    GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
+    GetMlasPlatform().QNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
         BlkLen, dequant.data(), reinterpret_cast<std::byte*>(input.data()), scales.data(),
         UseZeroPoints ? reinterpret_cast<std::byte*>(zero_points.data()) : nullptr,
         N, K, BlkNum);
@@ -416,7 +416,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     InitializeBuffer(B, -0.25f, 0.25f);
     InitializeBuffer(bias, -5.0f, 5.0f);
 
-    GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
+    GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
         A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N);
 
     MatMul<M, N, K, ldb, UseBias>(A, B, bias, ref);

@@ -32,7 +32,7 @@ namespace sqnbitgemm_neon
 // Function declarations for SQNBitGemm ARM NEON kernel entry points.
 // Refer to the prototypes in sqnbitgemm.h for documentation.
 // These are declared here so they can be used to initialize the
-// MLAS_SQNBIT_GEMM_DISPATCH structure and also be implemented in separate
+// MLAS_QNBIT_GEMM_DISPATCH structure and also be implemented in separate
 // files.
 //
 
