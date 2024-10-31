@@ -41,10 +41,12 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     std::string to_dtype = "";
     if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32 || cast_to_type == ONNX_NAMESPACE::TensorProto::INT64) {
       to_dtype = "int32";
-      // CoreML doesn't support int64 while onnx used int64 in index input/output
-      // we have two solutions for this: 1) if cast is the first/last node in graph partition,
-      // we will convert the input/output to int32 forcely
-      // 2) if cast is a middle node of graph-parition, we just treat int64 as int32.
+      // CoreML doesn't support int64, while ONNX uses int64 for indices and as well as data values.
+      // We convert the data inputs/outputs between int64 and int32 when calling onnxruntime::coreml::Model::Predict,
+      // and when adding int64 initializers to the CoreML model.
+      // CoreML operators can only produce int32 and not int64 values.
+      // Due to that there should be no actual int64 values inside the CoreML model and we can infer any 
+      // ONNX_NAMESPACE::TensorProto::INT64 values to be int32.
       cast_to_type = ONNX_NAMESPACE::TensorProto::INT32;
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
       to_dtype = "fp32";
