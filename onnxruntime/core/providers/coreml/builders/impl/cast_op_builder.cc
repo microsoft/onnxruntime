@@ -34,8 +34,6 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.cast
 
-    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "cast");
-    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
     NodeAttrHelper helper(node);
     auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
     std::string to_dtype = "";
@@ -45,7 +43,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
       // We convert the data inputs/outputs between int64 and int32 when calling onnxruntime::coreml::Model::Predict,
       // and when adding int64 initializers to the CoreML model.
       // CoreML operators can only produce int32 and not int64 values.
-      // Due to that there should be no actual int64 values inside the CoreML model and we can infer any 
+      // Due to that there should be no actual int64 values inside the CoreML model and we can infer any
       // ONNX_NAMESPACE::TensorProto::INT64 values to be int32.
       cast_to_type = ONNX_NAMESPACE::TensorProto::INT32;
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
@@ -58,7 +56,18 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported cast type: ", cast_to_type);
     }
 
-    AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
+    std::string_view op_type = "cast";
+    auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if ((input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+         input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT32)&& to_dtype = "int32") {
+      op_type = "identity";
+    }
+
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, op_type);
+    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    if (op_type == "cast") {
+      AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
+    }
     AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
     model_builder.AddOperation(std::move(op));
   }
