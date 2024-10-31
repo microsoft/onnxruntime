@@ -44,7 +44,7 @@ jobs:
           python -m pip install --user -r requirements-dev.txt
           python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
-          set -e
+          set +e
           lintrunner f --all-files -v
           exit 0
       - uses: parkerbxyz/suggest-changes@v2
