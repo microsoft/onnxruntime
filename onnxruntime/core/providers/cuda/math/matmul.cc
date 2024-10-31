@@ -430,8 +430,9 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
 }
 
 template <typename T>
-Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool save_prepacked_initializers,
                           bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(save_prepacked_initializers);
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
 
