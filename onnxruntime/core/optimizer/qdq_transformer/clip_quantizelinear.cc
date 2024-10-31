@@ -42,41 +42,35 @@ static bool GetQDomain(const Graph& graph, const Node& node, float& min_, float&
 
   const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = graph_utils::GetConstantInitializer(graph, zp_input->Name());
   if (!zp_tensor_proto) {
-    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return false;
   }
 
   Initializer zp_initializer(*zp_tensor_proto, graph.ModelPath());
   if (zp_initializer.dims().size() != 0) {
-    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return false;
   }
 
   switch (zp_initializer.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto zero_point = zp_initializer.data<int8_t>()[0];
-      std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
       min_ = QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point);
       max_ = QDQ::QuantizeDomain<int8_t>::MaxLower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       auto zero_point = zp_initializer.data<uint8_t>()[0];
-      std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
       min_ = QDQ::QuantizeDomain<uint8_t>::MinUpper(scale, zero_point);
       max_ = QDQ::QuantizeDomain<uint8_t>::MaxLower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       auto zero_point = zp_initializer.data<int16_t>()[0];
-      std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
       min_ = QDQ::QuantizeDomain<int16_t>::MinUpper(scale, zero_point);
       max_ = QDQ::QuantizeDomain<int16_t>::MaxLower(scale, zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
       auto zero_point = zp_initializer.data<uint16_t>()[0];
-      std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
       min_ = QDQ::QuantizeDomain<uint16_t>::MinUpper(scale, zero_point);
       max_ = QDQ::QuantizeDomain<uint16_t>::MaxLower(scale, zero_point);
       break;
@@ -107,7 +101,6 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
 Status ClipQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   float clip_min, clip_max;
   if (!optimizer_utils::GetClipConstantMinMax(graph, node, clip_min, clip_max)) {
-    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
 
@@ -115,16 +108,13 @@ Status ClipQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
 
   float min_, max_;
   if (!GetQDomain(graph, q_node, min_, max_)) {
-    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
 
   if (!(clip_min <= min_ && max_ <= clip_max && graph_utils::RemoveNode(graph, node))) {
-    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse | clip_codomain:[" << clip_min << "," << clip_max << "], quant_domain:[" << min_<< "," << max_ << "]" << std::endl;
     return Status::OK();
   }
 
-  std::cout << __FILE__ << ":" << __LINE__ << " fused | clip_codomain:[" << clip_min << "," << clip_max << "], quant_domain:[" << min_<< "," << max_ << "]" << std::endl;
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   return Status::OK();
 }

@@ -53,7 +53,6 @@ namespace onnxruntime {
 namespace test {
 
 #if !defined(DISABLE_CONTRIB_OPS)
-#if 0
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 void QDQTransformerConvTests() {
@@ -3102,7 +3101,6 @@ TEST(QDQTransformerTests, Clip) {
     test_case((6 + epsilon) / 255, static_cast<uint8_t>(0), 0, opset, true);    // [0, 6 + epsilon]
   }
 }
-#endif
 
 //              lowest
 //              /
@@ -3144,8 +3142,8 @@ struct ClipQuantFusionTestHelper {
     auto [scale, zp] = GetScaleZp();
     min_upper_ = onnxruntime::QDQ::QuantizeDomain<T>::MinUpper(scale, zp);
     max_lower_ = onnxruntime::QDQ::QuantizeDomain<T>::MaxLower(scale, zp);
-    std::cout << "Desired min_upper:" << desired_min_upper << ", max_lower:" << desired_max_lower << std::endl;
-    std::cout << "Calibrated min_upper:" << min_upper_ << ", max_lower:" << max_lower_ << std::endl;
+    // std::cout << "Desired min_upper:" << desired_min_upper << ", max_lower:" << desired_max_lower << std::endl;
+    // std::cout << "Calibrated min_upper:" << min_upper_ << ", max_lower:" << max_lower_ << std::endl;
 
     clip_min_ = min_upper_ + clip_min_delta;
     clip_max_ = max_lower_ + clip_max_delta;
@@ -3194,7 +3192,6 @@ struct ClipQuantFusionTestHelper {
 
     // Create QuantizeLinear node
     auto [scale, zp] = GetScaleZp();
-    std::cout << "scale:" << scale << ", zp:" << zp << " clip_codomain:[" << clip_min_ << "," << clip_max_ << "], quant_domain:[" << min_upper_ << "," << max_lower_ << "]" << std::endl;
     NodeArg* q_output = builder.MakeIntermediate();
     NodeArg* output = builder.MakeOutput();
     builder.AddQuantizeLinearNode<T>(act_output, scale, zp, q_output);
@@ -3217,42 +3214,34 @@ struct ClipQuantFusionTestHelper {
     const float large_delta = 1.0f;
 
     // left, right large gap fit, fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << " [Run For One Test Case]" << std::endl;
     SetTestState(true, l, r, -large_delta, large_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // left small gap fit, right large gap fit, fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(true, l, r, -small_delta, large_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // left large gap fit, right small gap fit, fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(true, l, r, -large_delta, small_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // left, right small gap fit, fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(true, l, r, -small_delta, small_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // left large overflow, NO fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(false, l, r, large_delta, small_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // left small overflow, NO fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(false, l, r, small_delta, small_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // right large overflow, NO fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(false, l, r, -small_delta, -large_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
 
     // right small overflow, NO fuse
-    std::cout << __FILE__ << ":" <<  __LINE__ << std::endl;
     SetTestState(false, l, r, -small_delta, -small_delta);
     TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
   }
@@ -3354,7 +3343,6 @@ TEST(QDQTransformerTests, ReluQuantFusion) {
   ReluQuantFusionTestHelper<uint16_t>{}();
 }
 
-#if 0
 // Test that the ReluQuantFusion transformer only runs for optimization level >= 2.
 TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   auto test_case = [&](TransformerLevel opt_level, int8_t zp) {
@@ -5099,8 +5087,6 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
   test_case({1, 4, 8}, -1, true, true);  // Use contrib QDQ ops
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
