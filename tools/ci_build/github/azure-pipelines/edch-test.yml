@@ -7,4 +7,11 @@ jobs:
   - checkout: none
 
   - script:
-      uname -a
+      XCODE_DEVELOPER_DIR="/Applications/Xcode_15.2.app/Contents/Developer"
+      sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+  - task: Xcode@5
+    inputs:
+      args: '-version'
+      useXcpretty: false  # xcpretty can hide useful error output so we will disable it
+    displayName: 'Build App Center iPhone arm64 tests'
