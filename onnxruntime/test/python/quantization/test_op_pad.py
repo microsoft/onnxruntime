@@ -4,8 +4,11 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+from __future__ import annotations
 
 import itertools
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -517,6 +520,152 @@ class TestOpQuatizerPad(unittest.TestCase):
             for name in itertools.chain(node.input, node.output):
                 self.assertNotEqual(name, "")
                 self.assertNotEqual(name, "_quantized")
+
+
+class TestQDQPad(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.pad_")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def build_pad_model(
+        self,
+        mode: str,
+        constant_value: float | None = None,
+    ) -> onnx.ModelProto:
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (3, 2))
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (3, 4))
+
+        initializers = []
+        pad_input_names = ["input_0"]
+
+        pads_data = np.array([0, 2, 0, 0], dtype=np.int64)  # Pad two vals at beginning of axis 1.
+        initializers.append(onnx.numpy_helper.from_array(pads_data, "pads"))
+        pad_input_names.append("pads")
+
+        if mode == "constant" and constant_value is not None:
+            initializers.append(onnx.helper.make_tensor("constant_value", onnx.TensorProto.FLOAT, [], [constant_value]))
+            pad_input_names.append("constant_value")
+
+        pad_node = onnx.helper.make_node("Pad", pad_input_names, ["output_0"], name="Pad0", mode=mode)
+
+        graph = onnx.helper.make_graph(
+            [pad_node],
+            "PadFloat",
+            [input_0],
+            [output_0],
+            initializer=initializers,
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_qdq_pad_qparams(self):
+        """
+        Test that QDQ Pad has equal scale/zero-point for its input and output for certain configurations.
+        """
+        test_configs = [
+            ("constant", None),
+            ("constant", 0),
+            ("constant", 10.0),
+            ("reflect", None),
+            ("edge", None),
+            ("wrap", None),
+        ]
+
+        for pad_mode, constant_value in test_configs:
+            with self.subTest(pad_mode=pad_mode, constant_value=constant_value):
+                label = f"_{pad_mode}_{constant_value}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.float.onnx")
+                qdq_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.qdq.onnx")
+
+                float_model = self.build_pad_model(pad_mode, constant_value)
+                onnx.save_model(float_model, float_model_path)
+
+                # Create a data reader
+                input_data_list = [
+                    {"input_0": np.array([[1.0, 1.2], [2.3, 3.4], [4.5, 5.7]], dtype=np.float32)},
+                    {"input_0": np.array([[2.3, 3.4], [4.5, 5.7], [1.0, 1.2]], dtype=np.float32)},
+                ]
+                data_reader = TestDataFeeds(input_data_list)
+
+                # quantize model to QDQ
+                quantize_static(
+                    float_model_path,
+                    qdq_model_path,
+                    data_reader,
+                    quant_format=QuantFormat.QDQ,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
+                    extra_options={"ForceQuantizeNoInputCheck": True},
+                )
+
+                expected_op_counts = {"DequantizeLinear": 2, "QuantizeLinear": 2, "Pad": 1}
+                if constant_value is not None:
+                    expected_op_counts["DequantizeLinear"] += 1  # The constant padding value is quantized.
+                check_op_type_count(self, qdq_model_path, **expected_op_counts)
+
+                if pad_mode != "reflect":
+                    # Do not check model correctness for 'reflect' mode because ONNX Runtime implementation does
+                    # not match the ONNX reference implementation. See the following issue:
+                    # https://github.com/microsoft/onnxruntime/issues/20801
+                    data_reader.rewind()
+                    check_model_correctness(self, float_model_path, qdq_model_path, data_reader.get_next())
+
+                qdq_model = onnx.load_model(qdq_model_path)
+                quant_output_same_as_input = False
+
+                if pad_mode in ("reflect", "edge", "wrap"):
+                    quant_output_same_as_input = True
+
+                if pad_mode == "constant" and constant_value in (None, 0):
+                    quant_output_same_as_input = True
+
+                consumers = {}
+                producers = {}
+                pad_node = None
+
+                # Build dictionaries that map a tensor name to the consumer or producer nodes.
+                for node in qdq_model.graph.node:
+                    if node.op_type == "Pad":
+                        pad_node = node
+
+                    for input_name in node.input:
+                        if input_name:
+                            if input_name not in consumers:
+                                consumers[input_name] = []
+
+                            consumers[input_name].append(node)
+
+                    for output_name in node.output:
+                        producers[output_name] = node
+
+                self.assertEqual(pad_node.op_type, "Pad")
+
+                input_dq_node = producers.get(pad_node.input[0], None)
+                self.assertNotEqual(input_dq_node, None)
+                self.assertEqual(input_dq_node.op_type, "DequantizeLinear")
+
+                output_q_node = consumers.get(pad_node.output[0], [None])[0]
+                self.assertNotEqual(output_q_node, None)
+                self.assertEqual(output_q_node.op_type, "QuantizeLinear")
+
+                # Check that the Pad's input DQ uses the same scale/zp as the Pad's output Q.
+                if quant_output_same_as_input:
+                    self.assertEqual(input_dq_node.input[1], output_q_node.input[1])  # Same scale
+                    self.assertEqual(input_dq_node.input[2], output_q_node.input[2])  # Same zero-point
+                else:
+                    self.assertNotEqual(input_dq_node.input[1], output_q_node.input[1])
+                    self.assertNotEqual(input_dq_node.input[2], output_q_node.input[2])
 
 
 if __name__ == "__main__":
