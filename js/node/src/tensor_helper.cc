@@ -261,8 +261,8 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
       }
     }
 
-    // new Tensor(stringArray /* string[] */, dims /* number[] */)
-    return scope.Escape(InferenceSessionWrap::GetTensorConstructor().New({stringArray, dims}));
+    // new Tensor("string", stringArray /* string[] */, dims /* number[] */)
+    return scope.Escape(InferenceSessionWrap::GetTensorConstructor().New({Napi::String::New(env, "string"), stringArray, dims}));
   } else {
     // number data
     if (isGpuBuffer) {
