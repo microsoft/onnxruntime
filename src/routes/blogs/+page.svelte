@@ -18,6 +18,7 @@
 	import Phi3OnDeviceImage from '../../images/blogs/phi-3-on-device_blog_thumbnail.png';
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
+	import OliveSharedCache from '../../images/blogs/olive-shared-cache-user-flow.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -46,6 +47,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Enhancing team collaboration during AI model optimization with the Olive Shared Cache',
+			date: 'October 30th, 2024',
+			blurb:
+				"Learn how to use Olive's shared cache to enhance team collaboration when optimizing AI models",
+			link: 'blogs/olive-shared-cache',
+			image: OliveSharedCache,
+			imgalt:
+				'Team Flow for Olive shared cache'
+		},
+		{
 			title: 'Accelerating LightGlue Inference with ONNX Runtime and TensorRT',
 			date: 'July 17th, 2024',
 			blurb:
@@ -65,6 +76,10 @@
 			imgalt:
 				'Image of the different steps of an ML pipeline on a mobile device, running using NimbleEdge and ONNX Runtime.'
 		},
+		
+		
+	];
+	let blogs = [
 		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
 			date: 'June 12th, 2024',
@@ -75,9 +90,6 @@
 			imgalt:
 				'Image of a skateboarder with a sky background, with half of the background being alternating grey and white squares indicating it has been removed.'
 		},
-		
-	];
-	let blogs = [
 		{
 			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
 			date: 'May 21th, 2024',
