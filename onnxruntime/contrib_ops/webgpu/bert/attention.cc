@@ -111,26 +111,35 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
-                               "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
-                               "let kv_head_idx = head_idx / uniforms.n_reps;\n"
-                               "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
-                               "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                               "let m = workgroup_id.y * TILE_SIZE;\n"
-                               "let n = workgroup_id.x * TILE_SIZE;\n"
-                               "let sequence_length = uniforms.M;\n"
-                               "var total_sequence_length = uniforms.N;\n"
-                               "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
-                               "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n";
+                            << "let m = workgroup_id.y * TILE_SIZE;\n"
+                            << "let n = workgroup_id.x * TILE_SIZE;\n"
+                            << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
+                            << "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n"
+                            << "let sequence_length = uniforms.M;\n"
+                            << "var total_sequence_length = uniforms.N;\n";
   std::ostringstream oss;
   InitVarStub(seqlen_k_, total_seqlen_tensor_, true, oss);
   shader.MainFunctionBody() << oss.str();
-
-  if (feed_past_key_ && has_present_key_) {
-    shader.MainFunctionBody() << "let pastKeyOffset = abs_kv_head_idx * uniforms.past_sequence_length * uniforms.K;\n";
-  }
-  shader.MainFunctionBody() << "let kOffset = abs_kv_head_idx * uniforms.kv_sequence_length * uniforms.K;\n";
-  if (has_present_key_) {
-    shader.MainFunctionBody() << "let presentKeyOffset = abs_kv_head_idx * uniforms.N * uniforms.K;\n";
+  if (n_reps_ > 1) {
+    shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
+                              << "let kv_head_idx = head_idx / uniforms.n_reps;\n"
+                              << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
+                              << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
+                              << "let kOffset = abs_kv_head_idx * uniforms.kv_sequence_length * uniforms.K;\n";;
+    if (feed_past_key_ && has_present_key_) {
+      shader.MainFunctionBody() << "let pastKeyOffset = abs_kv_head_idx * uniforms.past_sequence_length * uniforms.K;\n";
+    }
+    if (has_present_key_) {
+      shader.MainFunctionBody() << "let presentKeyOffset = abs_kv_head_idx * uniforms.N * uniforms.K;\n";
+    }
+  } else {
+    shader.MainFunctionBody() << "let kOffset = workgroup_id.z * uniforms.kv_sequence_length * uniforms.K;\n";
+    if (feed_past_key_ && has_present_key_) {
+      shader.MainFunctionBody() << "let pastKeyOffset = workgroup_id.z * uniforms.past_sequence_length * uniforms.K;\n";
+    }
+    if (has_present_key_) {
+      shader.MainFunctionBody() << "let presentKeyOffset = workgroup_id.z * uniforms.N * uniforms.K;\n";
+    }
   }
 
   shader.MainFunctionBody() << "var value = f32_val_t(0);\n"
@@ -196,7 +205,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, seqlen_k, total_seqlen_tensor};
+                                components, parameters.n_reps, seqlen_k, total_seqlen_tensor};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -310,13 +319,13 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                        {total_seqlen_tensor, ProgramTensorMetadataDependency::TypeAndRank}});
   }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .SetDispatchGroupSize(batch_size * num_heads, sequence_length, total_sequence_length)
+      .SetDispatchGroupSize(batch_size * num_heads * sequence_length)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(sequence_length)},
-                            {static_cast<uint32_t>(total_sequence_length)},
+                            {static_cast<uint32_t>(total_sequence_length_comp)},
                             {static_cast<uint32_t>(elementsPerThread)}});
 
   return context.RunProgram(program);
@@ -343,8 +352,6 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> tileK: array<v_value_t, " << tile_size_ * tile_size_ << ">;\n";
   shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
                             << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                            << "let kv_head_idx = head_idx / uniforms.n_reps;\n"
-                            << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
                             << "let m = global_id.y;\n"
                             << "let n = global_id.x;\n"
                             << "let offsetA = workgroup_id.z * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
@@ -352,16 +359,28 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var total_sequence_length = uniforms.K;\n";
   std::ostringstream oss;
   InitVarStub(seqlen_k_, total_seqlen_tensor_, true, oss);
-  shader.MainFunctionBody() << oss.str()
-                            << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
-                            << "let vOffset = abs_kv_head_idx * uniforms.N * uniforms.kv_sequence_length + n;\n";
+  shader.MainFunctionBody() << oss.str();
+  if (n_reps_ > 1) {
+    shader.MainFunctionBody() << "let kv_head_idx = head_idx / uniforms.n_reps;\n"
+                              << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
+                              << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
+                              << "let vOffset = abs_kv_head_idx * uniforms.N * uniforms.kv_sequence_length + n;\n";
+    if (feed_past_value_ && has_present_value_) {
+      shader.MainFunctionBody() << "let pastValueOffset = abs_kv_head_idx * uniforms.N * uniforms.past_sequence_length + n;\n";
+    }
 
-  if (feed_past_value_ && has_present_value_) {
-    shader.MainFunctionBody() << "let pastValueOffset = abs_kv_head_idx * uniforms.N * uniforms.past_sequence_length + n;\n";
-  }
+    if (has_present_value_) {
+      shader.MainFunctionBody() << "let presentValueOffset = abs_kv_head_idx * uniforms.N * uniforms.K + n;\n";
+    }
+  } else {
+    shader.MainFunctionBody() << "let vOffset = workgroup_id.z * uniforms.N * uniforms.kv_sequence_length + n;\n";
+    if (feed_past_value_ && has_present_value_) {
+      shader.MainFunctionBody() << "let pastValueOffset = workgroup_id.z * uniforms.N * uniforms.past_sequence_length + n;\n";
+    }
 
-  if (has_present_value_) {
-    shader.MainFunctionBody() << "let presentValueOffset = abs_kv_head_idx * uniforms.N * uniforms.K + n;\n";
+    if (has_present_value_) {
+      shader.MainFunctionBody() << "let presentValueOffset = workgroup_id.z * uniforms.N * uniforms.K + n;\n";
+    }
   }
 
   shader.MainFunctionBody() << "var value = probs_element_t(0);\n"
@@ -423,7 +442,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   const bool has_present_value = output_count > 1 && past_value != nullptr;
   const int tile_size = 12;
 
-  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, seqlen_k, total_seqlen_tensor};
+  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.n_reps, seqlen_k, total_seqlen_tensor};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
                      {V, ProgramTensorMetadataDependency::TypeAndRank}});
   if (feed_past_value) {

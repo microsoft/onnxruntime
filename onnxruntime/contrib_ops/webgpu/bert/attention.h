@@ -34,8 +34,8 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-                        bool has_attention_bias, int tile_size, int components, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
-      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
+                        bool has_attention_bias, int tile_size, int components, int n_reps = 1, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), n_reps_(n_reps), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -58,6 +58,7 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   bool has_attention_bias_;
   int tile_size_;
   int components_;
+  int n_reps_;
   const Tensor* seqlen_k_;
   const Tensor* total_seqlen_tensor_;
 };
@@ -86,8 +87,8 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
-  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
-      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
+  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, int n_reps = 1, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr)
+      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), n_reps_(n_reps), seqlen_k_(seqlen_k), total_seqlen_tensor_(total_seqlen_tensor) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -108,6 +109,7 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   bool feed_past_value_;
   bool has_present_value_;
   int tile_size_;
+  int n_reps_;
   const Tensor* seqlen_k_;
   const Tensor* total_seqlen_tensor_;
 };
