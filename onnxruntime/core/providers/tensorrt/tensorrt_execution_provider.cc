@@ -2462,8 +2462,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  //std::vector<size_t> filtered_nodes_vector;
-  SubGraphCollection_t supported_nodes_vector;
+  SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   bool new_subgraph = true;
   bool supported_node = true;
 
@@ -2506,18 +2505,17 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
     if (supported_node) {
       if (new_subgraph) {
-        supported_nodes_vector.emplace_back();
+        parser_nodes_vector.emplace_back();
         // Mark all new graphs as "UnKnown" and will later be parsed by TRT parser
-        supported_nodes_vector.back().second = false;
+        parser_nodes_vector.back().second = false;
         new_subgraph = false;
       }
-      supported_nodes_vector.back().first.emplace_back(index);
+      parser_nodes_vector.back().first.emplace_back(index);
     } else {
       new_subgraph = true;
     }
   }
 
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
