@@ -107,7 +107,6 @@ stages:
         xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
-        xcodeVersion: 'specifyPath'
         signingOption: 'manual'
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
         provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
@@ -137,7 +136,6 @@ stages:
         configuration: 'Debug'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
-        xcodeVersion: 'specifyPath'
         args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
         workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
         useXcpretty: false
