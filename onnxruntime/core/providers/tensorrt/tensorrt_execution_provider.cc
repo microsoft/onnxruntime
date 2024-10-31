@@ -2462,7 +2462,11 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::vector<size_t> filtered_nodes_vector;
+  //std::vector<size_t> filtered_nodes_vector;
+  SubGraphCollection_t supported_nodes_vector;
+  bool new_subgraph = true;
+  bool supported_node = true;
+
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
@@ -2477,26 +2481,40 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
      * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
      */
     if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
-      auto sub_graphs = node->GetSubgraphs();
-      if (sub_graphs.size() != 0) {
-        bool all_subgraphs_are_supported = true;
-        for (auto sub_graph : sub_graphs) {
-          // TRT EP should consider the empty subgraph is fully supported by TRT.
-          if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
-            continue;
-          }
-          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
-            all_subgraphs_are_supported = false;
-            break;
+      auto supported_control_flow_op = [&](const Node* node) {
+        auto sub_graphs = node->GetSubgraphs();
+        if (sub_graphs.size() != 0) {
+          for (auto sub_graph : sub_graphs) {
+            // TRT EP should consider the empty subgraph is fully supported by TRT.
+            if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
+              continue;
+            }
+            if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
+              // if not all its subgraphs are supported, we need to exclude this control flow op
+              return false;
+            }
           }
         }
-        if (!all_subgraphs_are_supported) {
-          // if not all its subgraphs are supported, we need to exclude this control flow op
-          continue;
-        }
-      }
+        return true;
+      };
+      supported_node = supported_control_flow_op(node);
     }
-    filtered_nodes_vector.push_back(index);
+
+    if (node->OpType() == "NonMaxSuppression") {
+      supported_node = false;
+    }
+
+    if (supported_node) {
+      if (new_subgraph) {
+        supported_nodes_vector.emplace_back();
+        // Mark all new graphs as "UnKnown" and will later be parsed by TRT parser
+        supported_nodes_vector.back().second = false;
+        new_subgraph = false;
+      }
+      supported_nodes_vector.back().first.emplace_back(index);
+    } else {
+      new_subgraph = true;
+    }
   }
 
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
