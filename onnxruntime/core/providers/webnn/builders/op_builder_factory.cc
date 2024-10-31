@@ -121,12 +121,15 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Logical
+    CreateLogicalOpBuilder("And", op_registrations);
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
     CreateLogicalOpBuilder("LessOrEqual", op_registrations);
     CreateLogicalOpBuilder("Not", op_registrations);
+    CreateLogicalOpBuilder("Or", op_registrations);
+    CreateLogicalOpBuilder("Xor", op_registrations);
   }
 
   {  // LSTM
