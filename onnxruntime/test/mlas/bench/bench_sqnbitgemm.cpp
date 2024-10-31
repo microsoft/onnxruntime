@@ -23,9 +23,9 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                             size_t Threads,
                             bool Symmetric,
                             bool HasBias,
-                            MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+                            MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
                             benchmark::State& state) {
-  if (!MlasIsSQNBitGemmAvailable<AType>(BlkBitWidth, BlkLen, ComputeType)) {
+  if (!MlasIsQNBitGemmAvailable<AType>(BlkBitWidth, BlkLen, ComputeType)) {
     state.SkipWithMessage("SQNBitGemm is not available with the given configuration on the current machine.");
     return;
   }
@@ -63,26 +63,26 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                                             tp.get());
 
   std::unique_ptr<std::byte[]> Workspace;
-  if (const auto WorkspaceSize = MlasSQNBitGemmBatchWorkspaceSize<AType>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize<AType>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
       WorkspaceSize > 0) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }
 
   std::unique_ptr<std::byte[]> PackedQuantBData;
-  if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     if constexpr (std::is_same_v<AType, MLAS_FP16>) {
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+      MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
                                    tp.get());
     } else {
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+      MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
                                    QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
                                    tp.get());
     }
   }
 
-  MLAS_SQNBIT_GEMM_DATA_PARAMS<AType> params{};
+  MLAS_QNBIT_GEMM_DATA_PARAMS<AType> params{};
   params.A = A.data();
   params.lda = K;
   if (PackedQuantBData != nullptr)
@@ -98,10 +98,10 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   params.ldc = N;
 
   // warm up run
-  MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
+  MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
 
   for (auto _ : state) {
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
+    MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
   }
 }
 
@@ -116,7 +116,7 @@ void SQNBITGEMM(benchmark::State& state) {
   const auto Threads = narrow<size_t>(state.range(4));
   const auto Symmetric = narrow<bool>(state.range(5));
   const bool HasBias = narrow<bool>(state.range(6));
-  const auto ComputeType = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(state.range(7));
+  const auto ComputeType = static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(state.range(7));
 
   RunSQNBitGemmBenchmark<AType, BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias, ComputeType, state);
 }
@@ -158,7 +158,7 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
                                                                         static_cast<int32_t>(CompFp32));
 
   RunSQNBitGemmBenchmark<AType, BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
-                                             static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
+                                             static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
                                              state);
 
   std::ostringstream s;

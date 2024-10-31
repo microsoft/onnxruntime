@@ -18,7 +18,7 @@ Abstract:
 #include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
-static constexpr const char* ComputeTypeName(MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType) {
+static constexpr const char* ComputeTypeName(MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType) {
   switch (ComputeType) {
     case CompFp32:
       return "Fp32";
@@ -63,9 +63,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 float* C,
                 size_t ldc,
                 void* Workspace,
-                MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+                MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
                 MLAS_THREADPOOL* Threadpool) {
-    MLAS_SQNBIT_GEMM_DATA_PARAMS<float> params;
+    MLAS_QNBIT_GEMM_DATA_PARAMS<float> params;
     params.A = A;
     params.lda = lda;
     params.Bias = Bias;
@@ -81,7 +81,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
 
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
+    MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
   }
 
   void QuantizeA(size_t M, size_t K, const float* A, int8_t* QuantAData, float* QuantAScale) {
@@ -201,7 +201,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
  public:
   void Test(size_t M, size_t N, size_t K,
-            MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+            MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
             bool WithThreadpool, bool Symmetric, bool WithBias) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
@@ -265,17 +265,17 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasSQNBitGemmBatchWorkspaceSize<float>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize<float>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
     void* PackedQuantBDataWorkspace = nullptr;
-    if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
       PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
+      MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
                                    QuantBScale, has_zp_input, QuantBZeroPoint,
                                    GetMlasThreadPool());
     }
@@ -324,7 +324,7 @@ template <size_t BlkBitWidth, size_t BlkLen>
 class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>> {
  public:
   explicit SQNBitGemmShortExecuteTest(size_t M, size_t N, size_t K,
-                                      MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+                                      MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
                                       bool WithThreadpool, bool Symmetric, bool WithBias)
       : M_(M),
         N_(N),
@@ -341,11 +341,11 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K,
-                                   MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+                                   MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
     size_t tests_registered = 0;
 
-    if (MlasIsSQNBitGemmAvailable<float>(BlkBitWidth, BlkLen, ComputeType)) {
+    if (MlasIsQNBitGemmAvailable<float>(BlkBitWidth, BlkLen, ComputeType)) {
       std::stringstream ss;
       ss << (WithThreadpool ? "SingleThread" : "Threaded")
          << "/isSymmetric" << Symmetric
@@ -376,7 +376,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   static size_t RegisterShortExecuteTests() {
     size_t tests_registered = 0;
 
-    for (MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType : {CompFp32, CompInt8}) {
+    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {CompFp32, CompInt8}) {
       for (bool WithThreadpool : {false, true}) {
         for (bool Symmetric : {false, true}) {
           for (size_t b = 1; b < 16; b++) {
@@ -416,7 +416,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
  private:
   size_t M_, N_, K_;
-  MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType_;
+  MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType_;
   bool WithThreadpool_, Symmetric_, WithBias_;
 };
 
