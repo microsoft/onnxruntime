@@ -36,8 +36,8 @@ interface MLOperandDescriptor {
   dimensions?: readonly number[];
 }
 interface MLOperand {
-  dataType(): MLOperandDataType;
-  shape(): number[];
+  dataType: MLOperandDataType;
+  shape: readonly number[];
 }
 interface MLActivation {}
 type MLNamedOperands = Record<string, MLOperand>;
