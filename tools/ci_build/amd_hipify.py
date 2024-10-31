@@ -22,6 +22,13 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("kCudaStreamCopyOut", "kHipStreamCopyOut")
     s = s.replace("kTotalCudaStreams", "kTotalHipStreams")
 
+    # in rocm 6.0, hipify-perl, the -roc option also maps __half -> rocblas_half which we don't want
+    s = s.replace("rocblas_half", "__half")
+
+    # these should be "hip" but it's easier to just use rocm to avoid complicated file renaming
+    s = s.replace("CudaGraph", "RocmGraph")
+    s = s.replace("CUDAGraph", "ROCMGraph")
+    s = s.replace("cuda_graph", "rocm_graph")
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
     s = s.replace("CreateCudaAllocator", "CreateRocmAllocator")

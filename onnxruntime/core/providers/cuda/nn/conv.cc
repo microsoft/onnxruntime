@@ -52,6 +52,7 @@ REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
 // First input (in this case X) is in case NHWC == true also in NHWC format, the other inputs in NCHW
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool /*save_prepacked_initializers*/,
                               bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
@@ -457,7 +458,7 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
 
 template <typename T, bool Layout>
 Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
-  std::lock_guard<OrtMutex> lock(s_.mutex);
+  std::lock_guard<std::mutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();

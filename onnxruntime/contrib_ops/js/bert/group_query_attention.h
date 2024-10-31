@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include "contrib_ops/cpu/bert/gqa_attention_base.h"
 #include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
@@ -11,31 +11,29 @@ namespace js {
 
 using onnxruntime::js::JsKernel;
 
-class GroupQueryAttention : public JsKernel {
+class GroupQueryAttention : public JsKernel, GQAAttentionBase {
  public:
   explicit GroupQueryAttention(const OpKernelInfo& info)
-      : JsKernel(info) {
-    int64_t num_heads = 0;
-    int64_t kv_num_heads = 0;
-    ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-    ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0 && num_heads % kv_num_heads == 0);
-    num_heads_ = static_cast<int>(num_heads);
-    kv_num_heads_ = static_cast<int>(kv_num_heads);
-    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+      : JsKernel(info), GQAAttentionBase(info, false) {
     JSEP_INIT_KERNEL_ATTRIBUTE(GroupQueryAttention, ({
                                  "numHeads" : $1,
                                  "kvNumHeads" : $2,
                                  "scale" : $3,
+                                 "softcap" : $4,
+                                 "doRotary" : $5,
+                                 "rotaryInterleaved" : $6,
+                                 "smoothSoftmax" : $7,
+                                 "localWindowSize" : $8
                                }),
                                static_cast<int32_t>(num_heads_),
                                static_cast<int32_t>(kv_num_heads_),
-                               static_cast<float>(scale_));
+                               static_cast<float>(scale_),
+                               static_cast<float>(softcap_),
+                               static_cast<int32_t>(do_rotary_),
+                               static_cast<int32_t>(rotary_interleaved_),
+                               static_cast<int32_t>(use_smooth_softmax_),
+                               static_cast<int32_t>(local_window_size_));
   }
-
- protected:
-  int num_heads_;     // number of attention heads
-  int kv_num_heads_;  // number of k and v heads
-  float scale_;       // custom scale will be used if specified. Default value is 1/sqrt(head_size)
 };
 
 }  // namespace js
