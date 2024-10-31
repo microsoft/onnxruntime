@@ -42,16 +42,17 @@ jobs:
       dependsOn: [ ]
     timeoutInMinutes: ${{ parameters.timeout }}
     variables:
+      - template: ../../templates/common-variables.yml
       - name: docker_base_image
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
           value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241020.1
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: 10.4.0.26-1.cuda11.8
+          value: ${{ variables.linux_trt_version_cuda11 }}
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: 10.4.0.26-1.cuda12.6
+          value: ${{ variables.linux_trt_version_cuda12 }}
     pool: ${{ parameters.machine_pool }}
     steps:
       - checkout: self

@@ -118,7 +118,18 @@ stages:
         clean: true
         submodules: none
 
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.12'
+          addToPath: true
+          architecture: ${{ parameters.buildArch }}
+
       - template: telemetry-steps.yml
+
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
@@ -127,11 +138,6 @@ stages:
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.12'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
 
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
@@ -363,6 +369,11 @@ stages:
             versionSpec: '3.12'
             addToPath: true
             architecture: ${{ parameters.buildArch }}
+
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))

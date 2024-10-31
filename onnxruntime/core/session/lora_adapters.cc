@@ -62,15 +62,16 @@ namespace {
 struct DataTransfer {
   std::unique_ptr<IExecutionProvider> ep;
   std::unique_ptr<IDataTransfer> data_transfer;
+  bool is_dml = false;
   Status CopyTensor(const Tensor& src, Tensor& dst) const {
     return data_transfer->CopyTensor(src, dst);
   }
   Status Sync() const {
-#if USE_DML
-    return ep->Sync();
-#else
-    return Status::OK();
-#endif
+    if (is_dml) {
+      return ep->Sync();
+    } else {
+      return Status::OK();
+    }
   }
 };
 }  // namespace
@@ -94,6 +95,7 @@ static Status GetDataTransfer(const OrtMemoryInfo& mem_info, [[maybe_unused]] Da
 #ifdef USE_DML
     auto ep_factory = onnxruntime::DMLProviderFactoryCreator::Create(ConfigOptions{}, 0, false, false, false);
     dt.ep = ep_factory->CreateProvider();
+    dt.is_dml = true;
     dt.data_transfer = dt.ep->GetDataTransfer();
 #else
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DML provider is not enabled in this build");

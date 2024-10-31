@@ -915,6 +915,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "SkipSimplifiedLayerNormalization",
                                                     "Slice",
                                                     "Softmax",
+                                                    "SoftmaxCrossEntropyLoss",
                                                     "Softplus",
                                                     "Softsign",
                                                     "SpaceToDepth",
@@ -1023,15 +1024,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
 
     if (unsupported_nodes.size() > 10) {
-      return result;
-    }
-
-    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
-    // so if a model contain any of these operators, fall back to CPU
-    std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
-    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-          return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-        })) {
       return result;
     }
 
@@ -1160,7 +1152,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     if (!no_input_shape) {
       if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-        LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model";
+        LOGS_DEFAULT(INFO) << "No input shapes detected quantizing model";
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
         // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1301,7 +1293,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       // re-compile the program
       if (!input_shape_match) {
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-          LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+          LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling" << std::endl;
 #ifndef ENABLE_TRAINING_CORE
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
           cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());
