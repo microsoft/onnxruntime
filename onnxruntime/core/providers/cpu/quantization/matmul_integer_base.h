@@ -86,7 +86,7 @@ class MatMulIntegerBase : public OpKernel {
     return Status::OK();
   }
 
-  std::optional<Tensor> GetPrePackTensor(int input_idx) {
+  std::optional<Tensor> GetPrePackTensor(int input_idx) override {
     if (input_idx == GetBIdx()) {
       return std::move(packed_tensor_);
     } else {
@@ -94,7 +94,7 @@ class MatMulIntegerBase : public OpKernel {
     }
   }
 
-  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) {
+  Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override {
     if (input_idx == GetBIdx()) {
       size_t packed_b_size_;
       utils::ConvertTensorToPackedBufferAndShape(packed_b_size_, b_shape_, packed_b_, const_cast<void*>(pre_packed_tensor.DataRaw()));
