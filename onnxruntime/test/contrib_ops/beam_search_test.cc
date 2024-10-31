@@ -74,9 +74,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
 
   Ort::SessionOptions session_options;
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
 #ifdef USE_CUDA
   OrtCUDAProviderOptionsV2 cuda_options;
@@ -172,9 +170,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   if (enable_cuda || enable_rocm) {
     Ort::SessionOptions session_options;
 #if defined(USE_CUDA) && defined(USE_DML)
-    if (DefaultCudaExecutionProvider() == nullptr) {
-      return;
-    }
+    SKIP_CUDA_TEST_WITH_DML;
 #endif
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;

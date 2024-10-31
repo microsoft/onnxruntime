@@ -9,6 +9,9 @@
 #include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"
+#ifdef USE_CUDA
+#include "test/common/cuda_op_test_utils.h"
+#endif
 #include "test/test_environment.h"
 #include "asserts.h"
 
@@ -74,6 +77,9 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
 #ifdef USE_CUDA
 
 TEST(TransformerTest, MemcpyTransformerTest) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DMLCUDA;
+#endif
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
@@ -106,23 +112,13 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-#if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() != nullptr) {
-    ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
-  }
-#else
+#if defined(USE_CUDA)
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                                            std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
-
-#if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
-#endif
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
@@ -141,6 +137,9 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 }
 
 TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
@@ -173,11 +172,6 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-#if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
-#endif
 
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
 
@@ -301,9 +295,7 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
 
@@ -349,9 +341,7 @@ TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
 
@@ -457,9 +447,7 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
 

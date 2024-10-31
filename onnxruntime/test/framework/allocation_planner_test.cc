@@ -28,6 +28,7 @@ using json = nlohmann::json;
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "test/common/cuda_op_test_utils.h"
 #endif  // USE_CUDA
 #include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
@@ -1280,9 +1281,7 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
 // node1(CPU ep)->node2(CPU ep)->node3(CUDA ep)->node4(CPU ep)
 TEST_F(PlannerTest, MultiStream) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
 
   ONNX_NAMESPACE::TensorProto tensor;
@@ -1332,9 +1331,7 @@ TEST_F(PlannerTest, MultiStream) {
 // All 3 nodes are CUDA EP, node1 is in stream0, node2 is in stream1, node3 is in stream2
 TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernelAdd = KernelDefBuilder().SetName("Add").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
@@ -1378,9 +1375,7 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
 // node1's output, which is consumed by both node2 and node3, is in CPU.
 TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   MemcpyToHostInCuda_TransposeInCudaAndCpu("./testdata/multi_stream_models/memcpyToHost_same_stream_with_transpose.json");
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
@@ -1446,9 +1441,7 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
 // as there is a specific order between node1 and node2 if they are in the same stream, thus node3 will only need to wait the latter one
 TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
@@ -1488,9 +1481,7 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
 TEST_F(PlannerTest, ParaPlanCreation) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1934,9 +1925,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
 
   const char* type = "DeviceBasedPartitioner";
@@ -2013,9 +2002,7 @@ TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
 // Load with partition config where a node is missing, session load expected to fail.
 TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
 
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
@@ -2039,9 +2026,7 @@ TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
 // Load with partition config where streams and devices has mismatch
 TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
   SessionOptions sess_opt;
@@ -2132,9 +2117,7 @@ TEST_F(PlannerTest, TestCpuIf) {
 //
 TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
 
   SessionOptions sess_opt;

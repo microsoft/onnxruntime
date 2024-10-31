@@ -3,6 +3,9 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#if USE_CUDA
+#include "test/common/cuda_op_test_utils.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -123,9 +126,7 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
                          0.0f, 0.0f, 0.0f, 0.0f});
 
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   // On GPU, just set the value to 0 instead of report error. exclude all other providers
   test

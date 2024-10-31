@@ -34,6 +34,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "test/common/cuda_op_test_utils.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -2173,9 +2174,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 // disable it, since we are going to enable parallel execution with cuda ep
 TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
@@ -2201,9 +2200,7 @@ TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
 
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
 
   OrtArenaCfg arena_cfg;

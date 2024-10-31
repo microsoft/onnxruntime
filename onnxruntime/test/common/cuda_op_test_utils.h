@@ -5,6 +5,12 @@
 
 #include "test/util/include/default_providers.h"
 
+#define SKIP_CUDA_TEST_WITH_DML                                                                                           \
+  if (DefaultCudaExecutionProvider() == nullptr) {                                                                        \
+    std::cout << "Skip cuda ep test in " << ::testing::UnitTest::GetInstance()->current_test_info()->name() << std::endl; \
+    return;                                                                                                               \
+  }
+
 namespace onnxruntime {
 namespace test {
 
