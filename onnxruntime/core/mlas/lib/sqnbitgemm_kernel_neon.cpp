@@ -38,7 +38,7 @@ SQ4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
@@ -55,7 +55,7 @@ SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
@@ -136,7 +136,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -158,7 +158,7 @@ template <typename T>
 size_t
 SQ4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(BlkLen);

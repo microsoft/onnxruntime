@@ -159,8 +159,8 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
 
     std::vector<uint8_t> input(BufferSize), packed(BufferSize), ref(BufferSize);
     InitializeBuffer(input);
-    MlasSQNBitGemmPackQuantBData(
-        N, K, Bits, BlkLen, MLAS_SQNBIT_GEMM_COMPUTE_TYPE::CompFp16, input.data(), packed.data(), nullptr);
+    MlasQNBitGemmPackQuantBDataSize(
+        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::CompFp16, input.data(), packed.data(), nullptr);
     Prepack<Ldb, N, K>(input, ref);
     Check<Ldb, N, K>(packed, ref);
   }

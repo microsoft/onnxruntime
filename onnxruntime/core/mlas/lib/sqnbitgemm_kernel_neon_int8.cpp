@@ -12,7 +12,7 @@ Abstract:
 
     This module implements the float/quantized n-bit integer matrix
     multiplication kernels for ARM NEON specific to
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompInt8.
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE CompInt8.
 
 --*/
 
