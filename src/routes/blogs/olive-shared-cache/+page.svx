@@ -15,8 +15,8 @@ authorsLink:
     'https://www.linkedin.com/in/devangpatel/',
     'https://www.linkedin.com/in/samuel-kemp-a9253724/'
    ]
-image: ''
-imageSquare: ''
+image: 'https://iili.io/2nxtC57.png'
+imageSquare: 'https://iili.io/2nxtC57.png'
 url: 'https://onnxruntime.ai/blogs/olive-shared-cache'
 ---
 
