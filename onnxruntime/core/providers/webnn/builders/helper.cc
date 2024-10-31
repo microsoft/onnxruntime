@@ -92,7 +92,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
       return false;
     }
     if (dim.dim_value() == 0) {
-      LOGS(logger, VERBOSE) << "The shape of [" << node_arg_name << "] has 0 dimension which is not supported by WebNN";
+      LOGS(logger, VERBOSE) << "The shape of [" << input_name << "] has 0 dimension which is not supported by WebNN";
       return false;
     }
   }
