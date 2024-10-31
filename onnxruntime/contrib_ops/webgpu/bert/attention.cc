@@ -125,7 +125,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "let kv_head_idx = head_idx / uniforms.n_reps;\n"
                               << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
                               << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
-                              << "let kOffset = abs_kv_head_idx * uniforms.kv_sequence_length * uniforms.K;\n";;
+                              << "let kOffset = abs_kv_head_idx * uniforms.kv_sequence_length * uniforms.K;\n";
     if (feed_past_key_ && has_present_key_) {
       shader.MainFunctionBody() << "let pastKeyOffset = abs_kv_head_idx * uniforms.past_sequence_length * uniforms.K;\n";
     }
@@ -319,7 +319,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                        {total_seqlen_tensor, ProgramTensorMetadataDependency::TypeAndRank}});
   }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .SetDispatchGroupSize(1, sequence_length,  batch_size * num_heads)
+      .SetDispatchGroupSize(1, sequence_length, batch_size * num_heads)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
