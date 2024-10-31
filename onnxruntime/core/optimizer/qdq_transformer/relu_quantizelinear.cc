@@ -35,6 +35,7 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
 
   constexpr size_t q_input_cnt_required = 3;
   if (q_input_defs.size() != q_input_cnt_required) {
+    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
 
@@ -44,6 +45,7 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   const ONNX_NAMESPACE::TensorProto* s_tensor_proto = nullptr;
   if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[s_idx]) ||
       !graph.GetInitializedTensor(q_input_defs[s_idx]->Name(), s_tensor_proto)) {
+    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
   Initializer s_init(*s_tensor_proto, graph.ModelPath());
@@ -52,11 +54,13 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
   if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[zp_idx]) ||
       !graph.GetInitializedTensor(q_input_defs[zp_idx]->Name(), zp_tensor_proto)) {
+    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
   Initializer zp_init(*zp_tensor_proto, graph.ModelPath());
 
   if (zp_init.size() != 1) {
+    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
 
@@ -64,18 +68,22 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     switch (zp_init.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
         auto zero_point = zp_init.data<int8_t>()[0];
+        std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
         return QDQ::QuantizeDomain<int8_t>::MinUpper(scale, zero_point) >= 0;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
         auto zero_point = zp_init.data<uint8_t>()[0];
+        std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
         return QDQ::QuantizeDomain<uint8_t>::MinUpper(scale, zero_point) >= 0;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
         auto zero_point = zp_init.data<int16_t>()[0];
+        std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
         return QDQ::QuantizeDomain<int16_t>::MinUpper(scale, zero_point) >= 0;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
         auto zero_point = zp_init.data<uint16_t>()[0];
+        std::cout << __FILE__ << ":" << __LINE__ << " scale:" << scale << ", zp:" << int(zero_point) << std::endl;
         return QDQ::QuantizeDomain<uint16_t>::MinUpper(scale, zero_point) >= 0;
       }
       default:
@@ -83,6 +91,7 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     }
   };
   if (!can_fuse()) {
+    std::cout << __FILE__ << ":" << __LINE__ << " cannot fuse" << std::endl;
     return Status::OK();
   }
 
@@ -90,6 +99,7 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
+  std::cout << __FILE__ << ":" << __LINE__ << " fused" << std::endl;
   return Status::OK();
 }
 }  // namespace onnxruntime

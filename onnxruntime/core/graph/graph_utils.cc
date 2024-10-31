@@ -530,6 +530,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
 }
 
 bool RemoveNode(Graph& graph, Node& node) {
+  std::cout << "Removed:" << node.OpType() << std::endl;
   // TODO: enable the check back
   // assert(CanRemoveNode(graph, node, nullptr));
 
