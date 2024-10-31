@@ -534,7 +534,7 @@ A mixed precision QDQ model consists of regions with different activation/weight
 The ability to specify regions with different quantization data types enables exploring the tradeoffs between accuracy and latency. A higher integer precision may improve accuracy at the expense of latency, so selectively promoting certain regions to a higher precision can aid in achieving a desirable balance in key metrics.
 
 The following figure shows a model with a region that has been promoted to 16-bit from the default 8-bit activation type.
-<p align="center"><img width="100%" src="../../images/quantization_mixed_precision_2.png" alt="mixed precision layers"/></p>
+<p align="center"><img width="60%" src="../../images/quantization_mixed_precision_2.png" alt="mixed precision layers"/></p>
 
 This model is quantized to uint8 precision, but tensor "Op4_out" is quantized to 16-bit. This can be achieved by specifying the following initial tensor quantization overrides:
 
