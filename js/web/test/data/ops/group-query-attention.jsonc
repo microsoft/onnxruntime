@@ -1409,5 +1409,160 @@
         ]
       }
     ]
+  },
+  {
+    "name": "GroupQueryAttention Batch=2 17",
+    "operator": "GroupQueryAttention",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      { "name": "num_heads", "data": 1, "type": "int" },
+      { "name": "kv_num_heads", "data": 1, "type": "int" }
+    ],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          // key, BS*
+          {
+            "data": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          // value, BS*
+          {
+            "data": [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          // past key, BS*
+          {
+            "data": [],
+            "dims": [2, 1, 0, 8],
+            "type": "float32"
+          },
+          // past value, BS*
+          {
+            "data": [],
+            "dims": [2, 1, 0, 8],
+            "type": "float32"
+          },
+          // seqlens_k, unimplemented
+          {
+            "data": [1, 1],
+            "dims": [2],
+            "type": "int32"
+          },
+          // total_sequence_length, unimplemented
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          {
+            // present key, BS*
+            "data": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
+            "dims": [2, 1, 1, 8],
+            "type": "float32"
+          },
+          {
+            // present value, BS*
+            "data": [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47],
+            "dims": [2, 1, 1, 8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "GroupQueryAttention Batch=2 18",
+    "operator": "GroupQueryAttention",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      { "name": "num_heads", "data": 1, "type": "int" },
+      { "name": "kv_num_heads", "data": 1, "type": "int" }
+    ],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          // key, BS*
+          {
+            "data": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          // value, BS*
+          {
+            "data": [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          // past key, BS*
+          {
+            "data": [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63],
+            "dims": [2, 1, 1, 8],
+            "type": "float32"
+          },
+          // past value, BS*
+          {
+            "data": [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79],
+            "dims": [2, 1, 1, 8],
+            "type": "float32"
+          },
+          // seqlens_k, unimplemented
+          {
+            "data": [1, 1],
+            "dims": [2],
+            "type": "int32"
+          },
+          // total_sequence_length, unimplemented
+          {
+            "data": [2],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79],
+            "dims": [2, 1, 8],
+            "type": "float32"
+          },
+          {
+            // present key, BS*
+            "data": [
+              48, 49, 50, 51, 52, 53, 54, 55, 16, 17, 18, 19, 20, 21, 22, 23, 56, 57, 58, 59, 60, 61, 62, 63, 24, 25,
+              26, 27, 28, 29, 30, 31
+            ],
+            "dims": [2, 1, 2, 8],
+            "type": "float32"
+          },
+          {
+            // present value, BS*
+            "data": [64,65,66,67,68,69,70,71,32,33,34,35,36,37,38,39,72,73,74,75,76,77,78,79,40,41,42,43,44,45,46,47],
+            "dims": [2, 1, 2, 8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]
