@@ -26,7 +26,6 @@ import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -36,10 +35,6 @@ public class ProviderOptionsTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
   public void testCUDAOptions() throws OrtException {
-    String no_cuda_test = Optional.ofNullable(System.getenv("NO_CUDA_TEST")).orElse("0");
-    if (no_cuda_test.equals("1")) {
-      return;
-    }
     // Test standard options
     OrtCUDAProviderOptions cudaOpts = new OrtCUDAProviderOptions(0);
     cudaOpts.add("gpu_mem_limit", "" + (512 * 1024 * 1024));
