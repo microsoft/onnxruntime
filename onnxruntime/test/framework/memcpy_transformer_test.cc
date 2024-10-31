@@ -78,7 +78,7 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
 
 TEST(TransformerTest, MemcpyTransformerTest) {
 #if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DMLCUDA;
+  SKIP_CUDA_TEST_WITH_DML;
 #endif
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
