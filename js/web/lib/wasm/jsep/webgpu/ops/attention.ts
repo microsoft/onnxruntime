@@ -355,6 +355,7 @@ const createInPlaceSoftmaxProgramInfo = (
     let batchIdx = workgroup_id.z / uniforms.num_heads;
     let headIdx = workgroup_id.z % uniforms.num_heads;
     let sequence_length = uniforms.sequence_length;
+    var total_sequence_length = uniforms.total_sequence_length_comp * ${components};
     ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
     let local_offset = local_idx * uniforms.elements_per_thread;
     let offset = (global_idx / ${WG}) * uniforms.total_sequence_length_comp + local_offset;
@@ -416,10 +417,8 @@ const createInPlaceSoftmaxProgramInfo = (
       }
     }
       ${
-        // For GQA components is 1.
         seqLens
           ? `
-        var total_sequence_length = uniforms.total_sequence_length_comp;
         for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < total_sequence_length; total_seq_id++) {
           x[offset + total_seq_id] = ${inputHelper.type.value}(${elemValueType}(0));
         }`
