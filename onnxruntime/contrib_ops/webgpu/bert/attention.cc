@@ -257,13 +257,13 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
                             << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
                             << "let sequence_length = uniforms.sequence_length;\n"
-                            << "var total_sequence_length = uniforms.total_sequence_length;\n";
+                            << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
   std::ostringstream oss;
   InitVarStub(seqlen_k_, total_seqlen_tensor_, true, oss);
   shader.MainFunctionBody() << oss.str()
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
-                            << "let offset = (global_idx / " << work_group_size_ << ") * uniforms.total_sequence_length + local_offset;\n"
-                            << "let seq_causal_length = " << (seqlen_k_ ? "past_sequence_length + workgroup_id.y + 1" : "total_sequence_length") << ";\n"
+                            << "let offset = (global_idx / " << work_group_size_ << ") * uniforms.total_sequence_length_comp + local_offset;\n"
+                            << "let seq_causal_length = " << (seqlen_k_ ? "past_sequence_length + workgroup_id.y + 1" : "uniforms.total_sequence_length_comp") << ";\n"
                             << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
                             << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
                             << "  thread_max_vector = max(f32_val_t(x[offset + i]), thread_max_vector);\n"
@@ -295,7 +295,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "}\n";
   if (seqlen_k_) {
-    shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length; total_seq_id++) {\n"
+    shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < total_sequence_length; total_seq_id++) {\n"
                               << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
                               << "}\n";
   }
