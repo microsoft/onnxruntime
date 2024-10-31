@@ -35,12 +35,8 @@ public:
             DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC clipDesc = {};
             clipDesc.InputTensor = outputDescs.data();
             clipDesc.OutputTensor = outputDescs.data();
-            DML_SCALAR_UNION minValue;
-            minValue.Int32 = 0;
-            DML_SCALAR_UNION maxValue;
-            maxValue.Int32 = 1;
-            clipDesc.Min = minValue;
-            clipDesc.Max = maxValue;
+            clipDesc.Min.UInt8 = 0;
+            clipDesc.Max.UInt8 = 1;
 
             DML_OPERATOR_DESC dmlClipDesc = { DML_OPERATOR_ELEMENT_WISE_CLIP1, &clipDesc };
 

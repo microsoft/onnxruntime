@@ -149,7 +149,6 @@ using CastNonStringTypes =
         MLFloat16, BFloat16>;
 
 TEST(CastOpTest, NonStringTypes) {
-
   boost::mp11::mp_for_each<boost::mp11::mp_product<std::pair, CastNonStringTypes, CastNonStringTypes>>(
       CastNonStringTester{});
 }
