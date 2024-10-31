@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test/providers/compare_provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -79,13 +80,19 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 #endif
 
 #ifdef USE_CUDA
-  test.CompareWithCPU(kCudaExecutionProvider);
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    test.CompareWithCPU(kCudaExecutionProvider);
+  }
 #elif USE_ROCM
   test.CompareWithCPU(kRocmExecutionProvider);
-#elif USE_DML
-  test.CompareWithCPU(kDmlExecutionProvider);
 #elif USE_WEBGPU
   test.CompareWithCPU(kWebGpuExecutionProvider);
+#endif
+
+#ifdef USE_DML
+  if (DefaultDmlExecutionProvider() != nullptr) {
+    test.CompareWithCPU(kDmlExecutionProvider);
+  }
 #endif
 }
 
