@@ -201,7 +201,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const bool feed_past_key = present_key != nullptr && past_key != nullptr && past_key->SizeInBytes() > 0;
   const bool has_present_key = output_count > 1 && past_key;
   const bool has_attention_bias = attention_bias != nullptr;
-  const int tile_size = 12;
+  constexpr int tile_size = 12;
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
@@ -319,7 +319,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                        {total_seqlen_tensor, ProgramTensorMetadataDependency::TypeAndRank}});
   }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .SetDispatchGroupSize(batch_size * num_heads * sequence_length)
+      .SetDispatchGroupSize(1, sequence_length,  batch_size * num_heads)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
