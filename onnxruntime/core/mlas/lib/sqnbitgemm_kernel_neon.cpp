@@ -203,8 +203,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     d.SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<MLAS_FP16>;
 
     d.Q4BitBlkDequantBForSgemm_CompFp16 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp16;
-    d.SQ4BitGemmKernel_CompFp16_8N_2M = sqnbitgemm_neon::SQ4BitGemmKernel_CompFp16_Kernel<8, 2>;
-    d.SQ4BitGemmKernel_CompFp16_Remainder = sqnbitgemm_neon::SQ4BitGemmKernel_CompFp16_Remainder;
+    d.SQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::SQ4BitGemmKernel_CompFp16;
 
     // TODO(fajin)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {

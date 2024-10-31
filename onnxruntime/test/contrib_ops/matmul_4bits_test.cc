@@ -274,13 +274,11 @@ void TestMatMulNBitsTyped() {
   base_opts.block_size = block_size;
   base_opts.accuracy_level = accuracy_level;
 
-  if (base_opts.accuracy_level == 4) {
+  if constexpr (std::is_same<AType, MLFloat16>::value) {
+    base_opts.output_abs_error = 0.05f;
+    base_opts.output_rel_error = 0.02f;
+  } else if (base_opts.accuracy_level == 4) {
     base_opts.output_abs_error = 0.1f;
-  } else {
-    if constexpr (std::is_same<AType, MLFloat16>::value) {
-      base_opts.output_abs_error = 0.03f;
-      base_opts.output_rel_error = 0.015f;
-    }
   }
 
   {

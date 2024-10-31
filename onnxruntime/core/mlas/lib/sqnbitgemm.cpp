@@ -123,8 +123,7 @@ MlasIsSQNBitGemmAvailable<MLAS_FP16>(
 
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp16:
-            return Dispatch->SQ4BitGemmKernel_CompFp16_8N_2M != nullptr &&
-                   Dispatch->SQ4BitGemmKernel_CompFp16_Remainder != nullptr &&
+            return Dispatch->SQ4BitGemmKernel_CompFp16 != nullptr &&
                    Dispatch->Q4BitBlkDequantBForSgemm_CompFp16 != nullptr;
         case SQNBitGemmVariant_BitWidth4_CompInt8:
             return Dispatch->SQ4BitGemmKernel_Fp16_CompInt8 != nullptr &&
@@ -623,78 +622,43 @@ SQ4BitGemm_CompFp16(
             : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_zp_bytes;
     const MLAS_FP16* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias;
 
+    // 32N is the sweet spot of cache utilization. It is machine dependent though.
     constexpr size_t StrideM = 2;
-    constexpr size_t StrideN = 8;
+    constexpr size_t StrideN = 32;
 
     size_t bufsize = ldb * StrideN * sizeof(MLAS_FP16);
     MlasThreadedBufAlloc(bufsize);
     auto* dequant_b = reinterpret_cast<MLAS_FP16*>(ThreadedBufHolder.get());
 
-    size_t n = 0;
-    for (; n + StrideN <= RangeCountN; n += StrideN) {
+    for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+        countN = std::min(StrideN, RangeCountN - n);
         GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
-            BlkLen, dequant_b, QuantBData, QuantBScale, QuantBZeroPoint, StrideN, K, k_blk_num
-        );
-
-        const MLAS_FP16* a = A;
-        MLAS_FP16* c = C;
-        size_t m = 0;
-        for (; m + StrideM <= RangeCountM; m += StrideM) {
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_8N_2M(
-                a, dequant_b, Bias, c, K, lda, ldb, ldc
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + m, RangeStartN + n, StrideM, StrideN, ldc
-                );
-            }
-
-            a += StrideM * lda;
-            c += StrideM * ldc;
-        }
-
-        if (m < RangeCountM) {
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_Remainder(
-                a, dequant_b, Bias, c, 1, StrideN, K, lda, ldb, ldc
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + m, RangeStartN + n, 1, StrideN, ldc
-                );
-            }
-        }
-
-        QuantBData += StrideN * qldb;
-        QuantBScale += StrideN * k_blk_num;
-        QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + StrideN * k_zp_bytes : nullptr;
-        Bias = Bias ? Bias + StrideN : nullptr;
-        C += StrideN;
-    }
-
-    if (n < RangeCountN) {
-        GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
-            BlkLen, dequant_b, QuantBData, QuantBScale, QuantBZeroPoint, RangeCountN - n, K, k_blk_num
+            BlkLen, dequant_b, QuantBData, QuantBScale, QuantBZeroPoint, countN, K, k_blk_num
         );
 
         const MLAS_FP16* a = A;
         MLAS_FP16* c = C;
         for (size_t m = 0, countM; m < RangeCountM; m += countM) {
             countM = std::min(StrideM, RangeCountM - m);
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16_Remainder(
-                a, dequant_b, Bias, c, countM, RangeCountN - n, K, lda, ldb, ldc
+            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
+                a, dequant_b, Bias, c, countM, countN, K, lda, ldb, ldc
             );
 
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + m, RangeStartN + n, countM, RangeCountN - n, ldc
+                    DataParams->C, RangeStartM + m, RangeStartN + n, countM, countN, ldc
                 );
             }
 
             a += countM * lda;
             c += countM * ldc;
         }
+
+        QuantBData += countN * qldb;
+        QuantBScale += countN * k_blk_num;
+        QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + countN * k_zp_bytes : nullptr;
+        Bias = Bias ? Bias + countN : nullptr;
+        C += countN;
     }
 }
 
