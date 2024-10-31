@@ -59,7 +59,8 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     std::string_view op_type = "cast";
     auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     if ((input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-         input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT32) && to_dtype == "int32") {
+         input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT32) &&
+        to_dtype == "int32") {
       op_type = "identity";
     }
 
