@@ -10,6 +10,9 @@ jobs:
       XCODE_DEVELOPER_DIR="/Applications/Xcode_15.2.app/Contents/Developer"
       sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
+  - script: |
+      /usr/bin/xcodebuild -version
+
   - task: Xcode@5
     inputs:
       args: '-version'
