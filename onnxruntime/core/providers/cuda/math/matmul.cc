@@ -252,10 +252,6 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
 
   // Create matrix descriptors. Not setting any extra attributes.
   // ORT is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
-  // TODO why does cublasLtMatmulAlgoGetHeuristic fail if we use Float8E4M3FN or
-  // ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN for dtype_A and dtype_B,
-  // such that a_cuda_type and b_cuda_type are CUDA_R_8F_E4M3?
-  // Currently, a_cuda_type and b_cuda_type are CUDA_R_16F.
   int32_t dtype_A = right_X->GetElementType();
   int32_t dtype_B = left_X->GetElementType();
   int32_t dtype_C = Y->GetElementType();
@@ -277,10 +273,8 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transB, sizeof(transB)));
 
   cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr, Ydesc = nullptr;
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, K, N, lda)); // right_X
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, K, M, ldb)); // left_X
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, K, N, lda)); // right_X
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, K, M, ldb)); // left_X
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, K, N, lda)); // right_X
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, K, M, ldb)); // left_X
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ydesc, y_cuda_type, N, M, ldc)); // cublas is col major
 
   int64_t sm_count_ = device_prop.multiProcessorCount;
@@ -296,14 +290,6 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
 
   // matmul float 8
 #if CUDA_VERSION >= 11080
-  // TODO why does CUBLASLT_MATMUL_DESC_FAST_ACCUM break cublasLtMatmulAlgoGetHeuristic?
-  // // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
-  // // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
-  // const int8_t ifast_accumulation_mode = 1;
-  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-  //     operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
-  //     &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
-
   float* quant_float = (float*)malloc(256 * sizeof(float));
   for (int i = 0; i < 256; i ++) {
     quant_float[i] = i;
@@ -325,10 +311,11 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
   IAllocatorUniquePtr<void> p_scale_a = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
   IAllocatorUniquePtr<void> p_scale_b = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
   IAllocatorUniquePtr<void> p_scale_y = IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), false, ctx->GetComputeStream());
-  float* sa = (float*)(p_scale_a.get());
-  float* sb = (float*)(p_scale_b.get());
-  float* sy = (float*)(p_scale_y.get());
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sa, &scale_a, sizeof(float), cudaMemcpyHostToDevice, stream)); // TODO check status for these
+
+  void* sa = p_scale_a.get();
+  void* sb = p_scale_b.get();
+  void* sy = p_scale_y.get();
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sa, &scale_a, sizeof(float), cudaMemcpyHostToDevice, stream));
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sb, &scale_b, sizeof(float), cudaMemcpyHostToDevice, stream));
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sy, &scale_y, sizeof(float), cudaMemcpyHostToDevice, stream));
 
@@ -445,6 +432,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
 template <typename T>
 Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                           bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
 
   if (input_idx == 1) { // right_X
