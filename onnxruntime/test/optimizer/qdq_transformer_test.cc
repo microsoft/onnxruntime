@@ -3132,7 +3132,7 @@ struct ClipQuantFusionTestHelper {
   }
 
   void SetTestState(bool should_fuse, float desired_min_upper, float desired_max_lower,
-                        float clip_min_delta, float clip_max_delta) {
+                    float clip_min_delta, float clip_max_delta) {
     should_fuse_ = should_fuse;
     min_upper_ = desired_min_upper;
     max_lower_ = desired_max_lower;
@@ -3166,7 +3166,7 @@ struct ClipQuantFusionTestHelper {
     float d = (clip_max_ - clip_min_ + 20.0f) / 100.0f;
     float val = clip_min_ - 10.0f;
 
-    while(val < clip_max_ + 10.0f) {
+    while (val < clip_max_ + 10.0f) {
       input_buf.push_back(val);
       val += d;
     }
@@ -3280,9 +3280,9 @@ struct ReluQuantFusionTestHelper {
     input_buf.push_back(0.0f + 0.05f);
 
     float d = 84.0f / 100.0f;
-    float val = - 10.0f;
+    float val = -10.0f;
 
-    while(val < 74.0f) {
+    while (val < 74.0f) {
       input_buf.push_back(val);
       val += d;
     }
