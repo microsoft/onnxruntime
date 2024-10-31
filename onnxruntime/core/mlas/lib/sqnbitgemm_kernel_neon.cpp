@@ -34,7 +34,7 @@ namespace
 //
 
 size_t
-SQ4BitGemmPackQuantBDataSize(
+Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -51,7 +51,7 @@ SQ4BitGemmPackQuantBDataSize(
 }
 
 void
-SQ4BitGemmPackQuantBData(
+Q4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -181,11 +181,11 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 // Kernel dispatch structure definition.
 //
 
-const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
-    MLAS_SQNBIT_GEMM_DISPATCH d;
+const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = []() {
+    MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;
-    d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
+    d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBData = sqnbitgemm_neon::Q4BitGemmPackQuantBData;
 
     d.SQ4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize<float>;
     d.SQ4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<float>;

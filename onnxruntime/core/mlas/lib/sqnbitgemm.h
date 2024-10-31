@@ -53,7 +53,7 @@ struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-      // TODO: duplicate code from SQ4BitGemmPackQuantBDataSize
+      // TODO: duplicate code from Q4BitGemmPackQuantBDataSize
         constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
@@ -87,23 +87,23 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 // Kernel dispatch structure.
 //
 
-struct MLAS_SQNBIT_GEMM_DISPATCH {
+struct MLAS_QNBIT_GEMM_DISPATCH {
     //
     // Quantized B data packing function prototypes.
     //
 
     /** Gets size of packed quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
-    typedef size_t(SQ4BitGemmPackQuantBDataSize_Fn)(
+    typedef size_t(Q4BitGemmPackQuantBDataSize_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
+    Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
     /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
-    typedef void(SQ4BitGemmPackQuantBData_Fn)(
+    typedef void(Q4BitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
@@ -113,7 +113,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         MLAS_THREADPOOL* ThreadPool
     );
 
-    SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+    Q4BitGemmPackQuantBData_Fn* Q4BitGemmPackQuantBData = nullptr;
 
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
