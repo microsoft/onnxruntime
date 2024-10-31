@@ -10,18 +10,8 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_linux_gpu
-  displayName: 'Whether Linux GPU package is built.'
-  type: boolean
-  default: true
-
 - name: enable_windows_cpu
   displayName: 'Whether Windows CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_gpu
-  displayName: 'Whether Windows GPU package is built.'
   type: boolean
   default: true
 
@@ -64,10 +54,6 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-
-- name: publish_symbols
-  type: boolean
-  default: false
 
 # Only applies to QNN packages.
 - name: qnn_sdk_version
@@ -128,7 +114,7 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: telemetry-steps.yml
+      - template: ../templates/telemetry-steps.yml
 
       - task: UsePythonVersion@0
         inputs:
@@ -142,7 +128,7 @@ stages:
           tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
           appendSourceBranchName: false
 
-      - template: set-nightly-build-option-variable-step.yml
+      - template: ../templates/set-nightly-build-option-variable-step.yml
 
       - task: BatchScript@1
         displayName: 'setup env'
@@ -151,7 +137,7 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - template: download-deps.yml
+      - template: ../templates/download-deps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
@@ -180,24 +166,12 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
-            --parallel --use_binskim_compliant_compile_flags --update
+            --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
-          platform: $(MsbuildPlatform)
-          configuration: ${{ parameters.cmake_build_type }}
-          msbuildArchitecture: $(buildArch)
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}'
-          createLogFile: true
-
       # Esrp signing
-      - template: win-esrp-dll.yml
+      - template: ../templates/win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
@@ -251,116 +225,14 @@ stages:
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
-      - ${{ if eq(parameters.publish_symbols, true) }}:
-        - task: PublishSymbols@2
-          displayName: 'Publish symbols'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-          inputs:
-            SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
-            SearchPattern: |
-               onnxruntime_pybind11_state.pdb
-               onnxruntime_providers_shared.pdb
-            IndexSources: true
-            SymbolServerType: TeamServices
-            SymbolExpirationInDays: 3650
-            SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
 
-      - task: TSAUpload@2
-        displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        inputs:
-          GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-        continueOnError: true
-
-      - template: component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
-
-- ${{ if eq(parameters.enable_windows_gpu, true) }}:
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.11'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.12'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
-        PYTHON_VERSION: '3.13'
-        EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-        ENV_SETUP_SCRIPT: setup_env_gpu.bat
-        EP_NAME: gpu
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.11'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.12'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-
-    - template: py-win-gpu.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.13'
-        EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-        ENV_SETUP_SCRIPT: setup_env.bat
-        EP_NAME: directml
-        publish_symbols: ${{ parameters.publish_symbols }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
 
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
@@ -395,9 +267,9 @@ stages:
         inputs:
           versionSpec: $(PythonVersion)
 
-      - template: use-xcode-version.yml
+      - template: ../templates/use-xcode-version.yml
 
-      - template: download-deps.yml
+      - template: ../templates/download-deps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
@@ -437,7 +309,7 @@ stages:
         inputs:
           ArtifactName: onnxruntime
 
-      - template: component-governance-component-detection-steps.yml
+      - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
@@ -446,7 +318,7 @@ stages:
     - stage: Python_Packaging_Linux_ARM
       dependsOn: []
       jobs:
-        - template: py-linux.yml
+        - template: ../templates/py-linux.yml
           parameters:
             arch: 'aarch64'
             machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
@@ -457,30 +329,18 @@ stages:
     - stage: Python_Packaging_Linux_CPU
       dependsOn: []
       jobs:
-      - template: py-linux.yml
+      - template: ../templates/py-linux.yml
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-
-
-  - ${{ if eq(parameters.enable_linux_gpu, true) }}:
-      - template: py-linux-gpu.yml
-        parameters:
-          arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          trt_version: '10.4.0.26-1.cuda11.8'
-          cuda_version: '11.8'
 
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
     - stage: Python_Packaging_Windows_ARM64_QNN
       dependsOn: []
       jobs:
-      - template: py-win-arm64-qnn.yml
+      - template: ../templates/py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
@@ -490,7 +350,7 @@ stages:
     - stage: Python_Packaging_Windows_arm64ec_QNN
       dependsOn: []
       jobs:
-        - template: py-win-arm64ec-qnn.yml
+        - template: ../templates/py-win-arm64ec-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}
@@ -500,7 +360,7 @@ stages:
     - stage: Python_Packaging_Windows_x64_QNN
       dependsOn: []
       jobs:
-        - template: py-win-x64-qnn.yml
+        - template: ../templates/py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}
@@ -510,7 +370,7 @@ stages:
     - stage: Python_Packaging_Linux_x64_QNN
       dependsOn: []
       jobs:
-      - template: py-linux-qnn.yml
+      - template: ../templates/py-linux-qnn.yml
         parameters:
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}

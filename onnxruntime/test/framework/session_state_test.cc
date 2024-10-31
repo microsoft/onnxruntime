@@ -372,10 +372,11 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool save_prepacked_initializers,
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(save_prepacked_initializers);
 
     size_t weight_packed_len = 8;
     weight_packed_ = IAllocator::MakeUniquePtr<void>(alloc, weight_packed_len, true);
@@ -393,9 +394,20 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
+  std::optional<Tensor> GetPrePackTensor(int input_idx) override {
+    ORT_UNUSED_PARAMETER(input_idx);
+    ++get_prepack_tensors_count;
+
+    TensorShape shape = {2};
+    packed_tensor = Tensor(DataTypeImpl::GetType<float>(), shape, std::make_shared<CPUAllocator>());
+    return std::move(packed_tensor);
+  }
+
   int prepack_calls_count = 0;
   int store_pre_packed_weight_calls_count = 0;
+  int get_prepack_tensors_count = 0;
   IAllocatorUniquePtr<void> weight_packed_;
+  Tensor packed_tensor;
 };
 
 static void CreateSimpleGraph(Graph& graph) {
@@ -530,6 +542,7 @@ static void PlaceAllNodesToCPUEP(Graph& graph) {
 struct PrepackingTestParam {
   bool test_subgraph;
   bool test_prepacking;
+  bool test_save_prepack_initializer;
 };
 
 class SessionStatePrepackingTest : public testing::TestWithParam<PrepackingTestParam> {};
@@ -572,6 +585,8 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   sess_options.enable_mem_reuse = true;
   sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] =
       test_param.test_prepacking ? "0" : "1";
+  sess_options.config_options.configurations[kOrtSessionOptionsSavePrePackedConstantInitializers] =
+      test_param.test_save_prepack_initializer ? "1" : "0";
 
   SessionState session_state(model.MainGraph(),
                              execution_providers,
@@ -597,12 +612,47 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
+  SessionState::PrePackInitializers pre_packed_initializers;
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                      kernel_registry_manager));
+                                                      kernel_registry_manager,
+                                                      pre_packed_initializers));
 
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
   // check prepacking
   ASSERT_EQ(const_initialized_tensors.size(), size_t(test_param.test_prepacking ? 0 : 1));
+
+  // check get prepack tensor method called when set save_prepacked_constant_initializers
+  if (!test_param.test_subgraph) {
+    const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state.GetKernel(0));
+    ASSERT_EQ(kernel->get_prepack_tensors_count, (test_param.test_prepacking && test_param.test_save_prepack_initializer) ? 1 : 0);
+  } else {
+    auto if_index = 1;
+    if (session_state.GetKernel(0)->Node().OpType() == "If") {
+      if_index = 0;
+    }
+
+    const auto& subgraph_session_states = session_state.GetSubgraphSessionStateMap();
+    const auto& if_node_session_states = subgraph_session_states.at(if_index);
+    const auto& session_state_1_then_branch_session_state = *if_node_session_states.at("then_branch");
+    const auto& session_state_1_else_branch_session_state = *if_node_session_states.at("else_branch");
+
+    const auto* kernel_if_0 = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1_then_branch_session_state.GetKernel(0));
+    const auto* kernel_if_1 = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1_else_branch_session_state.GetKernel(0));
+    ASSERT_EQ(kernel_if_0->get_prepack_tensors_count, (test_param.test_prepacking && test_param.test_save_prepack_initializer) ? 1 : 0);
+    ASSERT_EQ(kernel_if_1->get_prepack_tensors_count, (test_param.test_prepacking && test_param.test_save_prepack_initializer) ? 1 : 0);
+  }
+
+  // check pre_packed_initializers_to_save will be set properly when set save_prepacked_constant_initializers
+  if (!test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.count("node_0_input_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["node_0_input_1"].count("node_0"), size_t(1));
+  } else if (test_param.test_subgraph && test_param.test_prepacking && test_param.test_save_prepack_initializer) {
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.size(), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save.count("if_shared"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["if_shared"].count("if_node_1"), size_t(1));
+    ASSERT_EQ(pre_packed_initializers.pre_packed_initializers_to_save["if_shared"].count("if_node_0"), size_t(1));
+  }
 }
 
 class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
@@ -1000,10 +1050,14 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                          SessionStatePrepackingTest,
-                         testing::Values(PrepackingTestParam{false, false},
-                                         PrepackingTestParam{false, true},
-                                         PrepackingTestParam{true, false},
-                                         PrepackingTestParam{true, true}));
+                         testing::Values(PrepackingTestParam{false, false, false},
+                                         PrepackingTestParam{false, true, false},
+                                         PrepackingTestParam{true, false, false},
+                                         PrepackingTestParam{true, true, false},
+                                         PrepackingTestParam{false, false, true},
+                                         PrepackingTestParam{false, true, true},
+                                         PrepackingTestParam{true, false, true},
+                                         PrepackingTestParam{true, true, true}));
 #endif
 
 }  // namespace test

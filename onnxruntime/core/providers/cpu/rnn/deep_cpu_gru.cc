@@ -284,6 +284,7 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
 }
 
 Status DeepCpuGruOp::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                             bool /*save_prepacked_initializers*/,
                              bool& is_packed, PrePackedWeights* prepacked_weights) {
   is_packed = false;
 

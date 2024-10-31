@@ -2,7 +2,7 @@
 set -e -x
 
 # version
-ROCM_VERSION=6.0
+ROCM_VERSION=6.2.3
 
 while getopts "r:" parameter_Option
 do case "${parameter_Option}"

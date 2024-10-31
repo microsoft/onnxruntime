@@ -28,7 +28,7 @@ interface MLContext {
 }
 interface MLGraph {}
 type MLInputOperandLayout = 'nchw'|'nhwc';
-type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8';
+type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8'|'int4'|'uint4';
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
   shape?: readonly number[];
@@ -36,8 +36,8 @@ interface MLOperandDescriptor {
   dimensions?: readonly number[];
 }
 interface MLOperand {
-  dataType(): MLOperandDataType;
-  shape(): number[];
+  dataType: MLOperandDataType;
+  shape: readonly number[];
 }
 interface MLActivation {}
 type MLNamedOperands = Record<string, MLOperand>;
@@ -392,6 +392,7 @@ type MLNamedTensor = Record<string, MLTensor>;
 
 type MLTensorUsageFlags = number;
 
+// TODO(@Honry): Remove this once it is deprecated in Chromium.
 declare const MLTensorUsage: {
   readonly WEBGPU_INTEROP: MLTensorUsageFlags;
   readonly READ: MLTensorUsageFlags;
@@ -400,6 +401,9 @@ declare const MLTensorUsage: {
 
 interface MLTensorDescriptor extends MLOperandDescriptor {
   usage: MLTensorUsageFlags;
+  importableToWebGPU?: boolean;
+  readable?: boolean;
+  writable?: boolean;
 }
 
 interface MLContext {
