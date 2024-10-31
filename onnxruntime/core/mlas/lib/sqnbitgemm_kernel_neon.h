@@ -89,26 +89,13 @@ Q4BitBlkDequantBForSgemm_CompFp16(
 );
 
 void
-SQ4BitGemmKernel_CompFp16_Remainder(
+SQ4BitGemmKernel_CompFp16(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const MLAS_FP16* Bias,
     MLAS_FP16* C,
     size_t CountM,
     size_t CountN,
-    size_t K,
-    size_t lda,
-    size_t ldb,
-    size_t ldc
-);
-
-template <size_t CountN, size_t CountM>
-typename std::enable_if_t<((CountN == 8 || CountN == 4 || CountN == 2 || CountN == 1) && (CountM == 1 || CountM == 2)), void>
-SQ4BitGemmKernel_CompFp16_Kernel(
-    const MLAS_FP16* A,
-    const MLAS_FP16* B,
-    const MLAS_FP16* Bias,
-    MLAS_FP16* C,
     size_t K,
     size_t lda,
     size_t ldb,
