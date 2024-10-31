@@ -244,7 +244,7 @@ Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
       if (is_packed && save_prepacked_initializers) {
         void* original_packed_buffer = share_prepacked_weights ? prepacked_weights->buffers_[0].get() : packed_W_.buffer_.get();
         packed_tensor_w_ = utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_W_.weights_size_, packed_W_.shape_, 1,
-                                                                    original_packed_buffer, packed_buffer_w_);
+                                                                      original_packed_buffer, packed_buffer_w_);
       }
     } else if (input_idx == 2) {
       ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, alloc));
@@ -258,7 +258,7 @@ Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
       if (is_packed && save_prepacked_initializers) {
         void* original_packed_buffer = share_prepacked_weights ? prepacked_weights->buffers_[0].get() : packed_R_.buffer_.get();
         packed_tensor_r_ = utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_R_.weights_size_, packed_R_.shape_, 1,
-                                                                    original_packed_buffer, packed_buffer_r_);
+                                                                      original_packed_buffer, packed_buffer_r_);
       }
     }
   }

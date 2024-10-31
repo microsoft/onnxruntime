@@ -330,7 +330,7 @@ Tensor onnxruntime::DeepCpuGruOp::ConvertZRAndHPrePackWeightToTensor(onnxruntime
   // buffer of packed_tensor is combine of:
   // 1. packed_weights_size_ of pre_packed_recurrent_ZR_
   // 2. packed_weights_size_ of pre_packed_recurrent_H_
-  // 3. pre_packed_recurrent_ZR_ weight shape memory size
+  // 3. pre_packed_recurrent_ZR_ weight shape vector memory size
   // 4. pre_packed_recurrent_H_ weight shape vector memory size
   // 5. pre_packed_recurrent_ZR_ vector content
   // 6. pre_packed_recurrent_H_ vector content
@@ -344,8 +344,9 @@ Tensor onnxruntime::DeepCpuGruOp::ConvertZRAndHPrePackWeightToTensor(onnxruntime
   size_t shape_vector_mem_size_H = utils::CalculateTensorShapeVectorMemoryUsage(shape_vector_H);
   void* shape_vector_ptr_H = static_cast<void*>(&shape_vector_H);
 
-  size_t buffer_size = (pre_packed_recurrent_ZR_.weights_size_ + pre_packed_recurrent_H_.weights_size_) * num_directions_ +
-                       4 * sizeof(size_t) + shape_vector_mem_size_ZR + shape_vector_mem_size_H;
+  size_t aligned_offset = utils::GetMemoryAlignedOffset(4 * sizeof(size_t) + shape_vector_mem_size_ZR + shape_vector_mem_size_H);
+  size_t aligned_offset2 = utils::GetMemoryAlignedOffset(aligned_offset + pre_packed_recurrent_ZR_.weights_size_ * num_directions_);
+  size_t buffer_size = pre_packed_recurrent_H_.weights_size_ * num_directions_ + aligned_offset2;
 
   packed_buffer_recurrent_ = IAllocator::MakeUniquePtr<void>(alloc,
                                                              buffer_size,
@@ -368,11 +369,10 @@ Tensor onnxruntime::DeepCpuGruOp::ConvertZRAndHPrePackWeightToTensor(onnxruntime
   std::memcpy(static_cast<char*>(packed_buffer_recurrent_.get()) + 4 * sizeof(size_t) + shape_vector_mem_size_ZR,
               shape_vector_ptr_H,
               shape_vector_mem_size_H);
-  std::memcpy(static_cast<char*>(packed_buffer_recurrent_.get()) + 4 * sizeof(size_t) + shape_vector_mem_size_ZR + shape_vector_mem_size_H,
+  std::memcpy(static_cast<char*>(packed_buffer_recurrent_.get()) + aligned_offset,
               share_prepacked_weights ? prepacked_weights->buffers_[0].get() : pre_packed_recurrent_ZR_.buffer_.get(),
               pre_packed_recurrent_ZR_.weights_size_ * num_directions_);
-  std::memcpy(static_cast<char*>(packed_buffer_recurrent_.get()) + 4 * sizeof(size_t) + shape_vector_mem_size_ZR +
-                  shape_vector_mem_size_H + pre_packed_recurrent_ZR_.weights_size_ * num_directions_,
+  std::memcpy(static_cast<char*>(packed_buffer_recurrent_.get()) + aligned_offset2,
               share_prepacked_weights ? prepacked_weights->buffers_[1].get() : pre_packed_recurrent_H_.buffer_.get(),
               pre_packed_recurrent_H_.weights_size_ * num_directions_);
 
@@ -453,11 +453,11 @@ void onnxruntime::DeepCpuGruOp::ConvertTensorToZRAndHPrePackWeights(void* tesnor
   auto weight_shape_vector_H = static_cast<const InlinedVector<int64_t>*>(weight_shape_buffer_H.get());
   pre_packed_recurrent_H_.shape_ = TensorShape(*weight_shape_vector_H);
 
-  pre_packed_recurrent_ZR_.buffer_ = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) +
-                                                         weight_shape_buffer_size_ZR + weight_shape_buffer_size_H,
+  size_t aligned_offset = utils::GetMemoryAlignedOffset(4 * sizeof(size_t) + weight_shape_buffer_size_ZR + weight_shape_buffer_size_H);
+  size_t aligned_offset2 = utils::GetMemoryAlignedOffset(aligned_offset + pre_packed_recurrent_ZR_.buffer_size_);
+  pre_packed_recurrent_ZR_.buffer_ = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + aligned_offset,
                                                      BufferDeleter());
-  pre_packed_recurrent_H_.buffer_ = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + 4 * sizeof(size_t) +
-                                                        weight_shape_buffer_size_ZR + weight_shape_buffer_size_H + pre_packed_recurrent_ZR_.buffer_size_,
+  pre_packed_recurrent_H_.buffer_ = BufferUniquePtr(static_cast<char*>(tesnor_data_raw) + aligned_offset2,
                                                     BufferDeleter());
 }
 

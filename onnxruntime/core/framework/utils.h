@@ -262,7 +262,6 @@ void ConvertTensorToPackedBufferAndShape(size_t& packed_weights_size_,
                                          IAllocatorUniquePtr<void>& packed_weights_,
                                          void* buffer_start);
 
-
 #ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif

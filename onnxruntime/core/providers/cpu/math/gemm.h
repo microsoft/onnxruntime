@@ -45,8 +45,6 @@ class Gemm : protected GemmBase, public OpKernel {
  protected:
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
-  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   std::optional<Tensor> packed_tensor_{std::nullopt};
 

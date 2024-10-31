@@ -42,8 +42,6 @@ class QAttention : public OpKernel, public AttentionCPUBase {
   size_t packed_weights_size_;
   TensorShape weight_shape_;
   bool weights_is_signed_;
-  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   std::optional<Tensor> packed_tensor_{std::nullopt};
 };

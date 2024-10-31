@@ -91,6 +91,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     }
 
     if (save_prepacked_initializers) {
+      // alloc passed in has been moved, create new alloctor here
       AllocatorPtr alloc_cpu = std::make_shared<CPUAllocator>();
       void* original_packed_buffer = share_prepacked_weights ? prepacked_weights->buffers_[0].get() : transposed_filter_.get();
       packed_tensor_ = utils::ConvertPackedBufferAndShapeToTensor(alloc_cpu, tensor, packed_filter_data_size, filter_shape_, 1,

@@ -45,8 +45,6 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
 
   rnn::detail::PackedWeights packed_W_;
   rnn::detail::PackedWeights packed_R_;
-  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_w_;
   IAllocatorUniquePtr<void> packed_buffer_r_;
   std::optional<Tensor> packed_tensor_w_{std::nullopt};

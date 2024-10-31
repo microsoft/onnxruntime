@@ -307,8 +307,6 @@ class QLinearConv : public OpKernel {
   bool is_symmetric_gemm_{false};
   bool channels_last_{false};
   std::vector<int32_t> column_sums_;
-  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   IAllocatorUniquePtr<void> packed_buffer_reorder_;
   std::optional<Tensor> packed_tensor_{std::nullopt};
@@ -514,13 +512,15 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
   if (save_prepacked_initializers) {
     char flag = '0';
-    size_t buffer_size = reordered_w_data_size;
+    size_t aligned_offset = utils::GetMemoryAlignedOffset(1);
+    size_t buffer_size = reordered_w_data_size + aligned_offset;
     packed_buffer_reorder_ = IAllocator::MakeUniquePtr<void>(alloc, buffer_size, true);
 
     std::memcpy(packed_buffer_reorder_.get(),
                 &flag,
                 1);
-    std::memcpy(static_cast<char*>(packed_buffer_reorder_.get()) + 1,
+
+    std::memcpy(static_cast<char*>(packed_buffer_reorder_.get()) + aligned_offset,
                 reordered_W_buffer_ != nullptr ? reordered_W_buffer_.get() : prepacked_weights->buffers_[1].get(),
                 reordered_w_data_size);
 
@@ -537,16 +537,16 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 }
 
 Tensor ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::AllocatorPtr& alloc,
-                                                             const onnxruntime::Tensor& weights,
-                                                             size_t& packed_weights_size_,
-                                                             TensorShape weight_shape_,
-                                                             int weight_size_factor,
-                                                             IAllocatorUniquePtr<void>& packed_weights_,
-                                                             const char flag,
-                                                             const char is_symmetric,
-                                                             std::vector<int32_t>& column_sums_,
-                                                             PrePackedWeights* prepacked_weights,
-                                                             IAllocatorUniquePtr<void>& packed_buffer_) {
+                                                               const onnxruntime::Tensor& weights,
+                                                               size_t& packed_weights_size_,
+                                                               TensorShape weight_shape_,
+                                                               int weight_size_factor,
+                                                               IAllocatorUniquePtr<void>& packed_weights_,
+                                                               const char flag,
+                                                               const char is_symmetric,
+                                                               std::vector<int32_t>& column_sums_,
+                                                               PrePackedWeights* prepacked_weights,
+                                                               IAllocatorUniquePtr<void>& packed_buffer_) {
   // buffer of packed_tensor is combine of:
   // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
   // 2. char indicate whether this is symmetric: 0 - is symmetric conv, 1 - is symmetric gemm, other - is not symmetric
@@ -561,8 +561,8 @@ Tensor ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::Allo
   size_t column_sums_mem_size = column_sums_.size() * sizeof(int32_t);
   void* column_sums_vector_ptr = static_cast<void*>(column_sums_.data());
 
-  size_t buffer_size = packed_weights_size_ * weight_size_factor + 3 * sizeof(size_t) + 2 +
-                       column_sums_mem_size + shape_vector_mem_size;
+  size_t aligned_offset = utils::GetMemoryAlignedOffset(3 * sizeof(size_t) + 2 + column_sums_mem_size + shape_vector_mem_size);
+  size_t buffer_size = packed_weights_size_ * weight_size_factor + aligned_offset;
 
   packed_buffer_ = IAllocator::MakeUniquePtr<void>(alloc,
                                                    buffer_size,
@@ -589,7 +589,7 @@ Tensor ConvertPackedBufferAndShapeToTensorWithFlagAndSymmetric(onnxruntime::Allo
   std::memcpy(static_cast<char*>(packed_buffer_.get()) + 3 * sizeof(size_t) + shape_vector_mem_size + 2,
               column_sums_vector_ptr,
               column_sums_mem_size);
-  std::memcpy(static_cast<char*>(packed_buffer_.get()) + 3 * sizeof(size_t) + shape_vector_mem_size + 2 + column_sums_mem_size,
+  std::memcpy(static_cast<char*>(packed_buffer_.get()) + aligned_offset,
               packed_weights_ != nullptr ? packed_weights_.get() : prepacked_weights->buffers_[0].get(),
               packed_weights_size_ * weight_size_factor);
 
@@ -677,17 +677,17 @@ Status QLinearConv<ActType>::SetPrePackTensor(int input_idx, const Tensor& pre_p
       column_sums_ = std::vector<int32_t>(vector_ptr, vector_ptr + column_sums_vector_size);
     }
 
-    packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_size_, true);
-    std::memcpy(packed_W_buffer_.get(),
-                static_cast<char*>(buffer_start) + 3 * sizeof(size_t) + weight_shape_buffer_size + column_sums_buffer_size,
-                packed_W_size_);
+    size_t aligned_offset = utils::GetMemoryAlignedOffset(3 * sizeof(size_t) + column_sums_buffer_size + weight_shape_buffer_size);
+    packed_W_buffer_ = BufferUniquePtr(static_cast<char*>(buffer_start) + aligned_offset,
+                                       BufferDeleter());
 
     is_W_signed_ = pre_packed_tensor.IsDataType<int8_t>();
   } else {
     // buffer of packed_tensor is combine of:
     // 1. char indicate this is packed W or reordered W - 1 packed W, 0 reordered packed W
     // 2. original packed reordered w buffer
-    reordered_W_buffer_ = BufferUniquePtr(static_cast<void*>(static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) + 1));
+    size_t aligned_offset = utils::GetMemoryAlignedOffset(1);
+    reordered_W_buffer_ = BufferUniquePtr(static_cast<void*>(static_cast<char*>(const_cast<void*>(pre_packed_tensor.DataRaw())) + aligned_offset), BufferDeleter());
   }
   is_W_packed_ = true;
 

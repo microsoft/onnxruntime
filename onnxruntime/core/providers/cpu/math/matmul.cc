@@ -207,7 +207,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     }
 
     if (is_packed && save_prepacked_initializers) {
-      void* original_packed_buffer = share_prepacked_weights ? prepacked_weights->buffers_[0].get()  : packed_b_.get();
+      void* original_packed_buffer = share_prepacked_weights ? prepacked_weights->buffers_[0].get() : packed_b_.get();
       packed_tensor_ = utils::ConvertPackedBufferAndShapeToTensor(alloc, tensor, packed_b_size, b_shape_, 1,
                                                                   original_packed_buffer, packed_buffer_);
     }

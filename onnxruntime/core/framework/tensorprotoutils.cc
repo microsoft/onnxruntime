@@ -1119,7 +1119,6 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   SafeInt<size_t> raw_data_len = 0;
   AutoDelete deleter_for_file_data;
   OrtCallback& d = deleter_for_file_data.d;
-  std::unordered_map<std::string, size_t> pre_packed_initializers_name_count_map;
 
   if (utils::HasExternalData(tensor_proto)) {
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d, nullptr));

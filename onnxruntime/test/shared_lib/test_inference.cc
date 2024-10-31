@@ -52,7 +52,6 @@
 #include <wil/result.h>
 #include <DirectML.h>
 #include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
-#include "test_inference.h"
 
 using Microsoft::WRL::ComPtr;
 #endif
@@ -4740,9 +4739,11 @@ TEST(CApiTest, Serialize_PrePack_Initializers_Matmul) {
   RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul");
 }
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 TEST(CApiTest, Serialize_PrePack_Initializers_fp16_conv) {
   RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_fp16_conv");
 }
+#endif
 
 TEST(CApiTest, Serialize_PrePack_Initializers_Matmul_nbits) {
   RunInferenceWithAndWithoutSerializePrepackWeightAndCompare("model_with_matmul_nbits");

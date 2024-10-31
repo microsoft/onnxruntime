@@ -508,7 +508,10 @@ TEST(InferenceSessionTests, TestPrePackSerialization) {
   SessionOptions so;
   for (std::string model_name : {"model_with_matmul_nbits", "model_with_gemm", "model_with_matmul", "model_with_conv_transpose",
                                  "model_with_deep_cpu_lstm", "model_with_attention", "model_with_quant_attention",
-                                 "model_with_dynamic_quan_lstm", "model_with_matmul_integer_quant", //"model_with_fp16_conv",
+                                 "model_with_dynamic_quan_lstm", "model_with_matmul_integer_quant",
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+                                 "model_with_fp16_conv",
+#endif
                                  "model_with_deep_cpu_gru", "model_with_quant_linearconv"}) {
     const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
     const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";

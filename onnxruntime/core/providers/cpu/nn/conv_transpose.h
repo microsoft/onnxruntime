@@ -51,8 +51,6 @@ class ConvTranspose : public OpKernel {
   // for pre-packing usage
   TensorShape filter_shape_;
   IAllocatorUniquePtr<void> transposed_filter_;
-  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   std::optional<Tensor> packed_tensor_{std::nullopt};
 };

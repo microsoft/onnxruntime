@@ -56,8 +56,6 @@ class Attention : public OpKernel, public AttentionCPUBase {
   size_t packed_weights_size_[3] = {0, 0, 0};
   bool is_prepack_ = false;
   TensorShape weight_shape_;
-  // below packed_buffer and packed_tensor_ used to unpack TensorShape and packed buffer from
-  // prepacked tensor read from external data file
   IAllocatorUniquePtr<void> packed_buffer_;
   std::optional<Tensor> packed_tensor_{std::nullopt};
 };
