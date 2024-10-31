@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <memory>
-//#include "core/providers/openvino/ov_versions/data_ops.h"
+#include "data_ops.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -14,7 +14,7 @@ class GetCapability {
  private:
   const OrtGraphViewer* graph_viewer_;
   std::string device_type_;
-//  DataOps* data_ops_;
+  DataOps* data_ops_;
   bool is_wholly_supported_graph_ = false;
   static const OrtGraphApi* graph_api_;
 

@@ -22,4 +22,41 @@ namespace onnxruntime {
 
         return std::string();
     }
+
+    OrtStatus* ForEachNodeDef(const OrtGraphApi* graph_api, const OrtGraphViewer* graph, const OrtNode* node,
+                              std::function<void(const char*, const OrtValueInfoRef*, bool/*is_input*/)> func) {
+        size_t input_count = 0;
+        graph_api->OrtNode_GetNumInputs(node, &input_count);
+        for (int i = 0; i < input_count; i++) {
+            const char* input_name = nullptr;
+            graph_api->OrtNode_GetIthInputName(node, i, &input_name);
+            OrtValueInfoRef* value_info = nullptr;
+            graph_api->OrtGraph_GetValueInfo(graph, input_name, &value_info);
+            func(input_name, value_info, true);
+            graph_api->OrtGraph_ReleaseValueInfo(value_info);
+        }
+
+        size_t implicit_input_count = 0;
+        graph_api->OrtNode_GetImplicitInputSize(node, &implicit_input_count);
+        for (int i = 0; i < implicit_input_count; i++) {
+            const char* input_name = nullptr;
+            graph_api->OrtNode_GetIthImplicitInputName(node, i, &input_name);
+            OrtValueInfoRef* value_info = nullptr;
+            graph_api->OrtGraph_GetValueInfo(graph, input_name, &value_info);
+            func(input_name, value_info, true);
+            graph_api->OrtGraph_ReleaseValueInfo(value_info);
+        }
+
+        size_t output_count = 0;
+        graph_api->OrtNode_GetNumOutputs(node, &output_count);
+        for (int i = 0; i < output_count; i++) {
+            const char* output_name = nullptr;
+            graph_api->OrtNode_GetIthOutputName(node, i, &output_name);
+            OrtValueInfoRef* value_info = nullptr;
+            graph_api->OrtGraph_GetValueInfo(graph, output_name, &value_info);
+            func(output_name, value_info, false);
+            graph_api->OrtGraph_ReleaseValueInfo(value_info);
+        }
+        return nullptr;
+    }
 }

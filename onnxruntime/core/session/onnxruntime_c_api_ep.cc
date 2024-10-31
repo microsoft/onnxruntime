@@ -43,6 +43,12 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetParentGraph, const OrtGraph* graph
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *out = graph_viewer->IsSubgraph();
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   *parent_node = reinterpret_cast<const OrtNode*>(graph_viewer->ParentNode());
@@ -789,6 +795,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetNodesIndexInTopologicalOrder,
     &OrtGraphApis::OrtGraph_IsSubgraph,
     &OrtGraphApis::OrtGraph_GetParentGraph,
+    &OrtGraphApis::OrtGraph_IsSubgraph2,
     &OrtGraphApis::OrtGraph_GetParenNode,
     &OrtGraphApis::OrtGraph_GetModelPath,
     &OrtGraphApis::OrtGraph_GetOrtGraph,

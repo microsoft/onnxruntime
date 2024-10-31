@@ -134,6 +134,15 @@ ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out);
  */
 ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
 
+/** \brief Check if the graph is a subgraph
+ * TODO(leca): maybe deprecate OrtGraph_IsSubgraph?
+ *
+ * \param[in] graph The graph to query
+ * \param[out] out True if the graph is a subgraph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out);
+
 /** \brief Get the parent node of the graph
  *
  * \param[in] graph The graph to query

@@ -13,6 +13,8 @@ ORT_API_STATUS_IMPL(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out)
 
 ORT_API_STATUS_IMPL(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
 
+ORT_API_STATUS_IMPL(OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out);
+
 ORT_API_STATUS_IMPL(OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** model_path);

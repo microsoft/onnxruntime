@@ -63,6 +63,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo* node_compute_info) -> OrtStatusPtr {
         return nullptr;
     };
+
+    //OrtExecutionProvider::ReleaseIndexedSubGraphs
 }
 
 OpenVINOExecutionProviderFactory::OpenVINOExecutionProviderFactory() {
