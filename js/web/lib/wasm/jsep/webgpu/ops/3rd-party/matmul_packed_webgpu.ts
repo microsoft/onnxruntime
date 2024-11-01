@@ -39,7 +39,7 @@ import {
   getActivationSnippet,
   InternalActivationAttributes,
 } from '../fuse-utils';
-import { convertOutputBatchIndicesToInputBatchIndices } from '../matmul';
+import { convertOutputBatchIndicesToInputBatchIndices } from '../matmul-shaders';
 
 import { typeSnippet } from './activation_util';
 
