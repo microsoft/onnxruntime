@@ -100,6 +100,8 @@ stages:
           --prepare_test_project_only
       displayName: "Assemble test project for App Center"
 
+    # Xcode tasks require absolute paths because it searches for the paths and files relative to
+    # the root directory and not relative to the working directory
     - task: Xcode@5
       inputs:
         actions: 'build-for-testing'
@@ -125,6 +127,9 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "Generate .plist file for the .ipa file"
 
+    # Task only generates an .xcarchive file if the plist export options are included, but does
+    # not produce an IPA file.
+    # Source code: https://github.com/microsoft/azure-pipelines-tasks/blob/master/Tasks/XcodeV5/xcode.ts
     - task: Xcode@5
       inputs:
         actions: 'archive'
