@@ -180,7 +180,7 @@ inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::s
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
-bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
+bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -191,6 +191,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
 static const InlinedHashMap<std::string, std::string> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
+    {"And", "logicalAnd"},
     {"ArgMax", "argMax"},
     {"ArgMin", "argMin"},
     {"AveragePool", "averagePool2d"},
@@ -215,6 +216,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Flatten", "reshape"},
     {"Floor", "floor"},
     {"Gather", "gather"},
+    {"GatherElements", "gatherElements"},
     {"GatherND", "gatherND"},
     {"Gelu", "gelu"},
     {"Gemm", "gemm"},
@@ -243,6 +245,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Mul", "mul"},
     {"Neg", "neg"},
     {"Not", "logicalNot"},
+    {"Or", "logicalOr"},
     {"Pad", "pad"},
     {"Pow", "pow"},
     {"PRelu", "prelu"},
@@ -261,6 +264,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
+    {"ScatterElements", "scatterElements"},
     {"ScatterND", "scatterND"},
     {"Shape", "slice"},
     {"Sigmoid", "sigmoid"},
@@ -280,6 +284,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Trilu", "triangular"},
     {"Unsqueeze", "reshape"},
     {"Where", "where"},
+    {"Xor", "logicalXor"},
 };
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder,
