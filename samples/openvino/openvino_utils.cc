@@ -1,10 +1,11 @@
-#include <windows.h>
+// #include <windows.h>
 #include "openvino_utils.h"
 
 namespace onnxruntime {
     std::string GetEnvironmentVar(const std::string& var_name) {
 // TODO(leca): #ifdef _WIN32
 //#endif
+#if defined(_WIN32)
         constexpr DWORD kBufferSize = 32767;
 
         // Create buffer to hold the result
@@ -19,6 +20,7 @@ namespace onnxruntime {
             buffer.resize(char_count);
             return buffer;
         }
+#endif
 
         return std::string();
     }
