@@ -88,6 +88,6 @@ struct OrtTensorRTProviderOptionsV2 {
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
   int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
-  const char* trt_nodes_to_exclude{nullptr};     // Exclude specific nodes from running on TRT e.g. "NonMaxSuppression,NonZero,RoiAlign".
-                                                 // Adding '~' followed by a node e.g. '~NonZero', indicates that TRT EP will ensure this node is included for input to the TRT parser.
+  const char* trt_op_types_to_exclude{nullptr};  // Exclude specific ops from running on TRT e.g. "NonMaxSuppression,NonZero,RoiAlign".
+                                                 // Adding '~' followed by a op type e.g. '~NonZero', indicates that TRT EP will ensure this op is included for input to the TRT parser.
 };
