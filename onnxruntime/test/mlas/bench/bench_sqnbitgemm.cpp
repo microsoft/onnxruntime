@@ -125,7 +125,7 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
       {1, 4096},                        // M
       {4096, 11008},                    // N
       {3072, 11008},                    // K
-      {1, 8},                              // Threads
+      {1, 8},                           // Threads
       {int64_t{false}, int64_t{true}},  // Symmetric
       {int64_t{false}, int64_t{true}},  // HasBias
       std::is_same_v<AType, MLAS_FP16>
