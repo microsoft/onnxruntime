@@ -740,11 +740,25 @@ using InitializeWorkspaceFn = std::function<void(
 
 template <typename T>
 InitializeWorkspaceFn<T>
+GetInitializeWorkspace(QNBitGemmVariant variant);
+
+template <>
+InitializeWorkspaceFn<float>
 GetInitializeWorkspace(QNBitGemmVariant variant)
 {
     switch (variant) {
         case SQNBitGemmVariant_BitWidth4_CompInt8:
-            return InitializeWorkspace_CompInt8<T>;
+            return InitializeWorkspace_CompInt8<float>;
+        default:
+            return nullptr;
+    }
+}
+
+template <>
+InitializeWorkspaceFn<MLAS_FP16>
+GetInitializeWorkspace(QNBitGemmVariant variant)
+{
+    switch (variant) {
         default:
             return nullptr;
     }

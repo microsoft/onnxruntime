@@ -72,6 +72,7 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
   return HQNBIT_CompFp16;
 }
 #else  // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
+template <>
 MLAS_QNBIT_GEMM_COMPUTE_TYPE
 GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
   // non-ARM CPU converts Fp16 to Fp32.
