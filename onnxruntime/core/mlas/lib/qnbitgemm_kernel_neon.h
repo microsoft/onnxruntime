@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_neon.h
+    qnbitgemm_kernel_neon.h
 
 Abstract:
 
@@ -30,7 +30,7 @@ namespace sqnbitgemm_neon
 
 //
 // Function declarations for SQNBitGemm ARM NEON kernel entry points.
-// Refer to the prototypes in sqnbitgemm.h for documentation.
+// Refer to the prototypes in qnbitgemm.h for documentation.
 // These are declared here so they can be used to initialize the
 // MLAS_QNBIT_GEMM_DISPATCH structure and also be implemented in separate
 // files.
@@ -67,7 +67,7 @@ SQ4BitBlkDequantBForSgemm_CompFp32(
 // HQNBIT_CompFp16 declarations
 
 void
-SQ4BitGemmPackQuantBData_CompFp16(
+HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,
     size_t K,
     size_t BlkLen,

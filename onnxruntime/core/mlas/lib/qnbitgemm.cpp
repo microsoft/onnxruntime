@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm.cpp
+    qnbitgemm.cpp
 
 Abstract:
 
@@ -20,7 +20,7 @@ Abstract:
 #include <stdexcept>
 #include <unordered_map>
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
 namespace

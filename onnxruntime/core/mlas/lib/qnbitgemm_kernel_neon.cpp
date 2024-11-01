@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_neon.cpp
+    qnbitgemm_kernel_neon.cpp
 
 Abstract:
 
@@ -19,8 +19,8 @@ Abstract:
 
 #include <cassert>
 
-#include "sqnbitgemm.h"
-#include "sqnbitgemm_kernel_neon.h"
+#include "qnbitgemm.h"
+#include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
 
 namespace sqnbitgemm_neon
@@ -62,7 +62,7 @@ Q4BitGemmPackQuantBData(
 )
 {
     if (ComputeType == HQNBIT_CompFp16) {
-        SQ4BitGemmPackQuantBData_CompFp16(N, K, BlkLen, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
+        HQ4BitGemmPackQuantBData_CompFp16(N, K, BlkLen, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
         return;
     }
 

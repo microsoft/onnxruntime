@@ -3,7 +3,7 @@
 #include <cassert>
 #include <utility>
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
 static MLAS_FORCEINLINE __m256

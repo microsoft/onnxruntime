@@ -19,7 +19,7 @@ Abstract:
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
-#include "core/mlas/lib/sqnbitgemm.h"
+#include "core/mlas/lib/qnbitgemm.h"
 #include "mlas_qnbit.h"
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

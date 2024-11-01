@@ -1,5 +1,5 @@
 #pragma once
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
 //
