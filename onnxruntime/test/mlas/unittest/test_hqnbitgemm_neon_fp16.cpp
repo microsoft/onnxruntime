@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    test_sqnbitgemm_neon_fp16.cpp
+    test_hqnbitgemm_neon_fp16.cpp
 
 Abstract:
 
@@ -26,16 +26,19 @@ Abstract:
 
 class MlasNeonFp16CastTest : public MlasTestBase {
  private:
+  MatrixGuardBuffer<float> fp32Buffer_;
+  MatrixGuardBuffer<unsigned short> fp16Buffer_;
+
   template <size_t count>
   void TestFp16ToFp32() {
-    std::vector<unsigned short> src(count);
-    std::vector<float> dest(count);
+    const auto* src = fp16Buffer_.GetFilledBuffer(count, [](unsigned short* start, size_t size) {
+      for (size_t i = 0; i < size; i++) {
+        start[i] = static_cast<unsigned short>(i);
+      }
+    });
+    auto* dest = fp32Buffer_.GetBuffer(count, true);
 
-    for (size_t i = 0; i < count; i++) {
-      src[i] = static_cast<unsigned short>(i);
-    }
-
-    MlasCastF16ToF32KernelNeon(src.data(), dest.data(), count);
+    MlasCastF16ToF32KernelNeon(src, dest, count);
 
     for (size_t i = 0; i < count; i++) {
       if ((src[i] & 0x1c00) == 0x1c00) continue;  // skip inf and nan
@@ -45,14 +48,14 @@ class MlasNeonFp16CastTest : public MlasTestBase {
 
   template <size_t count>
   void TestFp32ToFp16() {
-    std::vector<float> src(count);
-    std::vector<unsigned short> dest(count);
+    const auto* src = fp32Buffer_.GetFilledBuffer(count, [](float* p, size_t size) {
+      for (size_t i = 0; i < count; i++) {
+        p[i] = static_cast<float>(i) + 0.125f;
+      }
+    });
+    auto* dest = fp16Buffer_.GetBuffer(count, true);
 
-    for (size_t i = 0; i < count; i++) {
-      src[i] = static_cast<float>(i) + 0.125f;
-    }
-
-    MlasCastF32ToF16KernelNeon(src.data(), dest.data(), count);
+    MlasCastF32ToF16KernelNeon(src, dest, count);
 
     for (size_t i = 0; i < count; i++) {
       ASSERT_EQ(dest[i], MLAS_FP16(src[i]).val);
@@ -81,17 +84,16 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
   std::random_device _rd;  // a seed source for the random number engine
   std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
   std::uniform_int_distribution<> _distrib;
+  MatrixGuardBuffer<uint8_t> input_, ref_, packed_;
 
-  MLAS_FORCEINLINE
-  void InitializeBuffer(std::vector<uint8_t>& buffer) {
-    size_t count = buffer.size();
+  void InitializeBuffer(uint8_t* buffer, size_t count) {
     for (size_t i = 0; i < count; i++) {
       buffer[i] = static_cast<uint8_t>(_distrib(_gen));
     }
   }
 
   template <size_t Ldb>
-  MLAS_FORCEINLINE void Transpose8x8(std::vector<uint8_t>& src, size_t n, size_t k, std::vector<uint8_t>& dst) {
+  MLAS_FORCEINLINE void Transpose8x8(const uint8_t* src, size_t n, size_t k, uint8_t* dst) {
     for (size_t c = 0; c < 8; c++) {
       for (size_t r = 0; r < 8; r++) {
         size_t i = (n + c) * Ldb + r + k;
@@ -107,7 +109,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
   }
 
   MLAS_FORCEINLINE
-  void PrepackSlice(std::vector<uint8_t>& src, size_t j, std::vector<uint8_t>& dst) {
+  void PrepackSlice(const uint8_t* src, size_t j, uint8_t* dst) {
     for (size_t i = 0; i < 8; i++) {
       uint8_t v0 = GetInt4(src[j + (i >> 1)], i);
       uint8_t v1 = GetInt4(src[j + ((8 + i) >> 1)], i + 8);
@@ -116,7 +118,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
   }
 
   template <size_t Ldb, size_t N, size_t K>
-  MLAS_FORCEINLINE void Prepack(std::vector<uint8_t>& src, std::vector<uint8_t>& dst) {
+  MLAS_FORCEINLINE void Prepack(const uint8_t* src, uint8_t* dst) {
     size_t n = 0;
     for (; n + 8 <= N; n += 8) {
       for (size_t k = 0; k < Ldb; k += 8) {
@@ -132,7 +134,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
   }
 
   template <size_t Ldb, size_t N, size_t K>
-  MLAS_FORCEINLINE void Check(std::vector<uint8_t>& packed, std::vector<uint8_t>& ref) {
+  MLAS_FORCEINLINE void Check(const uint8_t* packed, const uint8_t* ref) {
     size_t n = 0;
     for (; n + 8 <= N; n += 8) {
       for (size_t i = 0; i < K; i += 2) {
@@ -157,10 +159,11 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     constexpr size_t Ldb = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t BufferSize = N * Ldb;
 
-    std::vector<uint8_t> input(BufferSize), packed(BufferSize), ref(BufferSize);
-    InitializeBuffer(input);
+    const auto* input = input_.GetFilledBuffer(BufferSize, InitializeBuffer);
+    auto* packed = packed_.GetBuffer(BufferSize, true);
+    auto* ref = ref_.GetBuffer(BufferSize, true);
     MlasQNBitGemmPackQuantBData(
-        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::HQNBIT_CompFp16, input.data(), packed.data(),
+        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::HQNBIT_CompFp16, input, packed,
         nullptr, false, nullptr, nullptr);
     Prepack<Ldb, N, K>(input, ref);
     Check<Ldb, N, K>(packed, ref);
@@ -196,18 +199,18 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
   std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
   std::uniform_int_distribution<> _distrib;
   std::uniform_real_distribution<float> _distribFp;
+  MatrixGuardBuffer<uint8_t> input_, zero_points_;
+  MatrixGuardBuffer<MLAS_FP16> dequant_, ref_, scales_;
 
   MLAS_FORCEINLINE
-  void InitializeBuffer(std::vector<uint8_t>& buffer) {
-    size_t count = buffer.size();
+  void InitializeBuffer(uint8_t* buffer, size_t count) {
     for (size_t i = 0; i < count; i++) {
       buffer[i] = static_cast<uint8_t>(_distrib(_gen));
     }
   }
 
   MLAS_FORCEINLINE
-  void InitializeBuffer(std::vector<MLAS_FP16>& buffer) {
-    size_t count = buffer.size();
+  void InitializeBuffer(MLAS_FP16* buffer, size_t count) {
     for (size_t i = 0; i < count; i++) {
       buffer[i] = MLAS_FP16(_distribFp(_gen));
     }
@@ -219,8 +222,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
   }
 
   template <size_t N, size_t K, size_t BlkLen, bool UseZeroPoints>
-  void DequantB(const std::vector<uint8_t>& src, std::vector<MLAS_FP16>& dst,
-                const std::vector<MLAS_FP16>& scales, const std::vector<uint8_t>& zero_points) {
+  void DequantB(const uint8_t* src, MLAS_FP16* dst, const MLAS_FP16* scales, const uint8_t* zero_points) {
     constexpr size_t blkNum = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ld_src = (blkNum * BlkLen + 1) / 2;
     constexpr size_t ld_dst = blkNum * BlkLen;
@@ -268,7 +270,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
   }
 
   template <size_t Ldb, size_t N, size_t K>
-  MLAS_FORCEINLINE void Check(std::vector<MLAS_FP16>& target, std::vector<MLAS_FP16>& ref) {
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* target, const MLAS_FP16* ref) {
     size_t n = 0;
     for (; n + 8 <= N; n += 8) {
       for (size_t i = 0; i < K; ++i) {
@@ -298,14 +300,14 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
     constexpr size_t ScaleCount = N * BlkNum;
     constexpr size_t ZpSize = N * ((BlkNum + 1) / 2);
 
-    std::vector<uint8_t> input(BCount / 2), zero_points(ZpSize);
-    std::vector<MLAS_FP16> dequant(BCount), ref(BCount), scales(ScaleCount);
-    InitializeBuffer(input);
-    InitializeBuffer(zero_points);
-    InitializeBuffer(scales);
+    const auto* input = input_.GetFilledBuffer(BCount / 2, InitializeBuffer);
+    const auto* zero_points = zero_points_.GetFilledBuffer(ZpSize, InitializeBuffer);
+    auto* dequant = dequant_.GetBuffer(BCount);
+    auto* ref = ref_.GetBuffer(BCount);
+    const auto* scales = scales_.GetFilledBuffer(ScaleCount, InitializeBuffer);
     GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForSgemm_CompFp16(
-        BlkLen, dequant.data(), reinterpret_cast<std::byte*>(input.data()), scales.data(),
-        UseZeroPoints ? reinterpret_cast<std::byte*>(zero_points.data()) : nullptr,
+        BlkLen, dequant, reinterpret_cast<std::byte*>(input), scales,
+        UseZeroPoints ? reinterpret_cast<std::byte*>(zero_points) : nullptr,
         N, K, BlkNum);
     DequantB<N, K, BlkLen, UseZeroPoints>(input, ref, scales, zero_points);
     Check<BlkLen * BlkNum, N, K>(dequant, ref);
@@ -350,11 +352,11 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
  private:
   std::random_device _rd;  // a seed source for the random number engine
   std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
+  MatrixGuardBuffer<MLAS_FP16> A_, B_, C_, ref_, bias_;
 
   MLAS_FORCEINLINE
-  void InitializeBuffer(std::vector<MLAS_FP16>& buffer, float min, float max) {
+  void InitializeBuffer(MLAS_FP16* buffer, float min, float max, size_t count) {
     std::uniform_real_distribution<float> distrib(min, max);
-    size_t count = buffer.size();
     for (size_t i = 0; i < count; i++) {
       buffer[i] = MLAS_FP16(distrib(_gen));
     }
@@ -367,7 +369,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   }
 
   template <size_t ldb, size_t N, size_t K>
-  float GetBVal(std::vector<MLAS_FP16>& B, size_t n, size_t k) {
+  float GetBVal(const MLAS_FP16* B, size_t n, size_t k) {
     size_t i;
     if ((N & (~7)) > n) {
       size_t full8 = n & (~7);
@@ -379,8 +381,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   }
 
   template <size_t M, size_t N, size_t K, size_t ldb, bool UseBias>
-  void MatMul(std::vector<MLAS_FP16>& A, std::vector<MLAS_FP16>& B,
-              std::vector<MLAS_FP16>& bias, std::vector<MLAS_FP16>& C) {
+  void MatMul(const MLAS_FP16* A, const MLAS_FP16* B, const MLAS_FP16* bias, MLAS_FP16* C) {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         float accu = UseBias ? bias[n] : 0.0f;
@@ -395,7 +396,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   }
 
   template <size_t Ldc, size_t M, size_t N>
-  MLAS_FORCEINLINE void Check(std::vector<MLAS_FP16>& target, std::vector<MLAS_FP16>& ref) {
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* target, const MLAS_FP16* ref) {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * Ldc + n;
@@ -412,13 +413,20 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkNum * BlkLen;
 
-    std::vector<MLAS_FP16> A(M * K), B(ldb * N), C(M * N), ref(M * N), bias(N);
-    InitializeBuffer(A, -0.25f, 0.25f);
-    InitializeBuffer(B, -0.25f, 0.25f);
-    InitializeBuffer(bias, -5.0f, 5.0f);
+    const auto* A = A_.GetFilledBuffer(M * K, [](MLAS_FP16* p, size_t t) {
+      InitializeBuffer(p, -0.25f, 0.25f, t);
+    });
+    const auto* B = B_.GetFilledBuffer(ldb * N, [](MLAS_FP16* p, size_t t) {
+      InitializeBuffer(p, -0.25f, 0.25f, t);
+    });
+    auto* C = C_.GetBuffer(M * N, true);
+    auto* ref = ref_.GetBuffer(M * N, true);
+    auto* bias = bias_.GetFilledBuffer(N, [](MLAS_FP16* p, size_t t) {
+      InitializeBuffer(p, -5.0f, 5.0f, t);
+    });
 
     GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16(
-        A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N);
+        A, B, UseBias ? bias : nullptr, C, M, N, K, K, ldb, N);
 
     MatMul<M, N, K, ldb, UseBias>(A, B, bias, ref);
     Check<N, M, N>(C, ref);
