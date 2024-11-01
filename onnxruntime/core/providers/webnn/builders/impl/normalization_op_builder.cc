@@ -96,7 +96,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
     } else {  // SimplifiedLayerNormalization
       /**
-      WebNN doesn't support SimplifiedLayerNormalization, decompose it into a series of ops as follows:
+      WebNN doesn't support SimplifiedLayerNormalization. So decompose it into a series of ops:
       X --> Pow --> ReduceMean --> Add --> Sqrt --> Div -> Mul
             ^          ^           ^                ^      ^
             |          |           |                |      |
@@ -104,7 +104,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       */
 
       int32_t input_type;
-      ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "cannot get input type");
+      ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input type");
       emscripten::val common_options = emscripten::val::object();
 
       // Pow
@@ -147,7 +147,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val div = model_builder.GetBuilder().call<emscripten::val>("div", input, sqrt, common_options);
 
       // Mul
-      common_options.set("label", node.Name() + "_div");
+      common_options.set("label", node.Name() + "_mul");
       output = model_builder.GetBuilder().call<emscripten::val>("mul", scale, div, common_options);
     }
   } else if (op_type == "InstanceNormalization") {
