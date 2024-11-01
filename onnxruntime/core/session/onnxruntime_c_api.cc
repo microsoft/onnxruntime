@@ -5,6 +5,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/allocator.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"

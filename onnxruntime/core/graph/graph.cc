@@ -5522,6 +5522,42 @@ Graph::Graph(const Model& owning_model,
       is_loaded_from_model_file_(true) {  // true as the Graph isn't manually constructed from scratch
 }
 
+size_t Graph::ComputeNodeMemoryUsage(NodeIndex node_idx) const {
+  /// XXX: In some cases some kernels can copy its attributes to a device
+  // those are edge cases which we currently do not account for.
+  const Node* node = GetNode(node_idx);
+  if (node != nullptr) {
+    SafeInt<size_t> result = 0;
+    for (const auto* input : node->InputDefs()) {
+      if (input->Exists()) {
+        // Let's see if this is an initializer
+        constexpr const bool check_outer_scope_true = true;
+        const ONNX_NAMESPACE::TensorProto* initializer =
+            GetConstantInitializer(input->Name(), check_outer_scope_true);
+        if (initializer != nullptr) {
+          size_t out;
+          if (utils::GetSizeInBytesFromTensorProto<0>(*initializer, &out).IsOK()) {
+            result += out;
+          }
+        } else {
+          const auto* proto = input->TypeAsProto();
+          if (proto != nullptr && utils::HasTensorType(*proto)) {
+            const auto& tensor_type = proto->tensor_type();
+            if (utils::HasElemType(tensor_type) && utils::HasShape(tensor_type)) {
+              size_t size;
+              if (utils::GetSizeInBytesFromTensorTypeProto<0>(tensor_type, &size).IsOK()) {
+                result += size;
+              }
+            }
+          }
+        }
+      }
+    }
+    return static_cast<size_t>(result);
+  }
+  return 0;
+}
+
 common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                         const OrtFormatLoadOptions& load_options) {
   // We deserialize the graph from ORT format in the following order:

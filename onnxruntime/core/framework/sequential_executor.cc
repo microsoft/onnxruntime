@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -104,7 +105,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input != nullptr && p_input->IsTensor() && p_input->IsAllocated()) {
+    if (p_input != nullptr && p_input->IsAllocated() && p_input->IsTensor()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -256,6 +257,8 @@ class SessionScope {
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
+#endif
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Whether memory profiler need create events and flush to file.
   // For partial graph run, when the last subgraph of the whole graph is executing, we need flush to file.
   bool flush_memory_info_ = true;
@@ -487,6 +490,61 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       }
 #else
       status = p_kernel->Compute(&kernel_ctx);
+
+#if !defined(ORT_MINIMAL_BUILD)
+      auto* node_stats_recorder = ctx.GetSessionState().GetNodeStatsRecorder();
+      if (node_stats_recorder != nullptr) {
+        // Lets first check if any inputs are initializers,
+        // if so we need to account for their memory usage.
+        const auto& const_initializers = ctx.GetSessionState().GetConstantInitializedTensors();
+        SafeInt<int64_t> initializers_size = 0;
+        SafeInt<size_t> input_sizes = 0;
+        for (int i = 0, lim = kernel_ctx.InputCount(); i < lim; ++i) {
+          // Need to get ort_value_index for each input.
+          int ort_vaue_index = kernel_ctx.GetOrtValueIndexForInput(i);
+          auto hit = const_initializers.find(ort_vaue_index);
+          if (hit != const_initializers.end()) {
+            const auto& ort_value = hit->second;
+            initializers_size += ort_value.Get<Tensor>().SizeInBytes();
+          } else {
+            // If the input is not an initializer, we account it as something that had to be
+            // on the same device with this kernel
+            const OrtValue* ort_value = kernel_ctx.GetInputMLValue(i);
+            if (ort_value != nullptr && ort_value->IsAllocated() && ort_value->IsTensor()) {
+              input_sizes += ort_value->Get<Tensor>().SizeInBytes();
+            }
+          }
+        }
+
+        // XXX: Should we account for implicit inputs?
+
+        // Get outputs and see if any were allocated dynamically
+        SafeInt<size_t> total_dynamic_sizes = 0;
+        const auto& exec_frame = ctx.GetExecutionFrame();
+        for (int i = 0, lim = kernel_ctx.OutputCount(); i < lim; ++i) {
+          int ort_vaue_index = kernel_ctx.GetOrtValueIndexForOutput(i);
+          auto maybe_val = exec_frame.GetOrtValueDynamicAllocation(ort_vaue_index);
+          if (maybe_val.has_value()) {
+            total_dynamic_sizes += *maybe_val;
+          }
+        }
+
+        NodeAllocationStats node_stats;
+        node_stats.input_sizes = static_cast<size_t>(input_sizes);
+        node_stats.initializers_sizes = static_cast<size_t>(initializers_size);
+        node_stats.total_dynamic_sizes = total_dynamic_sizes;
+
+        // Get the temporary allocations
+        AllocatorStats temp_stats;
+        if (kernel_ctx.GetAllocatorStats(temp_stats)) {
+          node_stats.total_temp_allocations = narrow<size_t>(temp_stats.total_allocated_bytes);
+        }
+
+        // Record node allocation stats
+        const auto& node = p_kernel->Node();
+        node_stats_recorder->ReportNodeStats(node.Name(), node_stats);
+      }
+#endif
 #endif
     }
     ORT_CATCH(const std::exception& ex) {
@@ -510,6 +568,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     LOGS(logger, ERROR) << msg_string;
     return Status(status.Category(), status.Code(), msg_string);
   }
+
   ctx.RecycleNodeInputs(idx);
   VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();

@@ -257,7 +257,8 @@ static void AddComputeCapabilityForEachNodeInNodeUnit(
 
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const IKernelLookup& /*kernel_lookup*/) const {
+    const IKernelLookup& /*kernel_lookup*/,
+    IResourceAccountant* /* resource_accountant */) const {
   const auto& logger = *GetLogger();
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
 

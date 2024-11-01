@@ -4768,3 +4768,16 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(len, static_cast<size_t>(2));
   mock_gqa.ReleaseAliasMap(input_index, output_index);
 }
+
+/*TEST(CApiTest, RunWithNodeStats) {
+  Ort::Env env(ORT_LOGGING_LEVEL_INFO);
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/attention_mask2d_fp32.onnx");
+
+  Ort::SessionOptions session_options;
+  session_options.DisableCpuMemArena();
+  session_options.DisableMemPattern();
+  session_options.AddConfigEntry(kOrtSessionOptionsCollectNodeMemoryStatsToFile,
+                                 "D:/dev/data/FunctionsConverterProfling/HF_Mobile_Bert/attention_memory.txt");
+
+  Ort::Session session(env, model_path, session_options);
+}*/
