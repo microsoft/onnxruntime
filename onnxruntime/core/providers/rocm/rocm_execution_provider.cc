@@ -41,10 +41,9 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      // do we support async copy?
-      // The rocmMemCpyAsync will handle the pinned memory and non-pinned memory,
-      // so we don't need the check here.
       auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+      // CopyTensorAsync could handle both pinned memory and non-pinned CPU memory.
+      // For non-pinned CPU memory, the copy is synchronous.
       ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
       return Status::OK();
     } else {
