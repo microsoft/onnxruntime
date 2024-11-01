@@ -1380,7 +1380,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
     nodes_to_exclude_ = info.nodes_to_exclude;
-    
+
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -2491,13 +2491,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   /*
    * There is a known performance issue with the DDS nodes (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.6.
    * TRT EP automatically excludes DDS nodes from running on TRT unless the user explicitly specifies that those nodes should be included.
-   * 
+   *
    * Note: "~node_name" means to include the node.
    */
   if (trt_version_ >= 100000 && trt_version_ < 100700) {
-    if (exclude_set.find("~NonMaxSuppression") == exclude_set.end()) exclude_set.insert("NonMaxSuppression"); 
-    if (exclude_set.find("~NonZero") == exclude_set.end()) exclude_set.insert("NonZero"); 
-    if (exclude_set.find("~RoiAlign") == exclude_set.end()) exclude_set.insert("RoiAlign"); 
+    if (exclude_set.find("~NonMaxSuppression") == exclude_set.end()) exclude_set.insert("NonMaxSuppression");
+    if (exclude_set.find("~NonZero") == exclude_set.end()) exclude_set.insert("NonZero");
+    if (exclude_set.find("~RoiAlign") == exclude_set.end()) exclude_set.insert("RoiAlign");
   }
 
   // Print excluded nodes, if any.
@@ -2505,9 +2505,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   for (it = exclude_set.begin(); it != exclude_set.end(); ++it) {
     std::string node = *it;
     if (node.find("~") == 0) continue;
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude " << node << " from running on TRT";
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude " << node << " from running on TRT, if any.";
     if (node == "NonMaxSuppression" || node == "NonZero" || node == "RoiAlign") {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Add \"~" << node << "\" in trt_nodes_to_exclude if " << node << " should be included in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this node for TRT";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Add \"~" << node << "\" in trt_nodes_to_exclude if " << node << " should be included in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this node for TRT.";
     }
   }
 
@@ -2516,7 +2516,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   bool new_subgraph = true;
 
   /* Iterate all the nodes and exclude the node if:
-   *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible. 
+   *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible.
    *   2. It's in the exlucded set which specified by trt_nodes_to_exclude.
    */
   for (const auto& index : nodes_vector) {
