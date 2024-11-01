@@ -35,7 +35,10 @@ jobs:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: ${{ parameters.machine_pool }}
+  pool:
+    name: ${{ parameters.machine_pool }}
+    demands:
+    - HoldMachine -equals true
   steps:
   - checkout: self
     clean: true

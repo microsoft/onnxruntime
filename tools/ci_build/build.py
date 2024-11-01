@@ -399,7 +399,7 @@ def parse_arguments():
         help="Build with a specific GDK edition. Defaults to the latest installed.",
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
-
+    parser.add_argument("--enable_wasm_memory64", action="store_true", help="Enable WebAssembly 64bit support")
     platform_group = parser.add_mutually_exclusive_group()
     platform_group.add_argument("--ios", action="store_true", help="build for ios")
     platform_group.add_argument("--visionos", action="store_true", help="build for visionOS")
@@ -570,6 +570,8 @@ def parse_arguments():
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
     parser.add_argument("--use_jsep", action="store_true", help="Build with JavaScript kernels.")
+    parser.add_argument("--use_webgpu", action="store_true", help="Build with WebGPU support.")
+    parser.add_argument("--use_external_dawn", action="store_true", help="Treat Dawn as an external dependency.")
     parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
@@ -760,6 +762,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
+    parser.add_argument("--use_avx512", action="store_true", help="Enable AVX512 instructions")
     parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
@@ -1055,6 +1058,8 @@ def generate_build_tree(
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
+        "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
+        "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -1079,6 +1084,7 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_MEMORY64=" + ("ON" if args.enable_wasm_memory64 else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),
@@ -1174,11 +1180,14 @@ def generate_build_tree(
             )
             add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
             add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
+            # The following build option was added in ABSL 20240722.0 and it must be explicitly set
+            add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "ON")
             add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
         else:
             # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
             add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
             add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
+            add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "OFF")
             add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
 
     if acl_home and os.path.exists(acl_home):
@@ -1310,6 +1319,12 @@ def generate_build_tree(
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
+
+    if args.use_jsep and args.use_webgpu:
+        raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
+
+    if args.use_external_dawn and not args.use_webgpu:
+        raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1543,11 +1558,7 @@ def generate_build_tree(
             and not args.build_wasm
         ):
             if is_windows():
-                # DLL initialization errors due to old conda msvcp140.dll dll are a result of the new MSVC compiler
-                # See https://developercommunity.visualstudio.com/t/Access-violation-with-std::mutex::lock-a/10664660#T-N10668856
-                # Remove this definition (_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
-                # once the conda msvcp140.dll dll is updated.
-                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS", "/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR"]
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1861,6 +1872,10 @@ def setup_rocm_build(args):
 
 
 def run_android_tests(args, source_dir, build_dir, config, cwd):
+    if args.android_abi != "x86_64":
+        log.info(f"--android_abi ({args.android_abi}) is not x86_64, skipping running of Android tests on emulator.")
+        return
+
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = "/data/local/tmp"
 
@@ -1882,72 +1897,85 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             adb_shell(f"cd {device_dir} && {cmd}")
 
-    if args.android_abi == "x86_64":
-        with contextlib.ExitStack() as context_stack:
-            if args.android_run_emulator:
-                avd_name = "ort_android"
-                system_image = f"system-images;android-{args.android_api};default;{args.android_abi}"
+    with contextlib.ExitStack() as context_stack:
+        if args.android_run_emulator:
+            avd_name = "ort_android"
+            system_image = f"system-images;android-{args.android_api};default;{args.android_abi}"
 
-                android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
-                emulator_proc = context_stack.enter_context(
-                    android.start_emulator(
-                        sdk_tool_paths=sdk_tool_paths,
-                        avd_name=avd_name,
-                        extra_args=["-partition-size", "2047", "-wipe-data"],
-                    )
+            android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
+            emulator_proc = context_stack.enter_context(
+                android.start_emulator(
+                    sdk_tool_paths=sdk_tool_paths,
+                    avd_name=avd_name,
+                    extra_args=["-partition-size", "2047", "-wipe-data"],
                 )
-                context_stack.callback(android.stop_emulator, emulator_proc)
-
-            adb_push("testdata", device_dir, cwd=cwd)
-            adb_push(
-                os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd
             )
-            adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
-            adb_push("onnx_test_runner", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
-            run_adb_shell(f"{device_dir}/onnxruntime_test_all")
+            context_stack.callback(android.stop_emulator, emulator_proc)
 
-            # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
-            # when we try to copy the java app to the device.
-            adb_shell(f"rm {device_dir}/onnxruntime_test_all")
+        adb_push("testdata", device_dir, cwd=cwd)
+        adb_push(os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd)
+        adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
+        adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
+        adb_push("onnx_test_runner", device_dir, cwd=cwd)
+        adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
+        run_adb_shell(f"{device_dir}/onnxruntime_test_all")
 
-            if args.build_java:
-                # use the gradle wrapper under <repo root>/java
-                gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
-                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
-                run_subprocess(
-                    [
-                        gradle_executable,
-                        "--no-daemon",
-                        f"-DminSdkVer={args.android_api}",
-                        "clean",
-                        "connectedDebugAndroidTest",
-                    ],
-                    cwd=android_test_path,
-                )
+        # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
+        # when we try to copy the java app to the device.
+        adb_shell(f"rm {device_dir}/onnxruntime_test_all")
 
-            if args.use_nnapi:
-                run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
-            else:
-                run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
+        if args.build_java:
+            # use the gradle wrapper under <repo root>/java
+            gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
+            android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+            run_subprocess(
+                [
+                    gradle_executable,
+                    "--no-daemon",
+                    f"-DminSdkVer={args.android_api}",
+                    "clean",
+                    "connectedDebugAndroidTest",
+                ],
+                cwd=android_test_path,
+            )
 
-            # run shared_lib_test if necessary
-            if args.build_shared_lib:
-                adb_push("libonnxruntime.so", device_dir, cwd=cwd)
-                adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-                adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
-                adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
-                adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-                adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
-                adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
-                run_adb_shell(
-                    f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
-                )
+        if args.use_nnapi:
+            run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
+        else:
+            run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
+
+        # run shared_lib_test if necessary
+        if args.build_shared_lib:
+            adb_push("libonnxruntime.so", device_dir, cwd=cwd)
+            adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
+            adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
+            adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
+            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
+            adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
+            adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
+            run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
+            run_adb_shell(
+                f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
+            )
 
 
 def run_ios_tests(args, source_dir, config, cwd):
+    is_targeting_iphone_simulator = "iphonesimulator" in args.apple_sysroot.lower()
+    if not is_targeting_iphone_simulator:
+        log.info(
+            f"Could not detect iphonesimulator target from --apple_sysroot ({args.apple_sysroot}), "
+            "skipping running of iOS tests on simulator."
+        )
+        return
+
+    host_arch = platform.machine()
+    if host_arch != args.osx_arch:
+        log.info(
+            f"Host arch ({host_arch}) and --osx_arch ({args.osx_arch}) mismatch, "
+            "skipping running of iOS tests on simulator."
+        )
+        return
+
     simulator_device_info = subprocess.check_output(
         [
             sys.executable,
@@ -2097,10 +2125,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
-            # if args.use_tensorrt:
-            #     run_subprocess(
-            #         [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
-            #     )
+            if args.use_tensorrt:
+                run_subprocess(
+                    [sys.executable, "onnxruntime_test_python_nested_control_flow_op.py"], cwd=cwd, dll_path=dll_path
+                )
 
             try:
                 import onnx  # noqa: F401

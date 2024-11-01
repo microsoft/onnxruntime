@@ -1673,6 +1673,7 @@ using ShapeInferenceHelper_Flatten7 = FlattenHelper;
 using ShapeInferenceHelper_Flatten9 = FlattenHelper;
 using ShapeInferenceHelper_Flatten11 = FlattenHelper;
 using ShapeInferenceHelper_Flatten13 = FlattenHelper;
+using ShapeInferenceHelper_Flatten21 = FlattenHelper;
 using ShapeInferenceHelper_Split7 = VersionedOpsetHelper<SplitHelper, 7>;
 using ShapeInferenceHelper_Split11 = VersionedOpsetHelper<SplitHelper, 11>;
 using ShapeInferenceHelper_Split13 = VersionedOpsetHelper<SplitHelper, 13>;
@@ -1689,6 +1690,7 @@ using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
 using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
 using ShapeInferenceHelper_Pad19 = VersionedOpsetHelper<PaddingHelper, 19>;
+using ShapeInferenceHelper_Pad21 = VersionedOpsetHelper<PaddingHelper, 21>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1865,6 +1867,7 @@ using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CastLike19 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CastLike21 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
 using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;

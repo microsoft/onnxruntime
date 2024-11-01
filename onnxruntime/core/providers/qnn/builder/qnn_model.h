@@ -8,7 +8,7 @@
 #include "core/common/status.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
@@ -35,6 +35,7 @@ class QnnModel {
 
   Status ComposeGraph(const GraphViewer& graph_viewer,
                       const onnxruntime::Node& fused_node,
+                      const qnn::ModelSettings& model_settings,
                       const logging::Logger& logger,
                       const QnnGraph_Config_t** graph_configs = nullptr);
 
@@ -142,7 +143,7 @@ class QnnModel {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
 
   // Mutex acquired during graph execution to support multi-threaded inference of a single session.
-  OrtMutex graph_exec_mutex_;
+  std::mutex graph_exec_mutex_;
 };
 
 }  // namespace qnn

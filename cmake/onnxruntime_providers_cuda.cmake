@@ -275,10 +275,8 @@
 
     if(APPLE)
       set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/cuda/exported_symbols.lst")
-      target_link_libraries(${target} PRIVATE nsync::nsync_cpp)
     elseif(UNIX)
       set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/cuda/version_script.lds -Xlinker --gc-sections")
-      target_link_libraries(${target} PRIVATE nsync::nsync_cpp)
     elseif(WIN32)
       set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/cuda/symbols.def")
     else()

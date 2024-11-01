@@ -91,6 +91,10 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
                             << input_name;
       return false;
     }
+    if (dim.dim_value() == 0) {
+      LOGS(logger, VERBOSE) << "The shape of [" << input_name << "] has 0 dimension which is not supported by WebNN";
+      return false;
+    }
   }
 
   return true;
@@ -226,6 +230,12 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
   switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      desc.set("dataType", emscripten::val("int4"));
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
+      desc.set("dataType", emscripten::val("uint4"));
+      return true;
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       desc.set("dataType", emscripten::val("uint8"));

@@ -485,6 +485,10 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigEntry(this, config_key);
   }
 
+  std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const {
+    return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
+  }
+
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 

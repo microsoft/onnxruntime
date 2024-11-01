@@ -31,7 +31,7 @@ class SharedContext {
   }
 
   bool HasSharedQnnModels() {
-    const std::lock_guard<OrtMutex> lock(mtx_);
+    const std::lock_guard<std::mutex> lock(mtx_);
     return !shared_qnn_models_.empty();
   }
 
@@ -42,7 +42,7 @@ class SharedContext {
   }
 
   std::unique_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
-    const std::lock_guard<OrtMutex> lock(mtx_);
+    const std::lock_guard<std::mutex> lock(mtx_);
     auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
                       [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
     if (it == shared_qnn_models_.end()) {
@@ -55,7 +55,7 @@ class SharedContext {
 
   bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
                          std::string& duplicate_graph_names) {
-    const std::lock_guard<OrtMutex> lock(mtx_);
+    const std::lock_guard<std::mutex> lock(mtx_);
     bool graph_exist = false;
     for (auto& shared_qnn_model : shared_qnn_models) {
       auto& model_name = shared_qnn_model->Name();
@@ -81,7 +81,7 @@ class SharedContext {
   std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
   // Producer sessions can be in parallel
   // Consumer sessions have to be after producer sessions initialized
-  OrtMutex mtx_;
+  std::mutex mtx_;
 };
 
 // Logical device representation.
@@ -151,8 +151,9 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
 #ifdef _WIN32
-  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
+  qnn::ModelSettings model_settings_ = {};
 
   class PerThreadContext final {
    public:
@@ -201,7 +202,7 @@ class QNNExecutionProvider : public IExecutionProvider {
     std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
         caches_to_update_on_destruction;
     // synchronizes access to PerThreadContextState members
-    OrtMutex mutex;
+    std::mutex mutex;
   };
 
   // The execution provider maintains the PerThreadContexts in this structure.

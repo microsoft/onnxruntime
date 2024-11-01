@@ -41,12 +41,12 @@ if [ $BUILD_DEVICE == "GPU" ]; then
 
     BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=$SHORT_CUDA_VERSION --tensorrt_home=/usr --cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION --cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
 fi
-# We assume the machine doesn't have gcc and python development header files, so we don't build onnxruntime from source
+
 python3 -m pip install --upgrade pip
 # Install the packages that are needed for installing the onnxruntime python package
 python3 -m pip install -r /build/$BUILD_CONFIG/requirements.txt
 # Install the packages that are needed for running test scripts
-python3 -m pip install pytest
+python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
 # The "--no-index" flag is crucial. The local whl folder is just an additional source. Pypi's doc says "there is no 
 # ordering in the locations that are searched" if we don't disable the default one with "--no-index"
 python3 -m pip install --no-index --find-links /build/whl $PYTHON_PACKAGE_NAME

@@ -787,14 +787,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(7,
                "beam_width",
-               "The beam width that is being used while decoding."
+               "The beam width that is being used while decoding. "
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
         .Input(8,
                "cache_indirection",
-               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
-               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
+               "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -871,7 +871,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "attention_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -902,15 +902,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "beam_width",
-               "The beam width that is being used while decoding."
+               "The beam width that is being used while decoding. "
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
         .Input(9,
                "cache_indirection",
                // This input is useful for CUDA EP only.
-               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
-               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
+               "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
                OpSchema::Optional)
         .Input(10,
@@ -940,7 +940,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(3,
                 "qk",
-                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
+                "normalized Q * K, of shape (batch_size, num_heads, 1, total_sequence_length). ",
                 "V",
                 OpSchema::Optional)
         .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")

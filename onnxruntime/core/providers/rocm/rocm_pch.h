@@ -14,6 +14,7 @@
 #include <hipsparse/hipsparse.h>
 #include <miopen/miopen.h>
 #include <rocblas/rocblas.h>
+#include <hipblas/hipblas.h>
 #include <rocm_smi/rocm_smi.h>
 
 #ifdef ORT_USE_NCCL

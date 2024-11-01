@@ -1,65 +1,81 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <map>
+#include <utility>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
+#include "nlohmann/json.hpp"
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device_type, const char* precision,
-                          bool enable_npu_fast_compile, size_t num_of_threads,
-                          const char* cache_dir, const char* model_priority,
-                          int num_streams, void* context,
+  OpenVINOProviderFactory(const std::string& device_type, const std::string& precision,
+                          size_t num_of_threads,
+                          const std::map<std::string, ov::AnyMap>& load_config, const std::string& cache_dir,
+                          const std::string& model_priority, int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
-                          bool export_ep_ctx_blob, bool enable_qdq_optimizer,
-                          bool disable_cpu_fallback,
-                          bool so_epctx_embed_mode)
-      : precision_(precision),
-        enable_npu_fast_compile_(enable_npu_fast_compile),
+                          bool enable_qdq_optimizer, const ConfigOptions& config_options)
+      : device_type_(device_type),
+        precision_(precision),
         num_of_threads_(num_of_threads),
+        load_config_(load_config),
+        cache_dir_(cache_dir),
         model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
         disable_dynamic_shapes_(disable_dynamic_shapes),
-        export_ep_ctx_blob_(export_ep_ctx_blob),
         enable_qdq_optimizer_(enable_qdq_optimizer),
-        disable_cpu_fallback_(disable_cpu_fallback),
-        so_epctx_embed_mode_(so_epctx_embed_mode) {
-    device_type_ = (device_type == nullptr) ? "" : device_type;
-    cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
-  }
+        config_options_(config_options) {}
 
-  ~OpenVINOProviderFactory() override {
-  }
+  ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   std::string device_type_;
   std::string precision_;
-  bool enable_npu_fast_compile_;
   size_t num_of_threads_;
+  const std::map<std::string, ov::AnyMap> load_config_;
   std::string cache_dir_;
   std::string model_priority_;
   int num_streams_;
   void* context_;
   bool enable_opencl_throttling_;
   bool disable_dynamic_shapes_;
-  bool export_ep_ctx_blob_;
   bool enable_qdq_optimizer_;
-  bool disable_cpu_fallback_;
-  bool so_epctx_embed_mode_;
+  const ConfigOptions& config_options_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
+  bool so_disable_cpu_fallback = config_options_.GetConfigOrDefault("session.disable_cpu_ep_fallback", "0") == "1";
+  bool so_export_ep_ctx_blob = config_options_.GetConfigOrDefault("ep.context_enable", "0") == "1";
+  bool so_epctx_embed_mode = config_options_.GetConfigOrDefault("ep.context_embed_mode", "1") == "1";
+  std::string so_cache_path = config_options_.GetConfigOrDefault("ep.context_file_path", "").c_str();
+
+  if (so_export_ep_ctx_blob && !so_cache_path.empty()) {
+    cache_dir_ = so_cache_path;
+    auto file_path = std::filesystem::path(cache_dir_);
+    // ep_context_file_path_ file extension must be .onnx
+    if (file_path.extension().generic_string() == ".onnx") {
+      // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
+      auto parent_path = file_path.parent_path();
+      if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
+          !std::filesystem::create_directory(parent_path)) {
+        ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " +
+                  file_path.parent_path().generic_string() + " \n");
+      }
+    } else {
+      ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + cache_dir_ + " \n");
+    }
+  }
+
+  OpenVINOExecutionProviderInfo info(device_type_, precision_, num_of_threads_, load_config_,
                                      cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
-                                     disable_dynamic_shapes_, export_ep_ctx_blob_, enable_qdq_optimizer_,
-                                     disable_cpu_fallback_,
-                                     so_epctx_embed_mode_);
+                                     disable_dynamic_shapes_, so_export_ep_ctx_blob, enable_qdq_optimizer_,
+                                     so_disable_cpu_fallback, so_epctx_embed_mode);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
@@ -77,41 +93,42 @@ struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    auto& provider_options_map = *reinterpret_cast<const ProviderOptions*>(void_params);
+    // Extract the void_params into ProviderOptions and ConfigOptions
+    typedef std::pair<const ProviderOptions*, const ConfigOptions&> ConfigBuffer;
+    const ConfigBuffer* buffer = reinterpret_cast<const ConfigBuffer*>(void_params);
+    auto& provider_options_map = *buffer->first;
+    const ConfigOptions& config_options = buffer->second;
 
-    std::string device_type = "";            // [device_type]: Overrides the accelerator hardware type and precision
-                                             //   with these values at runtime.
-    std::string precision = "";              // [precision]: Sets the inference precision for execution.
-                                             // Supported precision for devices are CPU=FP32, GPU=FP32,FP16, NPU=FP16.
-                                             // Not setting precision will execute with optimized precision for
-                                             // best inference latency. set Precision=ACCURACY for executing models
-                                             // with input precision for best accuracy.
-    bool enable_npu_fast_compile = false;    // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
-                                             // speeds up the model's compilation to NPU device specific format.
-    int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
-                                             //  threads with this value at runtime.
-    std::string cache_dir = "";              // [cache_dir]: specify the path to
-                                             // dump and load the blobs for the model caching/kernel caching (GPU)
-                                             // feature. If blob files are already present, it will be directly loaded.
-    const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
-                                             // Defines what model should be provided with more performant
-                                             // bounded resource first
-    int num_streams = 1;                     // [num_streams]: Option that specifies the number of parallel inference
-                                             // requests to be processed on a given `device_type`. Overrides the
-                                             // accelerator default value of number of streams
-                                             // with this value at runtime.
-    bool enable_opencl_throttling = false;   // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
-                                             // device (Reduces CPU Utilization when using GPU)
-    bool export_ep_ctx_blob = false;         // Whether to export the pre-compiled blob as an EPContext model.
+    std::string device_type = "";                   // [device_type]: Overrides the accelerator hardware type and
+                                                    // precision with these values at runtime.
+    std::string precision = "";                     // [precision]: Sets the inference precision for execution.
+                                                    // Supported precision for devices are
+                                                    // CPU=FP32, GPU=FP32,FP16, NPU=FP16.
+                                                    // Not setting precision will execute with optimized precision for
+                                                    // best inference latency. set Precision=ACCURACY for executing
+                                                    // models with input precision for best accuracy.
+    int num_of_threads = 0;                         // [num_of_threads]: Overrides the accelerator default value of
+                                                    // number of threads with this value at runtime.
+    std::map<std::string, ov::AnyMap> load_config;  // JSON config map to load custom OV parameters.
+    std::string cache_dir = "";                     // [cache_dir]: specify the path to
+                                                    // dump and load the blobs for the model caching/kernel caching
+                                                    // (GPU) feature. If blob files are already present,
+                                                    // it will be directly loaded.
+    std::string model_priority = "DEFAULT";         // High-level OpenVINO model priority hint
+                                                    // Defines what model should be provided with more performant
+                                                    // bounded resource first
+    int num_streams = 1;                            // [num_streams]: Option that specifies the number of parallel
+                                                    // inference requests to be processed on a given `device_type`.
+                                                    // Overrides the accelerator default value of number of streams
+                                                    // with this value at runtime.
+    bool enable_opencl_throttling = false;          // [enable_opencl_throttling]: Enables OpenCL queue throttling for
+                                                    // GPU device (Reduces CPU Utilization when using GPU)
+
+    bool enable_qdq_optimizer = false;  // Enables QDQ pruning for efficient inference latency with NPU
 
     void* context = nullptr;
 
-    bool enable_qdq_optimizer = false;
-
-    bool disable_cpu_fallback = false;
-
-    bool so_epctx_embed_mode = true;
-
+    std::string bool_flag = "";
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
 
@@ -185,6 +202,68 @@ struct OpenVINO_Provider : Provider {
       cache_dir = provider_options_map.at("cache_dir");
     }
 
+    if (provider_options_map.find("load_config") != provider_options_map.end()) {
+      auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
+        // If the config string is empty, return an empty map and skip processing
+        if (config_str.empty()) {
+          LOGS_DEFAULT(WARNING) << "Empty OV Config Map passed. Skipping load_config option parsing.\n";
+          return {};
+        }
+
+        std::stringstream input_str_stream(config_str);
+        std::map<std::string, ov::AnyMap> target_map;
+
+        try {
+          nlohmann::json json_config = nlohmann::json::parse(input_str_stream);
+
+          if (!json_config.is_object()) {
+            ORT_THROW("Invalid JSON structure: Expected an object at the root.");
+          }
+
+          for (auto& [key, value] : json_config.items()) {
+            ov::AnyMap inner_map;
+
+            // Ensure the key is one of "CPU", "GPU", or "NPU"
+            if (key != "CPU" && key != "GPU" && key != "NPU") {
+              LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
+              continue;
+            }
+
+            // Ensure that the value for each device is an object (PROPERTY -> VALUE)
+            if (!value.is_object()) {
+              ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
+            }
+
+            for (auto& [inner_key, inner_value] : value.items()) {
+              if (inner_value.is_string()) {
+                inner_map[inner_key] = inner_value.get<std::string>();
+              } else if (inner_value.is_number_integer()) {
+                inner_map[inner_key] = inner_value.get<int64_t>();
+              } else if (inner_value.is_number_float()) {
+                inner_map[inner_key] = inner_value.get<double>();
+              } else if (inner_value.is_boolean()) {
+                inner_map[inner_key] = inner_value.get<bool>();
+              } else {
+                LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
+              }
+            }
+            target_map[key] = inner_map;
+          }
+        } catch (const nlohmann::json::parse_error& e) {
+          // Handle syntax errors in JSON
+          ORT_THROW("JSON parsing error: " + std::string(e.what()));
+        } catch (const nlohmann::json::type_error& e) {
+          // Handle invalid type accesses
+          ORT_THROW("JSON type error: " + std::string(e.what()));
+        } catch (const std::exception& e) {
+          ORT_THROW("Error parsing load_config Map: " + std::string(e.what()));
+        }
+        return target_map;
+      };
+
+      load_config = parse_config(provider_options_map.at("load_config"));
+    }
+
     if (provider_options_map.find("context") != provider_options_map.end()) {
       std::string str = provider_options_map.at("context");
       uint64_t number = std::strtoull(str.c_str(), nullptr, 16);
@@ -224,16 +303,6 @@ struct OpenVINO_Provider : Provider {
                               << "Executing with num_streams=1";
       }
     }
-    std::string bool_flag = "";
-    if (provider_options_map.find("enable_npu_fast_compile") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("enable_npu_fast_compile");
-      if (bool_flag == "true" || bool_flag == "True")
-        enable_npu_fast_compile = true;
-      else if (bool_flag == "false" || bool_flag == "False")
-        enable_npu_fast_compile = false;
-      bool_flag = "";
-    }
-
     if (provider_options_map.find("enable_opencl_throttling") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("enable_opencl_throttling");
       if (bool_flag == "true" || bool_flag == "True")
@@ -249,6 +318,8 @@ struct OpenVINO_Provider : Provider {
         enable_qdq_optimizer = true;
       else if (bool_flag == "false" || bool_flag == "False")
         enable_qdq_optimizer = false;
+      else
+        ORT_THROW("[ERROR] [OpenVINO-EP] enable_qdq_optimiser should be a boolean.\n");
       bool_flag = "";
     }
 
@@ -271,68 +342,21 @@ struct OpenVINO_Provider : Provider {
           disable_dynamic_shapes = false;
         }
       }
-    }
-    if (provider_options_map.find("so_export_ep_ctx_blob") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("so_export_ep_ctx_blob");
-      if (bool_flag == "true" || bool_flag == "True")
-        export_ep_ctx_blob = true;
-      else if (bool_flag == "false" || bool_flag == "False")
-        export_ep_ctx_blob = false;
       bool_flag = "";
     }
 
-    if (provider_options_map.find("disable_cpu_fallback") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("disable_cpu_fallback");
-      if (bool_flag == "true" || bool_flag == "True")
-        disable_cpu_fallback = true;
-      else if (bool_flag == "false" || bool_flag == "False")
-        disable_cpu_fallback = false;
-      bool_flag = "";
-    }
-    if (provider_options_map.find("so_epctx_embed_mode") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("so_epctx_embed_mode");
-      if (bool_flag == "true" || bool_flag == "True")
-        so_epctx_embed_mode = true;
-      else if (bool_flag == "false" || bool_flag == "False")
-        so_epctx_embed_mode = false;
-      bool_flag = "";
-    }
-
-    if (provider_options_map.find("so_epctx_path") != provider_options_map.end()) {
-      // The path to dump epctx model is valid only when epctx is enabled.
-      // Overrides the cache_dir option to dump model cache files from OV.
-      if (export_ep_ctx_blob &&
-          !provider_options_map.at("so_epctx_path").empty()) {
-        cache_dir = provider_options_map.at("so_epctx_path");
-        auto file_path = std::filesystem::path(cache_dir);
-        // ep_context_file_path_ file extension must be .onnx
-        if (file_path.extension().generic_string() == ".onnx") {
-          // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
-          auto parent_path = file_path.parent_path();
-          if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
-              !std::filesystem::create_directory(parent_path)) {
-            ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
-          }
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + cache_dir + " \n");
-        }
-      }
-    }
-
-    return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
-                                                     const_cast<char*>(precision.c_str()),
-                                                     enable_npu_fast_compile,
+    return std::make_shared<OpenVINOProviderFactory>(device_type,
+                                                     precision,
                                                      num_of_threads,
-                                                     const_cast<char*>(cache_dir.c_str()),
+                                                     load_config,
+                                                     cache_dir,
                                                      model_priority,
                                                      num_streams,
                                                      context,
                                                      enable_opencl_throttling,
                                                      disable_dynamic_shapes,
-                                                     export_ep_ctx_blob,
                                                      enable_qdq_optimizer,
-                                                     disable_cpu_fallback,
-                                                     so_epctx_embed_mode);
+                                                     config_options);
   }
 
   void Initialize() override {

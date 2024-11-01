@@ -7,8 +7,6 @@
 
 #include <sstream>
 
-#include "date/date.h"
-
 namespace onnxruntime {
 namespace logging {
 

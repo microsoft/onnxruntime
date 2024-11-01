@@ -16,11 +16,10 @@ namespace coreml {
 // Once all ops are supportted FP16, we can remove it. Before that, we keep a set of ops to
 // filter suppported ones.
 static std::set<std::string> Float16Ops = {
-    "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
-    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
-    "Clip", "DepthToSpace", "Resize", "Slice", "Conv",
-    "ConvTranspose", "GlobalMaxPool", "Gemm", "MatMul",
-    "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
+    "Add", "ArgMax", "AveragePool", "BatchNormalization", "Cast", "Clip", "Concat", "Conv", "ConvTranspose",
+    "DepthToSpace", "Div", "Gelu", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "GridSample", "GroupNormalization",
+    "InstanceNormalization", "LayerNormalization", "LeakyRelu", "MatMul", "MaxPool", "Mul", "PRelu", "Pow",
+    "Reciprocal", "Relu", "Reshape", "Resize", "Sigmoid", "Slice", "Split", "Sqrt", "Sub", "Tanh", "Transpose"};
 
 namespace {
 // TODO, move this to shared_library

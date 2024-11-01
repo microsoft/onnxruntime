@@ -40,18 +40,33 @@ The docker file supports both x86_64 and ARM64(aarch64). You may use docker's "-
 However, we cannot build the code for 32-bit ARM in such a way since a 32-bit compiler/linker might not have enough memory to generate the binaries.
 
 ## CUDA
-**Ubuntu 22.04, CUDA 12.1, CuDNN 8**
+**Ubuntu 24.04, CUDA 12.x, CuDNN 9.x**
 
 1. Build the docker image from the Dockerfile in this repository.
+  Choose available [cuda version](https://hub.docker.com/r/nvidia/cuda/tags) or [cudnn version](https://pypi.org/project/nvidia-cudnn-cu12/#history), then build docker image like the following:
+
   ```
-  docker build -t onnxruntime-cuda -f Dockerfile.cuda ..
+  git submodule update --init
+  docker build -t onnxruntime-cuda --build-arg CUDA_VERSION=12.6.1 \
+                                   --build-arg CUDNN_VERSION=9.5.0.50 \
+                                   --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
+                                   --build-arg GIT_COMMIT=$(git rev-parse HEAD) \
+                                   --build-arg ONNXRUNTIME_VERSION=$(cat ../VERSION_NUMBER) \
+                                   -f Dockerfile.cuda ..
+
   ```
 
+  To inspect the labels of the built image, run the following:
+  ```
+  docker inspect onnxruntime-cuda
+  ```
 2. Run the Docker image
 
   ```
-  docker run --gpus all -it onnxruntime-cuda
+  docker run --rm --gpus all -it onnxruntime-cuda
+  ```
   or
+  ```
   nvidia-docker run -it onnxruntime-cuda
 
   ```
@@ -277,7 +292,7 @@ Nothing else from ONNX Runtime source tree will be copied/installed to the image
 Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropriate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
 ## MIGraphX
-**Ubuntu 20.04, ROCm6.0, MIGraphX**
+**Ubuntu 22.04, ROCm6.2.3, MIGraphX**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -291,7 +306,7 @@ Note: When running the container you built in Docker, please either use 'nvidia-
   ```
 
    ## ROCm
-**Ubuntu 20.04, ROCm6.0**
+**Ubuntu 22.04, ROCm6.2.3**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
