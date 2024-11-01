@@ -351,14 +351,14 @@ HQ4BitBlkDequantBForSgemm_CompFp16(
 
     size_t n = 0;
     for (; n + n_blk_dim <= CountN; n += n_blk_dim) {
-        const MLAS_FP16* scales_ptr = QuantBScale;
+        const auto* scales_ptr = reinterpret_cast<const _mlas_fp16_*>(QuantBScale);
         const std::uint8_t* zero_points_ptr = reinterpret_cast<const uint8_t*>(QuantBZeroPoint);
         const std::uint8_t* src_ptr = reinterpret_cast<const uint8_t*>(QuantBData);
-        MLAS_FP16* dst_ptr = FpData;
+        auto* dst_ptr = reinterpret_cast<_mlas_fp16_*>(FpData);
 
         for (size_t k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
             // prepare scales and zero_points for the block
-            MLAS_FP16 scales[n_blk_dim];
+            _mlas_fp16_ scales[n_blk_dim];
             uint16_t zero_points[n_blk_dim];
             float16x8_t scale_vec;
             float16x8_t neg_scaled_zp_vec;
@@ -366,7 +366,7 @@ HQ4BitBlkDequantBForSgemm_CompFp16(
             UnrolledLoop<n_blk_dim>([&](int nn){
                 scales[nn] = scales_ptr[nn * BlockCountK];
             });
-            scale_vec = MlasLoadFloat16x8(reinterpret_cast<const _mlas_fp16_*>(scales));
+            scale_vec = MlasLoadFloat16x8(scales);
 
             if (has_zp) {
                 UnrolledLoop<n_blk_dim>([&](int nn){
@@ -402,11 +402,11 @@ HQ4BitBlkDequantBForSgemm_CompFp16(
 
     // remaining N
     for (; n < CountN; ++n) {
-        const MLAS_FP16* scales_ptr = QuantBScale;
+        const auto* scales_ptr = reinterpret_cast<const _mlas_fp16_*>(QuantBScale);
         const std::uint8_t* zero_points_ptr = reinterpret_cast<const uint8_t*>(QuantBZeroPoint);
         for (size_t k_blk_i = 0; k_blk_i < BlockCountK; ++k_blk_i) {
-            MLAS_FP16 scale = scales_ptr[0];
-            float16x8_t scale_vec = MlasBroadcastFloat16x8(scale.val);
+            const auto scale = scales_ptr[0];
+            float16x8_t scale_vec = MlasBroadcastFloat16x8(scale);
             float16x8_t neg_scaled_zp_vec;
 
             if (has_zp) {
@@ -421,7 +421,8 @@ HQ4BitBlkDequantBForSgemm_CompFp16(
 
             for (size_t kk = 0; kk < BlkLen; kk += kk_blk_dim) {
                 HQ4BitBlkDequantBKernel<1, 16>(
-                    reinterpret_cast<const uint8_t*>(QuantBData), scale_vec, neg_scaled_zp_vec, FpData
+                    reinterpret_cast<const uint8_t*>(QuantBData), scale_vec, neg_scaled_zp_vec,
+                    reinterpret_cast<_mlas_fp16_*>(FpData)
                 );
 
                 QuantBData += kk_blk_bytes;

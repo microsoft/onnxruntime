@@ -59,10 +59,10 @@ struct PackedQuantBDataStruct {
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
 
         // _mm256_load_si256 requires alignment on a 32-byte boundary
-        PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
-        QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
-        QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
-        PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
+        PackedQuantBData = reinterpret_cast<std::byte*>(MlasAlignAddress(PackedQuantBWorkspace, 32));
+        QuantBBlkSum = reinterpret_cast<T*>(PackedQuantBData + PackedQuantBDataSize);
+        QuantBBlkSum = reinterpret_cast<T*>(MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment()));
+        PackedQuantBScale = reinterpret_cast<T*>(reinterpret_cast<std::byte*>(QuantBBlkSum) + BlkSumSize);
     }
     std::byte* PackedQuantBData;
     T* PackedQuantBScale;
