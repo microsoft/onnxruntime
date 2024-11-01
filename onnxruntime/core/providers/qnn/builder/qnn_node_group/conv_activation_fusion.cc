@@ -119,7 +119,8 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   // The Clip codomain must entirely overlap the QuantizeLinear domain (quantization can be smaller).
   // Clip codomain:          [------------------]
   // QuantizeLinear domain:    [-------------]
-  if (!(clip_min <= min_ && max_ <= clip_max)) {
+  constexpr float epsilon = std::numeric_limits<float>::epsilon();
+  if ((epsilon < clip_min - min_) || (epsilon < max_ - clip_max)) {
     return false;
   }
 
