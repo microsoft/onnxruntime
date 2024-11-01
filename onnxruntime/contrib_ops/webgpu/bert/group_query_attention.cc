@@ -23,7 +23,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 6),
     GroupQueryAttention);
 
 Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
