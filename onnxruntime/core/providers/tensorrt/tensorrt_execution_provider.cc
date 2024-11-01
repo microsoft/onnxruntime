@@ -2486,34 +2486,39 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
-  bool new_subgraph = true;
-
   std::set<std::string> exclude_set = GetExcludedNodeSet(nodes_to_exclude_);
 
   /*
-   * There is a known performance issue with the DDS node from TRT versions 10.0 to 10.6.
-   * TRT EP automatically excludes DDS nodes from running on TRT unless the user explicitly specifies that those nodes should be included
+   * There is a known performance issue with the DDS nodes (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.6.
+   * TRT EP automatically excludes DDS nodes from running on TRT unless the user explicitly specifies that those nodes should be included.
    * 
-   * Note: "~node_name" means to include the node
+   * Note: "~node_name" means to include the node.
    */
-  if (trt_version_ >= 100000 and trt_version_ < 100700) {
+  if (trt_version_ >= 100000 && trt_version_ < 100700) {
     if (exclude_set.find("~NonMaxSuppression") == exclude_set.end()) exclude_set.insert("NonMaxSuppression"); 
     if (exclude_set.find("~NonZero") == exclude_set.end()) exclude_set.insert("NonZero"); 
     if (exclude_set.find("~RoiAlign") == exclude_set.end()) exclude_set.insert("RoiAlign"); 
   }
 
+  // Print excluded nodes, if any.
   std::set<std::string>::iterator it;
   for (it = exclude_set.begin(); it != exclude_set.end(); ++it) {
     std::string node = *it;
     if (node.find("~") == 0) continue;
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude " << node << " from running on TRT";
     if (node == "NonMaxSuppression" || node == "NonZero" || node == "RoiAlign") {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Add \"~" << node << "\" in trt_nodes_to_exclude if " << node << " should be included in the input to TRT parser. It still depends on TRT parser to determine the eligibility of this node for TRT";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Add \"~" << node << "\" in trt_nodes_to_exclude if " << node << " should be included in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this node for TRT";
     }
   }
 
+  SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  bool new_subgraph = true;
+
+  /* Iterate all the nodes and exclude the node if:
+   *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible. 
+   *   2. It's in the exlucded set which specified by trt_nodes_to_exclude.
+   */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
     bool supported_node = true;
