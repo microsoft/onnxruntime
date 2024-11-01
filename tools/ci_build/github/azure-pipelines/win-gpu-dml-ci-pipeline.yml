@@ -29,7 +29,6 @@ pr:
 #### end trigger ####
 
 parameters:
-parameters:
 - name: CudaVersion
   displayName: CUDA version
   type: string
