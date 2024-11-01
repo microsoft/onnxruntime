@@ -23,7 +23,7 @@ class BackendManager {
                  const OrtNode* fused_node,
                  const OrtGraphViewer* subgraph,
                  EPCtxHandler& ctx_handle);
-//  void Compute(OrtKernelContext* context);
+  void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
 //  void SetGlobalCotext(const GlobalContext& global_context);
   GlobalContext& GetGlobalContext();
@@ -35,7 +35,7 @@ class BackendManager {
 //      const onnxruntime::GraphViewer& subgraph,
 //      const logging::Logger& logger) const;
 //
-//  bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
+ bool ModelHasSymbolicInputDims(const OrtGraphViewer* subgraph) const;
 //  bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 //
 //  std::shared_ptr<ONNX_NAMESPACE::ModelProto>

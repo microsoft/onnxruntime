@@ -18,6 +18,11 @@
 #endif
 
 namespace onnxruntime {
+
+using AllocateFunc = void* (*)(void*, size_t, size_t);
+using DestroyFunc = void (*)(void*, void*);
+using AllocatorHandle = void*;
+
 static void print_build_options() {
   std::cout << "[ERROR] INVALID DEVICE BUILD TYPE SPECIFIED" << std::endl;
   std::cout << "Specify the keyword HETERO (or) MULTI (or) AUTO followed by the devices in the order of priority "
@@ -139,12 +144,12 @@ struct OpenVINOExecutionProviderInfo {
   }
 };
 
-//struct OpenVINOEPFunctionState {
-//  AllocateFunc allocate_func = nullptr;
-//  DestroyFunc destroy_func = nullptr;
-//  AllocatorHandle allocator_handle = nullptr;
-//  std::shared_ptr<openvino_ep::BackendManager> backend_manager;
-//};
+struct OpenVINOEPFunctionState {
+ AllocateFunc allocate_func = nullptr;
+ DestroyFunc destroy_func = nullptr;
+ AllocatorHandle allocator_handle = nullptr;
+ std::shared_ptr<openvino_ep::BackendManager> backend_manager;
+};
 
 // Logical device representation.
 class OpenVINOExecutionProvider : public OrtExecutionProvider {

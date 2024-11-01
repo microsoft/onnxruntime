@@ -213,41 +213,53 @@ OrtStatus* BackendManager::ExportCompiledBlobAsEPCtxNode(const OrtGraphViewer* g
 //  return has_batched_inputs;
 //}
 //
-//bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
-//  bool has_sym_dims = false;
-//  auto graph_inputs = subgraph.GetInputs();
-//  for (auto input : graph_inputs) {
-//    if (input->Shape() == nullptr) {
-//      has_sym_dims = true;
-//      break;
-//    }
-//    for (auto& dim : input->Shape()->dim()) {
-//      if (dim.value_case() != dim.kDimValue) {
-//        has_sym_dims = true;
-//        break;
-//      }
-//    }
-//    if (has_sym_dims) {
-//      break;
-//    }
-//  }
-//  return has_sym_dims;
-//}
-//
-//// Check to see if the graph is QDQ
-//static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
-//  std::unordered_set<std::string> qdq_ops = {"QuantizeLinear", "DequantizeLinear"};
-//  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-//
-//  for (size_t i = 0; i < node_indices.size(); i++) {
-//    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
-//    if (qdq_ops.find(node->OpType()) != qdq_ops.end()) {
-//      return true;
-//    }
-//  }
-//  return false;
-//}
-//
+bool BackendManager::ModelHasSymbolicInputDims(const OrtGraphViewer* subgraph) const {
+ bool has_sym_dims = false;
+ const char** required_inputs = nullptr;
+ size_t input_count = 0;
+ graph_api_->OrtGraph_GetRequiredInputs(subgraph, &required_inputs, &input_count);
+  for (int i = 0; i < input_count; i++) {
+    OrtValueInfoRef* value_info = nullptr;
+    graph_api_->OrtGraph_GetValueInfo(subgraph, required_inputs[i], &value_info);
+    if (value_info->shape == nullptr) {
+      has_sym_dims = true;
+      graph_api_->OrtGraph_ReleaseValueInfo(value_info);
+      break;
+    }
+    for (size_t j = 0; j < value_info->shape_len; j++) {
+      // if (dim.value_case() != dim.kDimValue) {  TODO:yang
+      //   has_sym_dims = true;
+      //   graph_api_->OrtGraph_ReleaseValueInfo(value_info);
+      //   break;
+      // }
+    }
+    graph_api_->OrtGraph_ReleaseValueInfo(value_info);
+    if (has_sym_dims) {
+      break;
+    }
+  }
+ return has_sym_dims;
+}
+
+// Check to see if the graph is QDQ
+static bool IsQDQGraph(const OrtGraphApi* graph_api, const OrtGraphViewer* graph_viewer) {
+ std::unordered_set<std::string> qdq_ops = {"QuantizeLinear", "DequantizeLinear"};
+ const size_t* nodes = nullptr;
+ size_t num_nodes;
+ graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 0, &nodes, &num_nodes);
+
+ for(size_t i = 0; i < num_nodes; i++) {
+   const OrtNode* node = nullptr;
+   graph_api->OrtGraph_GetOrtNode(graph_viewer, nodes[i], &node);
+   const char* optype = nullptr;
+   graph_api->OrtNode_GetOpType(node, &optype);
+   if (qdq_ops.find(optype) != qdq_ops.end()) {
+     return true;
+   }
+ }
+ return false;
+}
+
 //static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
 //                                ONNX_NAMESPACE::ModelProto* model_proto,
 //                                const onnxruntime::Node& fused_node) {
@@ -296,7 +308,7 @@ OrtStatus* BackendManager::ExportCompiledBlobAsEPCtxNode(const OrtGraphViewer* g
 //  // QDQ stripping enabled only for the NPU
 //  if (global_context_.device_type.find("NPU") != std::string::npos &&
 //      global_context_.enable_qdq_optimizer &&
-//      IsQDQGraph(subgraph)) {
+//      IsQDQGraph(_graph_api, subgraph)) {
 //    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
 //    std::unique_ptr<onnxruntime::Model> model;
 //    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
