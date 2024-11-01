@@ -111,7 +111,8 @@ Status ClipQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
-  if (!(clip_min <= min_ && max_ <= clip_max)) {
+  constexpr float epsilon = std::numeric_limits<float>::epsilon();
+  if (epsilon < clip_min - min_ || epsilon < max_ - clip_max) {
     return Status::OK();
   }
 
