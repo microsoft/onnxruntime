@@ -159,8 +159,9 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
 
     std::vector<uint8_t> input(BufferSize), packed(BufferSize), ref(BufferSize);
     InitializeBuffer(input);
-    MlasQNBitGemmPackQuantBDataSize(
-        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::CompFp16, input.data(), packed.data(), nullptr);
+    MlasQNBitGemmPackQuantBData(
+        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::HQNBIT_CompFp16, input.data(), packed.data(),
+        nullptr, false, nullptr, nullptr);
     Prepack<Ldb, N, K>(input, ref);
     Check<Ldb, N, K>(packed, ref);
   }
@@ -302,7 +303,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
     InitializeBuffer(input);
     InitializeBuffer(zero_points);
     InitializeBuffer(scales);
-    GetMlasPlatform().QNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp16(
+    GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForSgemm_CompFp16(
         BlkLen, dequant.data(), reinterpret_cast<std::byte*>(input.data()), scales.data(),
         UseZeroPoints ? reinterpret_cast<std::byte*>(zero_points.data()) : nullptr,
         N, K, BlkNum);
@@ -416,7 +417,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     InitializeBuffer(B, -0.25f, 0.25f);
     InitializeBuffer(bias, -5.0f, 5.0f);
 
-    GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompFp16(
+    GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16(
         A.data(), B.data(), UseBias ? bias.data() : nullptr, C.data(), M, N, K, K, ldb, N);
 
     MatMul<M, N, K, ldb, UseBias>(A, B, bias, ref);

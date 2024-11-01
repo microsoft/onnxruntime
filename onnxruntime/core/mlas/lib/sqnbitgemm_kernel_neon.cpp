@@ -61,7 +61,7 @@ Q4BitGemmPackQuantBData(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    if (ComputeType == CompFp16) {
+    if (ComputeType == HQNBIT_CompFp16) {
         SQ4BitGemmPackQuantBData_CompFp16(N, K, BlkLen, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
         return;
     }
@@ -73,7 +73,7 @@ Q4BitGemmPackQuantBData(
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    const size_t SubBlkLen = (ComputeType == CompInt8)
+    const size_t SubBlkLen = (ComputeType == SQNBIT_CompInt8)
                                  ? ((BlkLen == 16) ? 16 : 32)
                                  : 16;
 
@@ -129,9 +129,8 @@ Q4BitGemmPackQuantBData(
 // Workspace size calculation function implementation.
 //
 
-template<typename T>
 size_t
-SQ4BitGemmPerGemmWorkspaceSize(
+Q4BitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
@@ -142,10 +141,10 @@ SQ4BitGemmPerGemmWorkspaceSize(
     MLAS_UNREFERENCED_PARAMETER(N);
 
     switch (ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize_T<T>(BlkLen);
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
             return PerGemmWorkspaceSize;
         }
         default: {
@@ -154,9 +153,8 @@ SQ4BitGemmPerGemmWorkspaceSize(
     }
 }
 
-template <typename T>
 size_t
-SQ4BitGemmPerGemmWorkspaceAlignment(
+Q4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
@@ -164,8 +162,8 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
 
     switch (ComputeType) {
-        case CompInt8: {
-            return Q8BlkAlignment_T<T>();
+        case SQNBIT_CompInt8: {
+            return Q8BlkAlignment();
         }
         default: {
             return 1;
@@ -187,32 +185,29 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = []() {
     d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
     d.Q4BitGemmPackQuantBData = sqnbitgemm_neon::Q4BitGemmPackQuantBData;
 
-    d.SQ4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize<float>;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<float>;
+    d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
+    d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
-    d.Q4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp32;
+    d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;
 
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
         d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
     }
-    d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
+    d.SQNBIT_QuantizeARow_CompInt8 = sqnbitgemm_neon::SQNBIT_QuantizeARow_CompInt8;
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    d.SQ4BitGemmPerGemmWorkspaceSize_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize<MLAS_FP16>;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment<MLAS_FP16>;
-
-    d.Q4BitBlkDequantBForSgemm_CompFp16 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp16;
-    d.SQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::SQ4BitGemmKernel_CompFp16;
+    d.HQ4BitBlkDequantBForSgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForSgemm_CompFp16;
+    d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
 
     // TODO(fajin)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
-        d.SQ4BitGemmKernel_Fp16_CompInt8 = nullptr;
+        d.HQ4BitGemmKernel_CompInt8 = nullptr;
     }
     else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
-        d.SQ4BitGemmKernel_Fp16_CompInt8 = nullptr;
+        d.HQ4BitGemmKernel_CompInt8 = nullptr;
     }
-    d.QuantizeARow_Fp16_CompInt8 = nullptr;
+    d.HQNBIT_QuantizeARow_CompInt8 = nullptr;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
     return d;
 }();

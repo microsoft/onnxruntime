@@ -25,7 +25,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                             bool HasBias,
                             MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
                             benchmark::State& state) {
-  if (!MlasIsQNBitGemmAvailable<AType>(BlkBitWidth, BlkLen, ComputeType)) {
+  if (!MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
     state.SkipWithMessage("SQNBitGemm is not available with the given configuration on the current machine.");
     return;
   }
@@ -63,7 +63,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                                             tp.get());
 
   std::unique_ptr<std::byte[]> Workspace;
-  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize<AType>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
       WorkspaceSize > 0) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }
@@ -72,14 +72,9 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
-    if constexpr (std::is_same_v<AType, MLAS_FP16>) {
-      MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
-                                   tp.get());
-    } else {
-      MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
-                                   QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
-                                   tp.get());
-    }
+    MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+                                QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
+                                tp.get());
   }
 
   MLAS_QNBIT_GEMM_DATA_PARAMS<AType> params{};
@@ -134,8 +129,8 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
       {int64_t{false}, int64_t{true}},  // Symmetric
       {int64_t{false}, int64_t{true}},  // HasBias
       std::is_same_v<AType, MLAS_FP16>
-          ? std::vector<int64_t>{int64_t{CompFp16}}
-          : std::vector<int64_t>{int64_t{CompFp32}, int64_t{CompInt8}},  // ComputeType
+          ? std::vector<int64_t>{int64_t{HQNBIT_CompFp16}}
+          : std::vector<int64_t>{int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}},  // ComputeType
   });
 }
 
@@ -155,7 +150,7 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
   const auto Symmetric = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_SYMMETRIC", true);
   const auto HasBias = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_HAS_BIAS", false);
   const auto ComputeType = ParseEnvironmentVariableWithDefault<int32_t>("ORT_SQNBITGEMM_COMPUTE_TYPE",
-                                                                        static_cast<int32_t>(CompFp32));
+                                                                        static_cast<int32_t>(SQNBIT_CompFp32));
 
   RunSQNBitGemmBenchmark<AType, BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
                                              static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),

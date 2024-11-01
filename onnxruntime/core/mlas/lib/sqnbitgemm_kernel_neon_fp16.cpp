@@ -12,7 +12,7 @@ Abstract:
 
     This module implements the float/quantized n-bit integer matrix
     multiplication kernels for ARM NEON specific to
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE CompFp16.
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE HQNBIT_CompFp16.
 
 --*/
 
@@ -321,7 +321,7 @@ Q4BitBlkDequantBKernel(
 }
 
 void
-Q4BitBlkDequantBForSgemm_CompFp16(
+HQ4BitBlkDequantBForSgemm_CompFp16(
     size_t BlkLen,
     MLAS_FP16* FpData,
     const std::byte* QuantBData,
@@ -821,7 +821,7 @@ SQ4BitGemmKernel_CompFp16_Kernel(
 }
 
 void
-SQ4BitGemmKernel_CompFp16(
+HQ4BitGemmKernel_CompFp16(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const MLAS_FP16* Bias,

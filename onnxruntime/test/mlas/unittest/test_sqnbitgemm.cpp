@@ -20,9 +20,9 @@ Abstract:
 
 static constexpr const char* ComputeTypeName(MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType) {
   switch (ComputeType) {
-    case CompFp32:
+    case SQNBIT_CompFp32:
       return "Fp32";
-    case CompInt8:
+    case SQNBIT_CompInt8:
       return "Int8";
     default:
       return "unknown";
@@ -72,7 +72,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.C = C;
     params.ldc = ldc;
 #ifdef MLAS_TARGET_AMD64_IX86
-    if (ComputeType == CompInt8) {
+    if (ComputeType == SQNBIT_CompInt8) {
       params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
     }
 #endif
@@ -265,7 +265,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize<float>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
@@ -275,7 +275,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
         PackedQuantBDataSize > 0) {
       PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;
-      MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
+      MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
                                    QuantBScale, has_zp_input, QuantBZeroPoint,
                                    GetMlasThreadPool());
     }
@@ -289,9 +289,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
              ComputeType,
              Threadpool);
 
-    if (ComputeType == CompFp32) {
+    if (ComputeType == SQNBIT_CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
-    } else if (ComputeType == CompInt8) {
+    } else if (ComputeType == SQNBIT_CompInt8) {
       CallReferenceGemm_CompInt8(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
     } else {
       FAIL() << "Test is not implemented for compute type "
@@ -345,7 +345,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
     size_t tests_registered = 0;
 
-    if (MlasIsQNBitGemmAvailable<float>(BlkBitWidth, BlkLen, ComputeType)) {
+    if (MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
       std::stringstream ss;
       ss << (WithThreadpool ? "SingleThread" : "Threaded")
          << "/isSymmetric" << Symmetric
@@ -376,7 +376,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   static size_t RegisterShortExecuteTests() {
     size_t tests_registered = 0;
 
-    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {CompFp32, CompInt8}) {
+    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32, SQNBIT_CompInt8}) {
       for (bool WithThreadpool : {false, true}) {
         for (bool Symmetric : {false, true}) {
           for (size_t b = 1; b < 16; b++) {
