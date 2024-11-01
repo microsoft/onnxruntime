@@ -40,81 +40,30 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   int32_t input_type = 0;
   int32_t output_type = 0;
   int32_t zero_point_type = 0;
-  bool has_zero_point = false;
   ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input data type");
   ORT_RETURN_IF_NOT(GetType(*output_defs[0], output_type, logger), "Cannot get output data type");
+
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val scale = model_builder.GetOperand(input_defs[1]->Name());
-
   emscripten::val zero_point = emscripten::val::null();
+
   if (input_defs.size() == 3 && input_defs[2]->Exists()) {
     zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
-    has_zero_point = true;
   } else {
     // DequantizeLinear: x_zero_point's data type equals to input data type
     // QuantizeLinear: x_zero_point's data type equals to output data type
+    // WebNN requires the zero_point to have the same shape as the scale
     zero_point_type = op_type == "DequantizeLinear" ? input_type : output_type;
-    zero_point = model_builder.GetZeroConstant(zero_point_type);
-  }
-
-  emscripten::val output;
-  NodeAttrHelper helper(node);
-  int32_t axis = helper.Get("axis", 1);
-  int32_t block_size = helper.Get("block_size", 0);
-  // axis is valid for input shape greater than 1D.
-  if (input_shape.size() > 1) {
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
-  }
-
-  if (scale_shape.size() == 1 && input_shape.size() > 1) {
-    // Insert ones before and after the axis dimension for broadcasting of 1D scale tensor.
-    std::vector<int32_t> target_shape{static_cast<int>(input_shape[axis])};
-    target_shape.insert(target_shape.begin(), axis, 1);
-    target_shape.insert(target_shape.end(), input_shape.size() - axis - 1, 1);
-    emscripten::val reshape_scale_options = emscripten::val::object();
-    reshape_scale_options.set("label", node.Name() + "_reshape_scale");
-    scale = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                             scale,
-                                                             emscripten::val::array(target_shape),
-                                                             reshape_scale_options);
-    if (has_zero_point) {
-      // Insert ones before and after the axis dimension for broadcasting of 1D zero_point tensor.
-      // If zero_point is not provided, leave WebNN to handle the broadcast.
-      emscripten::val reshape_zero_point_options = emscripten::val::object();
-      reshape_zero_point_options.set("label", node.Name() + "_reshape_zero_point");
-      zero_point = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                    zero_point,
-                                                                    emscripten::val::array(target_shape),
-                                                                    reshape_zero_point_options);
-    }
-  }
-
-  // If block_size is specified, use WebNN's tile to expand the non-scalar scale and zero_point tensors.
-  if (block_size > 1 && !scale_shape.empty()) {
-    // Now the scale's size is equal to the input's size.
-    std::vector<uint32_t> repeats(input_shape.size(), 1);
-    repeats[axis] = block_size;
-    emscripten::val repetitions = emscripten::val::array(repeats);
-
-    emscripten::val tile_scale_options = emscripten::val::object();
-    tile_scale_options.set("label", node.Name() + "_tile_scale");
-    scale = model_builder.GetBuilder().call<emscripten::val>("tile", scale, repetitions, tile_scale_options);
-
-    if (has_zero_point) {
-      // Tile the zero_point tensor along the axis dimension.
-      // If zero_point is not provided, leave WebNN to handle the broadcast.
-      emscripten::val tile_zero_point_options = emscripten::val::object();
-      tile_zero_point_options.set("label", node.Name() + "_tile_zero_point");
-      zero_point = model_builder.GetBuilder().call<emscripten::val>(
-          "tile", zero_point, repetitions, tile_zero_point_options);
-    }
+    const auto zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
+    zero_point = model_builder.GetZeroConstant(zero_point_type, zero_point_shape);
   }
 
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
   std::string webnn_op_type;
   ORT_RETURN_IF_NOT(GetWebNNOpType(op_type, webnn_op_type), "Cannot get WebNN op type");
-  output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input, scale, zero_point, options);
+  emscripten::val output =
+      model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input, scale, zero_point, options);
 
   model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
 
