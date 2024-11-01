@@ -104,18 +104,6 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                                                       const emscripten::val& wnn_limits,
                                                       const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
-
-  for (const auto* input : graph_viewer.GetInputs()) {
-    if (!IsTensorShapeSupported(*input, "graph", logger)) {
-      return supported_node_groups;
-    }
-  }
-  for (const auto* output : graph_viewer.GetOutputs()) {
-    if (!IsTensorShapeSupported(*output, "graph", logger)) {
-      return supported_node_groups;
-    }
-  }
-
   std::vector<size_t> supported_node_group;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
