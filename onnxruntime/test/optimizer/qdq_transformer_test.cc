@@ -3215,35 +3215,35 @@ struct ClipQuantFusionTestHelper {
 
     // left, right large gap fit, fuse
     SetTestState(true, l, r, -large_delta, large_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // left small gap fit, right large gap fit, fuse
     SetTestState(true, l, r, -small_delta, large_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // left large gap fit, right small gap fit, fuse
     SetTestState(true, l, r, -large_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // left, right small gap fit, fuse
     SetTestState(true, l, r, -small_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // left large overflow, NO fuse
     SetTestState(false, l, r, large_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // left small overflow, NO fuse
     SetTestState(false, l, r, small_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // right large overflow, NO fuse
     SetTestState(false, l, r, -small_delta, -large_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // right small overflow, NO fuse
     SetTestState(false, l, r, -small_delta, -small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
   }
 };
 
@@ -3328,11 +3328,11 @@ struct ReluQuantFusionTestHelper {
 
     // min_upper>=0, fuse
     SetTestState(true, zp_base);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
 
     // min_upper<0, NO fuse
     SetTestState(false, zp_base + 1);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 21, epsilon, epsilon);
+    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
   }
 };
 
