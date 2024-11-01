@@ -35,7 +35,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--provisioning_profile_uuid",
         type=str,
-        help="The Provisioning Profile UUID, which is the filename of the installed provisioning profile without the .mobileprovision extension. ",
+        help="The Provisioning Profile UUID, which can be found in the .mobileprovision file. ",
         required=True,
     )
 

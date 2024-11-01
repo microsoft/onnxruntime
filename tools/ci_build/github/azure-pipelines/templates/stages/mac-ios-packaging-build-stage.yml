@@ -70,8 +70,6 @@ stages:
       parameters:
         xcodeVersion: $(xcodeVersion)
 
-    - template: ../install-appcenter.yml
-
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
