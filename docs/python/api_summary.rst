@@ -251,10 +251,10 @@ Some onnx data type (like TensorProto.BFLOAT16, TensorProto.FLOAT8E4M3FN and Ten
 (like torch.bfloat16, torch.float8_e4m3fn and torch.float8_e5m2) in GPU memory.
 
 .. code-block:: python
-	x = torch.ones([3], dtype=torch.float8_e5m2, device='cuda:0')
-	y = torch.empty([3], dtype=torch.bfloat16, device='cuda:0')
+    x = torch.ones([3], dtype=torch.float8_e5m2, device='cuda:0')
+    y = torch.empty([3], dtype=torch.bfloat16, device='cuda:0')
 
-	binding = session.io_binding()
+    binding = session.io_binding()
     binding.bind_input(
         name='X',
         device_type='cuda',
@@ -263,7 +263,7 @@ Some onnx data type (like TensorProto.BFLOAT16, TensorProto.FLOAT8E4M3FN and Ten
         shape=tuple(x.shape),
         buffer_ptr=x.data_ptr(),
         )
-	binding.bind_output(
+    binding.bind_output(
         name='Y',
         device_type='cuda',
         device_id=0,
