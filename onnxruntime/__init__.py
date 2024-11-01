@@ -43,10 +43,11 @@ try:
     from onnxruntime.capi._pybind_state import get_device  # noqa: F401
     from onnxruntime.capi._pybind_state import get_version_string  # noqa: F401
     from onnxruntime.capi._pybind_state import has_collective_ops  # noqa: F401
+    from onnxruntime.capi._pybind_state import register_plugin_execution_provider_library  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_severity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_verbosity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_seed  # noqa: F401
-    from onnxruntime.capi._pybind_state import register_plugin_execution_provider_library  # noqa: F401
+    from onnxruntime.capi._pybind_state import unregister_plugin_execution_provider  # noqa: F401
 
     import_capi_exception = None
 except Exception as e:

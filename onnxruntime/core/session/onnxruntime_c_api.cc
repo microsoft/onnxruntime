@@ -2402,6 +2402,10 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterPluginExecutionProviderLibrary, _In_ const 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UnregisterPluginExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name) {
+  return ToOrtStatus(env->DeletePluginEpFactory(ep_name));
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendPluginExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
   OrtExecutionProviderFactory* ep_factory = env->GetPluginExecutionProviderFactory(ep_name);
@@ -2822,6 +2826,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::DeviceGetId,
     &OrtApis::ReleaseDevice,
     &OrtApis::RegisterPluginExecutionProviderLibrary,
+    &OrtApis::UnregisterPluginExecutionProviderLibrary,
     &OrtApis::SessionOptionsAppendPluginExecutionProvider,
 
     &OrtApis::CreateOrtTypeConstraints,

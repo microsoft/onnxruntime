@@ -18,52 +18,58 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
+const OrtGraphApi* BackendManager::graph_api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION)->GetGraphApi(ORT_API_VERSION);
 
-//GlobalContext& BackendManager::GetGlobalContext() {
-//  return global_context_;
-//}
-//
-//BackendManager::BackendManager(const GlobalContext& global_context,
-//                               const onnxruntime::Node& fused_node,
-//                               const onnxruntime::GraphViewer& subgraph,
-//                               const logging::Logger& logger,
-//                               EPCtxHandler& ctx_handle) {
-//  global_context_ = global_context;
-//  ep_ctx_handle_ = ctx_handle;
-//
-//  openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
-//                          std::to_string(global_context_.OpenVINO_Version.at(1));
-//  if (ep_ctx_handle_.CheckForOVEPCtxNode(subgraph, openvino_sdk_version_)) {
-//    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph) != Status::OK())
-//      ORT_THROW("Import blob from model failed");
-//  }
-//
-//  // Save the indexes of graph inputs among fused_node's inputDefs
-//  // (which also contains initializers).
-//  auto node_input_defs = fused_node.InputDefs();
-//  int i = 0;
-//  for (auto idef : node_input_defs) {
-//    subgraph_context_.input_names.insert({idef->Name(), i});
-//    i++;
-//  }
-//
-//  const std::vector<const NodeArg*>& graph_inputs = subgraph.GetInputs();
-//  for (auto input : graph_inputs) {
-//    auto it = subgraph_context_.input_names.find(input->Name());
-//    if (it == subgraph_context_.input_names.end()) {
-//      ORT_THROW("Input not found in the input defs list");
-//    }
-//    int index = it->second;
-//    subgraph_context_.input_indexes.push_back(index);
-//  }
-//
-//  auto graph_outputs_defs = fused_node.OutputDefs();
-//  i = 0;
-//  for (auto output_def : graph_outputs_defs) {
-//    subgraph_context_.output_names.insert({output_def->Name(), i});
-//    i++;
-//  }
-//  subgraph_context_.subgraph_name = fused_node.Name();
+GlobalContext& BackendManager::GetGlobalContext() {
+  return global_context_;
+}
+
+BackendManager::BackendManager(const GlobalContext& global_context,
+                               const OrtNode* fused_node,
+                               const OrtGraphViewer* subgraph,
+                               EPCtxHandler& ctx_handle) {
+  global_context_ = global_context;
+  ep_ctx_handle_ = ctx_handle;
+
+  openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
+                          std::to_string(global_context_.OpenVINO_Version.at(1));
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(subgraph, openvino_sdk_version_)) {
+    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph) != nullptr)
+      throw std::runtime_error("Import blob from model failed");
+  }
+
+  // Save the indexes of graph inputs among fused_node's inputDefs
+  // (which also contains initializers).
+  size_t input_count = 0;
+  graph_api_->OrtNode_GetNumInputs(fused_node, &input_count);
+  for (int i = 0; i < input_count; i++) {
+    const char* input_name = nullptr;
+    graph_api_->OrtNode_GetIthInputName(fused_node, i, &input_name);
+    subgraph_context_.input_names.insert({input_name, i});
+  }
+
+  const char** graph_inputs = nullptr;
+  graph_api_->OrtGraph_GetRequiredInputs(subgraph, &graph_inputs, &input_count);
+  for (int i = 0; i < input_count; i++) {
+    auto it = subgraph_context_.input_names.find(std::string(graph_inputs[i]));
+    if (it == subgraph_context_.input_names.end()) {
+      throw std::runtime_error("Input not found in the input defs list");
+    }
+    int index = it->second;
+    subgraph_context_.input_indexes.push_back(index);
+  }
+  graph_api_->ReleaseCharArray(graph_inputs);
+
+  size_t output_count = 0;
+  graph_api_->OrtNode_GetNumOutputs(fused_node, &output_count);
+  for (int i = 0; i < output_count; i++) {
+    const char* output_name = nullptr;
+    graph_api_->OrtNode_GetIthOutputName(fused_node, i, &output_name);
+    subgraph_context_.output_names.insert({output_name, i});
+  }
+  const char* subgraph_name = nullptr;
+  graph_api_->OrtNode_GetName(fused_node, &subgraph_name);
+  subgraph_context_.subgraph_name = std::string(subgraph_name);
 //  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
 //  std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
 //
@@ -128,22 +134,21 @@ namespace openvino_ep {
 //#endif
 //    }
 //  }
-//}
-//
-//// Call EPContext model exporter here if the provider option for exporting
-//// precompiled blob is set. If that's the case:
-//// By default, create model in embed mode where the blob stream is exported as data within
-//// the EPContext node.
-//Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer,
-//                                                     const logging::Logger& logger) {
-//  if (GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
-//    std::string exception_str =
-//        "Exporting dynamically compiled models at runtime is not supported. "
-//        "Cannot export blobs of dynamic models that request static shape inference. "
-//        "To export this model, set disable_dynamic_shapes to False";
-//    ORT_THROW(exception_str);
-//  }
-//
+}
+
+// Call EPContext model exporter here if the provider option for exporting
+// precompiled blob is set. If that's the case:
+// By default, create model in embed mode where the blob stream is exported as data within
+// the EPContext node.
+OrtStatus* BackendManager::ExportCompiledBlobAsEPCtxNode(const OrtGraphViewer* graph_body_viewer) {
+  if (GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
+    std::string exception_str =
+        "Exporting dynamically compiled models at runtime is not supported. "
+        "Cannot export blobs of dynamic models that request static shape inference. "
+        "To export this model, set disable_dynamic_shapes to False";
+    throw std::runtime_error(exception_str);
+  }
+
 //  std::string model_blob_str;
 //  auto compiled_model = concrete_backend_->GetOVCompiledModel();
 //  auto graph_name = global_context_.onnx_model_path_name;
@@ -174,8 +179,8 @@ namespace openvino_ep {
 //                                                      openvino_sdk_version_,
 //                                                      GetGlobalContext().device_type));
 //
-//  return Status::OK();
-//}
+  return nullptr;
+}
 //
 //bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
 //  bool has_batched_inputs = true;
@@ -468,9 +473,9 @@ std::string MakeMapKeyString(const std::vector<std::vector<int64_t>>& shapes,
 //  }
 //#endif
 //}
-//
-//void BackendManager::ShutdownBackendManager() {
-//}
+
+void BackendManager::ShutdownBackendManager() {
+}
 
 }  // namespace openvino_ep
 }  // namespace onnxruntime

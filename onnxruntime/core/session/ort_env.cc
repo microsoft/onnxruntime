@@ -119,3 +119,7 @@ void OrtEnv::InsertPluginEpFactory(const char* ep_name, OrtExecutionProviderFact
 OrtExecutionProviderFactory* OrtEnv::GetPluginExecutionProviderFactory(const char* ep_name) {
   return value_->GetPluginExecutionProviderFactory(ep_name);
 }
+
+onnxruntime::common::Status OrtEnv::DeletePluginEpFactory(const char* ep_name) {
+  return value_->DeletePluginEpFactory(ep_name);
+}

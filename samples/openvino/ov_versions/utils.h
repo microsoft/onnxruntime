@@ -42,13 +42,13 @@ void IdentifyConnectedNodes(
 std::vector<std::vector<NodeIndex>>
 GetConnectedClusters(const OrtGraphApi* graph_api, const OrtGraphViewer* graph_viewer, const std::vector<std::vector<NodeIndex>>& clusters);
 
-//void GetInputsOutputsOfCluster(const OrtGraphApi* graph_api,
-//                               const GraphViewer& graph_viewer,
-//                               const std::vector<NodeIndex>& cluster,
-//                               const std::unordered_set<std::string>& ng_required_initializers,
-//                               /*out*/ std::vector<std::string>& cluster_graph_inputs,
-//                               /*out*/ std::vector<std::string>& cluster_inputs,
-//                               /*out*/ std::vector<std::string>& cluster_outputs);
+void GetInputsOutputsOfCluster(const OrtGraphApi* graph_api,
+                               const OrtGraphViewer* graph_viewer,
+                               const std::vector<NodeIndex>& cluster,
+                               const std::unordered_set<std::string>& ng_required_initializers,
+                               /*out*/ std::vector<std::string>& cluster_graph_inputs,
+                               /*out*/ std::vector<std::string>& cluster_inputs,
+                               /*out*/ std::vector<std::string>& cluster_outputs);
 
 }  // namespace openvino_ep
 }  // namespace onnxruntime

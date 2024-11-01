@@ -536,6 +536,8 @@ ORT_API(void, ReleaseDevice, _Frees_ptr_opt_ OrtDevice*);
 
 ORT_API_STATUS_IMPL(RegisterPluginExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
 
+ORT_API_STATUS_IMPL(UnregisterPluginExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name);
+
 ORT_API_STATUS_IMPL(SessionOptionsAppendPluginExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 

@@ -347,6 +347,14 @@ int main(int argc, char *argv[]) {
         RunControlFlow(p_env, so);
     }
 
+    if (!strcmp(argv[1], "c")) {
+        g_ort->UnregisterPluginExecutionProviderLibrary(p_env, "outTreeEp");
+    } else if (!strcmp(argv[1], "k")) {
+        g_ort->UnregisterPluginExecutionProviderLibrary(p_env, "kernelEp");
+    } else if (!strcmp(argv[1], "t") || !strcmp(argv[1], "tc")) {
+        g_ort->UnregisterPluginExecutionProviderLibrary(p_env, "tensorrtEp");
+    }
+
     g_ort->ReleaseEnv(p_env);
     return 0;
 }

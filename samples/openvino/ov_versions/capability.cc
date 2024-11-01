@@ -184,12 +184,12 @@ size_t GetCapability::Execute(OrtIndexedSubGraph*** indexed_sub_graph) {
 
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, cluster_outputs;
 
-//      GetInputsOutputsOfCluster(graph_api_, graph_viewer_,
-//                                this_cluster,
-//                                ng_required_initializers,
-//                                cluster_graph_inputs,
-//                                cluster_inputs,
-//                                cluster_outputs);
+      GetInputsOutputsOfCluster(graph_api_, graph_viewer_,
+                                this_cluster,
+                                ng_required_initializers,
+                                cluster_graph_inputs,
+                                cluster_inputs,
+                                cluster_outputs);
 
       bool omit_subgraph = false;
       // Omitting zero dim subgraphs

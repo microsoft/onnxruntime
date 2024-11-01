@@ -1330,11 +1330,6 @@ static void LogDeprecationWarning(
 }
 #endif
 
-// TODO(leca): when will this variable be unset? It is saved in Environment thus should be cross-session, which means
-// once the session ends, the plugin ep should still be left in the Environment
-// Should implement Environment::RemovePluginEp() which will be invoked in ~EnvInitializer(), and also clear plugin_execution_providers there
-static std::unordered_set<std::string> plugin_execution_providers;
-
 void addGlobalMethods(py::module& m) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
@@ -1491,10 +1486,15 @@ void addGlobalMethods(py::module& m) {
       OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, "RegisterCustomEp", (void**)&symbol));
       auto env = GetEnv();
       env->InsertPluginEpFactory(provider_type, symbol());
-      plugin_execution_providers.insert(std::string(provider_type));
     }
   });
-  m.def("get_available_plugin_providers", []() -> std::unordered_set<std::string> { return plugin_execution_providers; });
+  m.def("get_available_plugin_providers", []() -> std::unordered_set<std::string> { return GetEnv()->GetPluginEpFactoryNames(); });
+  m.def("unregister_plugin_execution_provider", [](const char* provider_type) {
+    Status status = GetEnv()->DeletePluginEpFactory(provider_type);
+    if (!status.IsOK()) {
+      throw std::runtime_error(status.ErrorMessage());
+    }
+  });
 }
 
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {

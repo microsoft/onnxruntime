@@ -4728,6 +4728,17 @@ struct OrtApi {
    */
   ORT_API2_STATUS(RegisterPluginExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
 
+  /** \brief Unregister the plugin ExecutionProvider library
+   *
+   * The plugin ExecutionProvider factory will be removed from OrtEnv object
+   *
+   * \param[in] env OrtEnv object
+   * \param[in] ep_name the plugin ExecutionProvider name
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(UnregisterPluginExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name);
+
   /** \brief Append the plugin ExecutionProvider factory into the session option with provider options
    *
    * \param[in] options OrtSessionOptions object

@@ -25,6 +25,9 @@ std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<ExecutionProviderAdapter>(ep_factory_->CreateExecutionProvider(ep_factory_, keys_.data(), values_.data(), provider_option_length_));
 }
 OrtExecutionProviderFactory* ep_factory_;
+// Have to keep both provider_option_keys_ and keys_ to make provider options local, otherwise when CreateProvider()
+// is invoked, keys_ will point to the memory which is already released
+// Or TODO(leca): use std::vector<std::unique_ptr<const char*>> keys_ and copy over the provider options in the constructor
 std::vector<std::string> provider_option_keys_, provider_option_values_;
 std::vector<const char*> keys_, values_;
 size_t provider_option_length_;

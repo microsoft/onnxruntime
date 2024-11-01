@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <cassert>
 
 #include "onnx_ctx_model_helper.h"
 #include "openvino_utils.h"
@@ -96,19 +97,23 @@ static const char SOURCE[] = "source";
 //
 //  return Status::OK();
 //}
-//
-//Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer) {
-//  auto node = graph_viewer.GetNode(0);
-//  auto& attrs = node->GetAttributes();
-//  ORT_ENFORCE(attrs.count(EP_CACHE_CONTEXT) > 0);
-//
-//  model_stream_ = std::make_shared<std::istringstream>(attrs.at(EP_CACHE_CONTEXT).s());
-//
+
+OrtStatus* EPCtxHandler::ImportBlobFromEPCtxModel(const OrtGraphViewer* graph_viewer) {
+  const OrtNode* node = nullptr;
+  graph_api_->OrtGraph_GetOrtNode(graph_viewer, 0, &node);
+  size_t attr_count = 0;
+  graph_api_->OrtNode_GetAttributeKeyCount(node, EP_CACHE_CONTEXT, &attr_count);
+  assert(attr_count > 0);
+
+  const char* attr_str = nullptr;
+  graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT, &attr_str);
+  model_stream_ = std::make_shared<std::istringstream>(attr_str);
+
 //  LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
-//
-//  is_valid_ep_ctx_graph_ = true;
-//  return Status::OK();
-//}
+
+  is_valid_ep_ctx_graph_ = true;
+  return nullptr;
+}
 
 bool EPCtxHandler::CheckForOVEPCtxNode(const OrtGraphViewer* graph_viewer, std::string openvino_sdk_version) const {
   int max_node_index = 0;

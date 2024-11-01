@@ -61,6 +61,56 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
     };
 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo* node_compute_info) -> OrtStatusPtr {
+        OpenVINOExecutionProvider* p = static_cast<OpenVINOExecutionProvider*>(this_);
+        for (int i = 0; i < cnt; i++) {
+            p->global_context_->use_api_2 = true;
+
+            // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+            // For precompiled blob, directly load the model instead of compiling the model
+            // For original model, check if the user wants to export a model with pre-compiled blob
+
+            std::shared_ptr<openvino_ep::BackendManager> backend_manager =
+                std::make_shared<openvino_ep::BackendManager>(*p->global_context_,
+                                                            node[i],
+                                                            graph[i],
+                                                            p->ep_ctx_handle_);
+
+            if (p->global_context_->export_ep_ctx_blob && !p->ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+                backend_manager->ExportCompiledBlobAsEPCtxNode(graph[i]);
+            }
+
+            node_compute_info[i].CreateFunctionStateFunc = nullptr;
+            node_compute_info[i].ComputeFunc = nullptr;
+            node_compute_info[i].DestroyFunctionStateFunc = nullptr;
+//            compute_info.create_state_func =
+//                [backend_manager](ComputeContext* context, FunctionState* state) {
+//                OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
+//                p->allocate_func = context->allocate_func;
+//                p->destroy_func = context->release_func;
+//                p->allocator_handle = context->allocator_handle;
+//                p->backend_manager = backend_manager;
+//                *state = static_cast<FunctionState>(p);
+//                return 0;
+//                };
+//            compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+//            auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
+//            try {
+//                function_state->backend_manager->Compute(context);
+//            } catch (const std::exception& ex) {
+//                return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+//            }
+//            return Status::OK();
+//            };
+//
+//            compute_info.release_state_func =
+//                [](FunctionState state) {
+//                if (state) {
+//                    OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
+//                    delete function_state;
+//                }
+//                };
+//            node_compute_funcs.push_back(compute_info);
+        }
         return nullptr;
     };
 
