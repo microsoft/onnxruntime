@@ -29,6 +29,14 @@ pr:
 #### end trigger ####
 
 parameters:
+parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
@@ -43,7 +51,10 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos  --use_winml
+        additionalBuildFlags: >-
+          --enable_pybind --use_dml --enable_wcos  --use_winml --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
+          --enable_cuda_profiling --enable_transformers_tool_test
+          --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
