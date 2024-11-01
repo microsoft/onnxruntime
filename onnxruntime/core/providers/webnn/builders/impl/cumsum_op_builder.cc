@@ -26,7 +26,7 @@ class CumSumOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const logging::Logger& logger) const override;
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -52,7 +52,7 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("label", node.Name());
 
   emscripten::val output = emscripten::val::object();
-  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, narrow<uint32_t>(axis), options);
+  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, gsl::narrow<uint32_t>(axis), options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
@@ -60,6 +60,7 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                         const Node& node,
+                                        WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
