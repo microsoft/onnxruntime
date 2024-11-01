@@ -34,6 +34,7 @@ enum QNBitGemmVariant {
     SQNBitGemmVariant_BitWidth4_CompFp32 = 0,
     SQNBitGemmVariant_BitWidth4_CompInt8,
     HQNBitGemmVariant_BitWidth4_CompFp16,
+    HQNBitGemmVariant_BitWidth4_CompInt8,
 
     // End of valid variants
 
@@ -759,6 +760,8 @@ InitializeWorkspaceFn<MLAS_FP16>
 GetInitializeWorkspace(QNBitGemmVariant variant)
 {
     switch (variant) {
+        case HQNBitGemmVariant_BitWidth4_CompInt8:
+            return InitializeWorkspace_CompInt8<MLAS_FP16>;
         default:
             return nullptr;
     }
