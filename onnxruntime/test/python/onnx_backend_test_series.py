@@ -168,7 +168,6 @@ def create_backend_test(devices: list[str], test_name=None):
             # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
             os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
-
         filters = (
             current_failing_tests
             + apply_filters(filters, "tests_with_pre_opset7_dependencies")
@@ -179,7 +178,6 @@ def create_backend_test(devices: list[str], test_name=None):
 
         backend_test.exclude("(" + "|".join(filters) + ")")
         print("excluded tests:", filters)
-
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
