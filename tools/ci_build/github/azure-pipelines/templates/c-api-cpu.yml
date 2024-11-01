@@ -98,11 +98,13 @@ stages:
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
       packageName: 'onnxruntime-android-qnn'
+      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
 - stage: iOS_Full_xcframework
   dependsOn: []

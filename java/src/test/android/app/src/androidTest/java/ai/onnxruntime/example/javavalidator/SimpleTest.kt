@@ -95,8 +95,11 @@ class SimpleTest {
                 OrtProvider.CPU -> {
                     // No additional configuration is needed for CPU
                 }
-            }
 
+                else -> {
+                    //  Non exhaustive when statements on enum will be prohibited in future Gradle versions
+                }
+            }
 
             opts.use {
                 val session = env.createSession(readModel("sigmoid.ort"), opts)

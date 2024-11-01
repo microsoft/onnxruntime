@@ -19,20 +19,21 @@ steps:
   - script: |
       set -x
       sdk_file="$(QnnSDKRootDir)/sdk.yaml"
-      qnn_sdk_version=$(grep '^version:' "$sdk_file" | head -n 1 | cut -d':' -f2 | xargs | cut -d'.' -f1-3)
-      if [[ -n "$qnn_sdk_version" ]]; then
-        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-        set +x
-        echo "##vso[task.setvariable variable=QnnSDKExtractedVersion ;isOutput=true]$qnn_sdk_version"
-      else
-        echo "Version not found in sdk.yaml."
+      parsed_qnn_sdk_version=$(grep '^version:' "$sdk_file" | head -n 1 | cut -d':' -f2 | xargs | cut -d'.' -f1-3)
+
+      if [[ -z "$parsed_qnn_sdk_version" ]]; then
+        echo "QNN version not found in sdk.yaml."
         exit 1
       fi
-    displayName: Get_QnnSDKExtractedVersion based on sdk.yaml
-    name: Get_QnnSDKExtractedVersion
-  - bash: |
-      echo "QnnSDKExtractedVersion =$(Get_QnnSDKExtractedVersion.QnnSDKExtractedVersion )"
-    displayName: 'Print QnnSDKExtractedVersion  after extracting from sdk.yaml'
+
+      # Compare provided version with version from sdk.yaml (compare only major.minor.patch)
+      if [[ "$sdk_yaml_version" == "${QnnSDKVersion%%.*.*.*}" ]]; then
+        echo "Success: QnnSDKVersion matches sdk.yaml version ($parsed_qnn_sdk_version)."
+      else
+        echo "Error: QnnSDKVersion ($QnnSDKVersion) does not match sdk.yaml version ($parsed_qnn_sdk_version) in the QNN SDK directory"
+        exit 1
+      fi
+    displayName: "Sanity Check: QnnSDKVersion vs sdk.yaml version"
 
   - script: |
       azcopy cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)

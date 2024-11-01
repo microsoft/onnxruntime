@@ -98,24 +98,23 @@ def _build_aar(args):
     if qnn_android_build:
         qnn_home = args.qnn_path
         sdk_file = os.path.join(qnn_home, "sdk.yaml")
-        qnn_sdk_version = args.qnn_sdk_version
-        if not qnn_sdk_version:
-            with open(sdk_file) as f:
-                for line in f:
-                    if line.strip().startswith("version:"):
-                        # yaml file has simple key: value format with version as key
-                        qnn_sdk_version = line.split(":", 1)[1].strip()
-                        break
+        qnn_sdk_version = None
+        with open(sdk_file) as f:
+            for line in f:
+                if line.strip().startswith("version:"):
+                    # yaml file has simple key: value format with version as key
+                    qnn_sdk_version = line.split(":", 1)[1].strip()
+                    break
 
-            # Note: The QNN package version does not follow Semantic Versioning (SemVer) format.
-            # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any
-            # yaml file typically has version like 2.26.0
-            if qnn_sdk_version:
-                qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
-            else:
-                raise ValueError("Error: QNN SDK version not found in sdk.yaml file.")
+        # Note: The QNN package version does not follow Semantic Versioning (SemVer) format.
+        # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any
+        # yaml file typically has version like 2.26.0
+        if qnn_sdk_version:
+            qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
+            base_build_command += ["--qnn_home=" + qnn_home]
+        else:
+            raise ValueError("Error: QNN SDK version not found in sdk.yaml file.")
 
-        base_build_command += ["--qnn_home=" + qnn_home]
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
         abi_build_dir = os.path.join(intermediates_dir, abi)
@@ -236,11 +235,6 @@ def parse_args():
         "build_settings_file", type=pathlib.Path, help="Provide the file contains settings for building AAR"
     )
 
-    parser.add_argument(
-        "--qnn_sdk_version",
-        default=os.getenv("QNN_VERSION", ""),
-        help="QNN version to use for the build. If not provided, the version will be read from the QNN SDK yaml file.",
-    )
     return parser.parse_args()
 
 

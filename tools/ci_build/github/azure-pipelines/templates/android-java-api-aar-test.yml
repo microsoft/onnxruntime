@@ -19,6 +19,11 @@ parameters:
   type: string
   default: ''
 
+- name: QnnSDKVersion
+  displayName: QNN SDK Version
+  type: string
+  default: '2.27.0.240926'
+
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
   workspace:
@@ -28,8 +33,6 @@ jobs:
   variables:
   - name: runCodesignValidationInjection
     value: false
-  - name: QnnSDKExtractedVersion
-    value: $[ dependencies.Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}.outputs['Get_QnnSDKExtractedVersion.QnnSDKExtractedVersion '] ]
   timeoutInMinutes: 90
   dependsOn:
     - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
@@ -57,7 +60,7 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/onnxruntime-android.aar
+        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
@@ -81,9 +84,17 @@ jobs:
 
   - ${{ else }}:
     - script: |
+        # QNN SDK version string, expected format: 2.27.0.240926
+        # Extract the first three parts of the version string to get the Maven package version (e.g., 2.27.0)
+        QnnMavenPackageVersion=$(echo v${{ parameters.QnnSDKVersion }}' | cut -d '.' -f 1-3)
+        echo "QnnMavenPackageVersion: $QnnMavenPackageVersion"
+        echo "##vso[task.setvariable variable=QnnMavenPackageVersion]$QnnMavenPackageVersion"
+      displayName: Trim QNN SDK version to major.minor.patch
+
+    - script: |
           set -e -x
           # build apks for qnn package as they are not built in the emulator test step
-          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnSDKExtractedVersion ) --stacktrace
+          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnMavenPackageVersion) --stacktrace
       displayName: Build QNN APK
       workingDirectory: $(Build.BinariesDirectory)/android_test/android
 
@@ -91,7 +102,6 @@ jobs:
   - script: |
       set -e -x
       pip install requests
-      cd android_test/android/app/build/outputs/apk
 
       python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
         --test_platform espresso \
@@ -101,7 +111,7 @@ jobs:
         --build_tag "${{ parameters.packageName }}"
 
     displayName: Run E2E tests using Browserstack
-    workingDirectory: $(Build.BinariesDirectory)
+    workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
     timeoutInMinutes: 15
     env:
       BROWSERSTACK_ID: $(browserstack_username)
