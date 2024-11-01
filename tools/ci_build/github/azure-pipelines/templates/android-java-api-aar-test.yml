@@ -86,7 +86,7 @@ jobs:
     - script: |
         # QNN SDK version string, expected format: 2.27.0.240926
         # Extract the first three parts of the version string to get the Maven package version (e.g., 2.27.0)
-        QnnMavenPackageVersion=$(echo v${{ parameters.QnnSDKVersion }}' | cut -d '.' -f 1-3)
+        QnnMavenPackageVersion=$(echo ${{ parameters.QnnSDKVersion }} | cut -d'.' -f1-3)
         echo "QnnMavenPackageVersion: $QnnMavenPackageVersion"
         echo "##vso[task.setvariable variable=QnnMavenPackageVersion]$QnnMavenPackageVersion"
       displayName: Trim QNN SDK version to major.minor.patch
