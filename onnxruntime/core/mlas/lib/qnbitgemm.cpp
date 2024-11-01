@@ -31,7 +31,7 @@ enum QNBitGemmVariant {
 
     // Valid variants
 
-    SQNBitGemmVariant_BitWidth4_CompFp32 = 0,
+    SQNBitGemmVariant_BitWidth4_CompFp32,
     SQNBitGemmVariant_BitWidth4_CompInt8,
     HQNBitGemmVariant_BitWidth4_CompFp16,
     HQNBitGemmVariant_BitWidth4_CompInt8,
@@ -258,9 +258,6 @@ MlasQNBitGemmPackQuantBData(
                 ThreadPool
             );
         } else if (Dispatch->Q4BitGemmPackQuantBData != nullptr) {
-            // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
-            // assert(QuantBScale == nullptr);
-            // assert(QuantBZeroPoint == nullptr);
             Dispatch->Q4BitGemmPackQuantBData(
                 N,
                 K,
@@ -495,6 +492,7 @@ HQ4BitGemm_CompFp16(
     }
 }
 
+// float32 input A has been converted to int8. Calculate q4bit gemm in int8.
 void SQ4BitGemm_CompInt8(
     const size_t BlkLen,
     const size_t K,

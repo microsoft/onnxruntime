@@ -49,7 +49,7 @@ class MlasNeonFp16CastTest : public MlasTestBase {
   template <size_t count>
   void TestFp32ToFp16() {
     const auto* src = fp32Buffer_.GetFilledBuffer(count, [](float* p, size_t size) {
-      for (size_t i = 0; i < count; i++) {
+      for (size_t i = 0; i < size; i++) {
         p[i] = static_cast<float>(i) + 0.125f;
       }
     });
@@ -85,12 +85,6 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
   std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
   std::uniform_int_distribution<> _distrib;
   MatrixGuardBuffer<uint8_t> input_, ref_, packed_;
-
-  void InitializeBuffer(uint8_t* buffer, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-      buffer[i] = static_cast<uint8_t>(_distrib(_gen));
-    }
-  }
 
   template <size_t Ldb>
   MLAS_FORCEINLINE void Transpose8x8(const uint8_t* src, size_t n, size_t k, uint8_t* dst) {
@@ -158,6 +152,11 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     constexpr size_t Bits = 4;
     constexpr size_t Ldb = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t BufferSize = N * Ldb;
+    auto InitializeBuffer = [this](uint8_t* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = static_cast<uint8_t>(_distrib(_gen));
+      }
+    };
 
     const auto* input = input_.GetFilledBuffer(BufferSize, InitializeBuffer);
     auto* packed = packed_.GetBuffer(BufferSize, true);
@@ -201,20 +200,6 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
   std::uniform_real_distribution<float> _distribFp;
   MatrixGuardBuffer<uint8_t> input_, zero_points_;
   MatrixGuardBuffer<MLAS_FP16> dequant_, ref_, scales_;
-
-  MLAS_FORCEINLINE
-  void InitializeBuffer(uint8_t* buffer, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-      buffer[i] = static_cast<uint8_t>(_distrib(_gen));
-    }
-  }
-
-  MLAS_FORCEINLINE
-  void InitializeBuffer(MLAS_FP16* buffer, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-      buffer[i] = MLAS_FP16(_distribFp(_gen));
-    }
-  }
 
   MLAS_FORCEINLINE
   uint8_t GetInt4(uint8_t v, size_t i) {
@@ -300,14 +285,26 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
     constexpr size_t ScaleCount = N * BlkNum;
     constexpr size_t ZpSize = N * ((BlkNum + 1) / 2);
 
-    const auto* input = input_.GetFilledBuffer(BCount / 2, InitializeBuffer);
-    const auto* zero_points = zero_points_.GetFilledBuffer(ZpSize, InitializeBuffer);
+    auto InitializeBuffer_i8 = [this](uint8_t* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = static_cast<uint8_t>(_distrib(_gen));
+      }
+    };
+
+    auto InitializeBuffer_fp16 = [this](MLAS_FP16* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = MLAS_FP16(_distribFp(_gen));
+      }
+    };
+
+    const auto* input = input_.GetFilledBuffer(BCount / 2, InitializeBuffer_i8);
+    const auto* zero_points = zero_points_.GetFilledBuffer(ZpSize, InitializeBuffer_i8);
     auto* dequant = dequant_.GetBuffer(BCount);
     auto* ref = ref_.GetBuffer(BCount);
-    const auto* scales = scales_.GetFilledBuffer(ScaleCount, InitializeBuffer);
+    const auto* scales = scales_.GetFilledBuffer(ScaleCount, InitializeBuffer_fp16);
     GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForSgemm_CompFp16(
-        BlkLen, dequant, reinterpret_cast<std::byte*>(input), scales,
-        UseZeroPoints ? reinterpret_cast<std::byte*>(zero_points) : nullptr,
+        BlkLen, dequant, reinterpret_cast<const std::byte*>(input), scales,
+        UseZeroPoints ? reinterpret_cast<const std::byte*>(zero_points) : nullptr,
         N, K, BlkNum);
     DequantB<N, K, BlkLen, UseZeroPoints>(input, ref, scales, zero_points);
     Check<BlkLen * BlkNum, N, K>(dequant, ref);
@@ -413,15 +410,15 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
     constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkNum * BlkLen;
 
-    const auto* A = A_.GetFilledBuffer(M * K, [](MLAS_FP16* p, size_t t) {
+    const auto* A = A_.GetFilledBuffer(M * K, [this](MLAS_FP16* p, size_t t) {
       InitializeBuffer(p, -0.25f, 0.25f, t);
     });
-    const auto* B = B_.GetFilledBuffer(ldb * N, [](MLAS_FP16* p, size_t t) {
+    const auto* B = B_.GetFilledBuffer(ldb * N, [this](MLAS_FP16* p, size_t t) {
       InitializeBuffer(p, -0.25f, 0.25f, t);
     });
     auto* C = C_.GetBuffer(M * N, true);
     auto* ref = ref_.GetBuffer(M * N, true);
-    auto* bias = bias_.GetFilledBuffer(N, [](MLAS_FP16* p, size_t t) {
+    auto* bias = bias_.GetFilledBuffer(N, [this](MLAS_FP16* p, size_t t) {
       InitializeBuffer(p, -5.0f, 5.0f, t);
     });
 
