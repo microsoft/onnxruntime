@@ -75,7 +75,7 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
                                           {"elements_per_thread", ProgramUniformVariableDataType::Uint32});
 
  private:
