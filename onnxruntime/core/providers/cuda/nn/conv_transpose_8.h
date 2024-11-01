@@ -87,7 +87,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
   }
 
   {
-    std::lock_guard<OrtMutex> lock(s_.mutex);
+    std::lock_guard<std::mutex> lock(s_.mutex);
     // CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetStream(CudnnHandle(), Stream(context)));
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with
     //  different batch_size

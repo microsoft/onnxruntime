@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 20
+#define ORT_API_VERSION 21
 
 #ifdef __cplusplus
 extern "C" {
@@ -645,7 +645,7 @@ typedef struct OrtOpenVINOProviderOptions {
    * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"
    */
   const char* device_type;
-  unsigned char enable_npu_fast_compile;  ///< 0 = disabled, nonzero = enabled
+  unsigned char enable_npu_fast_compile;
   const char* device_id;
   size_t num_of_threads;  ///< 0 = Use default number of threads
   const char* cache_dir;  // path is set to empty by default
@@ -3651,13 +3651,17 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Used for float32 model for HTP backend.
-       Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": With fp32 precision.
-         - "1": Default. With fp16 precision.
-       "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
-         - "0": Default. Disabled.
-         - "1": Enabled.
+   *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
+   *   Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
+   *     - "0": With fp32 precision.
+   *     - "1": Default. With fp16 precision.
+   *   "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
+   *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
+   *   execution provider (typically CPU EP).
+   *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *     - "1": Enabled.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -3783,7 +3787,7 @@ struct OrtApi {
 
   /** \brief Release an OrtCANNProviderOptions
    *
-   * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+   * \param[in] input The pointer of OrtCANNProviderOptions which will been deleted
    *
    * \since Version 1.13.
    */
@@ -4685,6 +4689,8 @@ struct OrtApi {
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4701,6 +4707,8 @@ struct OrtApi {
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4720,8 +4728,29 @@ struct OrtApi {
    *
    * \param[in] options OrtRunOptions instance
    * \param[in] adapter OrtLoraAdapter instance
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
+
+  /// @}
+  /// \name OrtEpDynamicOptions
+  /// @{
+
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
+   *
+   * \param[in] sess OrtSession
+   * \param[in] keys Array of null terminated UTF8 encoded strings of EP dynamic option keys
+   * \param[in] values Array of null terminated UTF8 encoded string of EP dynamic option values
+   * \param[in] kv_len Number of elements in the keys and values arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                  _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 };
 
 /*

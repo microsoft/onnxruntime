@@ -98,6 +98,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherOpBuilder("Gather", op_registrations);
   }
 
+  {  // GatherElements
+    CreateGatherElementsOpBuilder("GatherElements", op_registrations);
+  }
+
+  {  // GatherND
+    CreateGatherNDOpBuilder("GatherND", op_registrations);
+  }
+
   {  // Flatten
     CreateFlattenOpBuilder("Flatten", op_registrations);
   }
@@ -113,12 +121,15 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Logical
+    CreateLogicalOpBuilder("And", op_registrations);
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
     CreateLogicalOpBuilder("LessOrEqual", op_registrations);
     CreateLogicalOpBuilder("Not", op_registrations);
+    CreateLogicalOpBuilder("Or", op_registrations);
+    CreateLogicalOpBuilder("Xor", op_registrations);
   }
 
   {  // LSTM
@@ -168,6 +179,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // ScatterElements
+    CreateScatterElementsOpBuilder("ScatterElements", op_registrations);
+  }
+
+  {  // ScatterND
+    CreateScatterNDOpBuilder("ScatterND", op_registrations);
   }
 
   {  // Shape

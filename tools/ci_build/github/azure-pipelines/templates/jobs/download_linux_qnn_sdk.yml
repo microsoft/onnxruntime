@@ -1,7 +1,7 @@
 parameters:
   - name: QnnSDKVersion
     type: string
-    default: '2.26.0.240828'
+    default: '2.27.0.240926'
 
 steps:
   - script: |

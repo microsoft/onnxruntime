@@ -338,6 +338,9 @@ export const maybeTransposeToBNSHAndAddBias = (
     if (input.dims.length === 3) {
       reshapedInput = input.reshape([batchSize, sequenceLength, numHeads, headSize]);
     }
+    if (numHeads === 1 || sequenceLength === 1) {
+      return reshapedInput;
+    }
     return context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
       inputs: [reshapedInput],
       outputs: [-1],
@@ -356,6 +359,9 @@ export const maybeTransposeToBNSHAndAddBias = (
         biasOffset!,
       );
       reshapedInput = reshapedInput.reshape([batchSize, sequenceLength, numHeads, headSize]);
+      if (numHeads === 1 || sequenceLength === 1) {
+        return reshapedInput;
+      }
       return context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
         inputs: [reshapedInput],
         outputs: [-1],
@@ -397,19 +403,7 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
   );
 
   if (kvBNSH) {
-    return applyAttention(
-      context,
-      Q,
-      key,
-      value,
-      keyPaddingMask,
-      undefined,
-      pastKey,
-      pastValue,
-      attentionBias,
-      params,
-      attributes,
-    );
+    return applyAttention(context, Q, key, value, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params);
   }
   if (!key || !value) {
     throw new Error('key and value must be provided');
@@ -436,5 +430,5 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
     2 * params.hiddenSize,
   );
 
-  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params, attributes);
+  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params);
 };

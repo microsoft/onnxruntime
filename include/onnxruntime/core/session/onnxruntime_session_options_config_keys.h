@@ -246,6 +246,12 @@ static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disab
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
     "session.optimized_model_external_initializers_file_name";
 
+// Use this config when save prepacked constant initializers to onnx external data file.
+// Default is not save prepacked initializers to onnx data file.
+// Sample usage: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  "1")
+static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
+    "session.save_prepacked_constant_initializers";
+
 // Use this config to control the minimum size of the initializer when externalizing it during serialization
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
@@ -283,7 +289,9 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
 
+// THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
+// Meant to be used with SetEpDynamicOptions
 // Specify the type of workload for this session.
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
-static const char* const kOrtSessionOptionsWorkloadType = "session.workload_type";
+static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
