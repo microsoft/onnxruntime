@@ -70,6 +70,8 @@ struct OrtEnv {
 
   OrtExecutionProviderFactory* GetPluginExecutionProviderFactory(const char* ep_name);
 
+  onnxruntime::common::Status DeletePluginEpFactory(const char* ep_name);
+
  private:
   static std::unique_ptr<OrtEnv> p_instance_;
   static onnxruntime::OrtMutex m_;

@@ -134,6 +134,15 @@ ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out);
  */
 ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
 
+/** \brief Check if the graph is a subgraph
+ * TODO(leca): maybe deprecate OrtGraph_IsSubgraph?
+ *
+ * \param[in] graph The graph to query
+ * \param[out] out True if the graph is a subgraph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out);
+
 /** \brief Get the parent node of the graph
  *
  * \param[in] graph The graph to query
@@ -191,6 +200,7 @@ ORT_API2_STATUS(OrtGraph_GetAllInputs, const OrtGraphViewer* graph, _Outptr_ con
  */
 ORT_API2_STATUS(OrtGraph_GetAllInitializers, const OrtGraphViewer* graph, _Outptr_ const char*** initializer_names, _Out_ size_t* initializer_len);
 
+// TODO(leca): maybe OrtGraph_ReleaseCharArray?
 /** \brief Release the char array
  *
  *  NOTE!!: Invoke this function after the use of OrtGraph_GetRequiredInputs, OrtGraph_GetAllInputs, OrtGraph_GetAllInitializers.
@@ -277,10 +287,9 @@ ORT_API2_STATUS(OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i, 
  * \param[in] graph The graph to query
  * \param[in] initializer_name The name of the initializer tensor
  * \param[out] out The initializer tensor
- * \param[out] ret True if the initializer tensor is found
  *
  */
-ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**, _Out_ bool* ret);
+ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef**);
 
 /** \brief Release the initializer tensor.
  *
@@ -291,6 +300,9 @@ ORT_API2_STATUS(OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, cons
  */
 ORT_API2_STATUS(OrtGraph_ReleaseInitializerTensor, OrtTensorRef* tensor);
 
+// TODO(leca): Do we need to define and expose OrtValueInfoRef?
+// We can also encapsulate it, provide input/output index or name, return the properties of OrtValueInfoRef(shape, data_type)
+// Just like OrtGraph_GetIthOutputElemType
 /** \brief Gets the value info of the node arg with the given name.
  *
  * NOTE!!: The caller is responsible for releasing the value info using OrtGraph_ReleaseValueInfo.
@@ -298,10 +310,9 @@ ORT_API2_STATUS(OrtGraph_ReleaseInitializerTensor, OrtTensorRef* tensor);
  * \param[in] graph The graph to query
  * \param[in] name The name of the node arg
  * \param[out] out The value info
- * \param[out] ret True if the value info is found
  *
  */
-ORT_API2_STATUS(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret);
+ORT_API2_STATUS(OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out);
 
 /** \brief Release the value info.
  *

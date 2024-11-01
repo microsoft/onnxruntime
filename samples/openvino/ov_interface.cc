@@ -1,12 +1,8 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/openvino/ov_interface.h"
-
-#define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/openvino/backend_utils.h"
+#include "ov_interface.h"
+#include "backend_utils.h"
 
 using Exception = ov::Exception;
 
@@ -62,13 +58,13 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
       inputModel = FE->load(params);
       return FE->convert(inputModel);
     } else {
-      ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+      throw std::runtime_error(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
       //return NULL;
     }
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
+    throw std::runtime_error(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
   } catch (...) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+    throw std::runtime_error(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
   }
 }
 
@@ -85,9 +81,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
 
@@ -114,9 +110,9 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
 
@@ -132,9 +128,9 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
 
@@ -154,9 +150,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
 #endif
     return OVExeNetwork(obj);
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
@@ -169,9 +165,9 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    throw std::runtime_error(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
 #endif
@@ -191,9 +187,9 @@ OVInferRequest OVExeNetwork::CreateInferRequest() {
     OVInferRequest inf_obj(std::move(infReq));
     return inf_obj;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
+    throw std::runtime_error(log_tag + "Exception while creating InferRequest object: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + "Exception while creating InferRequest object.");
+    throw std::runtime_error(log_tag + "Exception while creating InferRequest object.");
   }
 }
 
@@ -203,9 +199,9 @@ OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
     OVTensorPtr blob = std::make_shared<OVTensor>(tobj);
     return blob;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
+    throw std::runtime_error(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
+    throw std::runtime_error(log_tag + " Cannot access IE Blob for input: " + input_name);
   }
 }
 
@@ -213,9 +209,9 @@ void OVInferRequest::SetTensor(std::string name, OVTensorPtr& blob) {
   try {
     ovInfReq.set_tensor(name, *(blob.get()));
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name + e.what());
+    throw std::runtime_error(log_tag + " Cannot set Remote Blob for output: " + name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name);
+    throw std::runtime_error(log_tag + " Cannot set Remote Blob for output: " + name);
   }
 }
 
@@ -223,9 +219,9 @@ void OVInferRequest::StartAsync() {
   try {
     ovInfReq.start_async();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
+    throw std::runtime_error(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " In Error Couldn't start Inference");
+    throw std::runtime_error(log_tag + " In Error Couldn't start Inference");
   }
 }
 
@@ -233,9 +229,9 @@ void OVInferRequest::Infer() {
   try {
     ovInfReq.infer();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
+    throw std::runtime_error(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " In Error Couldn't start Inference");
+    throw std::runtime_error(log_tag + " In Error Couldn't start Inference");
   }
 }
 
@@ -243,9 +239,9 @@ void OVInferRequest::WaitRequest() {
   try {
     ovInfReq.wait();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Wait Model Failed: " + e.what());
+    throw std::runtime_error(log_tag + " Wait Model Failed: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Wait Mode Failed");
+    throw std::runtime_error(log_tag + " Wait Mode Failed");
   }
 }
 

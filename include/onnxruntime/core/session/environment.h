@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <memory>
+#include <unordered_set>
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/platform/threadpool.h"
@@ -89,9 +90,14 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
+  // TODO(leca): return Status to handle corner cases (plugin EP Factory already exists, etc.)
   void InsertPluginEpFactory(const char* ep_name, OrtExecutionProviderFactory* ep_factory);
 
   OrtExecutionProviderFactory* GetPluginExecutionProviderFactory(const std::string& ep_name);
+
+  Status DeletePluginEpFactory(const char* ep_name);
+
+  std::unordered_set<std::string> GetPluginEpFactoryNames();
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);

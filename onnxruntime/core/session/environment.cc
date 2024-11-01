@@ -359,4 +359,18 @@ OrtExecutionProviderFactory* Environment::GetPluginExecutionProviderFactory(cons
   return it->second.get();
 }
 
+Status Environment::DeletePluginEpFactory(const char* ep_name) {
+  size_t ret = plugin_ep_factories_.erase(ep_name);
+  if (ret) return Status::OK();
+  return Status(ONNXRUNTIME, INVALID_ARGUMENT, "cannot delete the plugin EpFactory: " + std::string(ep_name));
+}
+
+std::unordered_set<std::string> Environment::GetPluginEpFactoryNames() {
+  std::unordered_set<std::string> ret;
+  for (const auto& [k, v] : plugin_ep_factories_) {
+    ret.insert(k);
+  }
+  return ret;
+}
+
 }  // namespace onnxruntime

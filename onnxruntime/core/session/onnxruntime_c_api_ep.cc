@@ -43,6 +43,12 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetParentGraph, const OrtGraph* graph
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *out = graph_viewer->IsSubgraph();
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   *parent_node = reinterpret_cast<const OrtNode*>(graph_viewer->ParentNode());
@@ -149,18 +155,17 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetIthOutputElemType, const OrtGraphV
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef** out, _Out_ bool* ret) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphViewer* graph, const char* initializer_name, _Outptr_ OrtTensorRef** out) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const onnx::TensorProto* initializer = nullptr;
   if (!graph_viewer->GetInitializedTensor(initializer_name, initializer)) {
-    *ret = false;
-    return nullptr;
+    return nullptr; // TODO(leca): not return nullptr for this case?
   }
   *out = new OrtTensorRef();  // TODO(leca): other datatypes in the following switch
   (*out)->shape_len = initializer->dims_size();
   (*out)->shape = new int64_t [initializer->dims_size()];
   for (size_t i = 0; i < (*out)->shape_len; i++) {
-    ((*out)->shape)[i] = initializer->dims(i);
+    ((*out)->shape)[i] = initializer->dims(static_cast<int>(i));
   }
 
   (*out)->data_type = static_cast<ONNXTensorElementDataType>(initializer->data_type());
@@ -171,7 +176,6 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetInitializerTensor, const OrtGraphV
       (*out)->data = reinterpret_cast<const char*>(initializer->float_data().data());
       break;
   }
-  *ret = true;
   return nullptr;
 }
 
@@ -192,7 +196,7 @@ static ONNXTensorElementDataType GetDataTypeFromTypeProto(const onnx::TypeProto*
   return static_cast<ONNXTensorElementDataType>(type->tensor_type().elem_type());
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out, _Out_ bool* ret) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetValueInfo, const OrtGraphViewer* graph, const char* name, _Outptr_ OrtValueInfoRef** out) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   const NodeArg* node_arg = graph_viewer->GetNodeArg(name);
 
@@ -202,9 +206,8 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetValueInfo, const OrtGraphViewer* g
   const auto& dims = utils::TryGetShape(*type)->dim();
   (*out)->shape_len = dims.size();
   (*out)->shape = new int64_t [(*out)->shape_len];
-  for (size_t i = 0; i < (*out)->shape_len; i++) ((*out)->shape)[i] = utils::HasDimValue(dims[i]) ? dims[i].dim_value() : -1;
+  for (size_t i = 0; i < (*out)->shape_len; i++) ((*out)->shape)[i] = utils::HasDimValue(dims[static_cast<int>(i)]) ? dims[static_cast<int>(i)].dim_value() : -1;
 
-  *ret = true;
   return nullptr;
 }
 
@@ -232,7 +235,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_SerializeToArray, const OrtGraphViewe
   GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true, ExecutionOrder::PRIORITY_BASED);
   *data_size = model_proto.ByteSizeLong();
   *data = malloc(*data_size);
-  model_proto.SerializeToArray(*data, *data_size);
+  model_proto.SerializeToArray(*data, static_cast<int>(*data_size));
   return nullptr;
 }
 
@@ -544,8 +547,8 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
       NodeAttributes node_attributes;
       node_attributes.reserve(num_attributes);
 
-      for (int i = 0; i < num_attributes; ++i) {
-        auto& attr = node_proto->attribute(i);
+      for (int ii = 0; ii < num_attributes; ++ii) {
+        auto& attr = node_proto->attribute(ii);
         node_attributes.emplace(attr.name(), attr);
       }
 
@@ -792,6 +795,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetNodesIndexInTopologicalOrder,
     &OrtGraphApis::OrtGraph_IsSubgraph,
     &OrtGraphApis::OrtGraph_GetParentGraph,
+    &OrtGraphApis::OrtGraph_IsSubgraph2,
     &OrtGraphApis::OrtGraph_GetParenNode,
     &OrtGraphApis::OrtGraph_GetModelPath,
     &OrtGraphApis::OrtGraph_GetOrtGraph,

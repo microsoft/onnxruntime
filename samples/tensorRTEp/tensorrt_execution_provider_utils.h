@@ -311,7 +311,7 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
 
   // fingerprint current graph by hashing graph inputs
   // const std::vector<const char*>& input_names = nullptr;
-  const char** input_names = nullptr;
+  const char** input_names = nullptr;   // TODO(leca): release input_names
   size_t input_count = 0;
   graph_api->OrtGraph_GetAllInputs(graph_viewer, &input_names, &input_count);
   for (size_t i = 0; i < input_count; ++i) {

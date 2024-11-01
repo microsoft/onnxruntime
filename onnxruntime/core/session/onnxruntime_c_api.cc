@@ -2388,7 +2388,7 @@ ORT_API(void, OrtApis::ReleaseDevice, OrtDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterPluginExecutionProviderLibrary, _In_ const char* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterPluginExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name) {
   API_IMPL_BEGIN
   void* handle = nullptr;
   ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(ToPathString(lib_path), false, &handle));
@@ -2400,6 +2400,10 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterPluginExecutionProviderLibrary, _In_ const 
   }
   return CreateStatus(ORT_RUNTIME_EXCEPTION, "cannot load the shared library for out-tree EP");
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UnregisterPluginExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name) {
+  return ToOrtStatus(env->DeletePluginEpFactory(ep_name));
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendPluginExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
@@ -2822,6 +2826,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::DeviceGetId,
     &OrtApis::ReleaseDevice,
     &OrtApis::RegisterPluginExecutionProviderLibrary,
+    &OrtApis::UnregisterPluginExecutionProviderLibrary,
     &OrtApis::SessionOptionsAppendPluginExecutionProvider,
 
     &OrtApis::CreateOrtTypeConstraints,

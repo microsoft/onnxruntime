@@ -15,14 +15,15 @@ add_definitions(-DNV_TENSORRT_MAJOR=10)
 file(GLOB tensorrt_src "./*.cc" "../utils/status.cc")
 add_library(TensorRTEp SHARED ${tensorrt_src})
 target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
-                                             " ../utils"
+                                             "../utils"
                                              "/usr/local/cuda/include"
                                              ${TENSORRT_HOME}/include
                                              "../../build/tensorrt/Debug/_deps/flatbuffers-src/include"
                                              "../../build/tensorrt/Debug/_deps/gsl-src/include"
                                              "../../build/tensorrt/Debug/_deps/onnx-src"
                                              "../../build/tensorrt/Debug/_deps/onnx-build"
-                                             "../../build/tensorrt/Debug/_deps/protobuf-src/src")
+                                             "../../build/tensorrt/Debug/_deps/protobuf-src/src"
+)
 
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
 target_link_libraries(TensorRTEp PUBLIC "/home/leca/code/onnxruntime/build/tensorrt/Debug/libonnxruntime.so"
