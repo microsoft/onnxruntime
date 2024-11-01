@@ -28,7 +28,7 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
 
 //
-// CompFp32 kernel implementation.
+// SQNBIT_CompFp32 kernel implementation.
 //
 
 #include "sqnbitgemm_kernel_avx_common_fp32.h"
@@ -151,7 +151,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx512(
 }
 
 //
-// CompInt8 kernel implementation.
+// SQNBIT_CompInt8 kernel implementation.
 //
 
 MLAS_FORCEINLINE
@@ -346,7 +346,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum512(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (ComputeType == CompInt8) {
+    if (ComputeType == SQNBIT_CompInt8) {
         SubBlkLen = 128;
     }
     PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
@@ -359,11 +359,11 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     d.Q4BitGemmPackQuantBData = Q4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512;
 
-    d.SQ4BitGemmPerGemmWorkspaceSize = SQ4BitGemmPerGemmWorkspaceSize;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment = SQ4BitGemmPerGemmWorkspaceAlignment;
+    d.Q4BitGemmPerGemmWorkspaceSize = Q4BitGemmPerGemmWorkspaceSize;
+    d.Q4BitGemmPerGemmWorkspaceAlignment = Q4BitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx512;
-    d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
+    d.SQ4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;

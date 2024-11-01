@@ -102,7 +102,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
-    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
+    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
     typedef void(Q4BitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
@@ -144,7 +144,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   BlkLen          number of quantized values per block
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
-    typedef size_t(SQ4BitGemmPerGemmWorkspaceSize_Fn)(
+    typedef size_t(Q4BitGemmPerGemmWorkspaceSize_Fn)(
         size_t M,
         size_t N,
         size_t K,
@@ -152,8 +152,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
-    SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize_Fp16 = nullptr;
+    Q4BitGemmPerGemmWorkspaceSize_Fn* Q4BitGemmPerGemmWorkspaceSize = nullptr;
 
     /**
      * @brief Gets the required byte alignment of the per-GEMM intermediate workspace.
@@ -161,16 +160,15 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   BlkLen          number of quantized values per block
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
-    typedef size_t(SQ4BitGemmPerGemmWorkspaceAlignment_Fn)(
+    typedef size_t(Q4BitGemmPerGemmWorkspaceAlignment_Fn)(
         size_t BlkLen,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
-    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment_Fp16 = nullptr;
+    Q4BitGemmPerGemmWorkspaceAlignment_Fn* Q4BitGemmPerGemmWorkspaceAlignment = nullptr;
 
     //
-    // CompFp32 kernel function prototypes.
+    // SQNBIT_CompFp32 kernel function prototypes.
     //
 
     /**
@@ -235,11 +233,11 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t BlockStrideQuantB
     )>;
 
-    Q4BitBlkDequantBForSgemm_Fn<float> Q4BitBlkDequantBForSgemm_CompFp32;
-    Q4BitBlkDequantBForSgemm_Fn<MLAS_FP16> Q4BitBlkDequantBForSgemm_CompFp16;
+    Q4BitBlkDequantBForSgemm_Fn<float> SQ4BitBlkDequantBForSgemm_CompFp32;
+    Q4BitBlkDequantBForSgemm_Fn<MLAS_FP16> HQ4BitBlkDequantBForSgemm_CompFp16;
 
     //
-    // CompInt8 kernel function prototypes.
+    // SQNBIT_CompInt8 kernel function prototypes.
     //
 
     /**
@@ -303,7 +301,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @return                          The number of rows of A and C that were processed, at most CountM.
      */
     template <typename T>
-    using SQ4BitGemmKernel_CompInt8_Fn = std::function<size_t(
+    using Q4BitGemmKernel_CompInt8_Fn = std::function<size_t(
         size_t BlkLen,
         const std::byte* QuantA,
         const std::byte* QuantBData,
@@ -318,8 +316,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const T* Bias
     )>;
 
-    SQ4BitGemmKernel_CompInt8_Fn<float> SQ4BitGemmKernel_CompInt8;
-    SQ4BitGemmKernel_CompInt8_Fn<MLAS_FP16> SQ4BitGemmKernel_Fp16_CompInt8;
+    Q4BitGemmKernel_CompInt8_Fn<float> SQ4BitGemmKernel_CompInt8;
+    Q4BitGemmKernel_CompInt8_Fn<MLAS_FP16> HQ4BitGemmKernel_CompInt8;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
@@ -338,8 +336,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         std::byte* QuantA
     )>;
 
-    QuantizeARow_CompInt8_Fn<float> QuantizeARow_CompInt8;
-    QuantizeARow_CompInt8_Fn<MLAS_FP16> QuantizeARow_Fp16_CompInt8;
+    QuantizeARow_CompInt8_Fn<float> SQNBIT_QuantizeARow_CompInt8;
+    QuantizeARow_CompInt8_Fn<MLAS_FP16> HQNBIT_QuantizeARow_CompInt8;
 
     typedef void(QuantizeARowComputeBlkSum_CompInt8_Fn)(
         size_t BlkLen,
@@ -367,7 +365,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       ldb                 the leading dimension of B.
      * @param       ldc                 the leading dimension of C.
      */
-    using SQ4BitGemmKernel_CompFp16_Fn = std::function<void(
+    using HQ4BitGemmKernel_CompFp16_Fn = std::function<void(
         const MLAS_FP16* A,
         const MLAS_FP16* B,
         const MLAS_FP16* Bias,
@@ -380,5 +378,5 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t ldc
     )>;
 
-    SQ4BitGemmKernel_CompFp16_Fn SQ4BitGemmKernel_CompFp16;
+    HQ4BitGemmKernel_CompFp16_Fn HQ4BitGemmKernel_CompFp16;
 };

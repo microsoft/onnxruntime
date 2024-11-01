@@ -36,7 +36,7 @@ namespace sqnbitgemm_neon
 // files.
 //
 
-// CompFp32 declarations
+// SQNBIT_CompFp32 declarations
 
 void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -53,7 +53,7 @@ SQ4BitGemmM1Kernel_CompFp32(
 );
 
 void
-Q4BitBlkDequantBForSgemm_CompFp32(
+SQ4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
     const std::byte* QuantBData,
@@ -64,7 +64,7 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlockCountK
 );
 
-// CompFp16 declarations
+// HQNBIT_CompFp16 declarations
 
 void
 SQ4BitGemmPackQuantBData_CompFp16(
@@ -77,7 +77,7 @@ SQ4BitGemmPackQuantBData_CompFp16(
 );
 
 void
-Q4BitBlkDequantBForSgemm_CompFp16(
+HQ4BitBlkDequantBForSgemm_CompFp16(
     size_t BlkLen,
     MLAS_FP16* FpData,
     const std::byte* QuantBData,
@@ -89,7 +89,7 @@ Q4BitBlkDequantBForSgemm_CompFp16(
 );
 
 void
-SQ4BitGemmKernel_CompFp16(
+HQ4BitGemmKernel_CompFp16(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const MLAS_FP16* Bias,
@@ -102,10 +102,10 @@ SQ4BitGemmKernel_CompFp16(
     size_t ldc
 );
 
-// CompInt8 declarations
+// SQNBIT_CompInt8 declarations
 
 void
-QuantizeARow_CompInt8(
+SQNBIT_QuantizeARow_CompInt8(
     size_t BlkLen,
     const float* A,
     size_t CountK,
