@@ -10,6 +10,11 @@ import statistics
 import sys
 import time
 
+os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin")
+os.add_dll_directory(r"C:\CuDNN\9.4.0.58_cuda12\bin")
+os.add_dll_directory(r"C:\TensorRT\10.3.0.26.cuda-12.5\lib")
+os.add_dll_directory(r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.40.33807\x64\Microsoft.VC143.CRT")
+
 import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 
@@ -136,7 +141,7 @@ def run_ort_pipeline(
     prompts, negative_prompt = example_prompts()
 
     def warmup():
-        pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
+        pipe(["warm up"] * batch_size, height, width, num_inference_steps=steps)
 
     # Run warm up, and measure GPU memory of two runs
     # cuDNN/MIOpen The first run has  algo search so it might need more memory)
@@ -306,6 +311,7 @@ def get_optimum_ort_pipeline(
     directory: str,
     provider="CUDAExecutionProvider",
     disable_safety_checker: bool = True,
+    use_io_binding: bool = False,
 ):
     from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
 
@@ -321,7 +327,7 @@ def get_optimum_ort_pipeline(
             pipeline = ORTStableDiffusionPipeline.from_pretrained(
                 directory,
                 provider=provider,
-                use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
+                use_io_binding=use_io_binding,
             )
     elif "xl" in model_name:
         pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
@@ -337,7 +343,7 @@ def get_optimum_ort_pipeline(
             model_name,
             export=True,
             provider=provider,
-            use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
+            use_io_binding=use_io_binding,
         )
         pipeline.save_pretrained(directory)
 
@@ -359,20 +365,25 @@ def run_optimum_ort_pipeline(
     batch_count,
     start_memory,
     memory_monitor_type,
+    enable_profiling: bool = False
 ):
     from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
 
     assert isinstance(pipe, (ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline))
 
-    prompts = example_prompts()
+    prompts, negative_prompt = example_prompts()
 
     def warmup():
         pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
 
     # Run warm up, and measure GPU memory of two runs.
     # The first run has algo search for cuDNN/MIOpen, so it might need more memory.
-    first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
-    second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
+    if not enable_profiling:
+        first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
+        second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
+    else:
+        first_run_memory = 0
+        second_run_memory = 0
 
     warmup()
 
@@ -397,6 +408,24 @@ def run_optimum_ort_pipeline(
             print(f"Inference took {latency:.3f} seconds")
             for k, image in enumerate(images):
                 image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
+
+            if enable_profiling and i == 0 and j == 0:
+                import nvtx
+                # from cuda import cudart
+                # cudart.cudaProfilerStart()
+                print("Start nvtx profiling ...")
+                with nvtx.annotate("one_run"):
+                    images = pipe(
+                        prompt,
+                        height,
+                        width,
+                        num_inference_steps=steps,
+                        negative_prompt=None,
+                        guidance_scale=0.0,  # 7.5
+                        num_images_per_prompt=batch_size,
+                    ).images
+                # cudart.cudaProfilerStop()
+                break
 
     from onnxruntime import __version__ as ort_version
 
@@ -429,9 +458,12 @@ def run_optimum_ort(
     batch_count: int,
     start_memory,
     memory_monitor_type,
+    use_io_binding: bool = False,
+    enable_profiling: bool = False,
 ):
     load_start = time.time()
-    pipe = get_optimum_ort_pipeline(model_name, directory, provider, disable_safety_checker)
+    pipe = get_optimum_ort_pipeline(model_name, directory, provider, disable_safety_checker,
+                                    use_io_binding=use_io_binding)
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
@@ -447,6 +479,7 @@ def run_optimum_ort(
         batch_count,
         start_memory,
         memory_monitor_type,
+        enable_profiling=enable_profiling
     )
 
     result.update(
@@ -1138,6 +1171,22 @@ def parse_arguments():
     parser.set_defaults(use_xformers=False)
 
     parser.add_argument(
+        "--use_io_binding",
+        required=False,
+        action="store_true",
+        help="Use I/O Binding",
+    )
+    parser.set_defaults(use_io_binding=False)
+
+    parser.add_argument(
+        "--enable_profiling",
+        required=False,
+        action="store_true",
+        help="Enable profiling",
+    )
+    parser.set_defaults(enable_profiling=False)
+
+    parser.add_argument(
         "-b",
         "--batch_size",
         type=int,
@@ -1312,6 +1361,8 @@ def main():
             batch_count=args.batch_count,
             start_memory=start_memory,
             memory_monitor_type=memory_monitor_type,
+            use_io_binding=args.use_io_binding,
+            enable_profiling=args.enable_profiling,
         )
     elif args.engine == "onnxruntime":
         assert args.pipeline and os.path.isdir(
