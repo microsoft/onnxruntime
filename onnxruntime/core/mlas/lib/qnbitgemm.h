@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm.h
+    qnbitgemm.h
 
 Abstract:
 

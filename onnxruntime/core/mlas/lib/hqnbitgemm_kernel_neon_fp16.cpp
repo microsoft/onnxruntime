@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_neon_fp16.cpp
+    hqnbitgemm_kernel_neon_fp16.cpp
 
 Abstract:
 
@@ -23,8 +23,8 @@ Abstract:
 #include <type_traits>
 
 #include "fp16_common.h"
-#include "sqnbitgemm.h"
-#include "sqnbitgemm_kernel_neon.h"
+#include "qnbitgemm.h"
+#include "qnbitgemm_kernel_neon.h"
 
 namespace sqnbitgemm_neon
 {
@@ -127,7 +127,7 @@ Transpose4x4(float16x4_t& v0, float16x4_t& v1, float16x4_t& v2, float16x4_t& v3)
 }
 
 void
-SQ4BitGemmPackQuantBData_CompFp16(
+HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -228,7 +228,7 @@ SQ4BitGemmPackQuantBData_CompFp16(
 template<size_t N, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 8 && K == 16), void>
-Q4BitBlkDequantBKernel(
+HQ4BitBlkDequantBKernel(
     const std::uint8_t* src_ptr,
     const float16x8_t& scale,
     const float16x8_t& neg_scaled_zp,
@@ -300,7 +300,7 @@ Q4BitBlkDequantBKernel(
 template<size_t N, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 1 && K == 16), void>
-Q4BitBlkDequantBKernel(
+HQ4BitBlkDequantBKernel(
     const std::uint8_t* src_ptr,
     const float16x8_t& scale,
     const float16x8_t& neg_scaled_zp,
@@ -382,7 +382,7 @@ HQ4BitBlkDequantBForSgemm_CompFp16(
             neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
 
             for (size_t kk = 0; kk < BlkLen; kk += kk_blk_dim) {
-                Q4BitBlkDequantBKernel<8, 16>(src_ptr, scale_vec, neg_scaled_zp_vec, dst_ptr);
+                HQ4BitBlkDequantBKernel<8, 16>(src_ptr, scale_vec, neg_scaled_zp_vec, dst_ptr);
 
                 src_ptr += kk_n_src_bytes;
                 dst_ptr += kk_n_dst_size;
@@ -420,7 +420,7 @@ HQ4BitBlkDequantBForSgemm_CompFp16(
             neg_scaled_zp_vec = vnegq_f16(vmulq_f16(scale_vec, neg_scaled_zp_vec));
 
             for (size_t kk = 0; kk < BlkLen; kk += kk_blk_dim) {
-                Q4BitBlkDequantBKernel<1, 16>(
+                HQ4BitBlkDequantBKernel<1, 16>(
                     reinterpret_cast<const uint8_t*>(QuantBData), scale_vec, neg_scaled_zp_vec, FpData
                 );
 
@@ -486,7 +486,7 @@ PrepareAccumulator(const MLAS_FP16* Bias)
 template<size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 8 && M == 1 && K == 8), float16x8_t>
-SQ4BitGemmMicroKernel(
+HQ4BitGemmMicroKernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const size_t ldb,
@@ -520,7 +520,7 @@ SQ4BitGemmMicroKernel(
 template<size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 8 && M == 1 && K == 4), float16x8_t>
-SQ4BitGemmMicroKernel(
+HQ4BitGemmMicroKernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const size_t ldb,
@@ -544,7 +544,7 @@ SQ4BitGemmMicroKernel(
 template<size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<(N == 8 && M == 1 && (K == 2 || K == 1)), float16x8_t>
-SQ4BitGemmMicroKernel(
+HQ4BitGemmMicroKernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const size_t ldb,
@@ -569,7 +569,7 @@ SQ4BitGemmMicroKernel(
 template <size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && K == 8), float16x4_t>
-SQ4BitGemmMicroKernel(
+HQ4BitGemmMicroKernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const size_t ldb,
@@ -611,7 +611,7 @@ SQ4BitGemmMicroKernel(
 template <size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K == 4)), float16x4_t>
-SQ4BitGemmMicroKernel(
+HQ4BitGemmMicroKernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const size_t ldb,
@@ -648,7 +648,7 @@ SQ4BitGemmMicroKernel(
 template <size_t N, size_t M, size_t K>
 MLAS_FORCEINLINE
 typename std::enable_if_t<((N > 0 && N <= 4) && M == 1 && (K > 0 && K < 4)), float16x4_t>
-SQ4BitGemmMicroKernel(
+HQ4BitGemmMicroKernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const size_t ldb,
@@ -705,7 +705,7 @@ SQ4BitGemmMicroKernel(
 
 template <size_t CountN, size_t CountM>
 typename std::enable_if_t<((CountN >= 1 && CountN <= 16 && ((CountN - 1) & CountN) == 0) && (CountM == 1 || CountM == 2)), void>
-SQ4BitGemmKernel_CompFp16_Kernel(
+HQ4BitGemmKernel_CompFp16_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     const MLAS_FP16* Bias,
@@ -736,55 +736,55 @@ SQ4BitGemmKernel_CompFp16_Kernel(
 
     size_t k = 0;
     for (; k + 8 <= K; k += 8, A += 8, B += b_step * 8) {
-        accu00 = SQ4BitGemmMicroKernel<N, 1, 8>(A, B, ldb, accu00);
+        accu00 = HQ4BitGemmMicroKernel<N, 1, 8>(A, B, ldb, accu00);
         if constexpr (CountN == 16) {
-            accu01 = SQ4BitGemmMicroKernel<N, 1, 8>(A, B + b_step * ldb, ldb, accu01);
+            accu01 = HQ4BitGemmMicroKernel<N, 1, 8>(A, B + b_step * ldb, ldb, accu01);
         }
         if constexpr (CountM == 2) {
-            accu10 = SQ4BitGemmMicroKernel<N, 1, 8>(A + lda, B, ldb, accu10);
+            accu10 = HQ4BitGemmMicroKernel<N, 1, 8>(A + lda, B, ldb, accu10);
             if constexpr (CountN == 16) {
-                accu11 = SQ4BitGemmMicroKernel<N, 1, 8>(A + lda, B + b_step * ldb, ldb, accu11);
+                accu11 = HQ4BitGemmMicroKernel<N, 1, 8>(A + lda, B + b_step * ldb, ldb, accu11);
             }
         }
     }
 
     if (K & 4) {
-        accu00 = SQ4BitGemmMicroKernel<N, 1, 4>(A, B, ldb, accu00);
+        accu00 = HQ4BitGemmMicroKernel<N, 1, 4>(A, B, ldb, accu00);
         if constexpr (CountN == 16) {
-            accu01 = SQ4BitGemmMicroKernel<N, 1, 4>(A, B + b_step * ldb, ldb, accu01);
+            accu01 = HQ4BitGemmMicroKernel<N, 1, 4>(A, B + b_step * ldb, ldb, accu01);
         }
         if constexpr (CountM == 2) {
-            accu10 = SQ4BitGemmMicroKernel<N, 1, 4>(A + lda, B, ldb, accu10);
+            accu10 = HQ4BitGemmMicroKernel<N, 1, 4>(A + lda, B, ldb, accu10);
             if constexpr (CountN == 16) {
-                accu11 = SQ4BitGemmMicroKernel<N, 1, 4>(A + lda, B + b_step * ldb, ldb, accu11);
+                accu11 = HQ4BitGemmMicroKernel<N, 1, 4>(A + lda, B + b_step * ldb, ldb, accu11);
             }
         }
         k += 4, A += 4, B += b_step * 4;
     }
 
     if (K & 2) {
-        accu00 = SQ4BitGemmMicroKernel<N, 1, 2>(A, B, ldb, accu00);
+        accu00 = HQ4BitGemmMicroKernel<N, 1, 2>(A, B, ldb, accu00);
         if constexpr (CountN == 16) {
-            accu01 = SQ4BitGemmMicroKernel<N, 1, 2>(A, B + b_step * ldb, ldb, accu01);
+            accu01 = HQ4BitGemmMicroKernel<N, 1, 2>(A, B + b_step * ldb, ldb, accu01);
         }
         if constexpr (CountM == 2) {
-            accu10 = SQ4BitGemmMicroKernel<N, 1, 2>(A + lda, B, ldb, accu10);
+            accu10 = HQ4BitGemmMicroKernel<N, 1, 2>(A + lda, B, ldb, accu10);
             if constexpr (CountN == 16) {
-                accu11 = SQ4BitGemmMicroKernel<N, 1, 2>(A + lda, B + b_step * ldb, ldb, accu11);
+                accu11 = HQ4BitGemmMicroKernel<N, 1, 2>(A + lda, B + b_step * ldb, ldb, accu11);
             }
         }
         k += 2, A += 2, B += b_step * 2;
     }
 
     if (k < K) {
-        accu00 = SQ4BitGemmMicroKernel<N, 1, 1>(A, B, ldb, accu00);
+        accu00 = HQ4BitGemmMicroKernel<N, 1, 1>(A, B, ldb, accu00);
         if constexpr (CountN == 16) {
-            accu01 = SQ4BitGemmMicroKernel<N, 1, 1>(A, B + b_step * ldb, ldb, accu01);
+            accu01 = HQ4BitGemmMicroKernel<N, 1, 1>(A, B + b_step * ldb, ldb, accu01);
         }
         if constexpr (CountM == 2) {
-            accu10 = SQ4BitGemmMicroKernel<N, 1, 1>(A + lda, B, ldb, accu10);
+            accu10 = HQ4BitGemmMicroKernel<N, 1, 1>(A + lda, B, ldb, accu10);
             if constexpr (CountN == 16) {
-                accu11 = SQ4BitGemmMicroKernel<N, 1, 1>(A + lda, B + b_step * ldb, ldb, accu11);
+                accu11 = HQ4BitGemmMicroKernel<N, 1, 1>(A + lda, B + b_step * ldb, ldb, accu11);
             }
         }
     }
@@ -841,9 +841,9 @@ HQ4BitGemmKernel_CompFp16(
     // TODO: dequant 16N as continuous segments. Current version dequants 8N.
     for (; CountN >= 16; CountN -= 16) {
         if (CountM == 2) {
-            SQ4BitGemmKernel_CompFp16_Kernel<16, 2>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<16, 2>(A, B, Bias, C, K, lda, ldb, ldc);
         } else {
-            SQ4BitGemmKernel_CompFp16_Kernel<16, 1>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<16, 1>(A, B, Bias, C, K, lda, ldb, ldc);
         }
         B += 16 * ldb, C += 16;
         if (Bias) Bias += 16;
@@ -851,9 +851,9 @@ HQ4BitGemmKernel_CompFp16(
 
     if (CountN & 8) {
         if (CountM == 2) {
-            SQ4BitGemmKernel_CompFp16_Kernel<8, 2>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<8, 2>(A, B, Bias, C, K, lda, ldb, ldc);
         } else {
-            SQ4BitGemmKernel_CompFp16_Kernel<8, 1>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<8, 1>(A, B, Bias, C, K, lda, ldb, ldc);
         }
         B += 8 * ldb, C += 8;
         if (Bias) Bias += 8;
@@ -861,9 +861,9 @@ HQ4BitGemmKernel_CompFp16(
 
     if (CountN & 4) {
         if (CountM == 2) {
-            SQ4BitGemmKernel_CompFp16_Kernel<4, 2>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<4, 2>(A, B, Bias, C, K, lda, ldb, ldc);
         } else {
-            SQ4BitGemmKernel_CompFp16_Kernel<4, 1>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<4, 1>(A, B, Bias, C, K, lda, ldb, ldc);
         }
         B += 4 * ldb, C += 4;
         if (Bias) Bias += 4;
@@ -871,9 +871,9 @@ HQ4BitGemmKernel_CompFp16(
 
     if (CountN & 2) {
         if (CountM == 2) {
-            SQ4BitGemmKernel_CompFp16_Kernel<2, 2>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<2, 2>(A, B, Bias, C, K, lda, ldb, ldc);
         } else {
-            SQ4BitGemmKernel_CompFp16_Kernel<2, 1>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<2, 1>(A, B, Bias, C, K, lda, ldb, ldc);
         }
         B += 2 * ldb, C += 2;
         if (Bias) Bias += 2;
@@ -881,9 +881,9 @@ HQ4BitGemmKernel_CompFp16(
 
     if (CountN & 1) {
         if (CountM == 2) {
-            SQ4BitGemmKernel_CompFp16_Kernel<1, 2>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<1, 2>(A, B, Bias, C, K, lda, ldb, ldc);
         } else {
-            SQ4BitGemmKernel_CompFp16_Kernel<1, 1>(A, B, Bias, C, K, lda, ldb, ldc);
+            HQ4BitGemmKernel_CompFp16_Kernel<1, 1>(A, B, Bias, C, K, lda, ldb, ldc);
         }
     }
 }
