@@ -95,7 +95,7 @@ if __name__ == "__main__":
             "Path to the test suite file. "
             "Typically, the test APK is in "
             "{build_output_dir}/android_test/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-            ". For iOS, you will have to create a .zip of the tests. After manually building the tests, the tests that you need to zip will be in {{XcodeDerivedDataFolderPath}}/Build/Products"
+            ". For iOS, you will have to create a .zip of the tests. After manually building the tests, the tests that you need to zip will be in {{Xcode DerivedData Folder Path}}/Build/Products"
         ),
         required=True,
     )
