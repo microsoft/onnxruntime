@@ -67,9 +67,9 @@ MlasLoadFloat16x4(const _mlas_fp16_* Buffer) { return vreinterpret_f16_u16(vld1_
 template <int lane>
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasLoadLaneFloat16x4(const MLAS_FP16* Buffer, MLAS_FLOAT16X4 vec) {
+MlasLoadLaneFloat16x4(const _mlas_fp16_* Buffer, MLAS_FLOAT16X4 vec) {
     return vreinterpret_f16_u16(
-        vld1_lane_u16(reinterpret_cast<const _mlas_fp16_*>(Buffer), vreinterpret_u16_f16(vec), lane)
+        vld1_lane_u16(Buffer, vreinterpret_u16_f16(vec), lane)
     );
 }
 
@@ -107,9 +107,9 @@ MlasStoreFloat16x4(_mlas_fp16_* Buffer, MLAS_FLOAT16X4 Vector)
 template <int lane>
 MLAS_FORCEINLINE
 void
-MlasStoreLaneFloat16x4(MLAS_FP16* Buffer, MLAS_FLOAT16X4 Vector)
+MlasStoreLaneFloat16x4(_mlas_fp16_* Buffer, MLAS_FLOAT16X4 Vector)
 {
-    vst1_lane_u16(reinterpret_cast<uint16_t*>(Buffer), vreinterpret_u16_f16(Vector), lane);
+    vst1_lane_u16(Buffer, vreinterpret_u16_f16(Vector), lane);
 }
 
 MLAS_FORCEINLINE

@@ -65,7 +65,7 @@ SQ4BitBlkDequantBForSgemm_CompFp32(
 );
 
 // HQNBIT_CompFp16 declarations
-
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 void
 HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,
@@ -101,6 +101,8 @@ HQ4BitGemmKernel_CompFp16(
     size_t ldb,
     size_t ldc
 );
+
+#endif  // !(defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64))
 
 // SQNBIT_CompInt8 declarations
 

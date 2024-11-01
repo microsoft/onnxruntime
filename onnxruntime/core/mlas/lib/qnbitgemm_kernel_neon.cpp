@@ -62,7 +62,11 @@ Q4BitGemmPackQuantBData(
 )
 {
     if (ComputeType == HQNBIT_CompFp16) {
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
         HQ4BitGemmPackQuantBData_CompFp16(N, K, BlkLen, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
+#else
+        MLAS_THROW_EX(std::runtime_error, "unsupported target compute type");
+#endif
         return;
     }
 
