@@ -111,11 +111,14 @@ Status ClipQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
-  if (!(clip_min <= min_ && max_ <= clip_max && graph_utils::RemoveNode(graph, node))) {
+  if (!(clip_min <= min_ && max_ <= clip_max)) {
     return Status::OK();
   }
 
-  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
+  if (graph_utils::RemoveNode(graph, node)) {
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
+  }
+
   return Status::OK();
 }
 }  // namespace onnxruntime
