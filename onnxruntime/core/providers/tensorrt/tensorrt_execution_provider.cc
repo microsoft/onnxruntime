@@ -1379,6 +1379,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
+    nodes_to_exclude_ = info.nodes_to_exclude;
+    
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1565,6 +1567,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
       }
 
+      const std::string nodes_to_exclude_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kNodesToExclude);
+      if (!nodes_to_exclude_env.empty()) {
+        nodes_to_exclude_ = nodes_to_exclude_env;
+      }
+
     } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
     } catch (const std::out_of_range& ex) {
@@ -1725,6 +1732,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
 
+  trt_version_ = getInferLibVersion();
+
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -1762,7 +1773,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
-                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
+                        << ", trt_nodes_to_exclude: " << nodes_to_exclude_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2430,6 +2442,18 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   return cycle_detected;
 }
 
+std::set<std::string> GetExcludedNodeSet(std::string node_list_to_exclude) {
+  std::set<std::string> set;
+  if (!node_list_to_exclude.empty()) {
+    std::stringstream node_list(node_list_to_exclude);
+    std::string node;
+    while (std::getline(node_list, node, ',')) {
+      set.insert(node);
+    }
+  }
+  return set;
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
@@ -2464,11 +2488,35 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   bool new_subgraph = true;
-  bool supported_node = true;
+
+  std::set<std::string> exclude_set = GetExcludedNodeSet(nodes_to_exclude_);
+
+  /*
+   * There is a known performance issue with the DDS node from TRT versions 10.0 to 10.6.
+   * TRT EP automatically excludes DDS nodes from running on TRT unless the user explicitly specifies that those nodes should be included
+   * 
+   * Note: "~node_name" means to include the node
+   */
+  if (trt_version_ >= 100000 and trt_version_ < 100700) {
+    if (exclude_set.find("~NonMaxSuppression") == exclude_set.end()) exclude_set.insert("NonMaxSuppression"); 
+    if (exclude_set.find("~NonZero") == exclude_set.end()) exclude_set.insert("NonZero"); 
+    if (exclude_set.find("~RoiAlign") == exclude_set.end()) exclude_set.insert("RoiAlign"); 
+  }
+
+  std::set<std::string>::iterator it;
+  for (it = exclude_set.begin(); it != exclude_set.end(); ++it) {
+    std::string node = *it;
+    if (node.find("~") == 0) continue;
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude " << node << " from running on TRT";
+    if (node == "NonMaxSuppression" || node == "NonZero" || node == "RoiAlign") {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Add \"~" << node << "\" in trt_nodes_to_exclude if " << node << " should be included in the input to TRT parser. It still depends on TRT parser to determine the eligibility of this node for TRT";
+    }
+  }
 
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
+    bool supported_node = true;
 
     /* If current node is control flow op, we take different approach based on following four cases:
      *
@@ -2499,14 +2547,15 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       supported_node = supported_control_flow_op(node);
     }
 
-    if (node->OpType() == "NonMaxSuppression") {
+    // Exclude any nodes, if applicable
+    if (exclude_set.find(node->OpType()) != exclude_set.end()) {
       supported_node = false;
     }
 
     if (supported_node) {
       if (new_subgraph) {
         parser_nodes_vector.emplace_back();
-        // Mark all new graphs as "UnKnown" and will later be parsed by TRT parser
+        // Mark all new graphs as "UnKnown" which will later be parsed by TRT parser
         parser_nodes_vector.back().second = false;
         new_subgraph = false;
       }
