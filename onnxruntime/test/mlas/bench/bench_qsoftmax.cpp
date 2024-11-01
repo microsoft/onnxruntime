@@ -11,7 +11,8 @@ void BM_Qsoftmax(benchmark::State& state) {
   const size_t count = N * D;
   auto src = RandomVectorUniform<int8_t>(count, 0, 127);
   auto LoopupTable = RandomVectorUniform<float>(count, 0.f, 1e10);
-  auto dst_start = std::vector<int8_t>(count + 16);
+  auto dst = std::vector<int8_t>(count + 16);
+  int8_t* dst_start = dst.data();
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = 8;
   tpo.auto_set_affinity = true;
