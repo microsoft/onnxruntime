@@ -12,9 +12,10 @@ find_package(CUDAToolkit REQUIRED)
 add_definitions(-DONNX_NAMESPACE=onnx)
 add_definitions(-DONNX_ML)
 add_definitions(-DNV_TENSORRT_MAJOR=10)
-file(GLOB tensorrt_src "./*.cc")
+file(GLOB tensorrt_src "./*.cc" "../utils/status.cc")
 add_library(TensorRTEp SHARED ${tensorrt_src})
 target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
+                                             "../utils"
                                              "/usr/local/cuda/include"
                                              ${TENSORRT_HOME}/include
                                              "../../build/tensorrt/Debug/_deps/flatbuffers-src/include"
