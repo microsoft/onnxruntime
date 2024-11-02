@@ -93,7 +93,7 @@ Status ModelBuilder::RegisterInitializers() {
     // Ignore the following tensors:
     // 1. Empty tensors: optional tensors can be indicated by an empty name.
     // 2. Tensors in skipped_initializers_: These are tensors that are not used as WebNN Constants.
-    //    Note: Scalar tensors are excluded because ONNX Runtime will optimze same scalar initializers into one.
+    //    Note: Scalar tensors are excluded because ONNX Runtime will optimize same scalar initializers into one.
     if (name.empty() || (Contains(skipped_initializers_, name) && !shape.empty()))
       continue;
 
