@@ -81,7 +81,6 @@ struct AttentionData {
   T* q_bias = nullptr;
   T* k_bias = nullptr;
   T* v_bias = nullptr;
-  T* attn_bias = nullptr;
 
   void PrintDebugInfo() const {
     std::cout << "flash=" << use_flash_attention

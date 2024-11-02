@@ -89,7 +89,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   AttentionParameters parameters;
   parameters.use_tf32 = UseTF32();
 
-  bool past_present_share_buffer = past_sequence_length != nullptr && cache_indirection != nullptr;
+  bool past_present_share_buffer = past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
@@ -164,10 +164,11 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
 
+  bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH && parameters.past_present_share_buffer && parameters.past_sequence_length > 0;
+  bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length && parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
   bool use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
                                                 (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) &&
-                                                parameters.past_present_share_buffer &&
-                                                parameters.past_sequence_length > 0 &&
+                                                (use_dmmha_self_attention || use_dmmha_cross_attention) &&
                                                 parameters.sequence_length == 1 &&
                                                 parameters.head_size == parameters.v_head_size &&
                                                 (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
@@ -400,13 +401,15 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
 
-  // For past-present buffer sharing
-  size_t seqlens_k_bytes = 0;
-  seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-  auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
-  if (seqlens_k_buffer != nullptr) {
-    data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(data.seqlens_k_total, parameters.past_sequence_length, seqlens_k_bytes, stream));
+  // For past-present buffer sharing.
+  if (parameters.past_present_share_buffer) {
+    size_t seqlens_k_bytes = 0;
+    seqlens_k_bytes = sizeof(int) * parameters.batch_size;
+    auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
+    if (seqlens_k_buffer != nullptr) {
+      data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(data.seqlens_k_total, parameters.past_sequence_length, seqlens_k_bytes, stream));
+    }
   }
 
   if (data.allow_debug_info) {

@@ -624,6 +624,7 @@ class FusionAttention(Fusion):
         output: str,
         key_padding_mask: str = "",
         add_qk: str = "",
+        unidirectional: bool = False,
         past_k: str = "",
         past_v: str = "",
         present_k: str = "",
@@ -644,6 +645,7 @@ class FusionAttention(Fusion):
             output (str): output name of MHA
             key_padding_mask (str): name of key padding mask
             add_qk (str): name of add after Q x K'
+            unidirectional (bool): whether to apply causal attention mask automatically or not
             past_k (str): name of past K value - (batch_size, num_heads, past_sequence_length, head_size)
             past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
             present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
@@ -701,7 +703,6 @@ class FusionAttention(Fusion):
             mha_inputs.append("")
 
         # Add optional inputs for MHA
-
         if past_k and past_v:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
         elif key_padding_mask or add_qk:
@@ -719,7 +720,12 @@ class FusionAttention(Fusion):
             name=mha_node_name,
         )
         mha_node.domain = "com.microsoft"
-        mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+        mha_node.attribute.extend(
+            [
+                helper.make_attribute("num_heads", num_heads),
+                helper.make_attribute("unidirectional", int(unidirectional)),
+            ]
+        )
 
         self.increase_counter("MultiHeadAttention")
         return mha_node

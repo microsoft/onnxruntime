@@ -127,10 +127,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.num_heads,
-      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-      parameters.head_size};
+  std::vector<int64_t> present_dims{parameters.batch_size, parameters.num_heads, parameters.max_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
@@ -207,7 +204,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads, 1, parameters.total_sequence_length};
     TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
     cross_qk = context->Output(kQKOutputIndex, qk_shape);
-    parameters.out_qk = cross_qk->MutableData<float>();
+    parameters.out_qk = cross_qk->MutableData<T1>();
   }
 
   parameters.out = output->MutableDataRaw();

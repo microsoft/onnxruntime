@@ -200,6 +200,14 @@ Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int 
                            AttentionData<T>& data);
 
 template <typename T>
+Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                              int sequence_length, void* fused_runner,
+                              contrib::AttentionParameters& parameters,
+                              AttentionData<T>& data,
+                              cudaStream_t stream,
+                              int max_threads_per_block);
+
+template <typename T>
 Status LaunchStridedCopy(
     cudaStream_t stream,
     const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)

@@ -255,9 +255,10 @@ inline Status CheckCacheIndirection(
   }
   if (max_sequence_length > 0 && cache_indir_dims[2] != max_sequence_length) {
     // First condition is to avoid this check for cross attention layers where
-    // past key/past value are passed directly into key/value
+    // past key/past value are passed directly into key/value (which means
+    // that max_sequence_length = 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cache_indirection' dimension 2 should be same as max_sequence_length, got ",
+                           "Input 'cache_indirection' dimension 2 should be same as (or less than) max_sequence_length, got ",
                            cache_indir_dims[2]);
   }
   return Status::OK();
@@ -388,6 +389,7 @@ Status CheckInputs(const T* query,
 
   int past_sequence_length = 0;
   int max_sequence_length = 0;
+  // bool is_cross_attention = false;
   if (past_key != nullptr && past_value != nullptr) {
     ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, past_seq_len,
                                   batch_size, num_heads, head_size, past_present_share_buffer,
@@ -396,6 +398,13 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
   }
+  // else if (past_seq_len != nullptr) {
+  //   // Cross attention
+  //   // past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+  //   max_sequence_length = kv_sequence_length;
+  //   is_cross_attention = true;
+  // }
+  // int total_sequence_length = is_cross_attention ? kv_sequence_length : past_sequence_length + kv_sequence_length;
 
   if (operator_type == kMultiHeadAttention) {
     if (qkv_format == AttentionQkvFormat::QKV_BS3NH) {

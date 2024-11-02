@@ -464,7 +464,7 @@ class FusionBartAttention(FusionAttention):
 
         if (
             model_impl_openai
-            and not past_k
+            and not bool(past_k)
             and not self.check_runtime_shape_path_openai(
                 reshape_qkv_2,
                 matmul_qkv,
@@ -476,7 +476,7 @@ class FusionBartAttention(FusionAttention):
             return
         elif (
             not model_impl_openai
-            and not past_k
+            and not bool(past_k)
             and not self.check_runtime_shape_path(
                 reshape_qkv_2,
                 reshape_qkv_1,
@@ -488,7 +488,7 @@ class FusionBartAttention(FusionAttention):
         ):
             return
 
-        three_root_inputs = past_k and past_v and matmul_k is None and "matmul_v" not in locals()
+        three_root_inputs = bool(past_k) and bool(past_v) and matmul_k is None and "matmul_v" not in locals()
         one_root_input = (
             not three_root_inputs
             and matmul_k.input[0] == root_input
@@ -511,7 +511,7 @@ class FusionBartAttention(FusionAttention):
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
         decoder_attention = one_root_input and qk_nodes in (qk_nodes_2, qk_nodes_2_openai)
         decoder_attention_with_past = (
-            (encoder_attention if not model_impl_openai else decoder_attention) and past_k and past_v
+            (encoder_attention if not model_impl_openai else decoder_attention) and bool(past_k) and bool(past_v)
         )
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
@@ -564,6 +564,7 @@ class FusionBartAttention(FusionAttention):
                         num_heads,
                         hidden_size,
                         attention_last_node.output[0],
+                        unidirectional=decoder_attention_with_past,
                         past_k=past_k if decoder_attention_with_past else "",
                         past_v=past_v if decoder_attention_with_past else "",
                         present_k=present_k,

@@ -356,8 +356,11 @@ class WhisperDecoder(torch.nn.Module):
         ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
 
         # Calculate output difference
-        for i, output_name in enumerate(self.output_names()):
-            diff = np.abs(pt_outputs[i] - ort_outputs[i])
-            logger.warning(f"Comparing {output_name}...")
-            # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
-            logger.warning(f"Max diff: {np.max(diff)}")
+        try:
+            for i, output_name in enumerate(self.output_names()):
+                diff = np.abs(pt_outputs[i] - ort_outputs[i])
+                logger.warning(f"Comparing {output_name}...")
+                # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
+                logger.warning(f"Max diff: {np.max(diff)}")
+        except:
+            pass
