@@ -29,7 +29,7 @@ parameters:
   default: 120
 
 jobs:
-- job: Linux_Test_CPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
+- job: Linux_Test1_CPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     skipComponentGovernanceDetection: true
