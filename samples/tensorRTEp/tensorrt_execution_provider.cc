@@ -1676,6 +1676,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     };
 
     info_ = TensorrtExecutionProviderInfo::FromProviderOptions(ep_info);
+    if (ep_info.size() > 0) info_.has_trt_options = true; 
     device_id_ = info_.device_id;
     api_->CreateDevice(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU, OrtMemoryType::OrtMemoryType_Default, device_id_, &default_device);
 
