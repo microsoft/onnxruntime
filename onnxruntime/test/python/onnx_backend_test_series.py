@@ -14,7 +14,7 @@ from typing import Dict
 import numpy as np
 import onnx
 import onnx.backend.test.case.test_case
-import onnx.backend.test.runner
+import runner
 import onnx.defs
 
 import onnxruntime.backend as backend  # pylint: disable=consider-using-from-import
@@ -22,7 +22,7 @@ import onnxruntime.backend as backend  # pylint: disable=consider-using-from-imp
 pytest_plugins = ("onnx.backend.test.report",)
 
 
-class OrtBackendTest(onnx.backend.test.runner.Runner):
+class OrtBackendTest(runner.Runner):
     """ONNX test runner with ORT-specific behavior."""
 
     # pylint: disable=too-few-public-methods

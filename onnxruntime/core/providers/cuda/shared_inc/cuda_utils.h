@@ -151,20 +151,20 @@ struct NumericLimits<half> {
 template <>
 struct NumericLimits<float> {
   __inline__ __host__ __device__ static float Min() {
-    return -INFINITY;
+    return -std::numeric_limits<float>::infinity();
   }
   __inline__ __host__ __device__ static float Max() {
-    return INFINITY;
+    return std::numeric_limits<float>::infinity();
   }
 };
 
 template <>
 struct NumericLimits<double> {
   __inline__ __host__ __device__ static double Min() {
-    return -HUGE_VAL;
+    return -std::numeric_limits<double>::infinity();
   }
   __inline__ __host__ __device__ static double Max() {
-    return HUGE_VAL;
+    return std::numeric_limits<double>::infinity();
   }
 };
 

@@ -85,9 +85,11 @@ class OnnxRuntimeBackend(Backend):
         Check whether the backend is compiled with particular device support.
         In particular it's used in the testing suite.
         """
+        all_devices = get_device().split('-')
         if device == "CUDA":
-            device = "GPU"
-        return "-" + device in get_device() or device + "-" in get_device() or device == get_device()
+            return "GPU" in all_devices or "CUDA" in all_devices
+        else:
+            return device in all_devices
 
     @classmethod
     def prepare(cls, model, device=None, **kwargs):
@@ -114,6 +116,8 @@ class OnnxRuntimeBackend(Backend):
                     setattr(options, k, v)
 
             excluded_providers = os.getenv("ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS", default="").split(",")
+            if device == 'CPU':
+              excluded_providers += ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CUDANHWCExecutionProvider", "DmlExecutionProvider"]
             providers = [x for x in get_available_providers() if (x not in excluded_providers)]
 
             inf = InferenceSession(model, sess_options=options, providers=providers)
