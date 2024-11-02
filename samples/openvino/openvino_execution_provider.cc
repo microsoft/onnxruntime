@@ -62,6 +62,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo* node_compute_info) -> OrtStatusPtr {
         OpenVINOExecutionProvider* p = static_cast<OpenVINOExecutionProvider*>(this_);
+        this_->extra_param_for_create_state_func = p;
         for (int i = 0; i < cnt; i++) {
             p->global_context_->use_api_2 = true;
 
@@ -69,8 +70,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
             // For precompiled blob, directly load the model instead of compiling the model
             // For original model, check if the user wants to export a model with pre-compiled blob
 
-            std::shared_ptr<openvino_ep::BackendManager> backend_manager =
-                std::make_shared<openvino_ep::BackendManager>(*p->global_context_,
+            std::unique_ptr<openvino_ep::BackendManager> backend_manager =
+                std::make_unique<openvino_ep::BackendManager>(*p->global_context_,
                                                             node[i],
                                                             graph[i],
                                                             p->ep_ctx_handle_);
@@ -78,14 +79,18 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
             if (p->global_context_->export_ep_ctx_blob && !p->ep_ctx_handle_.IsValidOVEPCtxGraph()) {
                 backend_manager->ExportCompiledBlobAsEPCtxNode(graph[i]);
             }
+            const char* fused_node_name = nullptr;
+            graph_api_->OrtNode_GetName(node[i], &fused_node_name);
+            p->backend_managers_.emplace(fused_node_name, std::move(backend_manager));
 
             node_compute_info[i].CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
+                OpenVINOExecutionProvider* this_ = reinterpret_cast<OpenVINOExecutionProvider*>(extra_param);
                 std::unique_ptr<OpenVINOEPFunctionState> p = std::make_unique<OpenVINOEPFunctionState>();
-                p->allocate_func = context->AllocateFunc;
-                p->destroy_func = context->DestroyFunc;
+                p->AllocateFunc = context->AllocateFunc;
+                p->DestroyFunc = context->DestroyFunc;
                 p->allocator_handle = context->allocator_handle;
-                // p->backend_manager = static_cast<openvino_ep::BackendManager*>(extra_param);
-                // p->backend_manager = backend_manager;  TODO:yang
+                p->node_name = context->node_name;
+                p->backend_manager = this_->backend_managers_[context->node_name].get();
                 *state = p.release();
                 return 0;
             };
@@ -108,7 +113,16 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
         return nullptr;
     };
 
-    //OrtExecutionProvider::ReleaseIndexedSubGraphs
+    OrtExecutionProvider::ReleaseIndexedSubGraphs = [](OrtIndexedSubGraph** indexed_sub_graphs, size_t num_sub_graph) {
+      if (indexed_sub_graphs == nullptr) return;
+      for (size_t i = 0; i < num_sub_graph; i++) {
+        OrtIndexedSubGraph* sub_graph = indexed_sub_graphs[i];
+        delete[] sub_graph->node_index;
+        delete sub_graph->meta_def;
+        delete sub_graph;
+      }
+      delete[] indexed_sub_graphs;
+    };
 }
 
 OpenVINOExecutionProviderFactory::OpenVINOExecutionProviderFactory() {

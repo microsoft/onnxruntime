@@ -145,10 +145,11 @@ struct OpenVINOExecutionProviderInfo {
 };
 
 struct OpenVINOEPFunctionState {
- AllocateFunc allocate_func = nullptr;
- DestroyFunc destroy_func = nullptr;
- AllocatorHandle allocator_handle = nullptr;
- std::shared_ptr<openvino_ep::BackendManager> backend_manager;
+  void*(ORT_API_CALL* AllocateFunc)(void*, size_t, size_t);
+  void(ORT_API_CALL* DestroyFunc)(void*, void*);
+  void* allocator_handle;
+  const char* node_name;
+  openvino_ep::BackendManager* backend_manager;
 };
 
 // Logical device representation.
@@ -160,6 +161,7 @@ class OpenVINOExecutionProvider : public OrtExecutionProvider {
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
   openvino_ep::EPCtxHandler ep_ctx_handle_{};
+  std::unordered_map<std::string, std::unique_ptr<openvino_ep::BackendManager>> backend_managers_;
   static const OrtApi* api_;
   static const OrtGraphApi* graph_api_;
 };

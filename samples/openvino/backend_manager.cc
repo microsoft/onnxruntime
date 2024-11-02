@@ -70,70 +70,72 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   const char* subgraph_name = nullptr;
   graph_api_->OrtNode_GetName(fused_node, &subgraph_name);
   subgraph_context_.subgraph_name = std::string(subgraph_name);
-//  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
-//  std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
-//
-//  if (ModelHasSymbolicInputDims(subgraph)) {
-//    subgraph_context_.has_dynamic_input_shape = true;
+  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, &model_proto_len_);
+  std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
+
+  if (ModelHasSymbolicInputDims(subgraph)) {
+    subgraph_context_.has_dynamic_input_shape = true;
 //    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-//    ORT_ENFORCE(!global_context_.enable_qdq_optimizer,
-//                "QDQ stripping should not be enabled for models with dynamic input shapes. "
-//                "Set enable_qdq_optimizer to False");
-//    if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
-//        GetGlobalContext().device_type.find("GPU") != std::string::npos) {
-//      if (!GetGlobalContext().disable_dynamic_shapes) {
+    assert((!global_context_.enable_qdq_optimizer) &&
+        "QDQ stripping should not be enabled for models with dynamic input shapes. Set enable_qdq_optimizer to False");
+    if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
+        GetGlobalContext().device_type.find("GPU") != std::string::npos) {
+      if (!GetGlobalContext().disable_dynamic_shapes) {
 //        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
 //                           << "Creating backend Dynamic Shapes";
-//        try {
-//          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
-//                                                          GetGlobalContext(),
-//                                                          subgraph_context_,
-//                                                          ep_ctx_handle_);
-//        } catch (std::string const& msg) {
-//          ORT_THROW(msg);
-//        }
+        try {
+          concrete_backend_ = BackendFactory::MakeBackend(model_proto_,
+                                                          model_proto_len_,
+                                                          GetGlobalContext(),
+                                                          subgraph_context_,
+                                                          ep_ctx_handle_);
+        } catch (std::string const& msg) {
+          throw std::runtime_error(msg);
+        }
 //        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
 //                           << "Backend created for graph " << subgraph_context_.subgraph_name;
-//      }
-//    }
-//  } else {
+      }
+    }
+  } else {
 //    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. "
 //                       << "Initializing backend for graph "
 //                       << subgraph_context_.subgraph_name;
-//
-//    subgraph_context_.has_dynamic_input_shape = false;
-//
-//    // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
-//    try {
-//      concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
-//                                                      GetGlobalContext(),
-//                                                      subgraph_context_,
-//                                                      ep_ctx_handle_);
-//    } catch (const OnnxRuntimeException& ex) {
-//#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-//      ORT_THROW(ex.what());
-//#else
-//      if (device_type.find("NPU") != std::string::npos &&
-//          !GetGlobalContext().disable_cpu_fallback) {
+
+    subgraph_context_.has_dynamic_input_shape = false;
+
+    // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
+    try {
+      concrete_backend_ = BackendFactory::MakeBackend(model_proto_,
+                                                      model_proto_len_,
+                                                      GetGlobalContext(),
+                                                      subgraph_context_,
+                                                      ep_ctx_handle_);
+    } catch (const std::exception& ex) {
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+      throw std::runtime_error(ex.what());
+#else
+      if (device_type.find("NPU") != std::string::npos &&
+          !GetGlobalContext().disable_cpu_fallback) {
 //        LOGS_DEFAULT(WARNING) << ex.what();
 //        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
 //                              << "Falling back to OV CPU for execution";
-//        GetGlobalContext().device_type = "CPU";
-//        GetGlobalContext().precision_str = "FP32";
-//        try {
-//          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
-//                                                          GetGlobalContext(),
-//                                                          subgraph_context_,
-//                                                          ep_ctx_handle_);
-//        } catch (std::string const& msg) {
-//          ORT_THROW(msg);
-//        }
-//      } else {
-//        ORT_THROW(ex.what());
-//      }
-//#endif
-//    }
-//  }
+        GetGlobalContext().device_type = "CPU";
+        GetGlobalContext().precision_str = "FP32";
+        try {
+          concrete_backend_ = BackendFactory::MakeBackend(model_proto_,
+                                                          model_proto_len_,
+                                                          GetGlobalContext(),
+                                                          subgraph_context_,
+                                                          ep_ctx_handle_);
+        } catch (std::string const& msg) {
+          throw std::runtime_error(msg);
+        }
+      } else {
+        throw std::runtime_error(ex.what());
+      }
+#endif
+    }
+  }
 }
 
 // Call EPContext model exporter here if the provider option for exporting
@@ -149,28 +151,28 @@ OrtStatus* BackendManager::ExportCompiledBlobAsEPCtxNode(const OrtGraphViewer* g
     throw std::runtime_error(exception_str);
   }
 
-//  std::string model_blob_str;
-//  auto compiled_model = concrete_backend_->GetOVCompiledModel();
-//  auto graph_name = global_context_.onnx_model_path_name;
-//  // Remove extension so we can append suffix to form the complete name of output graph
-//  graph_name = [&]() {
-//    size_t dot = graph_name.find_last_of(".");
-//    if (dot == std::string::npos) return graph_name;
-//    return graph_name.substr(0, dot);
-//  }();
-//  // If embed_mode, then pass on the serialized blob
-//  // If not embed_mode, dump the blob here and only pass on the path to the blob
-//  if (global_context_.ep_context_embed_mode) {
-//    std::ostringstream model_blob_stream;
-//    compiled_model.export_model(model_blob_stream);
-//    model_blob_str = model_blob_stream.str();
-//    ORT_ENFORCE(model_blob_str.size() != 0);
-//  } else {
-//    std::ofstream f(graph_name + ".blob", std::ios::out | std::ios::trunc | std::ios::binary);
-//    compiled_model.export_model(f);
-//    model_blob_str = graph_name + ".blob";
-//  }
-//
+  std::string model_blob_str;
+  auto compiled_model = concrete_backend_->GetOVCompiledModel();
+  auto graph_name = global_context_.onnx_model_path_name;
+  // Remove extension so we can append suffix to form the complete name of output graph
+  graph_name = [&]() {
+    size_t dot = graph_name.find_last_of(".");
+    if (dot == std::string::npos) return graph_name;
+    return graph_name.substr(0, dot);
+  }();
+  // If embed_mode, then pass on the serialized blob
+  // If not embed_mode, dump the blob here and only pass on the path to the blob
+  if (global_context_.ep_context_embed_mode) {
+    std::ostringstream model_blob_stream;
+    compiled_model.export_model(model_blob_stream);
+    model_blob_str = model_blob_stream.str();
+    assert(model_blob_str.size() != 0);
+  } else {
+    std::ofstream f(graph_name + ".blob", std::ios::out | std::ios::trunc | std::ios::binary);
+    compiled_model.export_model(f);
+    model_blob_str = graph_name + ".blob";
+  }
+
 //  ORT_RETURN_IF_ERROR(ep_ctx_handle_.ExportEPCtxModel(graph_body_viewer,
 //                                                      graph_name,
 //                                                      logger,
@@ -181,7 +183,7 @@ OrtStatus* BackendManager::ExportCompiledBlobAsEPCtxNode(const OrtGraphViewer* g
 //
   return nullptr;
 }
-//
+
 //bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
 //  bool has_batched_inputs = true;
 //
@@ -212,33 +214,27 @@ OrtStatus* BackendManager::ExportCompiledBlobAsEPCtxNode(const OrtGraphViewer* g
 //  }
 //  return has_batched_inputs;
 //}
-//
+
 bool BackendManager::ModelHasSymbolicInputDims(const OrtGraphViewer* subgraph) const {
- bool has_sym_dims = false;
  const char** required_inputs = nullptr;
  size_t input_count = 0;
  graph_api_->OrtGraph_GetRequiredInputs(subgraph, &required_inputs, &input_count);
-  for (int i = 0; i < input_count; i++) {
-    OrtValueInfoRef* value_info = nullptr;
-    graph_api_->OrtGraph_GetValueInfo(subgraph, required_inputs[i], &value_info);
-    if (value_info->shape == nullptr) {
-      has_sym_dims = true;
-      graph_api_->OrtGraph_ReleaseValueInfo(value_info);
-      break;
-    }
-    for (size_t j = 0; j < value_info->shape_len; j++) {
-      // if (dim.value_case() != dim.kDimValue) {  TODO:yang
-      //   has_sym_dims = true;
-      //   graph_api_->OrtGraph_ReleaseValueInfo(value_info);
-      //   break;
-      // }
-    }
-    graph_api_->OrtGraph_ReleaseValueInfo(value_info);
-    if (has_sym_dims) {
-      break;
-    }
-  }
- return has_sym_dims;
+ for (int i = 0; i < input_count; i++) {
+   OrtValueInfoRef* value_info = nullptr;
+   graph_api_->OrtGraph_GetValueInfo(subgraph, required_inputs[i], &value_info);
+   if (value_info->shape == nullptr) {
+     graph_api_->OrtGraph_ReleaseValueInfo(value_info);
+     return true;
+   }
+   for (size_t j = 0; j < value_info->shape_len; j++) {
+     if (value_info->shape[j] == -1) { // symbolic dimensions are represented as -1 in onnxruntime
+       graph_api_->OrtGraph_ReleaseValueInfo(value_info);
+       return true;
+     }
+   }
+   graph_api_->OrtGraph_ReleaseValueInfo(value_info);
+ }
+ return false;
 }
 
 // Check to see if the graph is QDQ
@@ -284,31 +280,29 @@ static bool IsQDQGraph(const OrtGraphApi* graph_api, const OrtGraphViewer* graph
 //    model_proto->SerializeToOstream(dump);
 //  }
 //}
-//
-//std::unique_ptr<ONNX_NAMESPACE::ModelProto>
-//BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
-//                                           const onnxruntime::GraphViewer& subgraph,
-//                                           const logging::Logger& logger) const {
-//  std::chrono::time_point<std::chrono::high_resolution_clock> model_proto_create_start_, model_proto_create_end_;
-//  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-//    model_proto_create_start_ = std::chrono::high_resolution_clock::now();
-//  }
-//
-//  auto print_model_proto_duration = [&]() {
-//    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-//      model_proto_create_end_ = std::chrono::high_resolution_clock::now();
-//      auto model_proto_create_duration =
-//          std::chrono::duration_cast<std::chrono::milliseconds>(
-//              model_proto_create_end_ - model_proto_create_start_)
-//              .count();
+
+void* BackendManager::GetModelProtoFromFusedNode(const OrtNode* fused_node,
+                                           const OrtGraphViewer* subgraph, size_t* model_proto_len) const {
+  std::chrono::time_point<std::chrono::high_resolution_clock> model_proto_create_start_, model_proto_create_end_;
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    model_proto_create_start_ = std::chrono::high_resolution_clock::now();
+  }
+
+  auto print_model_proto_duration = [&]() {
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      model_proto_create_end_ = std::chrono::high_resolution_clock::now();
+      auto model_proto_create_duration =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              model_proto_create_end_ - model_proto_create_start_)
+              .count();
 //      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model Proto creation took: " << model_proto_create_duration << " ms.";
-//    }
-//  };
-//
-//  // QDQ stripping enabled only for the NPU
-//  if (global_context_.device_type.find("NPU") != std::string::npos &&
-//      global_context_.enable_qdq_optimizer &&
-//      IsQDQGraph(_graph_api, subgraph)) {
+    }
+  };
+
+  // QDQ stripping enabled only for the NPU
+  if (global_context_.device_type.find("NPU") != std::string::npos &&
+      global_context_.enable_qdq_optimizer &&
+      IsQDQGraph(graph_api_, subgraph)) {
 //    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
 //    std::unique_ptr<onnxruntime::Model> model;
 //    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
@@ -318,17 +312,15 @@ static bool IsQDQGraph(const OrtGraphApi* graph_api, const OrtGraphViewer* graph
 //    DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
 //    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 //    return model_proto;
-//  } else {
+    return nullptr;
+  }
 //    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 0";
-//    auto model = subgraph.CreateModel(logger);
-//    auto model_proto = model->ToProto();
-//    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-//    subgraph.ToProto(*model_proto->mutable_graph(), true, true);
-//    print_model_proto_duration();
-//    DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
-//    return model_proto;
-//  }
-//}
+  void* ret = nullptr;
+  graph_api_->OrtGraph_SerializeToArray(subgraph, &ret, model_proto_len);
+  print_model_proto_duration();
+//  DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
+  return ret;
+}
 
 std::vector<std::vector<int64_t>> GetInputTensorShapes(const Ort::KernelContext& context) {
   const auto input_count = context.GetInputCount();
@@ -359,29 +351,28 @@ std::string MakeMapKeyString(const std::vector<std::vector<int64_t>>& shapes,
   return key;
 }
 
-//std::shared_ptr<ONNX_NAMESPACE::ModelProto>
-//BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
-//                                      const std::vector<std::vector<int64_t>>& input_shapes) {
-//  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
-//  std::string proto_str;
-//  model_proto.SerializeToString(proto_str);
-//  model_copy->ParseFromString(proto_str);
-//  auto graph_proto = model_copy->mutable_graph();
-//
-//  for (size_t i = 0, limit = input_shapes.size(); i < limit; i++) {
-//    auto g_in_shape = graph_proto->mutable_input(static_cast<int>(i))
-//                          ->mutable_type()
-//                          ->mutable_tensor_type()
-//                          ->mutable_shape();
-//    g_in_shape->clear_dim();
-//    const auto& shape = input_shapes[i];
-//    for (size_t dim = 0, end = shape.size(); dim < end; dim++) {
-//      g_in_shape->add_dim()->set_dim_value(shape[dim]);
-//    }
-//  }
-//  return model_copy;
-//}
-//
+std::unique_ptr<ONNX_NAMESPACE::ModelProto>
+BackendManager::ReWriteInputShapeInfo(void* model_proto, size_t model_proto_len,
+                                      const std::vector<std::vector<int64_t>>& input_shapes) {
+  auto model_copy = std::make_unique<ONNX_NAMESPACE::ModelProto>();
+  std::string proto_str(static_cast<char*>(model_proto), model_proto_len);
+  model_copy->ParseFromString(proto_str);
+  auto graph_proto = model_copy->mutable_graph();
+
+  for (size_t i = 0, limit = input_shapes.size(); i < limit; i++) {
+    auto g_in_shape = graph_proto->mutable_input(static_cast<int>(i))
+                          ->mutable_type()
+                          ->mutable_tensor_type()
+                          ->mutable_shape();
+    g_in_shape->clear_dim();
+    const auto& shape = input_shapes[i];
+    for (size_t dim = 0, end = shape.size(); dim < end; dim++) {
+      g_in_shape->add_dim()->set_dim_value(shape[dim]);
+    }
+  }
+  return model_copy;
+}
+
 //std::shared_ptr<ONNX_NAMESPACE::ModelProto>
 //BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto) {
 //  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
@@ -401,90 +392,91 @@ std::string MakeMapKeyString(const std::vector<std::vector<int64_t>>& shapes,
 //  }
 //  return model_copy;
 //}
-//
-//void BackendManager::Compute(OrtKernelContext* context) {
-//  Ort::KernelContext ctx(context);
-//  std::chrono::high_resolution_clock::time_point start_compute, end_compute;
-//#ifdef OPENVINO_FIL_ENABLED
-//  static bool fil_enabled = true;
-//  if (fil_enabled) {
-//    start_compute = std::chrono::high_resolution_clock::now();
+
+void BackendManager::Compute(OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
+  std::chrono::high_resolution_clock::time_point start_compute, end_compute;
+#ifdef OPENVINO_FIL_ENABLED
+  static bool fil_enabled = true;
+  if (fil_enabled) {
+    start_compute = std::chrono::high_resolution_clock::now();
 //    LOGS_DEFAULT(INFO) << "Start Compute";
-//  }
-//#endif
-//  // OV NPU doesn't support dynamic shaped model inference.
-//  // if disable_dynamic_shapes is set to true then execution of dynamic model is done
-//  // by rewriting the model to static shaped model at runtime based on input shape.
-//  // disable_dynamic_shapes is always set to true for OV NPU plugin.
-//  bool use_dynamic_backend = true;
-//  if (subgraph_context_.has_dynamic_input_shape &&
-//      !GetGlobalContext().disable_dynamic_shapes &&
-//      (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
-//       GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
-//    concrete_backend_->Infer(context);
-//    use_dynamic_backend = false;
-//  } else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
-//    std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
-//    auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
-//    std::shared_ptr<IBackend> dynamic_backend;
-//    auto search = backend_map_.find(key);
-//    if (search == backend_map_.end()) {
+  }
+#endif
+  // OV NPU doesn't support dynamic shaped model inference.
+  // if disable_dynamic_shapes is set to true then execution of dynamic model is done
+  // by rewriting the model to static shaped model at runtime based on input shape.
+  // disable_dynamic_shapes is always set to true for OV NPU plugin.
+  bool use_dynamic_backend = true;
+  if (subgraph_context_.has_dynamic_input_shape &&
+      !GetGlobalContext().disable_dynamic_shapes &&
+      (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
+       GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
+    concrete_backend_->Infer(context);
+    use_dynamic_backend = false;
+  } else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
+    std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
+    auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
+    std::shared_ptr<IBackend> dynamic_backend;
+    auto search = backend_map_.find(key);
+    if (search == backend_map_.end()) {
 //      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
 //                         << "Creating dynamic backend for key: " << key;
 //      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
 //                         << "Backend created for graph " << subgraph_context_.subgraph_name;
-//      auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(*model_proto_, tensor_shapes);
-//      try {
-//        dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
-//                                                      GetGlobalContext(),
-//                                                      subgraph_context_,
-//                                                      ep_ctx_handle_);
-//      } catch (const OnnxRuntimeException& ex) {
-//        // Build option disables fallback to CPU on compilation failures with NPU.
-//#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-//        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU.";
-//        ORT_THROW(ex.what());
-//#else
-//        if (GetGlobalContext().device_type.find("NPU") != std::string::npos &&
-//            !GetGlobalContext().disable_cpu_fallback) {
+      auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, model_proto_len_, tensor_shapes);
+      const std::string model_with_concrete_shapes = modelproto_with_concrete_shapes->SerializeAsString();
+      try {
+        dynamic_backend = BackendFactory::MakeBackend(const_cast<char*>(model_with_concrete_shapes.c_str()), model_with_concrete_shapes.length(),
+                                                      GetGlobalContext(),
+                                                      subgraph_context_,
+                                                      ep_ctx_handle_);
+      } catch (const std::exception& ex) {
+        // Build option disables fallback to CPU on compilation failures with NPU.
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU.";
+        throw std::runtime_error(ex.what());
+#else
+        if (GetGlobalContext().device_type.find("NPU") != std::string::npos &&
+            !GetGlobalContext().disable_cpu_fallback) {
 //          LOGS_DEFAULT(WARNING) << ex.what();
 //          LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
 //                                << "Falling back to OV CPU for execution";
-//          GetGlobalContext().device_type = "CPU";
-//          GetGlobalContext().precision_str = "FP32";
-//          key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
-//          try {
-//            dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
-//                                                          GetGlobalContext(),
-//                                                          subgraph_context_,
-//                                                          ep_ctx_handle_);
-//          } catch (std::string const& msg) {
-//            ORT_THROW(msg);
-//          }
-//        } else {
-//          ORT_THROW(ex.what());
-//        }
-//#endif
-//      }
-//      backend_map_.insert({key, dynamic_backend});
-//    } else {
-//      dynamic_backend = search->second;
-//    }
-//
-//    dynamic_backend->Infer(context);
-//  } else {
-//    concrete_backend_->Infer(context);
-//  }
-//#ifdef OPENVINO_FIL_ENABLED
-//  if (fil_enabled) {
-//    end_compute = std::chrono::high_resolution_clock::now();
-//    LOGS_DEFAULT(INFO) << "End Compute";
-//    std::chrono::duration<double> compute_time = end_compute - start_compute;
-//    std::cout << "Compute Time: " << compute_time.count() << " s" << std::endl;
-//    fil_enabled = false;  // calculating compute time for first run only
-//  }
-//#endif
-//}
+          GetGlobalContext().device_type = "CPU";
+          GetGlobalContext().precision_str = "FP32";
+          key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
+          try {
+            dynamic_backend = BackendFactory::MakeBackend(const_cast<char*>(model_with_concrete_shapes.c_str()), model_with_concrete_shapes.length(),
+                                                          GetGlobalContext(),
+                                                          subgraph_context_,
+                                                          ep_ctx_handle_);
+          } catch (std::string const& msg) {
+            throw std::runtime_error(msg);
+          }
+        } else {
+          throw std::runtime_error(ex.what());
+        }
+#endif
+      }
+      backend_map_.insert({key, dynamic_backend});
+    } else {
+      dynamic_backend = search->second;
+    }
+
+    dynamic_backend->Infer(context);
+  } else {
+    concrete_backend_->Infer(context);
+  }
+#ifdef OPENVINO_FIL_ENABLED
+  if (fil_enabled) {
+    end_compute = std::chrono::high_resolution_clock::now();
+    LOGS_DEFAULT(INFO) << "End Compute";
+    std::chrono::duration<double> compute_time = end_compute - start_compute;
+    std::cout << "Compute Time: " << compute_time.count() << " s" << std::endl;
+    fil_enabled = false;  // calculating compute time for first run only
+  }
+#endif
+}
 
 void BackendManager::ShutdownBackendManager() {
 }
