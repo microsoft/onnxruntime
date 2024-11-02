@@ -242,7 +242,7 @@ TEST(TensorrtExecutionProviderPluginTest, SmallModel) {
 TEST(TensorrtExecutionProviderPluginTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   std::vector<int> dims = {1, 3, 2};
-  int num_thread = 1;
+  int num_thread = 5;
 
   for (int i = 0; i < num_thread; ++i)
     threads.push_back(std::thread(CreateSessionAndRunInference));
