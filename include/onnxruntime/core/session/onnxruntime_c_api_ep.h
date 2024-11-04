@@ -333,6 +333,18 @@ ORT_API2_STATUS(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
  *
  */
 ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);  // TODO(leca): review and discuss
+ 
+ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char* onnx_model_path);
+
+ORT_API2_STATUS(OrtGraph_GetEpContextGraph,
+                    const OrtGraphViewer* graph,
+                    const char* cache_path,
+                    char* cache_data,
+                    size_t size,
+                    const int64_t embed_mode,
+                    const char* compute_capability,
+                    const char* onnx_model_path,
+                    _Outptr_ const OrtGraphViewer** ep_context_graph); 
 
 /** \brief Construct a subgraph from the Graph with the given node indices.
  *

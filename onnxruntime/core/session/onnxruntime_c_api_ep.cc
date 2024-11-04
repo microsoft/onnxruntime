@@ -9,6 +9,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/ort_apis.h"
 
+#include <fstream>
+#include <iostream>
+
 using namespace onnxruntime;
 
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetName, const OrtGraphViewer* graph, _Out_ const char** out) {
@@ -477,6 +480,134 @@ static void SetAllGraphInputs(Graph& graph, std::unordered_map<std::string, std:
   graph.SetInputs(graph_inputs_including_initializers);
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
+                    const OrtGraphViewer* graph,
+                    const char* onnx_model_path) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  auto model = &(graph_viewer->GetGraph()).GetModel();
+
+  // Two options to generate model proto:
+  //   1. model->ToProto()
+  //   2. new model ---> model->ToProto ---> update graph proto in model proto with GraphViewerToProto() 
+  //
+  //auto model_proto = model->ToProto();
+  //graph->ToProto(*model_proto->mutable_graph(), true, true);
+  //model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  // option 1
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+
+  std::fstream dump(onnx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
+  model_proto->SerializeToOstream(&dump);
+  //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
+  std::cout << "dump model to " << onnx_model_path;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
+                    const OrtGraphViewer* graph,
+                    const char* cache_path,
+                    char* cache_data,
+                    size_t size,
+                    const int64_t embed_mode,
+                    const char* compute_capability,
+                    const char* onnx_model_path,
+                    _Outptr_ const OrtGraphViewer** ep_context_graph) {
+
+  static const std::string EPCONTEXT_OP = "EPContext";
+  static const std::string EMBED_MODE = "embed_mode";
+  static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
+  static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
+  static const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
+  static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
+  static const std::string EPCONTEXT_WARNING =
+    "It's suggested to set the ORT graph optimization level to 0 and  \
+                                              make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
+                                              for the best model loading time";
+
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+
+  // The model instance won't be released until user calls OrtGraph_ReleaseGraph
+  Model* model_build = new Model (graph_viewer->Name(), true, ModelMetaData(), PathString(),
+#if !defined(ORT_MINIMAL_BUILD)
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
+#else
+                                   IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
+#endif  // ORT_MINIMAL_BUILD
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
+  auto& graph_build = model_build->MainGraph();
+
+  // Get graph inputs and outputs
+  std::vector<onnxruntime::NodeArg*> inputs, outputs;
+  for (auto input : graph_viewer->GetInputs()) {
+    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+    inputs.push_back(&n_input);
+  }
+
+  for (auto output : graph_viewer->GetOutputs()) {
+    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+    outputs.push_back(&n_output);
+  }
+
+  // Create EP context node attributes
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_0 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // embed_mode
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_1 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // ep_cache_context
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_2 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // hardware_architecture
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_3 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // onnx_model_filename
+
+  std::string cache_data_str = "";
+  std::string cache_path_str = cache_path;
+  std::string compute_capability_str = compute_capability;
+  std::string onnx_model_path_str = onnx_model_path;
+
+  attr_0->set_name(EMBED_MODE);
+  attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_0->set_i(embed_mode);
+  attr_1->set_name(EP_CACHE_CONTEXT);
+  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
+  if (embed_mode) {
+    if (size > 0) {
+      cache_data_str.assign(cache_data, size);
+    }
+    attr_1->set_s(cache_data_str);
+    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
+  } else {
+    attr_1->set_s(cache_path_str);
+  }
+  attr_2->set_name(COMPUTE_CAPABILITY);
+  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_2->set_s(compute_capability_str);
+  attr_3->set_name(ONNX_MODEL_FILENAME);
+  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_3->set_s(std::filesystem::path(onnx_model_path_str).filename().string());
+
+  std::unique_ptr<NodeAttributes> node_attributes = std::make_unique<NodeAttributes>();
+  constexpr int num_attributes = 4;
+  node_attributes->reserve(num_attributes);
+  node_attributes->emplace(EMBED_MODE, *attr_0);
+  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
+  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
+  node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
+
+  // Create EP context node
+  graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  common::Status status = graph_build.Resolve();
+  if (status != Status::OK()) return onnxruntime::ToOrtStatus(status);
+
+  // Serialize modelproto to string
+  //auto new_graph_viewer = graph_build.CreateGraphViewer();
+  //auto model = new_graph_viewer->CreateModel(*logger);
+  //auto model_proto = model->ToProto();
+  //new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
+  //model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  //return model_proto.release();
+
+  auto ep_context_graph_viewer = std::make_unique<GraphViewer>(graph_build);
+  *ep_context_graph = reinterpret_cast<const OrtGraphViewer*>(ep_context_graph_viewer.release());
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   // Get parent graph output names
@@ -816,6 +947,8 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetValueInfo,
     &OrtGraphApis::OrtGraph_ReleaseValueInfo,
     &OrtGraphApis::OrtGraph_SerializeToArray,
+    &OrtGraphApis::OrtGraph_DumpOnnxModel,
+    &OrtGraphApis::OrtGraph_GetEpContextGraph,
     &OrtGraphApis::OrtGraph_GetSubGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraph,
     &OrtGraphApis::OrtNode_GetName,
