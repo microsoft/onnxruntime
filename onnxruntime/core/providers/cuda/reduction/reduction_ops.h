@@ -108,7 +108,7 @@ class ArgMin final : public ReduceKernel<false> {
  public:
   ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {
     // The following is just a safety check.
-    // The logic in ArgMaxOrArgMinNeedFallbackToCPU() makes sure to not assign ArgMax
+    // The logic in ArgMaxOrArgMinNeedFallbackToCPU() makes sure to not assign ArgMin
     // nodes with select_last_index == 1 to the CUDA EP.
     int64_t select_last_index = 0;
     if (info.GetAttr<int64_t>("select_last_index", &select_last_index).IsOK()) {

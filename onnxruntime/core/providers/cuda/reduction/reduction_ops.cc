@@ -834,7 +834,6 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 
 }  // namespace ReductionOps
 
-// If supporting select_last_index == 1, please remove ArgMaxOrArgMinNeedFallbackToCPU() in cuda_execution_provider.cc
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, MLFloat16)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, float)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, double)
