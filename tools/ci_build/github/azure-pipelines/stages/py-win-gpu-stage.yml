@@ -211,6 +211,22 @@ stages:
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
 
+        - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
+          - template: ../templates/jobs/set-winenv.yml
+            parameters:
+              EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+              ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+                DownloadCUDA: true
+              DownloadTRT: ${{ parameters.use_tensorrt }}
+
+        - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
+          - template: ../templates/jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+                DownloadCUDA: true
+              DownloadTRT: ${{ parameters.use_tensorrt }}
+
         - task: PowerShell@2
           displayName: 'Install ONNX'
           inputs:
