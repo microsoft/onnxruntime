@@ -190,7 +190,7 @@ const computePixel = (output: IndicesHelper, dataType: string, attributes: GridS
       default:
         throw new Error(`mode ${attributes.mode} is not supported`);
     }
-  })() + `${output.setByIndices(`indices`, `result`)}`;
+  })() + `${output.setByOffset('global_idx', 'result')}`;
 
 const createGridSampleProgramInfo = (inputs: readonly TensorView[], attributes: GridSampeAttributes): ProgramInfo => {
   const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length);
