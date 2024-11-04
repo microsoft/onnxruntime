@@ -16,6 +16,8 @@ extends:
     pool:
       name: onnxruntime-Win-CPU-2022
       os: windows
+    git:
+      submodules: false
     sdl:
       tsa:
         enabled: true
