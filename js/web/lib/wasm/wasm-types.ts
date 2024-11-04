@@ -225,6 +225,13 @@ export declare namespace JSEP {
      * @returns the MLTensor ID for the external MLTensor.
      */
     jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
+
+    /**
+     * [exported from pre-jsep.js] Create an MLContext from a GPUDevice or MLContextOptions.
+     * @param optionsOrGpuDevice - specify the options or GPUDevice.
+     * @returns
+     */
+    jsepCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
   }
 }
 

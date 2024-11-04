@@ -19,6 +19,9 @@ extends:
     sdl:
       tsa:
         enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
       policheck:
         enabled: true
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'

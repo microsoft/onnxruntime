@@ -704,7 +704,7 @@ TEST(BatchNormTest, NonSpatial_Complicated) {
 }
 
 // Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(BatchNormTest, BatchNorm2d_fp16) {
   vector<float> X{-0.91221f, -0.283559f, 0.937637f, 2.09818f, -0.100199f, -0.608113f, 0.444562f, -1.07505f, 0.940591f,
                   -0.922262f, 0.0931303f, 0.69611f, 1.55187f, 0.159808f, 0.914874f, -1.24856f, -1.98928f, -0.331621f,
@@ -765,9 +765,6 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
                                 -0.0989828f, -0.160014f, 0.362077f, 0.0649763f, -0.371465f, 0.727401f, 0.0320011f};
   float epsilon = 1e-05f;
 
-  OpTester test("BatchNormalization");
-  test.AddAttribute("epsilon", epsilon);
-
   vector<int64_t> input_shape{2, 3, 6, 6};
   int input_size = 2 * 3 * 6 * 6;
 
@@ -785,13 +782,20 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   ConvertFloatToMLFloat16(var.data(), f_var.data(), 3);
   ConvertFloatToMLFloat16(expected_output.data(), f_output.data(), input_size);
 
-  test.AddInput<MLFloat16>("X", input_shape, f_X);
-  test.AddInput<MLFloat16>("scale", {3}, f_scale);
-  test.AddInput<MLFloat16>("B", {3}, f_B);
-  test.AddInput<MLFloat16>("mean", {3}, f_mean);
-  test.AddInput<MLFloat16>("var", {3}, f_var);
-  test.AddOutput<MLFloat16>("output", input_shape, f_output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  auto run_test = [&](bool is_initializer) {
+    OpTester test("BatchNormalization");
+    test.AddAttribute("epsilon", epsilon);
+    test.AddInput<MLFloat16>("X", input_shape, f_X);
+    test.AddInput<MLFloat16>("scale", {3}, f_scale, is_initializer);
+    test.AddInput<MLFloat16>("B", {3}, f_B, is_initializer);
+    test.AddInput<MLFloat16>("mean", {3}, f_mean, is_initializer);
+    test.AddInput<MLFloat16>("var", {3}, f_var, is_initializer);
+    test.AddOutput<MLFloat16>("output", input_shape, f_output, is_initializer);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+  run_test(false);
+  // coreml EP requires initializer
+  run_test(true);
 }
 #endif
 

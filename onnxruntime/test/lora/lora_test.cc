@@ -201,6 +201,14 @@ TEST(LoraAdapterTest, Load) {
 
 #ifdef USE_CUDA
 TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "Skip This Test Due to this EP is null";
+  }
+#ifdef USE_DML
+  if (DefaultDmlExecutionProvider() != nullptr) {
+    GTEST_FAIL() << "It should not run with DML EP";
+  }
+#endif
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
   auto cuda_allocator = DefaultCudaExecutionProvider()->CreatePreferredAllocators()[0];
@@ -234,6 +242,17 @@ TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
 
 #ifdef USE_DML
 TEST(LoraAdapterTest, VerifyDmlDeviceCopy) {
+  // NO_DML_TEST is set, DML test is skipped
+  if (DefaultDmlExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "Skip This Test Due to this EP is null";
+  }
+
+#ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    GTEST_FAIL() << "It should not run with CUDA EP";
+  }
+#endif
+
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
 

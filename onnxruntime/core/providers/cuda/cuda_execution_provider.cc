@@ -50,7 +50,6 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      // do we support async copy?
       // The cudaMemCpyAsync will handle the pinned memory and non-pinned memory,
       // so we don't need the check here.
       auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
