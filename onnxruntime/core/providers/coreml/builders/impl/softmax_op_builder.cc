@@ -4,6 +4,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
@@ -18,6 +19,7 @@ class SoftmaxOpBuilder : public BaseOpBuilder {
 
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+  bool SupportsMLProgram() const override { return true; }
 };
 
 Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -33,55 +35,106 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   int32_t axis_default_value = (node.SinceVersion() < 13) ? 1 : -1;
   const auto axis = helper.Get("axis", axis_default_value);
-  const auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
+  auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
 
-  if (node.SinceVersion() >= 13 || (data_shape.size() == 2)) {
-    auto* coreml_softmaxnd = layer->mutable_softmaxnd();
-    coreml_softmaxnd->set_axis(axis);
-    *layer->mutable_input()->Add() = input_name;
-    *layer->mutable_output()->Add() = output_name;
-    model_builder.AddLayer(std::move(layer));
-  } else {
-    // note: if opsets < 13, onnx Softmax coerces the input shape to be 2D based on axis.
-    // we need to manually reshape to 2D and apply SoftmaxND to axis -1 to achieve equivalent results for CoreML.
-    TensorShape input_shape(data_shape);
-    const auto size_to_dimension = input_shape.SizeToDimension(axis_nonnegative);
-    const auto size_from_dimension = input_shape.SizeFromDimension(axis_nonnegative);
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
+    auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t elem_type = static_cast<int32_t>(input_dtype);
 
-    TensorShapeVector target_shape;
-    target_shape.push_back(size_to_dimension);
-    target_shape.push_back(size_from_dimension);
-
-    const auto reshape1_output_name = model_builder.GetUniqueName(node, "reshape1_output");
-    {  // Add reshape layer
-      auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape1");
-      *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
-      *reshape_layer->mutable_input()->Add() = input_name;
-      *reshape_layer->mutable_output()->Add() = reshape1_output_name;
-      model_builder.AddLayer(std::move(reshape_layer));
+    std::string_view layer_input_name_x = node.InputDefs()[0]->Name();
+    std::vector<int64_t> shape1(2, 1);
+    if (node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1) {
+      // reshape to 2D to simulate onnx softmax behavior
+      auto reshape1 = model_builder.CreateOperation(node, "reshape", "pre");
+      for (size_t i = 0, shape1_i = 0; i < data_shape.size(); i++) {
+        if (static_cast<int64_t>(i) == axis_nonnegative) {
+          shape1_i++;
+        }
+        shape1[shape1_i] *= data_shape[i];
+      }
+      if (axis_nonnegative == 0) {
+        shape1[0] = shape1[1];
+        shape1.pop_back();
+      }
+      axis_nonnegative = -1;
+      AddOperationInput(*reshape1, "x", layer_input_name_x);
+      AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", shape1));
+      layer_input_name_x = model_builder.GetUniqueName(node, "ln_reshape1_");
+      AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, shape1);
+      model_builder.AddOperation(std::move(reshape1));
     }
-    const auto softmax_output_name = model_builder.GetUniqueName(node, "softmax_output");
-    {
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "softmax");
+    AddOperationInput(*op, "x", layer_input_name_x);
+    AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis_nonnegative));
+    std::string_view ln_output_name;
+    if (node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1) {
+      ln_output_name = model_builder.GetUniqueName(node, "ln_reshape1_");
+      AddIntermediateOperationOutput(*op, ln_output_name, elem_type, shape1);
+    } else {
+      AddOperationOutput(*op, *node.OutputDefs()[0]);
+    }
+    model_builder.AddOperation(std::move(op));
+
+    if (node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1) {
+      auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
+      AddOperationInput(*reshape2, "x", ln_output_name);
+      AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", data_shape));
+      AddOperationOutput(*reshape2, *node.OutputDefs()[0]);
+      model_builder.AddOperation(std::move(reshape2));
+    }
+  } else  // NOLINT
+#endif
+  {
+    if (node.SinceVersion() >= 13 || (data_shape.size() == 2)) {
       auto* coreml_softmaxnd = layer->mutable_softmaxnd();
-      coreml_softmaxnd->set_axis(-1);
-      *layer->mutable_input()->Add() = reshape1_output_name;
-      *layer->mutable_output()->Add() = softmax_output_name;
+      coreml_softmaxnd->set_axis(axis);
+      *layer->mutable_input()->Add() = input_name;
+      *layer->mutable_output()->Add() = output_name;
       model_builder.AddLayer(std::move(layer));
-    }
-    {
-      // Add reshape back layer
-      auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape2");
-      *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {data_shape.cbegin(), data_shape.cend()};
-      *reshape_layer->mutable_input()->Add() = softmax_output_name;
-      *reshape_layer->mutable_output()->Add() = output_name;
-      model_builder.AddLayer(std::move(reshape_layer));
+    } else {
+      // note: if opsets < 13, onnx Softmax coerces the input shape to be 2D based on axis.
+      // we need to manually reshape to 2D and apply SoftmaxND to axis -1 to achieve equivalent results for CoreML.
+      TensorShape input_shape(data_shape);
+      const auto size_to_dimension = input_shape.SizeToDimension(axis_nonnegative);
+      const auto size_from_dimension = input_shape.SizeFromDimension(axis_nonnegative);
+
+      TensorShapeVector target_shape;
+      target_shape.push_back(size_to_dimension);
+      target_shape.push_back(size_from_dimension);
+
+      const auto reshape1_output_name = model_builder.GetUniqueName(node, "reshape1_output");
+      {  // Add reshape layer
+        auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape1");
+        *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
+        *reshape_layer->mutable_input()->Add() = input_name;
+        *reshape_layer->mutable_output()->Add() = reshape1_output_name;
+        model_builder.AddLayer(std::move(reshape_layer));
+      }
+      const auto softmax_output_name = model_builder.GetUniqueName(node, "softmax_output");
+      {
+        auto* coreml_softmaxnd = layer->mutable_softmaxnd();
+        coreml_softmaxnd->set_axis(-1);
+        *layer->mutable_input()->Add() = reshape1_output_name;
+        *layer->mutable_output()->Add() = softmax_output_name;
+        model_builder.AddLayer(std::move(layer));
+      }
+      {
+        // Add reshape back layer
+        auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape2");
+        *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {data_shape.cbegin(), data_shape.cend()};
+        *reshape_layer->mutable_input()->Add() = softmax_output_name;
+        *reshape_layer->mutable_output()->Add() = output_name;
+        model_builder.AddLayer(std::move(reshape_layer));
+      }
     }
   }
 
   return Status::OK();
 }
 
-bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
+bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;

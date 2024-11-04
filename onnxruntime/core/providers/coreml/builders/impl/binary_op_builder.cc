@@ -6,6 +6,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
@@ -70,6 +71,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       coreml_op_type = "add";
     } else if (op_type == "Mul") {
       coreml_op_type = "mul";
+    } else if (op_type == "Max") {
+      coreml_op_type = "maximum";
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
@@ -86,8 +89,33 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
     AddOperationInput(*op, "y", input_defs[1]->Name());
+    if (input_defs.size() > 2) {
+      std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
+      auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+      const int32_t elem_type = static_cast<int32_t>(input_dtype);
+      std::vector<int64_t> x0_shape, x1_shape;
+      GetShape(*input_defs[0], x0_shape, logger);
+      GetShape(*input_defs[1], x1_shape, logger);
+      for (size_t i = 0; i < x0_shape.size(); i++) {
+        x0_shape[i] = std::max(x0_shape[i], x1_shape[i]);
+      }
+      std::unique_ptr<Operation> op_prev = std::move(op);
+      for (size_t i = 2; i < input_defs.size(); i++) {
+        AddIntermediateOperationOutput(*op_prev, layer_input_name_x, elem_type, x0_shape);
+        std::unique_ptr<Operation> op_cur = model_builder.CreateOperation(node, coreml_op_type);
+        AddOperationInput(*op_cur, "x", layer_input_name_x);
+        AddOperationInput(*op_cur, "y", input_defs[i]->Name());
+        model_builder.AddOperation(std::move(op_prev));
+        op_prev = std::move(op_cur);
+        layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
+        GetShape(*input_defs[i], x1_shape, logger);
+        for (size_t i = 0; i < x0_shape.size(); i++) {
+          x0_shape[i] = std::max(x0_shape[i], x1_shape[i]);
+        }
+      }
+      op = std::move(op_prev);
+    }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
-
     model_builder.AddOperation(std::move(op));
   } else
 #endif  // defined (COREML_ENABLE_MLPROGRAM)
@@ -154,6 +182,10 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   }
 
   if (!IsInputDtypeSupport(node, 0, input_params, logger)) {
+    return false;
+  }
+
+  if (node.OpType() == "Max" && !input_params.create_mlprogram) {
     return false;
   }
 

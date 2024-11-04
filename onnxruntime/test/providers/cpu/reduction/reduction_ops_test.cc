@@ -1374,7 +1374,7 @@ TEST(ReductionOpTest, ReduceMax_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceMax_half) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
@@ -2157,7 +2157,7 @@ TEST(ReductionOpTest, ReduceMin_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceMin_half) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -2355,7 +2355,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceSumHalfHalf) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -5610,7 +5610,7 @@ TEST(ReductionOpTest, ReduceSum_RK_parallel) {
   test.AddOutput<float>("reduced", {32}, expected);
 
   // CoreML does not provide 1e-5 precision here (it's off by 1e-4)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCoreMLExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(ReductionOpTest, ReduceSum_RK_keepdims) {

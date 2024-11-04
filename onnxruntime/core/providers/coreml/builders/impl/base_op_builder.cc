@@ -13,14 +13,6 @@ using namespace CoreML::Specification;
 namespace onnxruntime {
 namespace coreml {
 
-// Once all ops are supportted FP16, we can remove it. Before that, we keep a set of ops to
-// filter suppported ones.
-static std::set<std::string> Float16Ops = {
-    "Add", "ArgMax", "AveragePool", "BatchNormalization", "Cast", "Clip", "Concat", "Conv", "ConvTranspose",
-    "DepthToSpace", "Div", "Gelu", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "GridSample", "GroupNormalization",
-    "InstanceNormalization", "LayerNormalization", "LeakyRelu", "MatMul", "MaxPool", "Mul", "PRelu", "Pow",
-    "Reciprocal", "Relu", "Reshape", "Resize", "Sigmoid", "Slice", "Split", "Sqrt", "Sub", "Tanh", "Transpose"};
-
 namespace {
 // TODO, move this to shared_library
 bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
@@ -114,13 +106,10 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
     return true;
   }
 
-// only support MLProgram for FP16
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      Float16Ops.count(node.OpType())) {
-    return true;
+  // only support MLProgram for FP16
+  if (!input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
   }
-#endif
 
   LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
   return false;

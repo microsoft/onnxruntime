@@ -5,6 +5,7 @@
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
@@ -20,6 +21,7 @@ class ReductionOpBuilder : public BaseOpBuilder {
 
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+  bool SupportsMLProgram() const override { return true; }
 };
 
 namespace {
@@ -48,13 +50,12 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
                                                  const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
-  const auto& initializers(model_builder.GetInitializerTensors());
 
   std::vector<int64_t> axes;
 
   NodeAttrHelper helper(node);
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
-    auto& axes_tensor = *initializers.at(input_defs[1]->Name());
+    auto& axes_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name());
     Initializer axes_initializer(axes_tensor);
     int64_t* data = axes_initializer.data<int64_t>();
     int64_t size = axes_initializer.size();
@@ -66,22 +67,53 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   const bool keepdims = helper.Get("keepdims", 1) != 0;
   const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
 
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+    std::string_view coreml_op_type;
+    if (noop_with_empty_axes && axes.size() == 0) {
+      coreml_op_type = "identity";
+    } else if (op_type == "ReduceSum") {
+      coreml_op_type = "reduce_sum";
+    } else if (op_type == "ReduceMean") {
+      coreml_op_type = "reduce_mean";
+    } else if (op_type == "ReduceMax") {
+      coreml_op_type = "reduce_max";
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ReductionOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
+    }
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
+    AddOperationInput(*op, "x", input_defs[0]->Name());
+    if (coreml_op_type != "identity") {
+      if (axes.size() > 0) {
+        AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", axes));
+      }
+      AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", keepdims));
+    }
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
 
-  if (op_type == "ReduceSum") {
-    AddReductionParams(layer->mutable_reducesum(), axes, keepdims, noop_with_empty_axes);
-  } else if (op_type == "ReduceMean") {
-    AddReductionParams(layer->mutable_reducemean(), axes, keepdims, noop_with_empty_axes);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "ReductionOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    model_builder.AddOperation(std::move(op));
+  } else
+#endif  // (COREML_ENABLE_MLPROGRAM)
+  {
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+
+    if (op_type == "ReduceSum") {
+      AddReductionParams(layer->mutable_reducesum(), axes, keepdims, noop_with_empty_axes);
+    } else if (op_type == "ReduceMean") {
+      AddReductionParams(layer->mutable_reducemean(), axes, keepdims, noop_with_empty_axes);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ReductionOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    }
+
+    *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+    model_builder.AddLayer(std::move(layer));
   }
-
-  *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
-
-  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 
@@ -99,21 +131,21 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     // 'axes' is optional input in new opsets
     const auto& axes_name = input_defs[1]->Name();
-    const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-    if (!Contains(initializers, axes_name)) {
+    const auto* axes = input_params.graph_viewer.GetConstantInitializer(axes_name);
+    if (!axes) {
       LOGS(logger, VERBOSE) << "Axes of reduction must be a constant initializer";
       return false;
     }
 
-    empty_axes = initializers.at(axes_name)->int64_data_size() == 0;
+    empty_axes = axes->int64_data_size() == 0;
   }
-
-  if (empty_axes && noop_with_empty_axes) {
-    // TODO: When we add ML Program support we should enable this as it makes the node an Identity op
-    LOGS(logger, VERBOSE) << "CoreML doesn't support noop on empty axes for reduction layers" << std::endl;
+  if (empty_axes && noop_with_empty_axes && !input_params.create_mlprogram) {
+    LOGS(logger, VERBOSE) << "CoreML doesn't support noop on empty axes for reduction layers";
     return false;
   }
-
+  if (!input_params.create_mlprogram && node.OpType() == "ReduceMax") {
+    return false;
+  }
   return true;
 }
 
