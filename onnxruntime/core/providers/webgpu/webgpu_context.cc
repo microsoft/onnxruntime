@@ -522,7 +522,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
       ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read,
                                                   0,
-                                                  query_read_buffer.GetSize(),
+                                                  static_cast<size_t>(query_read_buffer.GetSize()),
                                                   wgpu::CallbackMode::WaitAnyOnly,
                                                   [](wgpu::MapAsyncStatus status, const char* message) {
                                                     ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", message);
