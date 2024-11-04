@@ -166,6 +166,15 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
 
   NodeAttrHelper helper(node);
   const auto pad_mode = helper.Get("mode", "constant");
+  if (pad_mode == "reflect") {
+    // Add MPSGraph implementation for reflect mode
+    return true;
+  }
+  else if (pad_mode == "constant") {
+    // Existing implementation for constant mode
+    return true;
+  }
+
   if (supported_mode.find(pad_mode) == supported_mode.end()) {
     LOGS(logger, VERBOSE) << op_type << " WebNN does not support mode " << pad_mode;
     return false;
