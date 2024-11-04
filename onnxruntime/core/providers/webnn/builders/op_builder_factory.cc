@@ -26,6 +26,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
+    CreateUnaryOpBuilder("Sign", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
     CreateUnaryOpBuilder("Tan", op_registrations);
@@ -78,6 +79,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Concat
     CreateConcatOpBuilder("Concat", op_registrations);
+  }
+
+  {  // CumSum
+    CreateConcatOpBuilder("CumSum", op_registrations);
   }
 
   {  // Dropout
