@@ -1,4 +1,4 @@
-Parameters:
+parameters:
 - name: arch
   type: string
 
