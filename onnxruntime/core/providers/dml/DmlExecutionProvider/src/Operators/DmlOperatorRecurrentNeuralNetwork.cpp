@@ -128,50 +128,50 @@ public:
             ActivationOperatorDescUnion& activationDesc = m_activationDescs[i];
             desc.Desc = &activationDesc;
          
-            if (ActivationNameCompare(activationName, AttrValue::ActivationRelu))
+            if (CompareActivationName(activationName, AttrValue::ActivationRelu))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_RELU;
             }  
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationLeakyRelu))
+            else if (CompareActivationName(activationName, AttrValue::ActivationLeakyRelu))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_LEAKY_RELU;
                 activationDesc.leakyRelu.Alpha = NextAlpha(desc.Type);
             }
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationThresholdedRelu))
+            else if (CompareActivationName(activationName, AttrValue::ActivationThresholdedRelu))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU;
                 activationDesc.thresholdedRelu.Alpha = NextAlpha(desc.Type);
             }           
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationTanh))
+            else if (CompareActivationName(activationName, AttrValue::ActivationTanh))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_TANH;
             }           
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationScaledTanh))
+            else if (CompareActivationName(activationName, AttrValue::ActivationScaledTanh))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_SCALED_TANH;
                 activationDesc.scaledTanh.Alpha = NextAlpha(desc.Type);
                 activationDesc.scaledTanh.Beta = NextBeta(desc.Type);
             }     
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationSigmoid))
+            else if (CompareActivationName(activationName, AttrValue::ActivationSigmoid))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_SIGMOID;
             }          
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationSigmoidHard))
+            else if (CompareActivationName(activationName, AttrValue::ActivationSigmoidHard))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_HARD_SIGMOID;
                 activationDesc.hardSigmoid.Alpha = NextAlpha(desc.Type);
                 activationDesc.hardSigmoid.Beta = NextBeta(desc.Type);
             }         
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationElu))
+            else if (CompareActivationName(activationName, AttrValue::ActivationElu))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_ELU;
                 activationDesc.elu.Alpha = NextAlpha(desc.Type);
             }          
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationSoftsign))
+            else if (CompareActivationName(activationName, AttrValue::ActivationSoftsign))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_SOFTSIGN;
             }         
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationSoftplus))
+            else if (CompareActivationName(activationName, AttrValue::ActivationSoftplus))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_SOFTPLUS;
             }
@@ -182,21 +182,15 @@ public:
         }
     }
     
-    bool ActivationNameCompare(const std::string& activationName, const char* attrValue)
+    bool CompareActivationName(std::string_view activationName, std::string_view attrValue)
     {
-        if (activationName.size() != std::char_traits<char>::length(attrValue)) 
+        if (activationName.size() != attrValue.size()) 
         {
             return false;
         }
 
-        for (size_t i = 0; i < activationName.size(); ++i) 
-        {
-            if (std::tolower(activationName[i]) != std::tolower(attrValue[i])) 
-            {
-                return false;
-            }
-        }
-        return true;
+        auto comparer = [](char a, char b) {return std::tolower(a) == std::tolower(b);};
+        return std::equal(activationName.begin(), activationName.end(), attrValue.begin(), attrValue.end(), comparer);
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext) override
