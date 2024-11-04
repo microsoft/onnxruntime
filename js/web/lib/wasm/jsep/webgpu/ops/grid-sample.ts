@@ -9,7 +9,7 @@ import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 
 import { createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper } from './common';
 
-let [idxN, idxC, idxH, idxW] = [0, 1, 2, 3];  // NCHW
+let [idxN, idxC, idxH, idxW] = [0, 1, 2, 3]; // NCHW
 type Mode = 'bilinear' | 'nearest' | 'bicubic';
 type PaddingMode = 'zeros' | 'border' | 'reflection';
 type Format = 'NHWC' | 'NCHW';
@@ -252,9 +252,7 @@ const createGridSampleProgramInfo = (inputs: readonly TensorView[], attributes: 
 
   return {
     name: 'GridSample',
-    shaderCache: {
-      hint: `${attributes.cacheKey}`,
-    },
+    shaderCache: { hint: `${attributes.cacheKey}`, inputDependencies: ['type', 'type'] },
     getRunData: (inputs) => {
       const outputSize = ShapeUtil.size(outputShape);
       return {
