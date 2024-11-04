@@ -1,0 +1,50 @@
+trigger: none
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+parameters:
+  - name: enable_linux_cuda
+    type: boolean
+    default: true
+
+  - name: enable_windows_cuda
+    type: boolean
+    default: true
+
+  - name: cmake_build_type
+    type: string
+    default: 'Release'
+    values:
+      - Debug
+      - Release
+      - RelWithDebInfo
+      - MinSizeRel
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+    pool:
+      name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
+      os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
+
+    stages:
+      - template: stages/py-gpu-packaging-stage.yml
+        parameters:
+          enable_linux_cuda: ${{ parameters.enable_linux_cuda }}
+          enable_windows_cuda: ${{ parameters.enable_windows_cuda }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          cuda_version: '11.8'

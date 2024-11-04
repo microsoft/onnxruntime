@@ -491,6 +491,18 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // the number of times these are run to reduce the CI time.
   provider_names.erase(provider_name_cpu);
 #endif
+
+#if defined(USE_CUDA) && defined(USE_DML)
+  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
+  if (no_cuda_ep_test == "1") {
+    provider_names.erase(provider_name_cuda);
+  }
+  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
+  if (no_dml_ep_test == "1") {
+    provider_names.erase(provider_name_dml);
+  }
+#endif
+
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list
@@ -570,7 +582,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("yolov3"),
       ORT_TSTR("LSTM_Seq_lens_unpacked"),
       ORT_TSTR("tinyyolov3"),
-      ORT_TSTR("faster_rcnn"),
+      // ORT_TSTR("faster_rcnn"),
       ORT_TSTR("mask_rcnn"),
       ORT_TSTR("coreml_FNS-Candy_ImageNet"),
       ORT_TSTR("tf_mobilenet_v2_1.0_224"),
@@ -581,7 +593,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("mlperf_ssd_resnet34_1200"),
       ORT_TSTR("candy"),
       ORT_TSTR("cntk_simple_seg"),
-      ORT_TSTR("GPT2_LM_HEAD"),
+      // ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
       ORT_TSTR("fp16_coreml_FNS-Candy"),
       ORT_TSTR("fp16_test_tiny_yolov2"),

@@ -49,7 +49,6 @@ def parse_arg_remove_string(argv, arg_name_equal):
 # Any combination of the following arguments can be applied
 
 if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
-    package_name = "ort-nightly"
     nightly_build = True
 
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
@@ -89,10 +88,10 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
-    package_name = "onnxruntime-qnn" if not nightly_build else "ort-nightly-qnn"
+    package_name = "onnxruntime-qnn"
 
 if is_rocm or is_migraphx:
-    package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
+    package_name = "onnxruntime-rocm"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -224,7 +223,7 @@ try:
                     "libcudnn_heuristic.so.9",
                     "libcudnn_ops.so.9",
                     "libnvJitLink.so.12",
-                    "libnvrtc.so.11",
+                    "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
                     "libnvrtc-builtins.so.11",
                     "libnvrtc-builtins.so.12",
@@ -244,6 +243,7 @@ try:
                     "libMIOpen.so.1",
                     "libnuma.so.1",
                     "librccl.so.1",
+                    "libhipblas.so.2",
                     "librocblas.so.3",
                     "librocblas.so.4",
                     "librocfft.so.0",

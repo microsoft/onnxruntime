@@ -95,6 +95,7 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node,
+                              const qnn::ModelSettings& model_settings,
                               const logging::Logger& logger,
                               const QnnGraph_Config_t** graph_configs) {
   LOGS(logger, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
@@ -115,7 +116,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       model_input_index_map_,
                                                       model_output_index_map_,
                                                       initializer_inputs_,
-                                                      qnn_backend_manager_->GetQnnBackendType());
+                                                      qnn_backend_manager_->GetQnnBackendType(),
+                                                      model_settings);
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
   if (!rt) {
@@ -245,7 +247,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
   {
     // Acquire mutex before calling graphExecute and profiling APIs to support calling session.Run()
     // from multiple threads.
-    std::lock_guard<OrtMutex> lock(graph_exec_mutex_);
+    std::lock_guard<std::mutex> lock(graph_exec_mutex_);
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),

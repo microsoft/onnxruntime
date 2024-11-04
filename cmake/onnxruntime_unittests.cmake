@@ -134,9 +134,14 @@ function(AddTest)
 
   if (IOS)
     # target_sources(${_UT_TARGET} PRIVATE ${TEST_SRC_DIR}/xctest/orttestmain.m)
+
+    set(_UT_IOS_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET})
+    # replace any characters that are not valid in a bundle identifier with '-'
+    string(REGEX REPLACE "[^a-zA-Z0-9\\.-]" "-" _UT_IOS_BUNDLE_GUI_IDENTIFIER ${_UT_IOS_BUNDLE_GUI_IDENTIFIER})
+
     set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
       MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}
-      MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_GUI_IDENTIFIER ${_UT_IOS_BUNDLE_GUI_IDENTIFIER}
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
@@ -163,13 +168,31 @@ function(AddTest)
 
     set_target_properties(${_UT_TARGET}_xc PROPERTIES FOLDER "ONNXRuntimeXCTest"
       MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}_xc
-      MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_GUI_IDENTIFIER ${_UT_IOS_BUNDLE_GUI_IDENTIFIER}
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
       XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
 
-    xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
+    # This is a workaround for an Xcode 16 / CMake issue:
+    #   error: Multiple commands produce '<build>/Debug/Debug-iphonesimulator/onnxruntime_test_all.app/PlugIns'
+    #       note: CreateBuildDirectory <build>/Debug/Debug-iphonesimulator/onnxruntime_test_all.app/PlugIns
+    #       note: Target 'onnxruntime_test_all' (project 'onnxruntime') has create directory command with output
+    #             '<build>/Debug/Debug-iphonesimulator/onnxruntime_test_all.app/PlugIns'
+    #
+    # It seems related to the test target (e.g., onnxruntime_test_all_xc) LIBRARY_OUTPUT_DIRECTORY property getting set
+    # to "$<TARGET_BUNDLE_CONTENT_DIR:${testee}>/PlugIns" in xctest_add_bundle():
+    # https://github.com/Kitware/CMake/blob/9c4a0a9ff09735b847bbbc38caf6da7f6c7238f2/Modules/FindXCTest.cmake#L159-L168
+    #
+    # This is the related CMake issue: https://gitlab.kitware.com/cmake/cmake/-/issues/26301
+    #
+    # Unsetting LIBRARY_OUTPUT_DIRECTORY avoids the build error.
+    set_property(TARGET ${_UT_TARGET}_xc PROPERTY LIBRARY_OUTPUT_DIRECTORY)
+
+    # Don't bother calling xctest_add_test() because we don't use CTest to run tests on iOS.
+    # Instead, we can call 'xcodebuild test-without-building' and specify a '-destination' referring to an iOS
+    # simulator or device.
+    # xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # We might have already executed the following "find_program" code when we build ORT nodejs binding.
@@ -500,6 +523,9 @@ set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
 
+set (onnxruntime_webgpu_external_dawn_test_SRC
+          ${TEST_SRC_DIR}/webgpu/external_dawn/main.cc)
+
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
 
@@ -562,6 +588,10 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+endif()
+
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -603,6 +633,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
+    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -662,6 +693,13 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
+endif()
+
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
 
 # QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
@@ -731,9 +769,7 @@ if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6326>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
-  target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  onnxruntime_add_include_to_target(onnxruntime_test_utils nsync::nsync_cpp)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -767,9 +803,7 @@ if(NOT IOS)
       target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     else()
-      target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
       target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-      onnxruntime_add_include_to_target(onnx_test_runner_common nsync::nsync_cpp)
     endif()
     if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
       #TODO: fix the warnings, they are dangerous
@@ -1134,7 +1168,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/gelu.cc
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc
-      ${BENCHMARK_DIR}/reduceminmax.cc)
+      ${BENCHMARK_DIR}/reduceminmax.cc
+      ${BENCHMARK_DIR}/layer_normalization.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
@@ -1171,7 +1206,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       # "Global initializer calls a non-constexpr function." BENCHMARK_CAPTURE macro needs this.
       target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26426)
     else()
-      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE  ${CMAKE_DL_LIBS})
     endif()
     if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
@@ -1244,7 +1279,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
       if(NOT WIN32)
-        list(APPEND onnxruntime_perf_test_libs nsync::nsync_cpp)
         if(onnxruntime_USE_SNPE)
           list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
         endif()
@@ -1312,7 +1346,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     # test inference using shared lib
     set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
     if(NOT WIN32)
-      list(APPEND onnxruntime_shared_lib_test_LIBS nsync::nsync_cpp)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
       endif()
@@ -1461,7 +1494,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
     endif()
     if(NOT WIN32)
-      target_link_libraries(onnxruntime_mlas_test PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
+      target_link_libraries(onnxruntime_mlas_test PRIVATE  ${CMAKE_DL_LIBS})
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
@@ -1647,9 +1680,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
 
     set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_common onnxruntime_test_utils)
-    if (NOT WIN32)
-      list(APPEND onnxruntime_customopregistration_test_LIBS nsync::nsync_cpp)
-    endif()
+
     if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_customopregistration_test_LIBS cpuinfo)
     endif()
@@ -1657,7 +1688,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
+      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
@@ -1776,11 +1807,11 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto nsync_cpp)
+    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
      endif()
 
   if(NOT WIN32)
-    list(APPEND onnxruntime_logging_apis_test_LIBS nsync::nsync_cpp ${CMAKE_DL_LIBS})
+    list(APPEND onnxruntime_logging_apis_test_LIBS  ${CMAKE_DL_LIBS})
   endif()
 
   AddTest(DYN
@@ -1854,6 +1885,15 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
+endif()
+
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
+  AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+          SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+          LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+          DEPENDS ${all_dependencies}
+  )
+  onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

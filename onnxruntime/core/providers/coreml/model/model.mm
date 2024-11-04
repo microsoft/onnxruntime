@@ -395,9 +395,15 @@ Status Execution::LoadModel() {
       compiled_model_path_ = [compileUrl path];
 
       MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
-      config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
-                                ? MLComputeUnitsCPUOnly
-                                : MLComputeUnitsAll;
+
+      if (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY) {
+        config.computeUnits = MLComputeUnitsCPUOnly;
+      } else if (coreml_flags_ & COREML_FLAG_USE_CPU_AND_GPU) {
+        config.computeUnits = MLComputeUnitsCPUAndGPU;
+      } else {
+        config.computeUnits = MLComputeUnitsAll;
+      }
+
       model_ = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
       if (error != nil || model_ == nil) {

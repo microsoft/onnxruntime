@@ -6,6 +6,6 @@ cerberus
 h5py
 scikit-learn
 numpy==1.21.6 ; python_version < '3.9'
-numpy==2.0.0 ; python_version >= '3.9'
+numpy==2.1.2 ; python_version >= '3.9'
 pandas
 parameterized

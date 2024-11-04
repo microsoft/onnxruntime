@@ -13,7 +13,7 @@
 #include <cudnn_frontend.h>
 #endif
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
@@ -190,7 +190,7 @@ struct CudnnConvState {
   TensorShapeVector slice_axes;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
-  OrtMutex mutex;
+  std::mutex mutex;
   IAllocatorUniquePtr<void> memory_for_cudnn_conv_results;
 
   ~CudnnConvState() {
@@ -219,6 +219,7 @@ class Conv : public CudaKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
   Status ComputeInternal(OpKernelContext* context) const override;

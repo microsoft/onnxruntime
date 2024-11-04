@@ -302,13 +302,21 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel() {
-  auto ort_log_level = logger_->GetSeverity();
-  LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
-  return UpdateQnnLogLevel(ort_log_level);
+  std::lock_guard<std::mutex> lock(logger_mutex_);
+
+  if (backend_setup_completed_ && logger_ != nullptr) {
+    auto ort_log_level = logger_->GetSeverity();
+    LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
+    return UpdateQnnLogLevel(ort_log_level);
+  }
+  return Status::OK();
 }
 
 Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
   ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
+  ORT_RETURN_IF(false == backend_setup_completed_, "Unable to update QNN Log Level. Backend setup not completed.");
+  ORT_RETURN_IF(nullptr == logger_, "Unable to update QNN Log Level. Invalid logger.");
+
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
 
   LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
@@ -686,6 +694,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 }
 
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_from_cached_context) {
+  std::lock_guard<std::mutex> lock(logger_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
@@ -972,6 +981,7 @@ void QnnBackendManager::ReleaseResources() {
     ORT_THROW("Failed to ShutdownBackend.");
   }
 
+  std::lock_guard<std::mutex> lock(logger_mutex_);
   result = TerminateQnnLog();
   if (Status::OK() != result) {
     ORT_THROW("Failed to TerminateQnnLog.");
