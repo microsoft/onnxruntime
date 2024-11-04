@@ -22,11 +22,9 @@ export interface AdapterInfo {
   isVendor: (vendor: GpuVendor) => boolean;
 }
 export interface DeviceInfo {
-  get maxComputeWorkgroupSizes(): [number, number, number];
-  get maxComputeWorkgroupStoragesize(): number;
-  get isSubgroupsSupported(): boolean;
-  get isSubgroupsF16Supported(): boolean;
-  get subgroupSizeRange(): [number, number] | undefined;
+  readonly subgroupsSupported: boolean;
+  readonly subgroupsF16Supported: boolean;
+  readonly subgroupSizeRange?: [number, number];
 }
 
 export interface GpuData {

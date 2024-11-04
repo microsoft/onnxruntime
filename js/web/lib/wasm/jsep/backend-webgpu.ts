@@ -136,47 +136,22 @@ class AdapterInfoImpl implements AdapterInfo {
 }
 
 class DeviceInfoImpl implements DeviceInfo {
-  readonly deviceLimits: GPUSupportedLimits;
-  readonly deviceFeatures: GPUSupportedFeatures;
+  readonly subgroupsSupported: boolean;
+  readonly subgroupsF16Supported: boolean;
+  readonly subgroupSizeRange?: [number, number];
 
   constructor(device: GPUDevice) {
-    this.deviceLimits = device.limits;
-    this.deviceFeatures = device.features;
-  }
-
-  get maxComputeWorkgroupSizes(): [number, number, number] {
-    return [
-      this.deviceLimits.maxComputeWorkgroupSizeX,
-      this.deviceLimits.maxComputeWorkgroupSizeY,
-      this.deviceLimits.maxComputeWorkgroupSizeZ,
-    ];
-  }
-
-  get maxComputeWorkgroupStoragesize(): number {
-    return this.deviceLimits.maxComputeWorkgroupStorageSize;
-  }
-
-  get isSubgroupsSupported(): boolean {
-    return this.deviceFeatures.has('subgroups' as GPUFeatureName);
-  }
-
-  get isSubgroupsF16Supported(): boolean {
-    return this.deviceFeatures.has('subgroups-f16' as GPUFeatureName);
-  }
-
-  get subgroupSizeRange(): [number, number] | undefined {
+    this.subgroupsSupported = device.features.has('subgroups' as GPUFeatureName);
+    this.subgroupsF16Supported = device.features.has('subgroups' as GPUFeatureName);
     // Currently subgroups feature is still experimental and size attributes are not in the WebGPU IDL, so we have to
     // workaround the IDL type checks.
     // TODO: clean this after subgroups feature is sattled in IDL.
-    const deviceSubgroupsLimits = this.deviceLimits as { minSubgroupSize?: number; maxSubgroupSize?: number };
-    if (
-      !this.isSubgroupsSupported ||
-      !deviceSubgroupsLimits.minSubgroupSize ||
-      !deviceSubgroupsLimits.maxSubgroupSize
-    ) {
-      return undefined;
+    const deviceSubgroupsLimits = device.limits as { minSubgroupSize?: number; maxSubgroupSize?: number };
+    if (!this.subgroupsSupported || !deviceSubgroupsLimits.minSubgroupSize || !deviceSubgroupsLimits.maxSubgroupSize) {
+      this.subgroupSizeRange = undefined;
+    } else {
+      this.subgroupSizeRange = [deviceSubgroupsLimits.minSubgroupSize, deviceSubgroupsLimits.maxSubgroupSize];
     }
-    return [deviceSubgroupsLimits.minSubgroupSize, deviceSubgroupsLimits.maxSubgroupSize];
   }
 }
 
