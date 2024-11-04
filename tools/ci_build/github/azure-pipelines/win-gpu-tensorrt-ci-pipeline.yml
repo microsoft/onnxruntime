@@ -36,16 +36,18 @@ parameters:
     - 11.8
     - 12.2
 
-jobs:
-- job: 'build'
-  pool: 'onnxruntime-Win2022-GPU-A10'
-  variables:
+variables:
   - template: templates/common-variables.yml
   - name: win_trt_folder
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: ${{ variables.win_trt_folder_cuda11 }}
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: ${{ variables.win_trt_folder_cuda12 }}
+
+jobs:
+- job: 'build'
+  pool: 'onnxruntime-Win2022-GPU-A10'
+  variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     EnvSetupScript: setup_env_trt.bat
     skipComponentGovernanceDetection: true
