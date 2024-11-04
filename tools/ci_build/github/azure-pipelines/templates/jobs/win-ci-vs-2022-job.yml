@@ -93,7 +93,7 @@ jobs:
         DownloadCUDA: false
       ${{ if contains(parameters.additionalBuildFlags, 'use_tensorrt') }}:
         DownloadTRT: true
-        arguments: '${{ variables.win_trt_folder_cuda12 }}'
+        arguments: '${{ variables.win_trt_folder_cuda12 }} ${{ variables.win_trt_folder_cuda11 }}'
       ${{ else }}:
         DownloadTRT: false
       BuildArch: ${{parameters.buildArch}}

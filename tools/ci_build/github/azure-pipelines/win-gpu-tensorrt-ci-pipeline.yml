@@ -59,8 +59,6 @@ jobs:
   - template: templates/jobs/win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
-      # setup_env_trt.bat needs trt_cuda_12 binary path as argument
-      arguments: '${{ variables.win_trt_folder_cuda12 }}'
       DownloadCUDA: true
       DownloadTRT: true
       BuildArch: 'x64'

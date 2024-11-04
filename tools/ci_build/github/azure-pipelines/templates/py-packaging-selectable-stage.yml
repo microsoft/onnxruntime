@@ -406,7 +406,6 @@ stages:
         displayName: 'setup env'
         inputs:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-          # setup_env_gpu.bat needs trt_cuda_12 and trt_cuda_11 binaries paths as arguments
           arguments: '${{ variables.win_trt_folder_cuda12 }} ${{ variables.win_trt_folder_cuda11 }}'
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
