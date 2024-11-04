@@ -152,7 +152,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
 
         expected_excluded_nodes = set([node.name for node in float_model.graph.node if node.op_type == "Add"])
         self.assertTrue(bool(expected_excluded_nodes))
-        self.assertEqual(set(qdq_config.excluded_nodes), expected_excluded_nodes)
+        self.assertEqual(set(qdq_config.nodes_to_exclude), expected_excluded_nodes)
 
     def test_external_data(self):
         """
