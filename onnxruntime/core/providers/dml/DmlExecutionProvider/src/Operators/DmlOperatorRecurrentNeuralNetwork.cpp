@@ -123,7 +123,7 @@ public:
 
         for (size_t i = 0; i < activations.size(); ++i)
         {
-            std::string& activationName = activations[i];
+            const std::string& activationName = activations[i];
             DML_OPERATOR_DESC& desc = descs[i];
             ActivationOperatorDescUnion& activationDesc = m_activationDescs[i];
             desc.Desc = &activationDesc;
@@ -174,10 +174,6 @@ public:
             else if (ActivationNameCompare(activationName, AttrValue::ActivationSoftplus))
             { 
                 desc.Type = DML_OPERATOR_ACTIVATION_SOFTPLUS;
-            }
-            else if (ActivationNameCompare(activationName, AttrValue::ActivationLeakyRelu))
-            {
-                desc.Type = DML_OPERATOR_ACTIVATION_LEAKY_RELU;
             }
             else
             {
