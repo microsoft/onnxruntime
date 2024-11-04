@@ -4,6 +4,7 @@
 #include "core/providers/xnnpack/xnnpack_init.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
 using namespace std;
@@ -128,17 +129,6 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
                                  9.4f, 22.5f, 39.6f, 30.f, 17.f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-}
-
-template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else {
-    std::vector<T> inputs_fp16(inputs.size());
-    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
-    return inputs_fp16;
-  }
 }
 
 TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_outputpadding_strides2) {
