@@ -339,6 +339,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
         T* attention_probs_ptr = reinterpret_cast<T*>(attention_probs) + last_offset;
         math::Dot<float, CPUMathUtil>(head_size, q_vec, K + i * head_size, attention_probs_ptr, nullptr);
 
+        *attention_probs_ptr *= scale;
         // Apply the attention bias and mask
         if (attn_bias_data != nullptr) {
           *attention_probs_ptr += attn_bias_data[attn_bias_base_offset + past_sequence_length];
@@ -348,7 +349,6 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
         if (is_masked) {
           *attention_probs_ptr += mask_filter_value_;
         }
-        *attention_probs_ptr *= scale;
       }
 
       {
@@ -362,6 +362,8 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
           const T* past_k_vec = past_key_data + beam_batch_offset + beam_offset + j * head_size;
           T* output = reinterpret_cast<T*>(attention_probs) + j + i * probs_matrix_size;
           math::Dot<float, CPUMathUtil>(head_size, q_vec, past_k_vec, output, nullptr);
+
+          *output *= scale;
           // Apply the attention bias and mask
           if (attn_bias_data != nullptr) {
             *output += attn_bias_data[attn_bias_base_offset + j];
@@ -371,11 +373,11 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeAttentionProbsWithBeams(
           if (is_masked) {
             *output += mask_filter_value_;
           }
-          *output *= scale;
         }
       }
       // Append current key to present key (past_present_share_buffer_ is true)
-      memcpy(present_key_data + i * max_sequence_length * head_size, K + i * head_size, head_size * sizeof(T));
+      memcpy(present_key_data + (i * max_sequence_length + past_sequence_length) * head_size,
+             K + i * head_size, head_size * sizeof(T));
     }
   });
 
@@ -460,7 +462,7 @@ void DecoderMaskedMultiHeadAttention<T>::ComputeVxAttentionScoreWithBeams(
             }
           }
           // Append current value to present value (past_present_share_buffer_ is true)
-          memcpy(present_value_data + i * max_sequence_length * v_head_size,
+          memcpy(present_value_data + (i * max_sequence_length + past_sequence_length) * v_head_size,
                  V + i * v_head_size,
                  v_head_size * sizeof(T));
         }
