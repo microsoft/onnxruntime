@@ -13,6 +13,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 |:------:|:------:|:------:|:-:|:-:|:------|
 | Abs | ai.onnx(7-12, 13+) | abs | ✓ | ✓ | |
 | Add | ai.onnx(7-12, 13, 14+) | add | ✓ | ✓ | |
+| And | ai.onnx(7+) | logicalAnd | ✗ | ✓ | |
 | ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | ✓ | ✓ | |
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✓ | ✓ | |
 | AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
@@ -24,6 +25,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight) |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU backend only supports default dilations and group |
 | Cos | ai.onnx(7+) | cos | ✓ | ✓ | |
+| CumSum | ai.onnx(11-13, 14+) | cumulativeSum | ✓ | ✓ | |
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
 | DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear | ✗ | ✓ | |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | ✓ | ✓ | Only supports test mode |
@@ -62,7 +64,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | ✓ | ✓ | |
 | Mul | ai.onnx(7-12, 13, 14+) | mul | ✓ | ✓ | |
 | Neg | ai.onnx(7-12, 13+) | neg | ✓ | ✓ | |
-| Not | ai.onnx(7+) | logicalnot | ✓ | ✓ | |
+| Not | ai.onnx(7+) | logicalNot | ✓ | ✓ | |
+| Or | ai.onnx(7+) | logicalOr | ✗ | ✓ | |
 | Pad | ai.onnx(7-10, 11-12, 13-17, 18, 19-20, 21+) | pad | ✓ | ✓ | modes == 'wrap' is not supported |
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | ✓ | ✓ | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | ✓ | ✓ | WebNN CPU backend restricts the last dimension of input and slope to be same (Chromium issue: https://issues.chromium.org/issues/335517470) |
@@ -85,6 +88,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | ScatterND | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterND | ✗ | ✓ | Only supports 'reduction' == 'none' |
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | ✓ | ✓ | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | ✓ | ✓ | |
+| Sign | ai.onnx(9-12, 13+) | sign | ✓ | ✓ | |
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
 | Softsign | ai.onnx(7+) | softsign | ✓ | ✓ | |
 | Sin | ai.onnx(7+) | sin | ✓ | ✓ | |
@@ -101,3 +105,4 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Trilu | ai.onnx(14+) | triangular | ✓ | ✓ | Input 'k' (option 'diagonal' for WebNN) if present should be a constant |
 | Unsqueeze | ai.onnx(7-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Where | ai.onnx(7-8, 9-15, 16+) | where | ✓ | ✓ | |
+| Xor | ai.onnx(7+) | logicalXor | ✗ | ✓ | |

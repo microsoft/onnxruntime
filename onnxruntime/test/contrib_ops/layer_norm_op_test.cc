@@ -162,7 +162,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16InputScaleOutput_Initializers) {
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias) {
@@ -211,19 +211,30 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
-  OpTester test("LayerNormalization");
-  test.AddAttribute<float>("epsilon", 1e-05f);
+  auto run_test = [](bool is_initializer) {
+    OpTester test("LayerNormalization");
+    test.AddAttribute<float>("epsilon", 1e-05f);
 
-  std::vector<int64_t> dims{1, 3, 2};
-  test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
-  test.AddInput<MLFloat16>("gamma", {2}, ToFloat16({-0.6953f, 5.1824f}));
-  test.AddInput<MLFloat16>("bias", {2}, ToFloat16({0.6435f, -0.3964f}));
-  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
-  // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
+    std::vector<int64_t> dims{1, 3, 2};
+    test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
+    test.AddInput<MLFloat16>("gamma", {2}, ToFloat16({-0.6953f, 5.1824f}), is_initializer);
+    test.AddInput<MLFloat16>("bias", {2}, ToFloat16({0.6435f, -0.3964f}), is_initializer);
+    test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
+    // TRT, DNNL, OpenVINO and NNAPI don't support this combination of datatypes
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+              kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
 }
+
+template <typename T>
+class LayerNormTest : public ::testing::Test {
+};
+
+using LayerNormTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(LayerNormTest, LayerNormTestTypes);
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializers) {
   OpTester test("LayerNormalization");
@@ -237,19 +248,41 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput_Initializer
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 // LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.
-TEST(LayerNormTest, LayerNorm17_float) {
-  OpTester test("LayerNormalization", 17);
-  test.AddAttribute<float>("epsilon", 1e-05f);
+TYPED_TEST(LayerNormTest, LayerNorm17_opset) {
+  auto run_test = [](bool is_initializer) {
+    OpTester test("LayerNormalization", 17);
+    test.AddAttribute<float>("epsilon", 1e-05f);
 
-  std::vector<int64_t> dims{1, 2, 3};
-  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
-  test.AddInput<float>("gamma", {3}, {1.0f, 1.0f, 1.0f});
-  test.AddOutput<float>("output", dims, {-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f});
-  test.Run();
+    std::vector<int64_t> dims{1, 2, 3};
+    test.AddInput<TypeParam>("x", dims, GetTypedArray<TypeParam>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+    test.AddInput<TypeParam>("gamma", {3}, GetTypedArray<TypeParam>({1.0f, 1.0f, 1.0f}), is_initializer);
+    test.AddOutput<TypeParam>("output", dims, GetTypedArray<TypeParam>({-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f}));
+    if (std::is_same<TypeParam, MLFloat16>::value) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
+      // coreml EP requires weight and bias to be initializers
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+               {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+                kNnapiExecutionProvider, kQnnExecutionProvider},
+               nullptr, &execution_providers);
+    } else {
+      test.Run();
+    }
+  };
+  // Execution provider entry invalid.
+  // when other EPs support layer-norm fp16, this test should be updated to include them.
+  if (std::is_same<TypeParam, MLFloat16>::value) {
+#if !defined(COREML_ENABLE_MLPROGRAM)
+    return;
+#endif
+  }
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(LayerNormTest, LayerNorm17_double) {
