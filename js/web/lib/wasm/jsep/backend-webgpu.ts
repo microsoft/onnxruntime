@@ -13,6 +13,7 @@ import { ProgramManager } from './webgpu/program-manager';
 import {
   AdapterInfo,
   ComputeContext,
+  DeviceInfo,
   GpuArchitecture,
   GpuData,
   GpuVendor,
@@ -134,6 +135,51 @@ class AdapterInfoImpl implements AdapterInfo {
   }
 }
 
+class DeviceInfoImpl implements DeviceInfo {
+  readonly deviceLimits: GPUSupportedLimits;
+  readonly deviceFeatures: GPUSupportedFeatures;
+
+  constructor(device: GPUDevice) {
+    this.deviceLimits = device.limits;
+    this.deviceFeatures = device.features;
+  }
+
+  get maxComputeWorkgroupSizes(): [number, number, number] {
+    return [
+      this.deviceLimits.maxComputeWorkgroupSizeX,
+      this.deviceLimits.maxComputeWorkgroupSizeY,
+      this.deviceLimits.maxComputeWorkgroupSizeZ,
+    ];
+  }
+
+  get maxComputeWorkgroupStoragesize(): number {
+    return this.deviceLimits.maxComputeWorkgroupStorageSize;
+  }
+
+  get isSubgroupsSupported(): boolean {
+    return this.deviceFeatures.has('subgroups' as GPUFeatureName);
+  }
+
+  get isSubgroupsF16Supported(): boolean {
+    return this.deviceFeatures.has('subgroups-f16' as GPUFeatureName);
+  }
+
+  get subgroupSizeRange(): [number, number] | undefined {
+    // Currently subgroups feature is still experimental and size attributes are not in the WebGPU IDL, so we have to
+    // workaround the IDL type checks.
+    // TODO: clean this after subgroups feature is sattled in IDL.
+    const deviceSubgroupsLimits = this.deviceLimits as { minSubgroupSize?: number; maxSubgroupSize?: number };
+    if (
+      !this.isSubgroupsSupported ||
+      !deviceSubgroupsLimits.minSubgroupSize ||
+      !deviceSubgroupsLimits.maxSubgroupSize
+    ) {
+      return undefined;
+    }
+    return [deviceSubgroupsLimits.minSubgroupSize, deviceSubgroupsLimits.maxSubgroupSize];
+  }
+}
+
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
@@ -141,6 +187,7 @@ class AdapterInfoImpl implements AdapterInfo {
 export class WebGpuBackend {
   adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
+  deviceInfo: DeviceInfoImpl;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
    */
@@ -258,6 +305,7 @@ export class WebGpuBackend {
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
+    this.deviceInfo = new DeviceInfoImpl(this.device);
     this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);

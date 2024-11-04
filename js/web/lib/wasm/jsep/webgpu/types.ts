@@ -21,6 +21,13 @@ export interface AdapterInfo {
   isArchitecture: (architecture: GpuArchitecture) => boolean;
   isVendor: (vendor: GpuVendor) => boolean;
 }
+export interface DeviceInfo {
+  get maxComputeWorkgroupSizes(): [number, number, number];
+  get maxComputeWorkgroupStoragesize(): number;
+  get isSubgroupsSupported(): boolean;
+  get isSubgroupsF16Supported(): boolean;
+  get subgroupSizeRange(): [number, number] | undefined;
+}
 
 export interface GpuData {
   type: GpuDataType;
@@ -161,6 +168,11 @@ export interface ComputeContext {
   readonly adapterInfo: AdapterInfo;
 
   /**
+   * gpu device info
+   */
+  readonly deviceInfo: DeviceInfo;
+
+  /**
    * stores the pointer to OpKernelContext
    */
   readonly opKernelContext: number;
@@ -187,11 +199,6 @@ export interface ComputeContext {
 
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
-  getMaxComputeWorkgroupSizes(): [number, number, number];
-  getMaxComputeWorkgroupStoragesize(): number;
-  isSubgroupsSupported(): boolean;
-  isSubgroupsF16Supported(): boolean;
-  getSubgroupSizeRange(): [number, number] | undefined;
 }
 
 export type TimestampQuery = 'none' | 'inside-passes' | 'at-passes';
