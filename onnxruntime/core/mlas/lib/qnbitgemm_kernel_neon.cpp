@@ -201,7 +201,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = []() {
     d.SQNBIT_QuantizeARow_CompInt8 = sqnbitgemm_neon::SQNBIT_QuantizeARow_CompInt8;
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    d.HQ4BitBlkDequantBForSgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForSgemm_CompFp16;
+    d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
     d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
 
     // TODO(fajin)

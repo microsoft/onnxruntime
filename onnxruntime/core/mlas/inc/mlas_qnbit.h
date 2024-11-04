@@ -103,7 +103,7 @@ MlasQNBitGemmBatch(
 );
 
 /**
- * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
+ * @brief Determines whether a float32/16 quantized n-bit int GEMM implementation is available on the current platform.
  *
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
@@ -141,7 +141,7 @@ MlasQNBitGemmBatchWorkspaceSize(
 
 /**
  * @brief Gets the size in bytes of the packed quantized B data.
- * If non-zero, the quantized B data must first be packed by calling MlasQNBitGemmPackQuantBDataSize() with a buffer of
+ * If non-zero, the quantized B data must first be packed by calling MlasQNBitGemmPackQuantBData() with a buffer of
  * this size, and then that packed quantized B data buffer must be passed to MlasQNBitGemmBatch().
  * If zero, MlasQNBitGemmPackQuantBData() must not be called and the quantized B data must be directly passed to
  * MlasQNBitGemmBatch().
