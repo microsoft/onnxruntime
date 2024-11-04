@@ -1,6 +1,6 @@
 ---
 title: 'Democratizing AI Model optimization with the new Olive CLI'
-date: '30th October, 2024'
+date: '11th November, 2024'
 description: 'Learn how to use the new Olive CLI to easily optimize AI Models for on-device inference'
 keywords: 'onnx, onnx runtime, olive, machine learning, ml, ai, quantization, on-device, real-time, mobile apps, recommendation systems, privacy, performance, cost-efficient, phi-3, small, medium, models, phi-3s-onnx, phi-3m-onnx, phi-3l-onnx, phi-3xl-onnx, phi-3xxl-onnx, phi-3s-onnx-optimized, phi-3m-onnx-optimized, phi-3l-onnx-optimized, phi-3xl-onnx-optimized, phi-3xxl-onnx-optimized, llama-3.2'
 authors:
@@ -20,8 +20,8 @@ authorsLink:
     'https://www.linkedin.com/in/samuel-kemp-a9253724/'
 
    ]
-image: 'https://iili.io/d95Pwcx.png'
-imageSquare: 'https://iili.io/d95Pwcx.png'
+image: ''
+imageSquare: ''
 url: 'https://onnxruntime.ai/blogs/olive-cli'
 ---
 <style>
@@ -32,7 +32,7 @@ url: 'https://onnxruntime.ai/blogs/olive-cli'
 
 ## 👋 Introduction
 
-Olive (**O**NNX **Live**) is an advanced model optimization toolkit developed by Microsoft, designed to streamline the process of optimizing AI models for deployment with the ONNX runtime. As articulated in the following diagram, Olive can take models from frameworks like PyTorch or Hugging Face and output optimized ONNX models tailored for specific deployment targets.
+At [Build 2023 Microsoft announced Olive (**O**NNX **Live**)](https://opensource.microsoft.com/blog/2023/06/26/olive-a-user-friendly-toolchain-for-hardware-aware-model-optimization/): an advanced model optimization toolkit designed to streamline the process of optimizing AI models for deployment with the ONNX runtime. As articulated in the following diagram, Olive can take models from frameworks like PyTorch or Hugging Face and output optimized ONNX models tailored for specific deployment targets.
 
 <div class="m-auto w55">
 <img src="./olive-flow.png" alt="Olive workflow.">
@@ -41,25 +41,18 @@ Olive (**O**NNX **Live**) is an advanced model optimization toolkit developed by
 </div>
 <br/>
 
-Olive operates through a structured workflow consisting of a series of model optimization tasks known as passes. These passes can include model compression, graph capture, quantization, and graph optimization. Each pass has adjustable parameters that can be tuned to achieve optimal metrics like accuracy and latency, which are assessed by respective evaluators. The tool leverages a search strategy, employing algorithms to auto-tune either individual passes or sets of passes collectively, ensuring the best possible performance for the deployment targets.
+Olive operates through a structured workflow consisting of a series of model optimization tasks known as *passes*. These passes can include model compression, graph capture, quantization, and graph optimization. Each pass has adjustable parameters that can be tuned to achieve optimal metrics like accuracy and latency, which are assessed by respective evaluators. The tool leverages a search strategy, employing algorithms to auto-tune either individual passes or sets of passes collectively, ensuring the best possible performance for the deployment targets.
 
-Whilst the workflow paradigm used in Olive is very flexible, the learning curve can be challenging for AI Developers new to model optimization processes. To make model optimization more approachable, we have created a new easy-to-use CLI for Olive that exposes a set of common model optimization workflows as single commands. Example optimization tasks include:
+Whilst the workflow paradigm used in Olive is very flexible, the learning curve can be challenging for AI Developers new to model optimization processes. Therefore, **to make model optimization more approachable, we have created a new easy-to-use CLI for Olive** that exposes a set of common model optimization workflows as a simple command:
 
-- Quantization
-- Finetuning
-- Inference Session Tuning
+<div class="m-auto w55">
+<img src="./olive-commands.png" alt="Olive Commands.">
 
-Also, the Olive CLI has a command called *automatic optimizer* that takes a model from Hugging Face and converts it into ONNX format and executes several optimizations such as fusion and kernel optimizations.
+<i>Olive CLI Commands.</i>
+</div>
+<br/>
 
-### ➕ Benefits of Olive
-
-- **Reduce frustration and time** of trial-and-error manual experimentation with different techniques for graph optimization, compression and quantization. Define your quality and performance constraints and let Olive automatically find the best model for you.
-- **40+ built-in model optimization components** covering cutting edge techniques in quantization, compression, graph optimization and finetuning.
-- **Easy-to-use CLI** for common model optimization tasks. For example, olive quantize, olive auto-opt, olive finetune.
-- Supports creating models so they can be servered using the **Multi LoRA paradigm**.
-- Construct **workflows** using YAML/JSON to orchestrate model optimization and deployment tasks.
-- Hugging Face and Azure AI Integration.
-- Built-in **caching** mechanism to save costs and **enhance team collaboration**.
+In this blog, introduce you to the available Olive CLI commands and how you can sequence different commands to prepare a model for the ONNX Runtime.
 
 ## 🚀 Getting started with the Olive CLI
 First, install Olive using pip:
@@ -79,8 +72,7 @@ Once you have installed Olive, try the automatic optimizer (`olive auto-opt`). I
 
 The command to run automatic optimizer for the Llama-3.2-1B-Instruct model on CPU devices is:
 
-```bash
-olive auto-opt \
+<pre><code>olive auto-opt \
     --model_name_or_path meta-llama/Llama-3.2-1B-Instruct \
     --trust_remote_code \ 
     --output_path optimized-model \
@@ -89,7 +81,7 @@ olive auto-opt \
     --precision int4 \
     --use_model_builder True \
     --log_level 1
-```
+</code></pre>
 
 > **Tip:** If want to target:
 > - a Linux CUDA GPU device, then update `--device` to `gpu` and `--provider` to `CUDAExecutionProvider`. 
@@ -108,43 +100,39 @@ The Olive CLI allows you to experiment with many different quantization algorith
 >
 > `pip install autoawq`
 
-```bash
-olive quantize \
+<pre><code>olive quantize \
     --model_name_or_path meta-llama/Llama-3.2-1B-Instruct \
     --algorithm awq \
     --output_path quantized-model \
     --log_level 1
-```
+</code></pre>
 
 The quantize command will output a PyTorch model when using AWQ method, which you can convert to ONNX if you intend to use the model on the ONNX Runtime using:
 
-```bash
-olive capture-onnx-graph \
+<pre><code>olive capture-onnx-graph \
     --model_name_or_path quantized-model/model \
     --use_ort_genai True \
     --log_level 1 \
-```
+</code></pre>
 
-### 🎶 Finetuning
+### 🎚️ Finetuning
 
 The Olive CLI also provides the tools to fine tune an AI Model on our own data for specific tasks using either LoRA or QLoRA. The following example will fine-tune Llama-3.2-1B-Instruct for phrase classification (given a phrase in English it will output a category for the phrase from joy/sad/fear/surprised).
 
-```bash
-olive finetune \
+<pre><code>olive finetune \
     --model_name_or_path meta-llama/Llama-3.2-1B-Instruct \
     --trust_remote_code \
     --output_path models/llama3.2/ft \
     --data_name xxyyzzz/phrase_classification \
-    --text_template "<|start_header_id|>user<|end_header_id|>\n{phrase}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n{tone}" \
+    --text_template "&lt;|start_header_id|&gt;user&lt;|end_header_id|&gt;\n&lbrace;phrase&rbrace;&lt;|eot_id|&gt;&lt;|start_header_id|&gt;assistant&lt;|end_header_id|&gt;\n&lbrace;tone&rbrace;" \
     --method qlora \
     --max_steps 30 \
     --log_level 1 \
-```
+</code></pre>
 
 The finetune command will output a Hugging Face PEFT adapter, which you can prepare for the ONNX runtime using:
 
-```bash
-# Step 1 - capture the ONNX graph of the base model and adapter
+<pre><code># Step 1 - capture the ONNX graph of the base model and adapter
 olive capture-onnx-graph \
     --model_name_or_path models/llama3.2/ft/model \
     --adapter_path models/llama3.2/ft/adapter \
@@ -152,12 +140,12 @@ olive capture-onnx-graph \
     --output_path models/llama3.2/onnx \
     --log_level 1
 
-# Step 2 - covnert the adapter nodes in the ONNX graph to inputs
+# Step 2 - Extract adapter weights from ONNX model and store in separate file for ORT
  olive generate-adapter \
     --model_name_or_path models/llama3.2/onnx \
     --output_path adapter-onnx \
     --log_level 1       
-```
+</code></pre>
 
 ### 🤝 Inference your optimized AI models using the Generate API for ONNX Runtime
 
@@ -224,3 +212,14 @@ while text != "exit":
     print()
     text = input("Input: ")
 ```
+
+## Conclusion
+
+With the Olive CLI, you still get all the following benefits of Olive:
+
+- **Reduce frustration and time** of trial-and-error manual experimentation with different techniques for graph optimization, compression and quantization. Define your quality and performance constraints and let Olive automatically find the best model for you.
+- **40+ built-in model optimization components** covering cutting edge techniques in quantization, compression, graph optimization and finetuning.
+- Supports creating models so they can be served using the **Multi LoRA paradigm**.
+- Construct **workflows** using YAML/JSON to orchestrate model optimization and deployment tasks.
+- **Hugging Face** and **Azure AI** Integration.
+- Built-in **caching** mechanism to save costs and **enhance team collaboration**. As we shared in an earlier blog post, Olive also supports a [shared cache](../blogs/olive-shared-cache).

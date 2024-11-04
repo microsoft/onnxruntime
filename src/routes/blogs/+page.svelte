@@ -19,6 +19,7 @@
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
 	import OliveSharedCache from '../../images/blogs/olive-shared-cache-user-flow.png';
+	import OliveCli from '../../images/blogs/olive-flow.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -46,6 +47,16 @@
 		dispatch('switchTab', tab);
 	}
 	let featuredblog = [
+		{
+			title: 'Democratizing AI Model optimization with the new Olive CLI',
+			date: 'November 11th, 2024',
+			blurb:
+				"Learn how to use the new Olive CLI to easily optimize AI Models for on-device inference",
+			link: 'blogs/olive-cli',
+			image: OliveCli,
+			imgalt:
+				'Team Flow for Olive shared cache'
+		},
 		{
 			title: 'Enhancing team collaboration during AI model optimization with the Olive Shared Cache',
 			date: 'October 30th, 2024',
