@@ -20,6 +20,7 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -34,7 +35,7 @@
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -93,6 +94,7 @@ class SessionState {
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
+               const ExternalDataLoaderManager& external_data_loader_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
@@ -296,6 +298,8 @@ class SessionState {
 
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
+  const ExternalDataLoaderManager& GetExternalDataLoaderMgr() const noexcept { return external_data_loader_mgr_; }
+
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -308,13 +312,39 @@ class SessionState {
     return &name_to_buffered_tensor_;
   }
 
+  // Data structure stores prepacked initializers in format of Tensor.
+  struct PrePackInitializers {
+    // This map is used during model save for prepacked initializers.
+    // Since one constant initializer could be used by different kernels
+    // and prepacked differently, use an unordered_map to store prepacked
+    // initializer in format of <[initializer_name], <[kernel_name], [prepacked_initializer]>>
+    typedef std::unordered_map<std::string, std::unordered_map<std::string, Tensor>> PrePackedTensorsToSave;
+    PrePackedTensorsToSave pre_packed_initializers_to_save;
+
+    // This set is used during model load with prepacked initializer serialized in external data file.
+    // ORT reads prepacked initializers and store their name into this set so we could skip PrePack
+    // process later to save heap memory. Prepacked tensor itself is saved in session state's constant_initialized_tensors_.
+    typedef std::unordered_set<std::string> PrePackedTensorNamesReadFromFile;
+    PrePackedTensorNamesReadFromFile pre_packed_initializer_names_read_from_file;
+  };
+
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
+                              PrePackInitializers& pre_packed_initializers,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
   SessionState* Parent() {
     return parent_;
+  }
+
+  Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                              const KernelRegistryManager& kernel_registry_manager,
+                              bool remove_initializers = true,
+                              bool saving_ort_format = false) {
+    PrePackInitializers pre_packed_initializers;
+    return FinalizeSessionState(graph_loc, kernel_registry_manager, pre_packed_initializers,
+                                remove_initializers, saving_ort_format);
   }
 
   // Clear all removable attributes if they exists.
@@ -376,9 +406,13 @@ class SessionState {
   /**
    * Prepack the constant initialized tensors for better performance.
    * The original constant initialized tensors will be removed to save memory.
+   * For model with prepacked initializer serialized into ONNX data file,
+   * PrePack will be skipped to save memory.
    */
   Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                           const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
+                                           const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
+                                           bool save_prepacked_constant_initializers,
+                                           PrePackInitializers& pre_packed_initializers);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -396,6 +430,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                  PrePackInitializers& pre_packed_initializers,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
@@ -490,7 +525,7 @@ class SessionState {
   bool enable_mem_pattern_;
 
   // lock for the mem_patterns_
-  mutable OrtMutex mem_patterns_lock_;
+  mutable std::mutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   // must be a node based container as a pointer is cached.
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
@@ -512,6 +547,8 @@ class SessionState {
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   const DataTransferManager& data_transfer_mgr_;
+
+  const ExternalDataLoaderManager& external_data_loader_mgr_;
 
   const SessionOptions& sess_options_;
 
@@ -562,7 +599,7 @@ class SessionState {
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 
   // lock for the device stream pool
-  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::mutex device_stream_pool_mutex_;
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;

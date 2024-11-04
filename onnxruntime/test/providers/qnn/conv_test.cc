@@ -793,19 +793,101 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
   TestInputDef<float> bias_def(bias_shape, true,
                                GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
-  RunHTPConvOpPerChannelTest<uint8_t, Int4x2>("Conv",
-                                              input_def,
-                                              weight_def,
-                                              bias_def,
-                                              0,             // weight quant axis
-                                              {1, 1},        // Strides
-                                              {0, 0, 0, 0},  // Pads
-                                              {1, 1},        // Dilations
-                                              1,             // default group
-                                              "NOTSET",
-                                              ExpectedEPNodeAssignment::All,
-                                              false,  // use_qdq_contrib_ops
-                                              21);    // opset
+  RunHTPConvOpPerChannelTest<uint16_t, Int4x2>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               0,             // weight quant axis
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               1,             // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               false,  // use_qdq_contrib_ops
+                                               21);    // opset
+}
+
+// Test per-channel QDQ Conv with INT4 weights and no bias.
+// in0: u16, in1 (weight): s4, out: u8
+// Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
+TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, Int4x2>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               TestInputDef<float>(),
+                                               0,             // weight quant axis
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               1,             // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               false,  // use_qdq_contrib_ops
+                                               21);    // opset
+}
+
+// Test per-channel QDQ Conv with uint16 input[0], uint8 weights, and no bias.
+// in0: u16, in1 (weight): s4, out: u8
+// Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
+TEST_F(QnnHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      input_def,
+                                      weight_def,
+                                      TestInputDef<float>(),
+                                      {1, 1},        // Strides
+                                      {0, 0, 0, 0},  // Pads
+                                      {1, 1},        // Dilations
+                                      1,             // default group
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      false,  // use_qdq_contrib_ops
+                                      21);    // opset
+}
+
+TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
+  std::vector<int64_t> input_shape = {1, 3072, 1, 512};
+  std::vector<int64_t> weight_shape = {9216, 3072, 1, 1};
+  std::vector<float> input_data(TensorShape(input_shape).Size(), 0.1f);
+  input_data[0] = 0.2f;
+  std::vector<float> weight_data(TensorShape(weight_shape).Size(), -0.1f);
+  for (size_t c = 0; c < static_cast<size_t>(weight_shape[0]); c++) {
+    size_t i = c * 3072;
+    weight_data[i] = 0.1f;
+  }
+
+  TestInputDef<float> input_def(input_shape, false, input_data);
+  TestInputDef<float> weight_def(weight_shape, true, weight_data);
+
+  RunHTPConvOpPerChannelTest<uint16_t, Int4x2>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               TestInputDef<float>(),
+                                               0,             // weight quant axis
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               1,             // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               false,  // use_qdq_contrib_ops
+                                               21);    // opset
 }
 
 // Test fusion of DQs -> Conv -> Relu/Clip -> Q.

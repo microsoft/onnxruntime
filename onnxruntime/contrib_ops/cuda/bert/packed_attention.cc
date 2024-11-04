@@ -111,7 +111,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   // Abbreviation and Meanings:
   //   T:    token_count
   //   B:    batch_size
-  //   S:    sequence_length (input sequence length of query)
+  //   S:    sequence_length
   //   N:    num_heads
   //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
   //   H_v:  v_head_size
@@ -125,7 +125,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   token_offset            : (B, S)
   //   cu_seq_len_shape        : (B + 1)
-  //   attention_bias  : (B, N, S, S), (1, N, S, S) or NULL
+  //   attention_bias          : (B or 1, N or 1, S, S) or NULL
   const auto& input_dims = input_shape.GetDims();
   if (input_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

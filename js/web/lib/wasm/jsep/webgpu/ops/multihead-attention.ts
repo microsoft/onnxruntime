@@ -85,7 +85,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
   let pastSequenceLength = 0;
   let maxSequenceLength = 0;
   const headSize = Math.floor(hiddenSize / attributes.numHeads);
-  if (pastKey && pastValue) {
+  if (pastKey && pastValue && ShapeUtil.size(pastKey.dims) && ShapeUtil.size(pastValue.dims)) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
     }
@@ -107,12 +107,12 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
     }
     pastSequenceLength = pastKey.dims[2];
     maxSequenceLength = pastKey.dims[2];
-  } else if (pastKey || pastValue) {
+  } else if ((pastKey && ShapeUtil.size(pastKey.dims)) || (pastValue && ShapeUtil.size(pastValue.dims))) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
 
   let qkvFormat: AttentionQkvFormat;
-  if (key) {
+  if (key && ShapeUtil.size(key.dims) > 0) {
     if (query.dims.length !== 3) {
       throw new Error('Input "query" is expected to have 3 dimensions when key is given');
     }
@@ -159,7 +159,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
     qkvFormat = AttentionQkvFormat.qkvBSN3H;
   }
 
-  if (bias) {
+  if (bias && ShapeUtil.size(bias.dims) > 0) {
     if (bias.dims.length !== 1) {
       throw new Error('Input "bias" is expected to have 1 dimension');
     }
@@ -174,7 +174,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
   const totalSequenceLength = pastSequenceLength + kvSequenceLength;
 
   let maskType: AttentionMaskType = AttentionMaskType.none;
-  if (keyPaddingMask) {
+  if (keyPaddingMask && ShapeUtil.size(keyPaddingMask.dims) > 0) {
     maskType = AttentionMaskType.maskUnknown;
     const maskDims = keyPaddingMask.dims;
     if (maskDims.length === 1) {
@@ -194,7 +194,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
 
   let passPastInKv = false;
   let vHiddenSize = hiddenSize;
-  if (value) {
+  if (value && ShapeUtil.size(value.dims) > 0) {
     if (value.dims.length !== 3 && value.dims.length !== 4) {
       throw new Error('Input "value" is expected to have 3 or 4 dimensions');
     }
@@ -220,11 +220,11 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
 
   const broadcastResPosBias = false;
 
-  if (keyPaddingMask) {
+  if (keyPaddingMask && ShapeUtil.size(keyPaddingMask.dims) > 0) {
     throw new Error('Key padding mask is not supported');
   }
 
-  if (attentionBias) {
+  if (attentionBias && ShapeUtil.size(attentionBias.dims) > 0) {
     if (attentionBias.dims.length !== 4) {
       throw new Error('Input "attention_bias" is expected to have 4 dimensions');
     }
@@ -334,9 +334,12 @@ export const maybeTransposeToBNSHAndAddBias = (
   // const newDims = [];
 
   let reshapedInput = input;
-  if (!bias) {
+  if (!(bias && ShapeUtil.size(bias.dims) > 0)) {
     if (input.dims.length === 3) {
       reshapedInput = input.reshape([batchSize, sequenceLength, numHeads, headSize]);
+    }
+    if (numHeads === 1 || sequenceLength === 1) {
+      return reshapedInput;
     }
     return context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
       inputs: [reshapedInput],
@@ -356,6 +359,9 @@ export const maybeTransposeToBNSHAndAddBias = (
         biasOffset!,
       );
       reshapedInput = reshapedInput.reshape([batchSize, sequenceLength, numHeads, headSize]);
+      if (numHeads === 1 || sequenceLength === 1) {
+        return reshapedInput;
+      }
       return context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
         inputs: [reshapedInput],
         outputs: [-1],
@@ -397,19 +403,7 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
   );
 
   if (kvBNSH) {
-    return applyAttention(
-      context,
-      Q,
-      key,
-      value,
-      keyPaddingMask,
-      undefined,
-      pastKey,
-      pastValue,
-      attentionBias,
-      params,
-      attributes,
-    );
+    return applyAttention(context, Q, key, value, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params);
   }
   if (!key || !value) {
     throw new Error('key and value must be provided');
@@ -436,5 +430,5 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
     2 * params.hiddenSize,
   );
 
-  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params, attributes);
+  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params);
 };

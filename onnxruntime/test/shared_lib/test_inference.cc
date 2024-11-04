@@ -335,6 +335,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_ROCM
+    std::cout << "Running simple inference with rocm provider" << std::endl;
     OrtROCMProviderOptions rocm_options;
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
@@ -384,7 +385,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
-#if defined(USE_CUDA) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
 #endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
@@ -2341,7 +2342,7 @@ TEST(CApiTest, basic_cuda_graph) {
 #endif
 }
 
-#if defined(USE_CUDA) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 struct CudaGraphInputOutputData_0 {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -2385,6 +2386,12 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
                                        Ort::MemoryAllocation& input_data,
                                        Ort::MemoryAllocation& output_data,
                                        const char* cuda_graph_annotation) {
+// a local hipify of select cuda symbols to avoid code duplication
+#ifdef USE_ROCM
+#define cudaMemcpy hipMemcpy
+#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
+#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
+#endif
 #ifdef USE_DML
   Ort::SessionOptions session_options;
   Ort::Allocator allocator(session, info_mem);
@@ -2488,6 +2495,11 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
+#ifdef USE_ROCM
+#undef cudaMemcpy
+#undef cudaMemcpyHostToDevice
+#undef cudaMemcpyDeviceToHost
+#endif
 }
 
 TEST(CApiTest, basic_cuda_graph_with_annotation) {
@@ -2502,7 +2514,7 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
 
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
-#else
+#elif defined(USE_CUDA)
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -2516,6 +2528,20 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#elif defined(USE_ROCM)
+  // Enable hip graph in rocm provider option.
+  OrtROCMProviderOptions* rocm_options = nullptr;
+  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
+  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
+      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
+  std::vector<const char*> keys{"enable_hip_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_rocm_options.get()) == nullptr);
+  Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
 
   Ort::Session session(*ort_env, CUDA_GRAPH_ANNOTATION_MODEL_URI, session_options);
@@ -4402,6 +4428,120 @@ TEST(CApiTest, RunAsyncFail) {
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
 
+static void TestRunWithLoraAdapter(const Ort::LoraAdapter& adapter) {
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
+
+  Ort::RunOptions run_options;
+  run_options.AddActiveLoraAdapter(adapter);
+
+  // Single input
+  constexpr const std::array<int64_t, 2> input_shape = {4, 4};
+  std::vector<float> input_x(16);
+  std::fill(input_x.begin(), input_x.end(), 1.0f);
+  constexpr const char* input_names[] = {"input_x"};
+  constexpr const char* output_names[] = {"output"};
+
+  auto cpu_meminfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+
+  auto input_x_val = Ort::Value::CreateTensor(
+      cpu_meminfo, input_x.data(), input_x.size(), input_shape.data(), input_shape.size());
+
+  Ort::Value inputs[] = {std::move(input_x_val)};
+
+  Ort::SessionOptions default_session_options;
+
+  constexpr const std::array<float, 16> expected_output = {
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f};
+
+  Ort::Session session(env, model_path, default_session_options);
+
+  auto outputs = session.Run(run_options, input_names, inputs, std::size(input_names), output_names, std::size(output_names));
+  ASSERT_EQ(1U, outputs.size());
+
+  auto tensor_type_shape = outputs[0].GetTensorTypeAndShapeInfo();
+  const auto elements = tensor_type_shape.GetElementCount();
+  ASSERT_EQ(expected_output.size(), elements);
+  const float* data = outputs[0].GetTensorData<float>();
+  for (size_t i = 0; i < elements; ++i) {
+    EXPECT_NEAR(expected_output[i], data[i], 0.06);
+  }
+}
+
+static Ort::LoraAdapter CreateAdapterFromFile() {
+  constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+  return Ort::LoraAdapter::CreateLoraAdapter(adapter_path, nullptr);
+}
+
+static Ort::LoraAdapter CreateAdapterFromArray() {
+  constexpr const ORTCHAR_T* adapter_path = TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+  std::ifstream adapter_file(adapter_path, std::ios::binary);
+
+  EXPECT_TRUE(adapter_file.is_open());
+  adapter_file.seekg(0, std::ios::end);
+  const size_t adapter_size = onnxruntime::narrow<size_t>(adapter_file.tellg());
+
+  std::vector<uint8_t> buffer(adapter_size);
+  adapter_file.seekg(0, std::ios::beg);
+  adapter_file.read(reinterpret_cast<char*>(buffer.data()), adapter_size);
+  adapter_file.close();
+
+  return Ort::LoraAdapter::CreateLoraAdapterFromArray(buffer.data(), buffer.size(), nullptr);
+}
+
+TEST(CApiTest, RunWithLoraAdapterFromFile) {
+  auto adapter = CreateAdapterFromFile();
+  TestRunWithLoraAdapter(adapter);
+}
+
+TEST(CApiTest, RunWithLoraAdapterFromArray) {
+  auto adapter = CreateAdapterFromArray();
+  TestRunWithLoraAdapter(adapter);
+}
+
+TEST(CApiTest, RunBaseLoraModel) {
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/lora/two_params_lora_model.onnx");
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
+  constexpr const std::array<int64_t, 2> input_shape = {4, 4};
+  std::vector<float> input_x(16);
+  std::fill(input_x.begin(), input_x.end(), 1.0f);
+  constexpr const char* input_names[] = {"input_x"};
+  constexpr const char* output_names[] = {"output"};
+
+  auto cpu_meminfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+
+  auto input_x_val = Ort::Value::CreateTensor(
+      cpu_meminfo, input_x.data(), input_x.size(), input_shape.data(), input_shape.size());
+
+  Ort::Value inputs[] = {std::move(input_x_val)};
+
+  Ort::SessionOptions default_session_options;
+
+  constexpr const std::array<float, 16> expected_output = {
+      28.f, 32.f, 36.f, 40.f,
+      28.f, 32.f, 36.f, 40.f,
+      28.f, 32.f, 36.f, 40.f,
+      28.f, 32.f, 36.f, 40.f};
+
+  Ort::Session session(env, model_path, default_session_options);
+
+  Ort::RunOptions run_options;
+  auto outputs = session.Run(run_options, input_names, inputs, std::size(input_names), output_names, std::size(output_names));
+  ASSERT_EQ(1U, outputs.size());
+
+  auto tensor_type_shape = outputs[0].GetTensorTypeAndShapeInfo();
+  const auto elements = tensor_type_shape.GetElementCount();
+  ASSERT_EQ(expected_output.size(), elements);
+  const float* data = outputs[0].GetTensorData<float>();
+  for (size_t i = 0; i < elements; ++i) {
+    EXPECT_NEAR(expected_output[i], data[i], 0.06);
+  }
+}
+
 struct MockGQA : public OrtCustomOp {
   MockGQA() {
     OrtCustomOp::GetMayInplace = [](int** input_index, int** output_index) {
@@ -4459,4 +4599,87 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(output_index[1], 8);
   ASSERT_EQ(len, static_cast<size_t>(2));
   mock_gqa.ReleaseAliasMap(input_index, output_index);
+}
+
+TEST(CApiTest, Serialize_PrePack_Initializers) {
+  std::string model_name = "model_with_matmul_nbits";
+
+  const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
+  const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
+  std::string external_initializer_file_name = model_name + "_opt.onnx.data";
+
+  // Generate optimized with prepacked weights serialized
+  Ort::SessionOptions session_options_opt;
+  session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, external_initializer_file_name.c_str());
+  session_options_opt.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "0");
+  session_options_opt.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1");
+
+#if defined(_WIN32) || defined(_WIN64)
+  std::wstring test_model_wide = onnxruntime::ToWideString(test_model);
+  session_options_opt.SetOptimizedModelFilePath(onnxruntime::ToWideString(optimized_model).c_str());
+  Ort::Session session_opt_model(*ort_env, test_model_wide.c_str(), session_options_opt);
+#else
+  session_options_opt.SetOptimizedModelFilePath(optimized_model.c_str());
+  Ort::Session session_opt_model(*ort_env, test_model.c_str(), session_options_opt);
+#endif
+
+  // Do inference with original model and optimized model and check output is identical
+  // set inputs and session options
+  Ort::SessionOptions session_options;
+  const char* input_names[] = {"A"};
+  const char* const output_names[] = {"Y"};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<float> input_0_data = {1.3f};
+  std::vector<int64_t> input_0_dims = {1, 1};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+
+  // run inference with original model
+  // Convert std::string to std::wstring
+#if defined(_WIN32) || defined(_WIN64)
+  Ort::Session session(*ort_env, test_model_wide.c_str(), session_options);
+#else
+  Ort::Session session(*ort_env, test_model.c_str(), session_options);
+#endif
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                 output_names, 1);
+
+  // run inference with optimized model which load serialized prepack initializer
+#if defined(_WIN32) || defined(_WIN64)
+  std::wstring optimized_model_wide = onnxruntime::ToWideString(optimized_model);
+  Ort::Session session_opt(*ort_env, optimized_model_wide.c_str(), session_options);
+#else
+  Ort::Session session_opt(*ort_env, optimized_model.c_str(), session_options);
+#endif
+  auto ort_outputs_opt = session_opt.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                         output_names, 1);
+
+  // check output of original model and optimized model are equal
+  ASSERT_EQ(ort_outputs.size(), ort_outputs_opt.size());
+
+  for (size_t i = 0; i < ort_outputs.size(); ++i) {
+    const auto& sequences = ort_outputs[i];
+    ASSERT_TRUE(sequences.IsTensor());
+
+    const auto& sequences_opt = ort_outputs_opt[i];
+    ASSERT_TRUE(sequences_opt.IsTensor());
+
+    auto result_ts = sequences.GetTensorTypeAndShapeInfo();
+    auto result_ts_opt = sequences_opt.GetTensorTypeAndShapeInfo();
+
+    ASSERT_EQ(result_ts.GetElementType(), result_ts_opt.GetElementType());
+
+    ASSERT_EQ(result_ts.GetShape(), result_ts_opt.GetShape());
+
+    const auto* result_vals = sequences.GetTensorData<float>();
+    auto result_span = gsl::make_span(result_vals, ort_outputs.size());
+
+    const auto* result_vals_opt = sequences_opt.GetTensorData<float>();
+    auto result_span_opt = gsl::make_span(result_vals_opt, ort_outputs_opt.size());
+
+    ASSERT_TRUE(std::equal(result_span_opt.begin(), result_span_opt.end(), result_span.begin(), result_span.end()));
+  }
 }

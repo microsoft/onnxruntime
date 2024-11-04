@@ -915,6 +915,42 @@ void Node::Init(std::string_view name,
     }
   }
 }
+void Node::Init(std::string_view name,
+                std::string_view op_type,
+                std::string_view description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                std::string_view domain) {
+  name_ = name;
+  op_type_ = op_type;
+  description_ = description;
+  definitions_.input_defs.assign(input_args.begin(), input_args.end());
+  definitions_.output_defs.assign(output_args.begin(), output_args.end());
+  domain_ = domain;
+  can_be_saved_ = true;
+  priority_ = 0;
+  if (kOnnxDomainAlias == domain_) {
+    domain_ = kOnnxDomain;
+  }
+
+  // Set each arg count as 1 by default.
+  // It could be adjusted when resolving the node with its operator
+  // information.
+  definitions_.input_arg_count.assign(input_args.size(), 1);
+
+  attributes_ = std::move(attributes);
+
+  for (auto& name_to_attr : attributes_) {
+    if (utils::HasGraph(name_to_attr.second)) {
+#if !defined(ORT_MINIMAL_BUILD)
+      CreateSubgraph(name_to_attr.first);
+#else
+      ORT_THROW("Creating node with a subgraph via AddNode is not supported in this build.");
+#endif
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -3923,6 +3959,35 @@ Node& Graph::AddNode(const std::string& name,
   return *node;
 }
 
+Node& Graph::AddNode(const std::string& name,
+                     const std::string& op_type,
+                     const std::string& description,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
+                     NodeAttributes&& attributes,
+                     const std::string& domain) {
+  InlinedVector<NodeArg*> inputs;
+  InlinedVector<NodeArg*> outputs;
+  inputs.resize(input_args.size());
+  outputs.resize(output_args.size());
+  int i = 0;
+  for (auto input_arg : input_args) {
+    inputs[i++] = &GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+  }
+  i = 0;
+  for (auto output_arg : output_args) {
+    outputs[i++] = &GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+  }
+
+  const gsl::not_null<Node*> node = AllocateNode();
+  node->Init(name, op_type, description, inputs, outputs, std::move(attributes), domain);
+  if (0 != op_type.compare(kNoOp)) {
+    GraphProtoSyncNeeded(true);
+  }
+
+  return *node;
+}
+
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
   if (nullptr == node) {
@@ -4019,9 +4084,75 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
+void Graph::SetUpExternalInitializer(const Graph::OffsetAlignmentInfo& align_info,
+                                     size_t tensor_bytes_size,
+                                     int64_t& external_offset,
+                                     std::ofstream& external_stream,
+                                     gsl::span<const uint8_t> raw_data,
+                                     ONNX_NAMESPACE::TensorProto& output_proto,
+                                     const std::filesystem::path& external_file_path,
+                                     const ONNX_NAMESPACE::TensorProto& initializer,
+                                     bool is_prepacked) {
+  // update external_offset for alignment
+  // need to do padding before write actual tensor data as we do offset alignment at the begin of
+  // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+  // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+  // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+  if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
+    // Align to the larger of the page size or the allocation granularity
+    int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
+    // Align to the next page or alloc granularity boundary
+    int64_t new_external_offset = static_cast<int64_t>(
+                                      std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                  alignment_factor;
+
+    // padding tensor with zeros for alignment
+    InlinedVector<uint8_t> paddings;
+    size_t padding_size = SafeInt<size_t>(new_external_offset - external_offset);
+    paddings.reserve(padding_size);
+    for (size_t index = 0; index != padding_size; ++index) {
+      paddings.push_back(0x0);
+    }
+    external_stream.write(reinterpret_cast<const char*>(paddings.data()), padding_size);
+
+    external_offset = new_external_offset;
+  }
+
+  external_stream.write(reinterpret_cast<const char*>(raw_data.data()), tensor_bytes_size);
+
+  output_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  ONNX_NAMESPACE::StringStringEntryProto* location = output_proto.add_external_data();
+  location->set_key("location");
+  location->set_value(ToUTF8String(external_file_path.native()));
+  ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value(std::to_string(external_offset));
+  ONNX_NAMESPACE::StringStringEntryProto* length = output_proto.add_external_data();
+  length->set_key("length");
+  length->set_value(std::to_string(tensor_bytes_size));
+
+  if (is_prepacked) {
+    ONNX_NAMESPACE::StringStringEntryProto* pre_packed = output_proto.add_external_data();
+    pre_packed->set_key("prepacked");
+    pre_packed->set_value("1");
+  }
+
+  output_proto.set_name(initializer.name());
+  output_proto.set_data_type(initializer.data_type());
+  for (int i = 0; i != initializer.dims_size(); ++i) {
+    output_proto.add_dims(initializer.dims(i));
+  }
+  output_proto.set_doc_string(initializer.doc_string());
+
+  external_offset += tensor_bytes_size;
+}
+
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                        const std::filesystem::path& model_file_path,
-                                                                       size_t initializer_size_threshold) const {
+                                                                       size_t initializer_size_threshold,
+                                                                       const OffsetAlignmentInfo& align_info,
+                                                                       bool save_prepacked_constant_initializers,
+                                                                       PrePackedTensorProtoToSave& pre_packed_initializers) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4040,6 +4171,34 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 #endif
 
   for (const auto& initializer : graph_proto_->initializer()) {
+    bool use_pre_packed_initializer = false;
+    InlinedVector<TensorProto> pre_packed_initializers_tensor_proto;
+    // If this initializer has been prepacked, saved prepacked external initializer instead of original one.
+    // Since one initializer could be used by multiple kernels and been prepacked differently,
+    // Save each prepacked initializers seperately, chagne the initializer name to [initializer_name]:[node_name]
+    // to avoid conflict. Change the node input name accordingly.
+    // IT could potentially make the ONNX data file larger since we store multiple prepacked initializers into disk
+    // but this could be rare case.
+    if (save_prepacked_constant_initializers && pre_packed_initializers.count(initializer.name())) {
+      for (const auto& item : pre_packed_initializers[initializer.name()]) {
+        auto& node_name = item.first;
+        std::string prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer.name(), node_name);
+        pre_packed_initializers_tensor_proto.push_back(item.second);
+        use_pre_packed_initializer = true;
+
+        for (auto& node : *result.mutable_node()) {
+          if (node.name() == node_name) {
+            int input_index = 0;
+            for (const auto& input : node.input()) {
+              if (input == initializer.name()) {
+                node.set_input(input_index, prepacked_initializer_name);
+              }
+              input_index += 1;
+            }
+          }
+        }
+      }
+    }
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
       // Sparse tensors are added to the ONNX file.
@@ -4048,40 +4207,39 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
     } else {
 #endif
-      // Dense tensors larger than the threshold are added to the external file.
-      TensorProto* output_proto = result.add_initializer();
+      if (use_pre_packed_initializer) {
+        for (const auto& pre_packed_initializer : pre_packed_initializers_tensor_proto) {
+          // Dense tensors larger than the threshold are added to the external file.
+          TensorProto* output_proto = result.add_initializer();
+          std::vector<uint8_t> raw_data;
+          size_t tensor_bytes_size = 0;
 
-      std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
-      size_t tensor_bytes_size = raw_data.size();
-      if (tensor_bytes_size < initializer_size_threshold) {
-        *output_proto = initializer;
-        continue;
+          ORT_THROW_IF_ERROR(utils::UnpackInitializerData(pre_packed_initializer, model_path, raw_data));
+          tensor_bytes_size = raw_data.size();
+          if (tensor_bytes_size < initializer_size_threshold) {
+            *output_proto = pre_packed_initializer;
+            continue;
+          }
+
+          SetUpExternalInitializer(align_info, tensor_bytes_size, external_offset, external_stream,
+                                   raw_data, *output_proto, external_file_path, pre_packed_initializer, true);
+        }
+      } else {
+        // Dense tensors larger than the threshold are added to the external file.
+        TensorProto* output_proto = result.add_initializer();
+        std::vector<uint8_t> raw_data;
+        size_t tensor_bytes_size = 0;
+
+        ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
+        tensor_bytes_size = raw_data.size();
+        if (tensor_bytes_size < initializer_size_threshold) {
+          *output_proto = initializer;
+          continue;
+        }
+
+        SetUpExternalInitializer(align_info, tensor_bytes_size, external_offset, external_stream,
+                                 raw_data, *output_proto, external_file_path, initializer, false);
       }
-
-      for (size_t index = 0; index != tensor_bytes_size; ++index) {
-        external_stream << raw_data[index];
-      }
-
-      output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
-      ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
-      location->set_key("location");
-      location->set_value(ToUTF8String(external_file_path.native()));
-      ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
-      offset->set_key("offset");
-      offset->set_value(std::to_string(external_offset));
-      ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
-      length->set_key("length");
-      length->set_value(std::to_string(tensor_bytes_size));
-
-      output_proto->set_name(initializer.name());
-      output_proto->set_data_type(initializer.data_type());
-      for (int i = 0; i != initializer.dims_size(); ++i) {
-        output_proto->add_dims(initializer.dims(i));
-      }
-      output_proto->set_doc_string(initializer.doc_string());
-
-      external_offset += tensor_bytes_size;
 #if !defined(DISABLE_SPARSE_TENSORS)
     }
 #endif

@@ -598,7 +598,6 @@ export class WebGpuBackend {
         } else if (v.type === DataType.uint32) {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === DataType.float16) {
-          // TODO: use Float16Array.
           new Uint16Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
@@ -791,15 +790,20 @@ export class WebGpuBackend {
       this.sessionExternalDataMapping.set(sessionId, sessionInputOutputMapping);
     }
 
+    // the buffer may be user created, or managed by GPU data manager.
+    // The GPU data manager will not manage these buffers. we register them as external buffers.
+    //
+    // The map `sessionInputOutputMapping` is used to store the data ID and buffer for each input/output. Once a
+    // specific input/output is registered, the data ID will not change.
     const previousBuffer = sessionInputOutputMapping.get(index);
-    const id = this.gpuDataManager.registerExternalBuffer(buffer, size, previousBuffer?.[1]);
+    const id = this.gpuDataManager.registerExternalBuffer(buffer, size, previousBuffer);
     sessionInputOutputMapping.set(index, [id, buffer]);
     return id;
   }
   unregisterBuffers(sessionId: number): void {
     const sessionInputOutputMapping = this.sessionExternalDataMapping.get(sessionId);
     if (sessionInputOutputMapping) {
-      sessionInputOutputMapping.forEach((bufferInfo) => this.gpuDataManager.unregisterExternalBuffer(bufferInfo[1]));
+      sessionInputOutputMapping.forEach((bufferInfo) => this.gpuDataManager.unregisterExternalBuffer(bufferInfo[0]));
       this.sessionExternalDataMapping.delete(sessionId);
     }
   }
@@ -901,6 +905,10 @@ export class WebGpuBackend {
     // flush the left commands before we change the status.
     this.flush();
     this.sessionStatus = 'default';
+  }
+
+  onCreateSession(): void {
+    this.gpuDataManager.onCreateSession();
   }
 
   onReleaseSession(sessionId: number): void {

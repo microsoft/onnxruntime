@@ -68,7 +68,7 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
   //   Input 'value':                      None
   // Input 'token_offset':                 (batch_size, sequence_length)
   // Input 'cumulative_sequence_length':   (batch_size + 1)
-  // Input 'attention_bias':               (batch_size or 1, num_heads, sequence_length, sequence_length) or None
+  // Input 'attention_bias':               (batch_size or 1, num_heads or 1, sequence_length, sequence_length) or None
   // Output 'output':                      (token_count, v_hidden_size)
 
   const auto& query_dims = query_shape.GetDims();

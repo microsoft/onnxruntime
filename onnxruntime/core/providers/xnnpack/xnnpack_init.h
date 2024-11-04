@@ -46,6 +46,23 @@ namespace xnnpack {
 #define XNN_ALLOCATION_ALIGNMENT 16
 #endif
 
+#if defined(__arm__) || defined(_M_ARM)
+#define XNN_ARCH_ARM 1
+#else
+#define XNN_ARCH_ARM 0
+#endif
+
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#define XNN_ARCH_ARM64 1
+#else
+#define XNN_ARCH_ARM64 0
+#endif
+
+// referenced from xnn_is_f16_compatible_config in XNNPACK/src/xnnpack/hardware-config.h
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64 || ((XNN_ARCH_X86 || XNN_ARCH_X86_64) && !XNN_PLATFORM_MOBILE)
+#define XNNPACK_FP16_SUPPORTED
+#endif
+
 std::pair<AllocatorPtr&, xnn_allocator*> GetStoredAllocator();
 
 }  // namespace xnnpack

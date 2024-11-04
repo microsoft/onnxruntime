@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// WebNN API currently does not have a TypeScript definition file. This file is a workaround with types generated from
+// WebNN API specification.
+// https://github.com/webmachinelearning/webnn/issues/677
+/// <reference path="../lib/wasm/jsep/webnn/webnn.d.ts" />
+
 import { Float16Array as Float16ArrayPolyfill } from '@petamoriken/float16';
 import { expect } from 'chai';
 import * as ort from 'onnxruntime-common';
@@ -19,6 +24,7 @@ import { createView } from '../lib/wasm/jsep/tensor-view';
 import {
   calculateTensorSizeInBytes,
   isGpuBufferSupportedType,
+  isMLTensorSupportedType,
   tensorDataTypeStringToEnum,
 } from '../lib/wasm/wasm-common';
 
@@ -170,13 +176,20 @@ async function initializeSession(
     }`,
   );
 
+  let preferredOutputLocation: ort.Tensor.DataLocation | undefined;
+  if (ioBindingMode === 'gpu-location') {
+    preferredOutputLocation = 'gpu-buffer';
+  } else if (ioBindingMode === 'ml-location') {
+    preferredOutputLocation = 'ml-tensor';
+  }
+
   const profilerConfig = profile ? { maxNumberEvents: 65536 } : undefined;
   const sessionConfig = {
     ...sessionOptions,
     executionProviders: [backendHint],
     profiler: profilerConfig,
     enableProfiling: profile,
-    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    preferredOutputLocation,
     externalData,
   };
 
@@ -219,6 +232,7 @@ export class ModelTestContext {
     readonly perfData: ModelTestContext.ModelTestPerfData,
     readonly ioBinding: Test.IOBindingMode,
     private readonly profile: boolean,
+    public readonly mlContext?: MLContext,
   ) {}
 
   /**
@@ -272,7 +286,19 @@ export class ModelTestContext {
 
       const initStart = now();
       const executionProviderConfig =
-        modelTest.backend === 'webnn' ? testOptions?.webnnOptions || 'webnn' : modelTest.backend!;
+        modelTest.backend === 'webnn' ? testOptions?.webnnOptions || { name: 'webnn' } : modelTest.backend!;
+      let mlContext: MLContext | undefined;
+      if (['ml-tensor', 'ml-location'].includes(modelTest.ioBinding)) {
+        const webnnOptions = executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption;
+        const deviceType = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.deviceType;
+        const powerPreference = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.powerPreference;
+
+        mlContext = await navigator.ml.createContext({ deviceType, powerPreference });
+        (executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption).context = mlContext;
+        if (!deviceType) {
+          (executionProviderConfig as ort.InferenceSession.WebNNContextOptions).deviceType = deviceType;
+        }
+      }
       const session = await initializeSession(
         modelTest.modelUrl,
         executionProviderConfig,
@@ -295,6 +321,7 @@ export class ModelTestContext {
         { init: initEnd - initStart, firstRun: -1, runs: [], count: 0 },
         modelTest.ioBinding,
         profile,
+        mlContext,
       );
     } finally {
       this.initializing = false;
@@ -622,30 +649,84 @@ function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]
   });
 }
 
+async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Type, dims: readonly number[]) {
+  if (!isMLTensorSupportedType(type)) {
+    throw new Error(`createMLTensorForOutput can not work with ${type} tensor`);
+  }
+
+  const dataType = type === 'bool' ? 'uint8' : type;
+
+  const mlTensor = await mlContext.createTensor({
+    dataType,
+    shape: dims as number[],
+    // Assign both shape and dimensions while transitioning to new API.
+    dimensions: dims as number[],
+    usage: MLTensorUsage.READ,
+    readable: true,
+  });
+
+  return ort.Tensor.fromMLTensor(mlTensor, {
+    dataType: type,
+    dims,
+    dispose: () => mlTensor.destroy(),
+    download: async () => {
+      const arrayBuffer = await mlContext.readTensor(mlTensor);
+      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.MLTensorDataTypes];
+    },
+  });
+}
+
+async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tensor): Promise<ort.Tensor> {
+  if (!isMLTensorSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
+    throw new Error(`createMLTensorForInput can not work with ${cpuTensor.type} tensor`);
+  }
+  const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
+  const mlTensor = await mlContext.createTensor({
+    dataType,
+    shape: cpuTensor.dims as number[],
+    // Assign both shape and dimensions while transitioning to new API.
+    dimensions: cpuTensor.dims as number[],
+    usage: MLTensorUsage.WRITE,
+    writable: true,
+  });
+  mlContext.writeTensor(mlTensor, cpuTensor.data);
+  return ort.Tensor.fromMLTensor(mlTensor, {
+    dataType: cpuTensor.type,
+    dims: cpuTensor.dims,
+    dispose: () => mlTensor.destroy(),
+  });
+}
+
 export async function sessionRun(options: {
   session: ort.InferenceSession;
   feeds: Record<string, ort.Tensor>;
   outputsMetaInfo: Record<string, Pick<ort.Tensor, 'dims' | 'type'>>;
   ioBinding: Test.IOBindingMode;
+  mlContext?: MLContext;
 }): Promise<[number, number, ort.InferenceSession.OnnxValueMapType]> {
   const session = options.session;
   const feeds = options.feeds;
   const fetches: Record<string, ort.Tensor> = {};
 
-  // currently we only support IO Binding for WebGPU
+  // currently we only support IO Binding for WebGPU and WebNN
   //
-  // For inputs, we create GPU tensors on both 'gpu-tensor' and 'gpu-location' binding testing mode.
-  // For outputs, we create GPU tensors on 'gpu-tensor' binding testing mode only.
+  // For inputs, we create tensors on 'gpu-tensor', 'gpu-location', 'ml-tensor', and 'ml-location' binding testing
+  // modes.
+  // For outputs, we create tensors on 'gpu-tensor' and 'ml-tensor' binding testing modes.
   //              in 'gpu-device' binding mode, outputs are not pre-allocated.
-  const shouldUploadInput = options.ioBinding === 'gpu-tensor' || options.ioBinding === 'gpu-location';
-  const shouldUploadOutput = options.ioBinding === 'gpu-tensor';
+  const shouldUploadInput = ['gpu-tensor', 'gpu-location', 'ml-location', 'ml-tensor'].includes(options.ioBinding);
+  const shouldUploadOutput = options.ioBinding === 'gpu-tensor' || options.ioBinding === 'ml-tensor';
   try {
     if (shouldUploadInput) {
       // replace the CPU tensors in feeds into GPU tensors
       for (const name in feeds) {
         if (Object.hasOwnProperty.call(feeds, name)) {
           if (feeds[name].size > 0) {
-            feeds[name] = createGpuTensorForInput(feeds[name]);
+            if (options.ioBinding === 'ml-location' || options.ioBinding === 'ml-tensor') {
+              feeds[name] = await createMLTensorForInput(options.mlContext!, feeds[name]);
+            } else {
+              feeds[name] = createGpuTensorForInput(feeds[name]);
+            }
           }
         }
       }
@@ -658,7 +739,11 @@ export async function sessionRun(options: {
           if (dims.some((d) => d === 0)) {
             fetches[name] = new ort.Tensor(type, [], dims);
           } else {
-            fetches[name] = createGpuTensorForOutput(type, dims);
+            if (options.ioBinding === 'ml-tensor') {
+              fetches[name] = await createMLTensorForOutput(options.mlContext!, type, dims);
+            } else {
+              fetches[name] = createGpuTensorForOutput(type, dims);
+            }
           }
         }
       }
@@ -714,6 +799,7 @@ export async function runModelTestSet(
       feeds,
       outputsMetaInfo,
       ioBinding: context.ioBinding,
+      mlContext: context.mlContext,
     });
     if (context.perfData.count === 0) {
       context.perfData.firstRun = end - start;
@@ -799,6 +885,7 @@ export class ProtoOpTestContext {
   readonly ioBindingMode: Test.IOBindingMode;
   constructor(
     test: Test.OperatorTest,
+    private readonly downloadModel: boolean,
     private readonly sessionOptions: ort.InferenceSession.SessionOptions = {},
   ) {
     const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
@@ -985,8 +1072,7 @@ export class ProtoOpTestContext {
     this.ioBindingMode = test.ioBinding;
     this.loadedData = onnx.ModelProto.encode(model).finish().slice();
 
-    // in debug mode, open a new tab in browser for the generated onnx model.
-    if (ort.env.debug) {
+    if (this.downloadModel) {
       const modelFile = new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {
         type: 'application/octet-stream',
       });

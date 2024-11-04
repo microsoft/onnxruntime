@@ -23,6 +23,7 @@ class MatMul : public XnnpackKernel {
   // Required for checking XNNpack restrictions on ORT side
   static bool IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
@@ -30,6 +31,9 @@ class MatMul : public XnnpackKernel {
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
   AllocatorPtr myAlloc;
+
+  OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
+  std::string op_type_str_ = "";
 
   XnnpackOperator op0_ = nullptr;
 };

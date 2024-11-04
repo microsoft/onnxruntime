@@ -289,9 +289,29 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 2: bias
   //
-  if (num_inputs == 3) {
+  const bool has_bias_input = num_inputs == 3;
+  if (has_bias_input) {
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
   }
+
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 16 && QNN_API_VERSION_MINOR <= 18)
+  if (!has_bias_input && IsNpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    // Bias is implicit. QNN SDK 2.23/2.24/2.25 (QNN API version 2.16/2.17/2.18) has a validation bug for
+    // implicit bias inputs, so provide an explicit bias of all 0 (quantized int32).
+    TensorInfo input0_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+
+    TensorInfo input1_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input1_info));
+
+    if (input0_info.quant_param.IsPerTensor(/*include_bw*/ true) && input1_info.quant_param.IsQuantized()) {
+      const std::string bias_name = qnn::utils::GetNodeName(node_unit) + "_implicit_bias_ort_qnn_ep";
+      std::vector<uint32_t> bias_shape = {input1_info.shape[0]};
+      ORT_RETURN_IF_ERROR(AddZeroBiasInput(qnn_model_wrapper, input0_info.quant_param, input1_info.quant_param,
+                                           std::move(bias_shape), bias_name, logger, input_names));
+    }
+  }
+#endif
 
   return Status::OK();
 }

@@ -370,11 +370,10 @@ TEST(CPPApi, Float16Zeros) {
 }
 
 namespace {
-const auto EpsilonFl16 = Ort::Float16_t::FromBits(Ort::Float16_t::kEpsilonBits);
 const auto NaNFl16 = Ort::Float16_t::FromBits(Ort::Float16_t::kPositiveQNaNBits);
-const auto MinValueFl16 = Ort::Float16_t::FromBits(Ort::Float16_t::kMinValueBits);
 const auto MaxValueFl16 = Ort::Float16_t::FromBits(Ort::Float16_t::kMaxValueBits);
 const auto InfinityFl16 = Ort::Float16_t::FromBits(Ort::Float16_t::kPositiveInfinityBits);
+const auto ZeroFl16 = Ort::Float16_t::FromBits(0x0000);
 }  // namespace
 
 TEST(CPPApi, Float16Comparision) {
@@ -382,8 +381,6 @@ TEST(CPPApi, Float16Comparision) {
   const auto left_same = Ort::Float16_t(-33.33f);
   const auto right = Ort::Float16_t(66.66f);
   const auto right_same = Ort::Float16_t(66.66f);
-
-  EXPECT_LT(EpsilonFl16, right);
 
   EXPECT_EQ(left, left_same);
   EXPECT_NE(left, left_same.Negate());
@@ -416,13 +413,12 @@ TEST(CPPApi, Float16NaNComparision) {
 
   EXPECT_FALSE(MaxValueFl16 < NaNFl16);
   EXPECT_FALSE(MaxValueFl16 == NaNFl16);
-  EXPECT_FALSE(NaNFl16 < MinValueFl16);
+  EXPECT_FALSE(NaNFl16 < MaxValueFl16);
 
-  EXPECT_LT(MinValueFl16, MaxValueFl16);
+  EXPECT_LT(ZeroFl16, MaxValueFl16);
 }
 
 TEST(CPPApi, Float16Infinity) {
-  EXPECT_FALSE(MinValueFl16.IsInfinity());
   EXPECT_FALSE(MaxValueFl16.IsInfinity());
   EXPECT_TRUE(MaxValueFl16.IsFinite());
 
@@ -530,11 +526,10 @@ TEST(CPPApi, BFloat16Zeros) {
 }
 
 namespace {
-const auto EpsilonBfl16 = Ort::BFloat16_t::FromBits(Ort::BFloat16_t::kEpsilonBits);
-const auto NaNBfl15 = Ort::BFloat16_t::FromBits(Ort::BFloat16_t::kPositiveQNaNBits);
-const auto MinValueBfl16 = Ort::BFloat16_t::FromBits(Ort::BFloat16_t::kMinValueBits);
+const auto NaNBfl16 = Ort::BFloat16_t::FromBits(Ort::BFloat16_t::kPositiveQNaNBits);
 const auto MaxValueBfl16 = Ort::BFloat16_t::FromBits(Ort::BFloat16_t::kMaxValueBits);
 const auto InfinityBFl16 = Ort::BFloat16_t::FromBits(Ort::BFloat16_t::kPositiveInfinityBits);
+const auto ZeroBfl16 = Ort::BFloat16_t::FromBits(0x0000);
 }  // namespace
 
 TEST(CPPApi, BFloat16Comparision) {
@@ -542,8 +537,6 @@ TEST(CPPApi, BFloat16Comparision) {
   const auto left_same = Ort::BFloat16_t(-33.33f);
   const auto right = Ort::BFloat16_t(66.66f);
   const auto right_same = Ort::BFloat16_t(66.66f);
-
-  EXPECT_LT(EpsilonBfl16, right);
 
   EXPECT_EQ(left, left_same);
   EXPECT_NE(left, left_same.Negate());
@@ -561,7 +554,7 @@ TEST(CPPApi, BFloat16TestNAN) {
   EXPECT_TRUE(fp16NANFromSingle.IsNaN());
 
   // NaN are not equal to each other
-  EXPECT_NE(NaNBfl15, fp16NANFromSingle);
+  EXPECT_NE(NaNBfl16, fp16NANFromSingle);
 
   const float NanFromBFloat16 = fp16NANFromSingle.ToFloat();
   EXPECT_TRUE(std::isnan(NanFromBFloat16));
@@ -570,19 +563,18 @@ TEST(CPPApi, BFloat16TestNAN) {
 }
 
 TEST(CPPApi, BFloat16NaNComparision) {
-  EXPECT_FALSE(NaNBfl15 < NaNBfl15);
-  EXPECT_TRUE(NaNBfl15 != NaNBfl15);
-  EXPECT_FALSE(NaNBfl15 == NaNBfl15);
+  EXPECT_FALSE(NaNBfl16 < NaNBfl16);
+  EXPECT_TRUE(NaNBfl16 != NaNBfl16);
+  EXPECT_FALSE(NaNBfl16 == NaNBfl16);
 
-  EXPECT_FALSE(MaxValueBfl16 < NaNBfl15);
-  EXPECT_FALSE(MaxValueBfl16 == NaNBfl15);
-  EXPECT_FALSE(NaNBfl15 < MinValueBfl16);
+  EXPECT_FALSE(MaxValueBfl16 < NaNBfl16);
+  EXPECT_FALSE(MaxValueBfl16 == NaNBfl16);
+  EXPECT_FALSE(NaNBfl16 < MaxValueBfl16);
 
-  EXPECT_LT(MinValueBfl16, MaxValueBfl16);
+  EXPECT_LT(ZeroBfl16, MaxValueBfl16);
 }
 
 TEST(CPPApi, BFloat16Infinity) {
-  EXPECT_FALSE(MinValueBfl16.IsInfinity());
   EXPECT_FALSE(MaxValueBfl16.IsInfinity());
   EXPECT_TRUE(MaxValueBfl16.IsFinite());
 
@@ -993,6 +985,32 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
       ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
+}
+
+TEST(CApi, TestResize) {
+  std::vector<Ort::Value> values;
+  values.resize(10);
+
+  std::vector<Ort::Status> sts;
+  sts.resize(5);
+
+  std::vector<Ort::CustomOpDomain> domains;
+  domains.resize(5);
+
+  std::vector<Ort::TensorTypeAndShapeInfo> type_and_shape;
+  type_and_shape.resize(5);
+
+  std::vector<Ort::SequenceTypeInfo> seq_type_info;
+  seq_type_info.resize(5);
+
+  std::vector<Ort::MapTypeInfo> map_type_info;
+  map_type_info.resize(5);
+
+  std::vector<Ort::TypeInfo> type_info;
+  type_info.resize(5);
+
+  std::vector<Ort::OpAttr> op_attr;
+  op_attr.resize(5);
 }
 
 TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <memory>
@@ -80,7 +81,8 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       1,
       "./compiled_model.mxr",
       1,
-      "./compiled_model.mxr"};
+      "./compiled_model.mxr",
+      1};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -97,11 +99,13 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params,
+                                                                         const SessionOptions* session_options) {
 #ifdef USE_OPENVINO
-  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+  return OpenVINOProviderFactoryCreator::Create(params, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }
@@ -118,6 +122,12 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
+#ifdef USE_DML
+  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
+  if (no_cuda_ep_test == "1") {
+    return nullptr;
+  }
+#endif
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
@@ -206,11 +216,11 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
+std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math) {
 #ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_arena)->CreateProvider();
+  return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
 #else
-  ORT_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(enable_fast_math);
   return nullptr;
 #endif
 }
@@ -300,6 +310,19 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
+#ifdef USE_WEBGPU
+  ConfigOptions config_options{};
+  // Disable storage buffer cache
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
+                                            webgpu::options::kBufferCacheMode_Disabled)
+                  .IsOK());
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};
@@ -311,6 +334,12 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
+#ifdef USE_CUDA
+  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
+  if (no_dml_ep_test == "1") {
+    return nullptr;
+  }
+#endif
   ConfigOptions config_options{};
   if (auto factory = DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, false, false)) {
     return factory->CreateProvider();

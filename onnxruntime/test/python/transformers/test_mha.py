@@ -9,6 +9,7 @@ Test MultiHeadAttention operator for CUDA and CPU.
 
 import concurrent.futures
 import itertools
+import os
 import unittest
 from typing import Dict, List, Optional
 
@@ -61,6 +62,22 @@ def get_bias_support(format: InputFormats):
 
     if format == InputFormats.Q_KV_BSNH_BSN2H:
         return [False]
+
+    if format == InputFormats.QKV_BSN3H:
+        return [True, False]
+
+    raise RuntimeError(f"Unknown format: {format}")
+
+
+def get_causal_support(format: InputFormats):
+    if format == InputFormats.Q_K_V_BSNH_BSNH_BSNH:
+        return [True, False]
+
+    if format == InputFormats.Q_K_V_BSNH_BNSH_BNSH:
+        return [True, False]
+
+    if format == InputFormats.Q_KV_BSNH_BSN2H:
+        return [True, False]
 
     if format == InputFormats.QKV_BSN3H:
         return [True, False]
@@ -215,7 +232,7 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
                 for num_heads in heads:
                     for head_size in head_sizes:
                         for format in formats:
-                            for causal in [True, False]:
+                            for causal in get_causal_support(format):
                                 for mask_format in mask_formats:
                                     for has_bias in get_bias_support(format):
                                         for (
@@ -256,8 +273,8 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
             has_attn_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1 = atten_bias_options[
                 i % len(atten_bias_options)
             ]
-            for causal in [True, False]:
-                for format in formats:
+            for format in formats:
+                for causal in get_causal_support(format):
                     for has_bias in get_bias_support(format):
                         config = MultiHeadAttentionConfig(
                             batch_size=batch_size,
@@ -308,7 +325,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                 for num_heads in heads:
                     for head_size in head_sizes:
                         for format in formats:
-                            for causal in [True, False]:
+                            for causal in get_causal_support(format):
                                 for has_past_input in [True, False]:
                                     for mask_format in mask_formats:
                                         for has_bias in get_bias_support(format):
@@ -353,8 +370,8 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
             has_attn_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1 = atten_bias_options[
                 i % len(atten_bias_options)
             ]
-            for causal in [True, False]:
-                for format in formats:
+            for format in formats:
+                for causal in get_causal_support(format):
                     for has_past_input in [True, False]:
                         for has_bias in get_bias_support(format):
                             sequence_length = 1 if has_past_input else past_sequence_length
@@ -384,6 +401,49 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                             yield config
 
 
+def lean_attention_test_cases(provider: str, comprehensive: bool):
+    if provider == "CUDAExecutionProvider" and get_compute_capability() < 80:
+        return
+        yield
+
+    batch_sizes = [1, 2, 3] if comprehensive else [1, 2]
+    sequence_lengths = [2, 15, 16, 255, 256, 512, 1024, 2048, 4096, 8192] if comprehensive else [2, 255, 512]
+    heads = [1, 4, 16] if comprehensive else [1, 4]
+    head_sizes = [64, 128]
+    device, dtype, formats = get_provider_support_info(provider, True)
+    mask_formats = [AttentionMaskFormat.Mask_None]
+
+    sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
+    for batch_size in batch_sizes:
+        for total_seq_len in sequence_lengths:
+            for num_heads in heads:
+                for head_size in head_sizes:
+                    for format in formats:
+                        for causal in get_causal_support(format):
+                            for is_prompt in [False]:
+                                for mask_format in mask_formats:
+                                    sequence_length = total_seq_len if is_prompt else 1
+                                    config = MultiHeadAttentionConfig(
+                                        batch_size=batch_size,
+                                        sequence_length=sequence_length,
+                                        num_heads=num_heads,
+                                        head_size=head_size,
+                                        causal=causal,
+                                        past_sequence_length=total_seq_len - sequence_length,
+                                        kv_sequence_length=sequence_length,
+                                        max_cache_sequence_length=None,
+                                        provider=provider,
+                                        device=device,
+                                        dtype=dtype,
+                                        use_kv_cache=True,
+                                        has_past_input=True,
+                                        share_past_present_buffer=False,
+                                        input_format=format,
+                                        mask_format=mask_format,
+                                    )
+                                    yield config
+
+
 def no_kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
     if provider == "CUDAExecutionProvider" and get_compute_capability() < 60:
         return
@@ -397,7 +457,7 @@ def no_kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
     device, dtype, formats = get_provider_support_info(provider, False)
 
     for format in formats:
-        for causal in [True, False]:
+        for causal in get_causal_support(format):
             for num_heads in heads:
                 for head_size in head_sizes:
                     configs = []  # list of configurations to run in parallel
@@ -437,7 +497,7 @@ def kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
     device, dtype, formats = get_provider_support_info(provider, True)
 
     for format in formats:
-        for causal in [True, False]:
+        for causal in get_causal_support(format):
             for num_heads in heads:
                 for head_size in head_sizes:
                     configs = []
@@ -494,12 +554,8 @@ def parity_check_mha(
     rtol=1e-3,
     atol=1e-3,
 ):
-    # CUDA kernel does not support causal so skip such test cases.
-    if config.causal and config.provider == "CUDAExecutionProvider":
-        return
-
     ort_mha = OrtMultiHeadAttention(config, use_tf32=False)
-    ort_outputs = ort_mha.infer()
+    ort_outputs = ort_mha.infer(synchronize=True)
     out = ort_outputs["output"]
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
 
@@ -602,9 +658,6 @@ def parity_check_mha_multi_threading(
 ):
     # Use the first config to create a session, which is shared by all configs to run in parallel.
     config = test_inputs[0]["config"]
-    # For now, MHA CUDA kernel does not support causal so skip such test cases.
-    if config.causal and config.provider == "CUDAExecutionProvider":
-        return None
 
     # Some kernel does not support certain input format.
     if attention_kernel not in [
@@ -778,12 +831,22 @@ class TestMultiHeadAttention(unittest.TestCase):
         for config in mha_test_cases("CUDAExecutionProvider", comprehensive_mode):
             parity_check_mha(config, rtol=5e-3, atol=5e-3)
 
+    def run_lean_attention(self):
+        os.environ["ORT_ENABLE_LEAN_ATTENTION"] = "1"
+        for config in lean_attention_test_cases("CUDAExecutionProvider", comprehensive_mode):
+            parity_check_mha(config, rtol=5e-3, atol=5e-3 if config.total_sequence_length <= 512 else 5e-2)
+        os.environ.pop("ORT_ENABLE_LEAN_ATTENTION", None)
+
     def run_mha_cpu(self):
         for config in mha_test_cases("CPUExecutionProvider", comprehensive_mode):
             parity_check_mha(config, rtol=5e-3, atol=5e-3)
 
     def run_mha_cuda_multi_threading(self, attention_kernel):
         for configs in multi_thread_test_cases("CUDAExecutionProvider", comprehensive_mode):
+            if configs and configs[0].causal and (SdpaKernel.TRT_CAUSAL_ATTENTION & attention_kernel != 0):
+                # TRT fused causal is disabled by default so skip the test of causal for multi-threading.
+                continue
+
             test_inputs = []
             for config in configs:
                 ort_inputs = config.random_inputs()
@@ -829,6 +892,7 @@ class TestMultiHeadAttention(unittest.TestCase):
         # Run tests sequentially to avoid out of memory issue.
         self.run_mha_cpu()
         self.run_mha_cuda()
+        self.run_lean_attention()
         self.run_mha_cuda_multi_threading_default()
         self.run_mha_cuda_multi_threading_cudnn()
         self.run_mha_cuda_multi_threading_efficient()

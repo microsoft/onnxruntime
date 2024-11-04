@@ -4,7 +4,7 @@
 #pragma once
 #include "dnnl_subgraph.h"
 #include "dnnl.hpp"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -69,7 +69,7 @@ class DnnlSubgraphPrimitive {
   // If the input being a scalar affects the operator this function can be used to determine if the
   // original input from ORT was a scalar.
   bool IsScalar(const DnnlTensor& tensor);
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
   // GetMemory in OrtFormat if the memory is not in the OrtFormat this will reorder the memory.
   // All memory will be moved to the dnnl_engine even if it is already in OrtFormat.
@@ -125,7 +125,7 @@ class DnnlSubgraphPrimitive {
   dnnl::engine cpu_engine_;
   dnnl::engine gpu_engine_;
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 
   // for memory debug purpose
   std::vector<std::pair<int, int>> items_to_print_;

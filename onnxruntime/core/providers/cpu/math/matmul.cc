@@ -106,8 +106,9 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
     // be filled out with zeros.
-    auto output_span = y->MutableDataAsSpan<T>();
-    std::fill(output_span.begin(), output_span.end(), T{});
+    EigenMatrixMapRowMajor<T> dest(y->MutableData<T>(),
+                                   narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
+    dest.setZero();
     return Status::OK();
   }
 
@@ -172,6 +173,7 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
 #endif
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                              bool /*save_prepacked_initializers*/,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
@@ -237,6 +239,15 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
+
+  if (helper.K() == 0) {
+    // When we have (M, 0, N) then the inputs are empty, but the output should
+    // be filled out with zeros.
+    EigenMatrixMapRowMajor<float> dest(y->MutableData<float>(),
+                                       narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
+    dest.setZero();
+    return Status::OK();
+  }
 
   const auto* a_data = a->Data<float>();
   const auto* b_data = b ? b->Data<float>() : nullptr;
