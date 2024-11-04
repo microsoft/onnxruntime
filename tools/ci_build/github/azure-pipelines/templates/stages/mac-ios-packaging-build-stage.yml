@@ -121,7 +121,10 @@ stages:
       displayName: "Create .zip file of the tests"
 
     - script: |
-        python $(Build.SourcesDirectory)/onnxruntime/test/platform/apple/generate_ipa_export_options_plist.py --dest_file "exportOptions.plist" --apple_team_id $(APPLE_TEAM_ID) --provisioning_profile_uuid $(APPLE_PROV_PROFILE_UUID)
+        python $(Build.SourcesDirectory)/onnxruntime/test/platform/apple/generate_ipa_export_options_plist.py \
+          --dest_file "exportOptions.plist" \
+          --apple_team_id $(APPLE_TEAM_ID) \
+          --provisioning_profile_uuid $(APPLE_PROV_PROFILE_UUID)
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "Generate .plist file for the .ipa file"
 
