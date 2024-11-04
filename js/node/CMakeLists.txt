@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 
 project (onnxruntime-node)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 add_compile_definitions(NAPI_VERSION=${napi_build_version})
 add_compile_definitions(ORT_API_MANUAL_INIT)

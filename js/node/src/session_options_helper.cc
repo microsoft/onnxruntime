@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <unordered_map>
+#include <filesystem>
 
 #include "common.h"
 #include "session_options_helper.h"
@@ -212,9 +213,9 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
                                 "Invalid argument: sessionOptions.optimizedModelFilePath must be a string.");
 #ifdef _WIN32
     auto str = optimizedModelFilePathValue.As<Napi::String>().Utf16Value();
-    std::basic_string<ORTCHAR_T> optimizedModelFilePath = std::wstring{str.begin(), str.end()};
+    std::filesystem::path optimizedModelFilePath{std::wstring{str.begin(), str.end()}};
 #else
-    std::basic_string<ORTCHAR_T> optimizedModelFilePath = optimizedModelFilePathValue.As<Napi::String>().Utf8Value();
+    std::filesystem::path optimizedModelFilePath{optimizedModelFilePathValue.As<Napi::String>().Utf8Value()};
 #endif
     sessionOptions.SetOptimizedModelFilePath(optimizedModelFilePath.c_str());
   }
