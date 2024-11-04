@@ -59,11 +59,11 @@ void ComputeJob(
     T* output_data,
     T* skip_input_bias_add_output_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(gamma_float_ptr);     // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(beta_float_ptr);      // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(bias_float_ptr);      // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(skip_float_ptr);      // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(should_convert_skip); // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(gamma_float_ptr);      // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(beta_float_ptr);       // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(bias_float_ptr);       // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(skip_float_ptr);       // only used in MLFloat16 overload
+  ORT_UNUSED_PARAMETER(should_convert_skip);  // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(alloc);
 
   auto offset = task_idx * hidden_size;
@@ -128,7 +128,6 @@ void ComputeJob(
     MLFloat16* output_data,
     MLFloat16* skip_input_bias_add_output_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(skip_data);   // only used in double/float overload
   ORT_UNUSED_PARAMETER(gamma_data);  // only used in double/float overload
   ORT_UNUSED_PARAMETER(beta_data);   // only used in double/float overload
   ORT_UNUSED_PARAMETER(bias_data);   // only used in double/float overload
