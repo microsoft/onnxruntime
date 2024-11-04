@@ -3337,6 +3337,27 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
+  OpTester test("ArgMax", 12);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  std::vector<float> data_vec;
+
+  size_t data_size = 10000;
+  data_vec.reserve(data_size);
+  for (size_t i = 0; i < data_size; ++i) {
+    data_vec.push_back(10.f);
+  }
+  test.AddInput<float>("data", {10000}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {0});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)(-2));
@@ -3653,6 +3674,27 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
                            0, 0});
 
   test.Run();
+}
+
+TEST(ReductionOpTest, ArgMin_float_last_index_dups) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  std::vector<float> data_vec;
+
+  size_t data_size = 10000;
+  data_vec.reserve(data_size);
+  for (size_t i = 0; i < data_size; ++i) {
+    data_vec.push_back(10.f);
+  }
+  test.AddInput<float>("data", {10000}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {0});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
