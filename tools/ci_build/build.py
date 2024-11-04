@@ -1098,6 +1098,7 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_CUDA_MININAL=ON"
     ]
 
     if args.rv64:
@@ -1247,7 +1248,7 @@ def generate_build_tree(
     # full_protobuf option. TensorRT provider only requires it if built with oss_parser
     if (
         args.use_full_protobuf
-        or (args.use_tensorrt and args.use_tensorrt_oss_parser)
+        or args.use_tensorrt
         or args.use_openvino
         or args.use_vitisai
         or args.gen_doc

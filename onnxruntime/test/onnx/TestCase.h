@@ -10,6 +10,7 @@
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
+#include <iostream>
 
 namespace Ort {
 struct Value;
@@ -53,6 +54,7 @@ class TestModelInfo {
  public:
   virtual const std::filesystem::path& GetModelUrl() const = 0;
   virtual std::filesystem::path GetDir() const {
+    std::cout << GetModelUrl().has_relative_path() << std::endl;
     return GetModelUrl().parent_path();
   }
   virtual const std::string& GetNodeName() const = 0;

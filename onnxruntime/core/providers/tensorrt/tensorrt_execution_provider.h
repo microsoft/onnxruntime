@@ -302,7 +302,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   // For create/dump EP context model
   mutable bool is_whole_model_trt_eligible_ = false;
-  bool ep_context_model_enable_ = false;
+  bool create_ep_context_model_ = false;
   bool dump_ep_context_model_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;

@@ -7,7 +7,7 @@
 namespace onnxruntime {
 
 bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
-  return n1->Index() < n2->Index();
+  return n1->Index() > n2->Index();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

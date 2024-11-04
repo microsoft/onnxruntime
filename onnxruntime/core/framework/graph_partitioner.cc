@@ -722,7 +722,13 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
+  ORT_RETURN_IF_ERROR(ep_graph.Resolve());
+
+  std::fstream dump(context_cache_path, std::ios::out | std::ios::trunc | std::ios::binary);
+  auto model_proto = ep_context_model.ToProto();
+  model_proto.SerializeToOstream(&dump);
+
+  //ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
 
   return Status::OK();
 }
