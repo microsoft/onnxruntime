@@ -35,7 +35,7 @@ stages:
   - template: templates/py-linux.yml
     parameters:
       arch: 'aarch64'
-      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019-test'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
       with_cache: true
       cmake_build_type: Release
 
