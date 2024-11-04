@@ -22,7 +22,7 @@ class ShapeOpBuilder : public BaseOpBuilder {
 };
 
 Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const {
+                                             const logging::Logger& /*logger*/) const {
   const auto& input_defs = node.InputDefs();
 
 #if defined(COREML_ENABLE_MLPROGRAM)
