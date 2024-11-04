@@ -105,7 +105,7 @@ def load_jsonc(basename: str):
     return json.loads("\n".join(lines))
 
 
-def create_backend_test(devices: list[str], test_name=None):
+def create_backend_test(devices: Iterable[str], test_name=None):
     """Creates an OrtBackendTest and adds its TestCase's to global scope so unittest will find them."""
 
     overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
