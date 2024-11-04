@@ -42,30 +42,17 @@ namespace {
 template <typename T, typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
 void ComputeJob(
     const T* input_data,
+    const T* skip_data,
     const T* gamma_data,
     const T* beta_data,
     const T* bias_data,
-    const T* skip_data,
-    const float* gamma_float_ptr,
-    const float* beta_float_ptr,
-    const float* bias_float_ptr,
-    float* skip_float_ptr,
-    bool should_convert_skip,
     ptrdiff_t task_idx,
     int hidden_size,
     int64_t skip_size,
     float epsilon,
     bool simplified,
     T* output_data,
-    T* skip_input_bias_add_output_data,
-    AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(gamma_float_ptr);      // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(beta_float_ptr);       // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(bias_float_ptr);       // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(skip_float_ptr);       // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(should_convert_skip);  // only used in MLFloat16 overload
-  ORT_UNUSED_PARAMETER(alloc);
-
+    T* skip_input_bias_add_output_data) {
   auto offset = task_idx * hidden_size;
   const T* p_input = input_data + offset;
   const T* p_skip = skip_data + (offset % skip_size);
@@ -111,9 +98,6 @@ void ComputeJob(
 
 void ComputeJob(
     const MLFloat16* input_data,
-    const MLFloat16* gamma_data,
-    const MLFloat16* beta_data,
-    const MLFloat16* bias_data,
     const MLFloat16* skip_data,
     const float* gamma_float_ptr,
     const float* beta_float_ptr,
@@ -128,10 +112,6 @@ void ComputeJob(
     MLFloat16* output_data,
     MLFloat16* skip_input_bias_add_output_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(gamma_data);  // only used in double/float overload
-  ORT_UNUSED_PARAMETER(beta_data);   // only used in double/float overload
-  ORT_UNUSED_PARAMETER(bias_data);   // only used in double/float overload
-
   auto offset = task_idx * hidden_size;
   const MLFloat16* p_input = input_data + offset;
   const MLFloat16* p_skip = skip_data + (offset % skip_size);
@@ -206,10 +186,10 @@ void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, I
 template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
+      prepacked_skip_fp32_data_(nullptr),
       prepacked_gamma_fp32_data_(nullptr),
       prepacked_beta_fp32_data_(nullptr),
-      prepacked_bias_fp32_data_(nullptr),
-      prepacked_skip_fp32_data_(nullptr) {
+      prepacked_bias_fp32_data_(nullptr) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 }
@@ -217,10 +197,10 @@ SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
 template <typename T, bool simplified>
 Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* input = p_ctx->Input<Tensor>(0);
-  const Tensor* skip = p_ctx->Input<Tensor>(1);
-  const Tensor* gamma = p_ctx->Input<Tensor>(2);
-  const Tensor* beta = p_ctx->Input<Tensor>(3);
-  const Tensor* bias = p_ctx->Input<Tensor>(4);
+  const Tensor* skip = prepacked_skip_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(1);
+  const Tensor* gamma = prepacked_gamma_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(2);
+  const Tensor* beta = prepacked_beta_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(3);
+  const Tensor* bias = prepacked_bias_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(4);
   Tensor* output = p_ctx->Output(0, input->Shape());
   // For inferencing, we support one more optional output which is the sum of the input and skip tensors
   Tensor* skip_input_bias_add_output = p_ctx->Output(3, input->Shape());
@@ -240,8 +220,8 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
-  const T* skip_data = skip->Data<T>();
-  const T* gamma_data = gamma->Data<T>();
+  const T* skip_data = skip == nullptr ? nullptr : skip->Data<T>();
+  const T* gamma_data = gamma == nullptr ? nullptr : gamma->Data<T>();
   const T* beta_data = beta == nullptr ? nullptr : beta->Data<T>();
   const T* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
@@ -255,15 +235,21 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
 
+  IAllocatorUniquePtr<float> skip_fp32;
   IAllocatorUniquePtr<float> gamma_fp32;
   IAllocatorUniquePtr<float> beta_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
-  IAllocatorUniquePtr<float> skip_fp32;
   bool should_convert_skip = false;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     const size_t num_elems = static_cast<size_t>(hidden_size);
 
-    if (prepacked_gamma_fp32_data_ == nullptr) {
+    if (prepacked_skip_fp32_data_ == nullptr && skip_data) {
+      skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+      should_convert_skip = true;
+      // skip data will be converted inside ComputeJob, because it needs to use the offset.
+    }
+
+    if (prepacked_gamma_fp32_data_ == nullptr && gamma_data) {
       gamma_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(gamma_data, gamma_fp32.get(), num_elems);
     }
@@ -277,24 +263,23 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
     }
-
-    if (prepacked_skip_fp32_data_ == nullptr) {
-      skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      should_convert_skip = true;
-      // skip data will be converted inside ComputeJob, because it needs to use the offset.
-    }
   }
 
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        ComputeJob(input_data, gamma_data, beta_data, bias_data, skip_data,
-                   prepacked_gamma_fp32_data_ ? prepacked_gamma_fp32_data_.get() : gamma_fp32.get(),
-                   prepacked_beta_fp32_data_ ? prepacked_beta_fp32_data_.get() : beta_fp32.get(),
-                   prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
-                   prepacked_skip_fp32_data_ ? prepacked_skip_fp32_data_.get() : skip_fp32.get(),
-                   should_convert_skip, task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
-                   skip_input_bias_add_output_data, alloc);
+        if constexpr (std::is_same_v<T, MLFloat16>) {
+          ComputeJob(input_data, skip_data,
+                     prepacked_gamma_fp32_data_ ? prepacked_gamma_fp32_data_.get() : gamma_fp32.get(),
+                     prepacked_beta_fp32_data_ ? prepacked_beta_fp32_data_.get() : beta_fp32.get(),
+                     prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
+                     prepacked_skip_fp32_data_ ? prepacked_skip_fp32_data_.get() : skip_fp32.get(),
+                     should_convert_skip, task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
+                     skip_input_bias_add_output_data, alloc);
+        } else {
+          ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size,
+                     epsilon_, simplified, output_data, skip_input_bias_add_output_data);
+        }
       },
       0);
 
