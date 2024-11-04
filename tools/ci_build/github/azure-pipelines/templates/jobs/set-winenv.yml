@@ -41,6 +41,6 @@ steps:
     inputs:
       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
       ${{ if eq(parameters.DownloadTRT, 'true') }}:
-        arguments: '${{ variables.win_trt_folder_cuda12 }} ${{ variables.win_trt_folder_cuda11 }}'
+        arguments: '${{ parameters.win_trt_folder_cuda12 }} ${{ parameters.win_trt_folder_cuda11 }}'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
