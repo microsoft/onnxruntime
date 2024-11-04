@@ -59,6 +59,7 @@ parameters:
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
   variables:
+  - template: ../common-variables.yml
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -92,6 +93,7 @@ jobs:
         DownloadCUDA: false
       ${{ if contains(parameters.additionalBuildFlags, 'use_tensorrt') }}:
         DownloadTRT: true
+        arguments: '${{ variables.win_trt_folder_cuda12 }}'
       ${{ else }}:
         DownloadTRT: false
       BuildArch: ${{parameters.buildArch}}
