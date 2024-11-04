@@ -9,7 +9,7 @@ import copy
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import onnx
 
@@ -230,7 +230,7 @@ def get_int_qdq_config(
     keep_removable_activations: bool = False,
     min_real_range: float | None = None,
     tensor_quant_overrides: dict[str, list[dict[str, Any]]] | None = None,
-    nodes_to_exclude: list[str] | None = None,
+    nodes_to_exclude: list[str] | Callable[[onnx.ModelProto, onnx.NodeProto], bool] | None = None,
     extra_options: dict | None = None,
 ) -> StaticQuantConfig:
     """
@@ -282,7 +282,9 @@ def get_int_qdq_config(
                 'convert["recv_nodes"] = Set : Set of node names that consume the converted activation,
                                                other nodes get the original type. If not specified,
                                                assume all consumer nodes get the converted type.
-        nodes_to_exclude: List of nodes names to exclude from quantization.
+        nodes_to_exclude: List of nodes names to exclude from quantization. Alternatively, can provide a function that
+            accepts an onnx.ModelProto and onnx.NodeProto as arguments and returns true if the give onnx.NodeProto
+            should be excluded from quantization.
         extra_options: Additional options specified as string key/value pairs. Refer to the documentation for
             `quantize_static` for valid keys and values.
 
@@ -311,9 +313,17 @@ def get_int_qdq_config(
         if onnx.external_data_helper.uses_external_data(initializer):
             model_has_external_data = True
 
-    # Get all operator types in the model
+    final_nodes_to_exclude = []
+    if nodes_to_exclude is not None and isinstance(nodes_to_exclude, list):
+        final_nodes_to_exclude.extend(nodes_to_exclude)
+
+    # Iterate through nodes to get all operator types in the model and
+    # call user's function to filter out nodes from quantization.
     for node in model.graph.node:
         op_types.add(node.op_type)
+        if nodes_to_exclude is not None and callable(nodes_to_exclude):
+            if nodes_to_exclude(model, node):
+                final_nodes_to_exclude.append(node.name)
 
     final_extra_options = {
         "MinimumRealRange": min_real_range,
@@ -358,7 +368,7 @@ def get_int_qdq_config(
         activation_type=activation_type,
         weight_type=weight_type,
         op_types_to_quantize=list(op_types.difference(op_types_to_exclude)),
-        nodes_to_exclude=nodes_to_exclude,
+        nodes_to_exclude=final_nodes_to_exclude,
         per_channel=per_channel,
         use_external_data_format=(model_has_external_data or model.ByteSize() >= model_size_threshold),
         extra_options=final_extra_options,

@@ -123,6 +123,37 @@ class TestGetIntQDQConfig(unittest.TestCase):
         # Should use onnx domain Q/DQ ops because onnx opset >= 21.
         self.assertFalse(qdq_config.extra_options.get("UseQDQContribOps", False))
 
+    def test_exclude_nodes_callable(self):
+        """
+        Test passing a function/callable to exclude nodes from quantization.
+        """
+
+        shape = [1, 8, 8]
+        tensor_type = onnx.TensorProto.FLOAT
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(tensor_type)
+        weight = onnx.numpy_helper.from_array(np.ones(shape, dtype=np_dtype), "weight")
+        float_model = self.build_add_model(shape, tensor_type, weight, opset=21)
+
+        input_data_list = [
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(-2, dtype=np_dtype)},
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(2, dtype=np_dtype)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        # Local function that excludes all "Add" nodes.
+        def should_exclude_node_(model: onnx.ModelProto, node: onnx.NodeProto) -> bool:
+            return node.op_type == "Add"
+
+        qdq_config = get_int_qdq_config(
+            float_model,
+            data_reader,
+            nodes_to_exclude=should_exclude_node_,
+        )
+
+        expected_excluded_nodes = set([node.name for node in float_model.graph.node if node.op_type == "Add"])
+        self.assertTrue(bool(expected_excluded_nodes))
+        self.assertEqual(set(qdq_config.excluded_nodes), expected_excluded_nodes)
+
     def test_external_data(self):
         """
         Test that get_int_qdq_config() returns a config that enables external data
