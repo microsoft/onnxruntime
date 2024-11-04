@@ -28,7 +28,6 @@ else:
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 import unittest
-from pathlib import Path
 
 
 def unique_element(lst):
@@ -42,6 +41,7 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 class TestSymbolicShapeInference(unittest.TestCase):
     # TODO: investigate why symbolic shape infer test failed for Python 3.10
     # def test_symbolic_shape_infer(self):
+    #     from pathlib import Path
     #     cwd = os.getcwd()
     #     test_model_dir = os.path.join(cwd, "..", "models")
     #     for filename in Path(test_model_dir).rglob("*.onnx"):
