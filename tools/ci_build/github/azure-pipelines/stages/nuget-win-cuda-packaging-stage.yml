@@ -34,7 +34,7 @@ parameters:
   displayName: Specific Artifact's BuildId
   type: string
   default: '0'
-  
+
 - name: buildJava
   type: boolean
 
@@ -50,13 +50,14 @@ stages:
     msbuildPlatform: x64
     packageName: x64-cuda
     CudaVersion: ${{ parameters.CudaVersion }}
-    buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" --use_dml --build_csharp --parallel
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    ComboTests: true
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
@@ -68,7 +69,7 @@ stages:
     msbuildPlatform: x64
     CudaVersion: ${{ parameters.CudaVersion }}
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" --parallel
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
