@@ -3,15 +3,21 @@
 
 #pragma once
 
-#include "tree_ensemble_aggregator.h"
 #include <mutex>
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
+#include "tree_ensemble_attribute.h"
+#include "tree_ensemble_aggregator.h"
 
 namespace onnxruntime {
 namespace ml {
 namespace detail {
 
+/**
+ * These attributes are the kernel attributes. They are different from the onnx operator attributes
+ * to improve the computation efficiency. The initialization consists in moving the onnx attributes
+ * into the kernel attributes.
+ */
 class TreeEnsembleCommonAttributes {
  public:
   int64_t get_target_or_class_count() const { return this->n_targets_or_classes_; }
@@ -57,27 +63,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   Status Init(int parallel_tree,
               int parallel_tree_N,
               int parallel_N,
-              const std::string& aggregate_function,
-              const std::vector<float>& base_values,
-              const std::vector<ThresholdType>& base_values_as_tensor,
-              int64_t n_targets_or_classes,
-              const std::vector<int64_t>& nodes_falsenodeids,
-              const std::vector<int64_t>& nodes_featureids,
-              const std::vector<float>& nodes_hitrates,
-              const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
-              const std::vector<int64_t>& nodes_missing_value_tracks_true,
-              const std::vector<std::string>& nodes_modes,
-              const std::vector<int64_t>& nodes_nodeids,
-              const std::vector<int64_t>& nodes_treeids,
-              const std::vector<int64_t>& nodes_truenodeids,
-              const std::vector<float>& nodes_values,
-              const std::vector<ThresholdType>& nodes_values_as_tensor,
-              const std::string& post_transform,
-              const std::vector<int64_t>& target_class_ids,
-              const std::vector<int64_t>& target_class_nodeids,
-              const std::vector<int64_t>& target_class_treeids,
-              const std::vector<float>& target_class_weights,
-              const std::vector<ThresholdType>& target_class_weights_as_tensor);
+              const TreeEnsembleAttributesV3<ThresholdType>& attributes);
 
  protected:
   TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave(TreeNodeElement<ThresholdType>* root,
@@ -131,40 +117,8 @@ std::conditional_t<sizeof(T) == sizeof(uint32_t), uint32_t, uint64_t> bit_cast_i
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKernelInfo& info) {
-  std::vector<ThresholdType> base_values_as_tensor, nodes_hitrates_as_tensor,
-      nodes_values_as_tensor, target_weights_as_tensor;
-#if !defined(ORT_MINIMAL_BUILD)
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates_as_tensor", nodes_hitrates_as_tensor));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_values_as_tensor", nodes_values_as_tensor));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "target_weights_as_tensor", target_weights_as_tensor));
-#endif
-
-  return Init(
-      80,
-      128,
-      50,
-      info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
-      info.GetAttrsOrDefault<float>("base_values"),
-      base_values_as_tensor,
-      info.GetAttrOrDefault<int64_t>("n_targets", 0),
-      info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
-      info.GetAttrsOrDefault<float>("nodes_hitrates"),
-      nodes_hitrates_as_tensor,
-      info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
-      info.GetAttrsOrDefault<std::string>("nodes_modes"),
-      info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
-      info.GetAttrsOrDefault<float>("nodes_values"),
-      nodes_values_as_tensor,
-      info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
-      info.GetAttrsOrDefault<int64_t>("target_ids"),
-      info.GetAttrsOrDefault<int64_t>("target_nodeids"),
-      info.GetAttrsOrDefault<int64_t>("target_treeids"),
-      info.GetAttrsOrDefault<float>("target_weights"),
-      target_weights_as_tensor);
+  TreeEnsembleAttributesV3<ThresholdType> attributes(info, false);
+  return Init(80, 128, 50, attributes);
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -172,71 +126,34 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     int parallel_tree,
     int parallel_tree_N,
     int parallel_N,
-    const std::string& aggregate_function,
-    const std::vector<float>& base_values,
-    const std::vector<ThresholdType>& base_values_as_tensor,
-    int64_t n_targets_or_classes,
-    const std::vector<int64_t>& nodes_falsenodeids,
-    const std::vector<int64_t>& nodes_featureids,
-    const std::vector<float>& nodes_hitrates,
-    const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
-    const std::vector<int64_t>& nodes_missing_value_tracks_true,
-    const std::vector<std::string>& nodes_modes,
-    const std::vector<int64_t>& nodes_nodeids,
-    const std::vector<int64_t>& nodes_treeids,
-    const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<float>& nodes_values,
-    const std::vector<ThresholdType>& nodes_values_as_tensor,
-    const std::string& post_transform,
-    const std::vector<int64_t>& target_class_ids,
-    const std::vector<int64_t>& target_class_nodeids,
-    const std::vector<int64_t>& target_class_treeids,
-    const std::vector<float>& target_class_weights,
-    const std::vector<ThresholdType>& target_class_weights_as_tensor) {
+    const TreeEnsembleAttributesV3<ThresholdType>& attributes) {
   parallel_tree_ = parallel_tree;
   parallel_tree_N_ = parallel_tree_N;
   parallel_N_ = parallel_N;
 
-  ORT_ENFORCE(n_targets_or_classes > 0);
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size());
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_modes.size());
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size());
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size());
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size());
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() ||
-              nodes_falsenodeids.size() == nodes_values_as_tensor.size());
-  ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
-  ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
-  ORT_ENFORCE(target_class_weights.empty() || target_class_ids.size() == target_class_weights.size());
-  ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
-  ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
-  ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
-  ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty());
-
-  aggregate_function_ = MakeAggregateFunction(aggregate_function);
-  post_transform_ = MakeTransform(post_transform);
-  if (!base_values_as_tensor.empty()) {
-    ORT_ENFORCE(base_values.empty());
-    base_values_ = base_values_as_tensor;
+  aggregate_function_ = MakeAggregateFunction(attributes.aggregate_function);
+  post_transform_ = MakeTransform(attributes.post_transform);
+  if (!attributes.base_values_as_tensor.empty()) {
+    ORT_ENFORCE(attributes.base_values.empty());
+    base_values_ = attributes.base_values_as_tensor;
   } else {
-    base_values_.reserve(base_values.size());
-    for (size_t i = 0, limit = base_values.size(); i < limit; ++i) {
-      base_values_.push_back(static_cast<ThresholdType>(base_values[i]));
+    base_values_.reserve(attributes.base_values.size());
+    for (size_t i = 0, limit = attributes.base_values.size(); i < limit; ++i) {
+      base_values_.push_back(static_cast<ThresholdType>(attributes.base_values[i]));
     }
   }
-  n_targets_or_classes_ = n_targets_or_classes;
+  n_targets_or_classes_ = attributes.n_targets_or_classes;
   max_tree_depth_ = 1000;
-  ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max());
 
   // Additional members
   size_t limit;
   uint32_t i;
   InlinedVector<NODE_MODE> cmodes;
-  cmodes.reserve(nodes_modes.size());
+  cmodes.reserve(attributes.nodes_modes_string.size());
   same_mode_ = true;
   int fpos = -1;
-  for (i = 0, limit = nodes_modes.size(); i < limit; ++i) {
-    cmodes.push_back(MakeTreeNodeMode(nodes_modes[i]));
+  for (i = 0, limit = attributes.nodes_modes_string.size(); i < limit; ++i) {
+    cmodes.push_back(MakeTreeNodeMode(attributes.nodes_modes_string[i]));
     if (cmodes[i] == NODE_MODE::LEAF) continue;
     if (fpos == -1) {
       fpos = static_cast<int>(i);
@@ -245,7 +162,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (cmodes[i] != cmodes[fpos]) same_mode_ = false;
   }
 
-  n_nodes_ = nodes_treeids.size();
+  n_nodes_ = attributes.nodes_treeids.size();
   limit = static_cast<size_t>(n_nodes_);
   InlinedVector<TreeNodeElementId> node_tree_ids;
   node_tree_ids.reserve(limit);
@@ -262,7 +179,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Build node_tree_ids and node_tree_ids_map and truenode_ids and falsenode_ids
   for (i = 0; i < limit; ++i) {
-    TreeNodeElementId node_tree_id{static_cast<int>(nodes_treeids[i]), static_cast<int>(nodes_nodeids[i])};
+    TreeNodeElementId node_tree_id{static_cast<int>(attributes.nodes_treeids[i]), static_cast<int>(attributes.nodes_nodeids[i])};
     auto p = node_tree_ids_map.insert(std::pair<TreeNodeElementId, size_t>(node_tree_id, i));
     if (!p.second) {
       ORT_THROW("Node ", node_tree_id.node_id, " in tree ", node_tree_id.tree_id, " is already there.");
@@ -278,7 +195,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     } else {
       TreeNodeElementId& node_tree_id = node_tree_ids[i];
       coor.tree_id = node_tree_id.tree_id;
-      coor.node_id = static_cast<int>(nodes_truenodeids[i]);
+      coor.node_id = static_cast<int>(attributes.nodes_truenodeids[i]);
       ORT_ENFORCE((coor.node_id >= 0 && coor.node_id < n_nodes_));
 
       auto found = node_tree_ids_map.find(coor);
@@ -290,7 +207,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       }
       truenode_ids.emplace_back(found->second);
 
-      coor.node_id = static_cast<int>(nodes_falsenodeids[i]);
+      coor.node_id = static_cast<int>(attributes.nodes_falsenodeids[i]);
       ORT_ENFORCE((coor.node_id >= 0 && coor.node_id < n_nodes_));
       found = node_tree_ids_map.find(coor);
       if (found == node_tree_ids_map.end()) {
@@ -307,26 +224,26 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Sort targets
   InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices;
-  indices.reserve(target_class_nodeids.size());
-  for (i = 0, limit = target_class_nodeids.size(); i < limit; i++) {
+  indices.reserve(attributes.target_class_nodeids.size());
+  for (i = 0, limit = attributes.target_class_nodeids.size(); i < limit; i++) {
     indices.emplace_back(
-        TreeNodeElementId{target_class_treeids[i], target_class_nodeids[i]}, i);
+        TreeNodeElementId{attributes.target_class_treeids[i], attributes.target_class_nodeids[i]}, i);
   }
 
   std::sort(indices.begin(), indices.end());
 
   // Let's construct nodes_ such that the false branch is always the next element in nodes_.
   // updated_mapping will translates the old position of each node to the new node position in nodes_.
-  std::vector<size_t> updated_mapping(nodes_treeids.size(), 0);
+  std::vector<size_t> updated_mapping(attributes.nodes_treeids.size(), 0);
   int64_t previous_tree_id = -1;
   for (i = 0; i < n_nodes_; ++i) {
     if (previous_tree_id == -1 || (previous_tree_id != node_tree_ids[i].tree_id)) {
       // New tree.
       int64_t tree_id = node_tree_ids[i].tree_id;
       size_t root_position =
-          AddNodes(i, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, nodes_values,
-                   nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids,
-                   target_class_weights, target_class_weights_as_tensor, indices);
+          AddNodes(i, cmodes, truenode_ids, falsenode_ids, attributes.nodes_featureids, attributes.nodes_values_as_tensor, attributes.nodes_values,
+                   attributes.nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids,
+                   attributes.target_class_weights, attributes.target_class_weights_as_tensor, indices);
       roots_.push_back(&nodes_[root_position]);
       previous_tree_id = tree_id;
     }
@@ -336,7 +253,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   TreeNodeElementId ind;
   SparseValue<ThresholdType> w;
   size_t indi;
-  for (indi = 0, limit = target_class_nodeids.size(); indi < limit; ++indi) {
+  for (indi = 0, limit = attributes.target_class_nodeids.size(); indi < limit; ++indi) {
     ind = indices[indi].first;
     i = indices[indi].second;
     auto found = node_tree_ids_map.find(ind);
@@ -351,9 +268,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
-    w.i = target_class_ids[i];
-    w.value = target_class_weights_as_tensor.empty() ? static_cast<ThresholdType>(target_class_weights[i])
-                                                     : target_class_weights_as_tensor[i];
+    w.i = attributes.target_class_ids[i];
+    w.value = attributes.target_class_weights_as_tensor.empty()
+                  ? static_cast<ThresholdType>(attributes.target_class_weights[i])
+                  : attributes.target_class_weights_as_tensor[i];
     if (leaf.truenode_or_weight.weight_data.n_weights == 0) {
       leaf.truenode_or_weight.weight_data.weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
@@ -363,7 +281,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   }
 
   has_missing_tracks_ = false;
-  for (auto itm = nodes_missing_value_tracks_true.begin(); itm != nodes_missing_value_tracks_true.end(); ++itm) {
+  for (auto itm = attributes.nodes_missing_value_tracks_true.begin(); itm != attributes.nodes_missing_value_tracks_true.end(); ++itm) {
     if (*itm) {
       has_missing_tracks_ = true;
       break;
@@ -797,11 +715,6 @@ inline bool SetMembershipCheck(T1 val, T2 mask) {
   return CANMASK(val, T2) && (((1ll << (val_as_int - 1)) & bit_cast_int(mask)) != 0);
 }
 
-inline bool _isnan_(float x) { return std::isnan(x); }
-inline bool _isnan_(double x) { return std::isnan(x); }
-inline bool _isnan_(int64_t) { return false; }
-inline bool _isnan_(int32_t) { return false; }
-
 template <typename InputType, typename ThresholdType, typename OutputType>
 TreeNodeElement<ThresholdType>*
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
@@ -918,67 +831,13 @@ class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<InputType, Thresh
   Status Init(int parallel_tree,
               int parallel_tree_N,
               int parallel_N,
-              const std::string& aggregate_function,
-              const std::vector<float>& base_values,
-              const std::vector<ThresholdType>& base_values_as_tensor,
-              const std::vector<int64_t>& nodes_falsenodeids,
-              const std::vector<int64_t>& nodes_featureids,
-              const std::vector<float>& nodes_hitrates,
-              const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
-              const std::vector<int64_t>& nodes_missing_value_tracks_true,
-              const std::vector<std::string>& nodes_modes,
-              const std::vector<int64_t>& nodes_nodeids,
-              const std::vector<int64_t>& nodes_treeids,
-              const std::vector<int64_t>& nodes_truenodeids,
-              const std::vector<float>& nodes_values,
-              const std::vector<ThresholdType>& nodes_values_as_tensor,
-              const std::string& post_transform,
-              const std::vector<int64_t>& class_ids,
-              const std::vector<int64_t>& class_nodeids,
-              const std::vector<int64_t>& class_treeids,
-              const std::vector<float>& class_weights,
-              const std::vector<ThresholdType>& class_weights_as_tensor,
-              const std::vector<std::string>& classlabels_strings,
-              const std::vector<int64_t>& classlabels_int64s);
+              const TreeEnsembleAttributesV3<ThresholdType>& attributes);
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(const OpKernelInfo& info) {
-  std::vector<ThresholdType> base_values_as_tensor, nodes_hitrates_as_tensor,
-      nodes_values_as_tensor, class_weights_as_tensor;
-#if !defined(ORT_MINIMAL_BUILD)
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates_as_tensor", nodes_hitrates_as_tensor));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_values_as_tensor", nodes_values_as_tensor));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "class_weights_as_tensor", class_weights_as_tensor));
-#endif
-
-  return Init(
-      80,
-      128,
-      50,
-      info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
-      info.GetAttrsOrDefault<float>("base_values"),
-      base_values_as_tensor,
-      info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
-      info.GetAttrsOrDefault<float>("nodes_hitrates"),
-      nodes_hitrates_as_tensor,
-      info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
-      info.GetAttrsOrDefault<std::string>("nodes_modes"),
-      info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
-      info.GetAttrsOrDefault<float>("nodes_values"),
-      nodes_values_as_tensor,
-      info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
-      info.GetAttrsOrDefault<int64_t>("class_ids"),
-      info.GetAttrsOrDefault<int64_t>("class_nodeids"),
-      info.GetAttrsOrDefault<int64_t>("class_treeids"),
-      info.GetAttrsOrDefault<float>("class_weights"),
-      class_weights_as_tensor,
-      info.GetAttrsOrDefault<std::string>("classlabels_strings"),
-      info.GetAttrsOrDefault<int64_t>("classlabels_int64s"));
+  TreeEnsembleAttributesV3<ThresholdType> attributes(info, true);
+  return Init(80, 128, 50, attributes);
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -986,65 +845,20 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
     int parallel_tree,
     int parallel_tree_N,
     int parallel_N,
-    const std::string& aggregate_function,
-    const std::vector<float>& base_values,
-    const std::vector<ThresholdType>& base_values_as_tensor,
-    const std::vector<int64_t>& nodes_falsenodeids,
-    const std::vector<int64_t>& nodes_featureids,
-    const std::vector<float>& nodes_hitrates,
-    const std::vector<ThresholdType>& nodes_hitrates_as_tensor,
-    const std::vector<int64_t>& nodes_missing_value_tracks_true,
-    const std::vector<std::string>& nodes_modes,
-    const std::vector<int64_t>& nodes_nodeids,
-    const std::vector<int64_t>& nodes_treeids,
-    const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<float>& nodes_values,
-    const std::vector<ThresholdType>& nodes_values_as_tensor,
-    const std::string& post_transform,
-    const std::vector<int64_t>& class_ids,
-    const std::vector<int64_t>& class_nodeids,
-    const std::vector<int64_t>& class_treeids,
-    const std::vector<float>& class_weights,
-    const std::vector<ThresholdType>& class_weights_as_tensor,
-    const std::vector<std::string>& classlabels_strings,
-    const std::vector<int64_t>& classlabels_int64s) {
-  auto status = TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
-      parallel_tree,
-      parallel_tree_N,
-      parallel_N,
-      aggregate_function,
-      base_values,
-      base_values_as_tensor,
-      classlabels_strings.empty() ? classlabels_int64s.size()
-                                  : classlabels_strings.size(),
-      nodes_falsenodeids,
-      nodes_featureids,
-      nodes_hitrates,
-      nodes_hitrates_as_tensor,
-      nodes_missing_value_tracks_true,
-      nodes_modes,
-      nodes_nodeids,
-      nodes_treeids,
-      nodes_truenodeids,
-      nodes_values,
-      nodes_values_as_tensor,
-      post_transform,
-      class_ids,
-      class_nodeids,
-      class_treeids,
-      class_weights,
-      class_weights_as_tensor);
+    const TreeEnsembleAttributesV3<ThresholdType>& attributes) {
+  auto status = TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(parallel_tree, parallel_tree_N, parallel_N, attributes);
   ORT_RETURN_IF_ERROR(status);
 
-  classlabels_strings_ = classlabels_strings;
-  classlabels_int64s_ = classlabels_int64s;
+  classlabels_strings_ = attributes.classlabels_strings;
+  classlabels_int64s_ = attributes.classlabels_int64s;
 
   InlinedHashSet<int64_t> weights_classes;
-  weights_classes.reserve(class_ids.size());
+  weights_classes.reserve(attributes.target_class_ids.size());
   weights_are_all_positive_ = true;
-  for (size_t i = 0, end = class_ids.size(); i < end; ++i) {
-    weights_classes.insert(class_ids[i]);
-    if (weights_are_all_positive_ && (!class_weights.empty() ? class_weights[i] : class_weights_as_tensor[i]) < 0)
+  for (size_t i = 0, end = attributes.target_class_ids.size(); i < end; ++i) {
+    weights_classes.insert(attributes.target_class_ids[i]);
+    if (weights_are_all_positive_ && (!attributes.target_class_weights.empty() ? attributes.target_class_weights[i]
+                                                                               : attributes.target_class_weights_as_tensor[i]) < 0)
       weights_are_all_positive_ = false;
   }
   binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
@@ -1096,320 +910,19 @@ class TreeEnsembleCommonV5 : public TreeEnsembleCommon<IOType, ThresholdType, IO
   void postTransformToString(const int64_t& post_transform, std::string& post_transform_as_string);
   void nodeModesToStrings(const std::vector<uint8_t>& node_modes, std::vector<std::string>& node_modes_as_strings);
 
-  void getMembershipValuesById(const std::vector<ThresholdType>& membership_values, std::vector<std::vector<ThresholdType>>& membership_values_by_id,
-                               const std::vector<uint8_t>& nodes_modes);
-
-  int64_t transformInputOneTree(
-      const size_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
-      // input
-      const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
-      const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
-      const std::vector<ThresholdType>& nodes_hitrates, const std::vector<int64_t>& nodes_missing_value_tracks_true, const std::vector<uint8_t>& nodes_modes,
-      const std::vector<ThresholdType>& nodes_splits, const std::vector<int64_t>& nodes_trueleafs, const std::vector<int64_t>& nodes_truenodeids,
-      const std::vector<int64_t>& tree_roots,
-      // output
-      std::vector<int64_t>& nodes_falsenodeids_old, std::vector<int64_t>& nodes_featureids_old, std::vector<ThresholdType>& nodes_hitrates_as_tensor_old,
-      std::vector<int64_t>& nodes_missing_value_tracks_true_old, std::vector<uint8_t>& nodes_modes_old, std::vector<int64_t>& nodes_nodeids_old,
-      std::vector<int64_t>& nodes_treeids_old, std::vector<int64_t>& nodes_truenodeids_old, std::vector<ThresholdType>& nodes_values_as_tensor_old,
-      std::vector<int64_t>& target_class_ids_old, std::vector<int64_t>& target_class_nodeids_old, std::vector<int64_t>& target_class_treeids_old,
-      std::vector<ThresholdType>& target_class_weights_as_tensor_old);
-
-  void transformInputAllTrees(
-      // input
-      const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
-      const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
-      const std::vector<ThresholdType>& nodes_hitrates, const std::vector<int64_t>& nodes_missing_value_tracks_true, const std::vector<uint8_t>& nodes_modes,
-      const std::vector<ThresholdType>& nodes_splits, const std::vector<int64_t>& nodes_trueleafs, const std::vector<int64_t>& nodes_truenodeids,
-      const std::vector<int64_t>& tree_roots,
-      // output
-      std::vector<int64_t>& nodes_falsenodeids_old, std::vector<int64_t>& nodes_featureids_old, std::vector<ThresholdType>& nodes_hitrates_as_tensor_old,
-      std::vector<int64_t>& nodes_missing_value_tracks_true_old, std::vector<uint8_t>& nodes_modes_old, std::vector<int64_t>& nodes_nodeids_old,
-      std::vector<int64_t>& nodes_treeids_old, std::vector<int64_t>& nodes_truenodeids_old, std::vector<ThresholdType>& nodes_values_as_tensor_old,
-      std::vector<int64_t>& target_class_ids_old, std::vector<int64_t>& target_class_nodeids_old, std::vector<int64_t>& target_class_treeids_old,
-      std::vector<ThresholdType>& target_class_weights_as_tensor_old);
-
  public:
   virtual Status Init(const OpKernelInfo& info);
 
   Status Init(int parallel_tree,
               int parallel_tree_N,
               int parallel_N,
-              const int64_t& aggregate_function,
-              const std::vector<int64_t>& leaf_targetids,
-              const std::vector<ThresholdType>& leaf_weights,
-              const std::vector<ThresholdType>& membership_values,
-              const int64_t n_targets,
-              const std::vector<int64_t>& nodes_falseleafs,
-              const std::vector<int64_t>& nodes_falsenodeids,
-              const std::vector<int64_t>& nodes_featureids,
-              const std::vector<ThresholdType>& nodes_hitrates,
-              const std::vector<int64_t>& nodes_missing_value_tracks_true,
-              const std::vector<uint8_t>& nodes_modes,
-              const std::vector<ThresholdType>& nodes_splits,
-              const std::vector<int64_t>& nodes_trueleafs,
-              const std::vector<int64_t>& nodes_truenodeids,
-              const int64_t& post_transform,
-              const std::vector<int64_t>& tree_roots);
+              const TreeEnsembleAttributesV5<ThresholdType>& attributes);
 };
 
 template <typename IOType, typename ThresholdType>
-void TreeEnsembleCommonV5<IOType, ThresholdType>::aggregateFunctionToString(const int64_t& aggregate_function, std::string& aggregate_function_as_string) {
-  switch (aggregate_function) {
-    case static_cast<int64_t>(AGGREGATE_FUNCTION::AVERAGE):
-      aggregate_function_as_string = "AVERAGE";
-      break;
-    case static_cast<int64_t>(AGGREGATE_FUNCTION::SUM):
-      aggregate_function_as_string = "SUM";
-      break;
-    case static_cast<int64_t>(AGGREGATE_FUNCTION::MIN):
-      aggregate_function_as_string = "MIN";
-      break;
-    case static_cast<int64_t>(AGGREGATE_FUNCTION::MAX):
-      aggregate_function_as_string = "MAX";
-      break;
-  }
-}
-
-template <typename IOType, typename ThresholdType>
-void TreeEnsembleCommonV5<IOType, ThresholdType>::postTransformToString(const int64_t& post_transform, std::string& post_transform_as_string) {
-  switch (post_transform) {
-    case static_cast<int64_t>(POST_EVAL_TRANSFORM::NONE):
-      post_transform_as_string = "NONE";
-      break;
-    case static_cast<int64_t>(POST_EVAL_TRANSFORM::SOFTMAX):
-      post_transform_as_string = "SOFTMAX";
-      break;
-    case static_cast<int64_t>(POST_EVAL_TRANSFORM::LOGISTIC):
-      post_transform_as_string = "LOGISTIC";
-      break;
-    case static_cast<int64_t>(POST_EVAL_TRANSFORM::SOFTMAX_ZERO):
-      post_transform_as_string = "SOFTMAX_ZERO";
-      break;
-    case static_cast<int64_t>(POST_EVAL_TRANSFORM::PROBIT):
-      post_transform_as_string = "PROBIT";
-      break;
-  }
-}
-
-template <typename IOType, typename ThresholdType>
-void TreeEnsembleCommonV5<IOType, ThresholdType>::nodeModesToStrings(const std::vector<uint8_t>& node_modes, std::vector<std::string>& node_modes_as_strings) {
-  node_modes_as_strings.reserve(node_modes.size());
-  for (auto& node_mode : node_modes) {
-    switch (node_mode) {
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_LEQ):
-        node_modes_as_strings.push_back("BRANCH_LEQ");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_LT):
-        node_modes_as_strings.push_back("BRANCH_LT");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_GTE):
-        node_modes_as_strings.push_back("BRANCH_GTE");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_GT):
-        node_modes_as_strings.push_back("BRANCH_GT");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_EQ):
-        node_modes_as_strings.push_back("BRANCH_EQ");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_NEQ):
-        node_modes_as_strings.push_back("BRANCH_NEQ");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER):
-        node_modes_as_strings.push_back("BRANCH_MEMBER");
-        break;
-      case static_cast<uint8_t>(NODE_MODE_V5::LEAF):
-        node_modes_as_strings.push_back("LEAF");
-        break;
-    }
-  }
-}
-
-// `membership_values` are seperated by NAN for different nodes
-// It is more convinient to preserve the values for each node in a vector
-// The vector would be empty for nodes that are not `BRANCH_MEMBER`
-template <typename IOType, typename ThresholdType>
-void TreeEnsembleCommonV5<IOType, ThresholdType>::getMembershipValuesById(
-    const std::vector<ThresholdType>& membership_values, std::vector<std::vector<ThresholdType>>& membership_values_by_id,
-    const std::vector<uint8_t>& nodes_modes) {
-  membership_values_by_id.clear();
-  membership_values_by_id.reserve(nodes_modes.size());
-
-  size_t curr_id = 0;
-  for (const auto node_mode : nodes_modes) {
-    membership_values_by_id.emplace_back();
-    if (node_mode != static_cast<int64_t>(NODE_MODE_V5::BRANCH_MEMBER)) {
-      continue;
-    }
-
-    while (curr_id < membership_values.size() && !_isnan_(membership_values[curr_id])) {
-      membership_values_by_id.back().push_back(membership_values[curr_id++]);
-    }
-    curr_id++;
-  }
-}
-
-template <typename IOType, typename ThresholdType>
-int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
-    const size_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
-    // input
-    const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
-    const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
-    const std::vector<ThresholdType>& nodes_hitrates, const std::vector<int64_t>& nodes_missing_value_tracks_true, const std::vector<uint8_t>& nodes_modes,
-    const std::vector<ThresholdType>& nodes_splits, const std::vector<int64_t>& nodes_trueleafs, const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<int64_t>& tree_roots,
-    // output
-    std::vector<int64_t>& nodes_falsenodeids_old, std::vector<int64_t>& nodes_featureids_old, std::vector<ThresholdType>& nodes_hitrates_as_tensor_old,
-    std::vector<int64_t>& nodes_missing_value_tracks_true_old, std::vector<uint8_t>& nodes_modes_old, std::vector<int64_t>& nodes_nodeids_old,
-    std::vector<int64_t>& nodes_treeids_old, std::vector<int64_t>& nodes_truenodeids_old, std::vector<ThresholdType>& nodes_values_as_tensor_old,
-    std::vector<int64_t>& target_class_ids_old, std::vector<int64_t>& target_class_nodeids_old, std::vector<int64_t>& target_class_treeids_old,
-    std::vector<ThresholdType>& target_class_weights_as_tensor_old) {
-  nodes_nodeids_old.push_back(curr_nodeid);
-  nodes_treeids_old.push_back(curr_treeid);
-
-  if (is_leaf) {
-    nodes_modes_old.push_back(static_cast<uint8_t>(NODE_MODE_V5::LEAF));
-    target_class_ids_old.push_back(leaf_targetids[curr_id]);
-    target_class_nodeids_old.push_back(curr_nodeid);
-    target_class_treeids_old.push_back(curr_treeid);
-    target_class_weights_as_tensor_old.push_back(leaf_weights[curr_id]);
-
-    // the below are irrelevant for a `LEAF`
-    nodes_featureids_old.push_back(0);
-    nodes_truenodeids_old.push_back(0);
-    nodes_falsenodeids_old.push_back(0);
-    nodes_values_as_tensor_old.push_back(0);
-    if (!nodes_hitrates.empty()) {
-      nodes_hitrates_as_tensor_old.push_back(0);
-    }
-    if (!nodes_missing_value_tracks_true.empty()) {
-      nodes_missing_value_tracks_true_old.push_back(0);
-    }
-
-    return curr_nodeid;
-  }
-
-  nodes_featureids_old.push_back(nodes_featureids[curr_id]);
-  if (!nodes_hitrates.empty()) {
-    nodes_hitrates_as_tensor_old.push_back(nodes_hitrates[curr_id]);
-  }
-  if (!nodes_missing_value_tracks_true.empty()) {
-    nodes_missing_value_tracks_true_old.push_back(nodes_missing_value_tracks_true[curr_id]);
-  }
-
-  // unroll `BRANCH_MEMBER` to a chain of `BRANCH_EQ`
-  if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER)) {
-    nodes_modes_old.push_back(static_cast<uint8_t>(NODE_MODE_V5::BRANCH_EQ));
-    nodes_values_as_tensor_old.push_back(membership_values_by_id[curr_id][curr_membership_value_id]);
-  } else {
-    nodes_modes_old.push_back(nodes_modes[curr_id]);
-    nodes_values_as_tensor_old.push_back(nodes_splits[curr_id]);
-  }
-
-  size_t falsenodeid_id = nodes_falsenodeids_old.size();
-  nodes_falsenodeids_old.push_back(0);  // change after pushing truenode subtree
-
-  int64_t true_nodeid = curr_nodeid + 1;
-  nodes_truenodeids_old.push_back(true_nodeid);
-  true_nodeid = transformInputOneTree(
-      onnxruntime::narrow<size_t>(nodes_truenodeids[curr_id]), curr_treeid, true_nodeid, 0U, nodes_trueleafs[curr_id] != 0,
-      leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
-      nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
-      nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
-      nodes_nodeids_old, nodes_treeids_old, nodes_truenodeids_old, nodes_values_as_tensor_old, target_class_ids_old, target_class_nodeids_old,
-      target_class_treeids_old, target_class_weights_as_tensor_old);
-
-  int64_t false_nodeid = true_nodeid + 1;
-  nodes_falsenodeids_old[falsenodeid_id] = false_nodeid;
-
-  // if node is `BRANCH_MEMBER` we are unrolling the `membership_values` for that node
-  // therefore if the value is not the last, the `falsenode_id` must be pointing to the "same" node with a different membership value
-  // so in that case we are only moving the pointer for `membership_values`
-  //
-  // otherwise, the `falsenode_id` is pointing to the real falsenode subtree
-  if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER) && curr_membership_value_id + 1 < membership_values_by_id[curr_id].size()) {
-    false_nodeid = transformInputOneTree(
-        curr_id, curr_treeid, false_nodeid, curr_membership_value_id + 1, false,
-        leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
-        nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
-        nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
-        nodes_nodeids_old, nodes_treeids_old, nodes_truenodeids_old, nodes_values_as_tensor_old, target_class_ids_old, target_class_nodeids_old,
-        target_class_treeids_old, target_class_weights_as_tensor_old);
-  } else {
-    false_nodeid = transformInputOneTree(
-        onnxruntime::narrow<size_t>(nodes_falsenodeids[curr_id]), curr_treeid, false_nodeid, 0U, nodes_falseleafs[curr_id] != 0,
-        leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
-        nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
-        nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
-        nodes_nodeids_old, nodes_treeids_old, nodes_truenodeids_old, nodes_values_as_tensor_old, target_class_ids_old, target_class_nodeids_old,
-        target_class_treeids_old, target_class_weights_as_tensor_old);
-  }
-  return false_nodeid;
-}
-
-template <typename IOType, typename ThresholdType>
-void TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputAllTrees(
-    // input
-    const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
-    const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
-    const std::vector<ThresholdType>& nodes_hitrates, const std::vector<int64_t>& nodes_missing_value_tracks_true, const std::vector<uint8_t>& nodes_modes,
-    const std::vector<ThresholdType>& nodes_splits, const std::vector<int64_t>& nodes_trueleafs, const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<int64_t>& tree_roots,
-    // output
-    std::vector<int64_t>& nodes_falsenodeids_old, std::vector<int64_t>& nodes_featureids_old, std::vector<ThresholdType>& nodes_hitrates_as_tensor_old,
-    std::vector<int64_t>& nodes_missing_value_tracks_true_old, std::vector<uint8_t>& nodes_modes_old, std::vector<int64_t>& nodes_nodeids_old,
-    std::vector<int64_t>& nodes_treeids_old, std::vector<int64_t>& nodes_truenodeids_old, std::vector<ThresholdType>& nodes_values_as_tensor_old,
-    std::vector<int64_t>& target_class_ids_old, std::vector<int64_t>& target_class_nodeids_old, std::vector<int64_t>& target_class_treeids_old,
-    std::vector<ThresholdType>& target_class_weights_as_tensor_old) {
-  int64_t curr_treeid = 0;
-  for (const int64_t& tree_root : tree_roots) {
-    size_t tree_root_size_t = onnxruntime::narrow<size_t>(tree_root);
-    transformInputOneTree(tree_root_size_t, curr_treeid, 0, 0U, nodes_falsenodeids[tree_root_size_t] == nodes_truenodeids[tree_root_size_t],
-                          leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
-                          nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
-                          nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
-                          nodes_nodeids_old, nodes_treeids_old, nodes_truenodeids_old, nodes_values_as_tensor_old, target_class_ids_old, target_class_nodeids_old,
-                          target_class_treeids_old, target_class_weights_as_tensor_old);
-    curr_treeid++;
-  }
-}
-
-template <typename IOType, typename ThresholdType>
 Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& info) {
-  std::vector<ThresholdType> leaf_weights, nodes_hitrates, membership_values, nodes_splits;
-  std::vector<uint8_t> nodes_modes;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "leaf_weights", leaf_weights));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "membership_values", membership_values));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates", nodes_hitrates));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_modes", nodes_modes));
-  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_splits", nodes_splits));
-#else
-  // GetVectorAttrsOrDefault is not part of the minimal build.
-  // As a result, TreeEnsemble v5 cannot be available in this build.
-  ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.");
-#endif
-
-  return Init(
-      80,
-      128,
-      50,
-      info.GetAttrOrDefault<int64_t>("aggregate_function", 1),
-      info.GetAttrsOrDefault<int64_t>("leaf_targetids"),
-      leaf_weights,
-      membership_values,
-      info.GetAttrOrDefault<int64_t>("n_targets", 0),
-      info.GetAttrsOrDefault<int64_t>("nodes_falseleafs"),
-      info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
-      info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
-      nodes_hitrates,
-      info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
-      nodes_modes,
-      nodes_splits,
-      info.GetAttrsOrDefault<int64_t>("nodes_trueleafs"),
-      info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
-      info.GetAttrOrDefault<int64_t>("post_transform", 0),
-      info.GetAttrsOrDefault<int64_t>("tree_roots"));
+  TreeEnsembleAttributesV5<ThresholdType> attributes(info);
+  return Init(80, 128, 50, attributes);
 }
 
 template <typename IOType, typename ThresholdType>
@@ -1417,71 +930,12 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(
     int parallel_tree,
     int parallel_tree_N,
     int parallel_N,
-    const int64_t& aggregate_function,
-    const std::vector<int64_t>& leaf_targetids,
-    const std::vector<ThresholdType>& leaf_weights,
-    const std::vector<ThresholdType>& membership_values,
-    const int64_t n_targets,
-    const std::vector<int64_t>& nodes_falseleafs,
-    const std::vector<int64_t>& nodes_falsenodeids,
-    const std::vector<int64_t>& nodes_featureids,
-    const std::vector<ThresholdType>& nodes_hitrates,
-    const std::vector<int64_t>& nodes_missing_value_tracks_true,
-    const std::vector<uint8_t>& nodes_modes,
-    const std::vector<ThresholdType>& nodes_splits,
-    const std::vector<int64_t>& nodes_trueleafs,
-    const std::vector<int64_t>& nodes_truenodeids,
-    const int64_t& post_transform,
-    const std::vector<int64_t>& tree_roots) {
-  std::string aggregate_function_old, post_transform_old;
-  std::vector<std::vector<ThresholdType>> membership_values_by_id;
+    const TreeEnsembleAttributesV5<ThresholdType>& attributes) {
+  TreeEnsembleAttributesV3<ThresholdType> attributes_v3;
+  attributes.convert_to_v3(attributes_v3);
 
-  std::vector<uint8_t> nodes_modes_old;
-  std::vector<std::string> nodes_modes_string_old;
-  std::vector<ThresholdType> base_values_as_tensor_old, nodes_hitrates_as_tensor_old, nodes_values_as_tensor_old, target_class_weights_as_tensor_old;
-  std::vector<int64_t> nodes_falsenodeids_old, nodes_featureids_old, nodes_missing_value_tracks_true_old, nodes_nodeids_old,
-      nodes_treeids_old, nodes_truenodeids_old, target_class_ids_old, target_class_nodeids_old, target_class_treeids_old;
-
-  std::vector<float> base_values_old, nodes_hitrates_old, nodes_values_old, target_class_weights_old;  // temporary
-
-  // doing all transformation to get the old format
-  aggregateFunctionToString(aggregate_function, aggregate_function_old);
-  postTransformToString(post_transform, post_transform_old);
-  getMembershipValuesById(membership_values, membership_values_by_id, nodes_modes);
-  transformInputAllTrees(leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
-                         nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
-                         nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
-                         nodes_nodeids_old, nodes_treeids_old, nodes_truenodeids_old, nodes_values_as_tensor_old, target_class_ids_old, target_class_nodeids_old,
-                         target_class_treeids_old, target_class_weights_as_tensor_old);
-  nodeModesToStrings(nodes_modes_old, nodes_modes_string_old);
-
-  auto status = TreeEnsembleCommon<IOType, ThresholdType, IOType>::Init(
-      parallel_tree,
-      parallel_tree_N,
-      parallel_N,
-      aggregate_function_old,
-      base_values_old,
-      base_values_as_tensor_old,
-      n_targets,
-      nodes_falsenodeids_old,
-      nodes_featureids_old,
-      nodes_hitrates_old,
-      nodes_hitrates_as_tensor_old,
-      nodes_missing_value_tracks_true_old,
-      nodes_modes_string_old,
-      nodes_nodeids_old,
-      nodes_treeids_old,
-      nodes_truenodeids_old,
-      nodes_values_old,
-      nodes_values_as_tensor_old,
-      post_transform_old,
-      target_class_ids_old,
-      target_class_nodeids_old,
-      target_class_treeids_old,
-      target_class_weights_old,
-      target_class_weights_as_tensor_old);
+  auto status = TreeEnsembleCommon<IOType, ThresholdType, IOType>::Init(parallel_tree, parallel_tree_N, parallel_N, attributes_v3);
   ORT_RETURN_IF_ERROR(status);
-
   return Status::OK();
 }
 
