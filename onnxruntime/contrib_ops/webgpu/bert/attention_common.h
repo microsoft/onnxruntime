@@ -57,6 +57,7 @@ struct WebgpuAttentionParameters {
                                                                                               kv_num_heads_(parameters.kv_num_heads),
                                                                                               num_splits_(parameters.num_splits),
                                                                                               rotary_dim_(parameters.rotary_dim),
+                                                                                              is_packed_qkv_(parameters.is_packed_qkv),
                                                                                               is_subsequent_prompt_(parameters.is_subsequent_prompt),
                                                                                               is_first_prompt_(parameters.is_first_prompt),
                                                                                               rotary_interleaved_(parameters.rotary_interleaved),
