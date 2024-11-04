@@ -1064,5 +1064,11 @@ bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index
   return false;
 }
 
+std::string GetPrepackedInitializerName(const std::string& initializer_name, const std::string& node_name) {
+  const std::string seperator = ":";
+
+  return initializer_name + seperator + node_name;
+}
+
 }  // namespace utils
 }  // namespace onnxruntime

@@ -167,7 +167,9 @@ export declare namespace Tensor {
     | 'uint32'
     | 'int64'
     | 'uint64'
-    | 'bool';
+    | 'bool'
+    | 'uint4'
+    | 'int4';
 
   /**
    * represent where the tensor data is stored

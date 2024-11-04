@@ -13,6 +13,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 |:------:|:------:|:------:|:-:|:-:|:------|
 | Abs | ai.onnx(7-12, 13+) | abs | ✓ | ✓ | |
 | Add | ai.onnx(7-12, 13, 14+) | add | ✓ | ✓ | |
+| And | ai.onnx(7+) | logicalAnd | ✗ | ✓ | |
 | ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | ✓ | ✓ | |
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✓ | ✓ | |
 | AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
@@ -35,6 +36,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Floor | ai.onnx(7-12, 13+) | floor | ✓ | ✓ | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | ✓ | ✓ | |
+| GatherElements | ai.onnx(11-12, 13+) | gatherElements | ✗ | ✓ | |
+| GatherND | ai.onnx(11, 12, 13+) | gatherND | ✓ | ✓ | Only supports 'batch_dims' == 0 |
 | Gelu | ai.onnx(20+) | gelu | ✓ | ✓ | |
 | Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | ✓ | ✓ | Only supports 1-D 'C' input |
 | GlobalAveragePool | ai.onnx(7+) | averagePool2d | ✓ | ✓ | Only supports 4-D input |
@@ -60,7 +63,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | ✓ | ✓ | |
 | Mul | ai.onnx(7-12, 13, 14+) | mul | ✓ | ✓ | |
 | Neg | ai.onnx(7-12, 13+) | neg | ✓ | ✓ | |
-| Not | ai.onnx(7+) | logicalnot | ✓ | ✓ | |
+| Not | ai.onnx(7+) | logicalNot | ✓ | ✓ | |
+| Or | ai.onnx(7+) | logicalOr | ✗ | ✓ | |
 | Pad | ai.onnx(7-10, 11-12, 13-17, 18, 19-20, 21+) | pad | ✓ | ✓ | modes == 'wrap' is not supported |
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | ✓ | ✓ | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | ✓ | ✓ | WebNN CPU backend restricts the last dimension of input and slope to be same (Chromium issue: https://issues.chromium.org/issues/335517470) |
@@ -79,6 +83,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Relu | ai.onnx(7-12, 13, 14+) | relu | ✓ | ✓ | |
 | Reshape | ai.onnx(7-12, 13, 14-18, 19-20, 21+) | reshape | ✓ | ✓ | Input 'shape' should be a constant, 0 dimension value in 'shape' is not supported |
 | Resize | ai.onnx(11-12, 13-17, 18, 19+) | resample2d | ✓ | ✓ | Only supports 4-D input, antialias == 0, coordinate_transformation_mode == 'half_pixel', exclude_outside == 0, keep_aspect_ratio_policy == 'stretch', 'linear' and 'nearest' modes, input 'scales' and 'sizes' if present must be a constant |
+| ScatterElements | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterElements | ✗ | ✓ | Only supports 'reduction' == 'none' |
+| ScatterND | ai.onnx(11-12, 13-15, 16-17, 18+) | scatterND | ✗ | ✓ | Only supports 'reduction' == 'none' |
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | ✓ | ✓ | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | ✓ | ✓ | |
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
@@ -97,3 +103,4 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Trilu | ai.onnx(14+) | triangular | ✓ | ✓ | Input 'k' (option 'diagonal' for WebNN) if present should be a constant |
 | Unsqueeze | ai.onnx(7-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Where | ai.onnx(7-8, 9-15, 16+) | where | ✓ | ✓ | |
+| Xor | ai.onnx(7+) | logicalXor | ✗ | ✓ | |

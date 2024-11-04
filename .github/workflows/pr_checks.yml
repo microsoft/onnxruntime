@@ -19,7 +19,7 @@ concurrency:
 jobs:
   auto-apply-fixes:
     name: Suggest fixes
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions:
       contents: read
       pull-requests: write
@@ -34,16 +34,19 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt
-      - name: Install dependencies
+
+      - name: Update PATH
         run: |
-          python -m pip install -r requirements-dev.txt
-          python -m pip install lintrunner lintrunner-adapters
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies and run lintrunner on all files
+        run: |
+          python -m pip install --user -r requirements-dev.txt
+          python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
-      - name: Run lintrunner on all files
-        run: |
           set +e
           lintrunner f --all-files -v
           exit 0
-      - uses: parkerbxyz/suggest-changes@v1
+      - uses: parkerbxyz/suggest-changes@v2
         with:
           comment: 'You can commit the suggested changes from lintrunner.'
