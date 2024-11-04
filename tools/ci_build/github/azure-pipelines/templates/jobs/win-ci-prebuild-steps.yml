@@ -31,6 +31,14 @@ parameters:
 - name: Today
   type: string
 
+- name: win_trt_folder_cuda12
+  type: string
+  default: ''
+
+- name: win_trt_folder_cuda11
+  type: string
+  default: ''
+
 steps:
 - task: UsePythonVersion@0
   inputs:
@@ -91,7 +99,10 @@ steps:
   parameters:
     EnvSetupScript: ${{parameters.EnvSetupScript}}
     DownloadCUDA: ${{parameters.DownloadCUDA}}
-    DownloadTRT: ${{parameters.DownloadTRT}}
+    ${{ if eq(parameters.DownloadTRT, 'true') }}:
+      DownloadTRT: true
+      win_trt_folder_cuda12: ${{parameters.win_trt_folder_cuda12}}
+      win_trt_folder_cuda11: ${{parameters.win_trt_folder_cuda11}}
 
 - ${{ if eq(parameters.WITHCACHE, true) }}:
   - powershell: |
