@@ -62,9 +62,6 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   GetAxes(model_builder, node, axes);
   std::vector<int64_t> input_shape;
   GetShape(*input_defs[0], input_shape, logger);
-  for (auto& axis : axes) {
-    axis = HandleNegativeAxis(axis, input_shape.size() + axes.size());
-  }
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
@@ -78,6 +75,9 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", axes));
       }
     } else {
+      for (auto& axis : axes) {
+        axis = HandleNegativeAxis(axis, input_shape.size() + axes.size());
+      }
       std::vector<int64_t> new_shape(axes.size() + input_shape.size(), 1);
       std::sort(axes.begin(), axes.end());
       // For example: Given an input tensor (data) of shape [3, 4, 5],
