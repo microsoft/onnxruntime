@@ -2608,7 +2608,7 @@ static bool ArgMaxOrArgMinNeedFallbackToCPU(const onnxruntime::Node& node) {
       // CuDNN's API doc doesn't mention what happens in case duplicates are encountered,
       // but based on testing, the results seem to indicate a "stable" implementation
       // (i.e.) relative ordering is preserved which is the expected behavior when the
-      // attribute takes on the default value (most commong use-case for this operator).
+      // attribute takes on the default value (most common use-case for this operator).
       if ("select_last_index" == attr_name) {
         if (attr_value.i() != 0) {
           return true;

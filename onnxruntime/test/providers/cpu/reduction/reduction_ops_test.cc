@@ -3,6 +3,7 @@
 
 #include <random>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -3337,7 +3338,7 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
+TEST(ReductionOpTest, ArgMax_float_first_index_random) {
   OpTester test("ArgMax", 12);
   test.AddAttribute("axis", static_cast<int64_t>(0));
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
@@ -3345,15 +3346,28 @@ TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
   // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
   test.AddAttribute("select_last_index", static_cast<int64_t>(0));
 
-  std::vector<float> data_vec;
+  constexpr size_t vector_size = 64 * 1024;
+  constexpr float max_value = std::numeric_limits<float>::infinity();
 
-  size_t data_size = 10000;
-  data_vec.reserve(data_size);
-  for (size_t i = 0; i < data_size; ++i) {
-    data_vec.push_back(10.f);
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<int> distribution(0, static_cast<int>(vector_size) - 1);
+
+  std::vector<float> data_vec(vector_size, 0.0f);
+
+  int min_index = -1;
+
+  // Try replace 8 elements with max_value. It is fine that some elements hit same index.
+  for (int i = 0; i < 8; ++i) {
+    int index = distribution(generator);
+    data_vec[index] = max_value;
+    if (i == 0 || index < min_index) {
+      min_index = index;
+    }
   }
-  test.AddInput<float>("data", {10000}, data_vec);
-  test.AddOutput<int64_t>("reduced", {1}, {0});
+
+  test.AddInput<float>("data", {vector_size}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {min_index});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -3676,7 +3690,7 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ArgMin_float_last_index_dups) {
+TEST(ReductionOpTest, ArgMin_float_first_index_random) {
   OpTester test("ArgMin", 13);
   test.AddAttribute("axis", static_cast<int64_t>(0));
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
@@ -3684,15 +3698,28 @@ TEST(ReductionOpTest, ArgMin_float_last_index_dups) {
   // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
   test.AddAttribute("select_last_index", static_cast<int64_t>(0));
 
-  std::vector<float> data_vec;
+  constexpr size_t vector_size = 64 * 1024;
+  constexpr float min_value = -std::numeric_limits<float>::infinity();
 
-  size_t data_size = 10000;
-  data_vec.reserve(data_size);
-  for (size_t i = 0; i < data_size; ++i) {
-    data_vec.push_back(10.f);
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<int> distribution(0, static_cast<int>(vector_size) - 1);
+
+  std::vector<float> data_vec(vector_size, 0.0f);
+
+  int min_index = -1;
+
+  // Try replace 8 elements with min_value. It is fine that some elements hit same index.
+  for (int i = 0; i < 8; ++i) {
+    int index = distribution(generator);
+    data_vec[index] = min_value;
+    if (i == 0 || index < min_index) {
+      min_index = index;
+    }
   }
-  test.AddInput<float>("data", {10000}, data_vec);
-  test.AddOutput<int64_t>("reduced", {1}, {0});
+
+  test.AddInput<float>("data", {vector_size}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {min_index});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
