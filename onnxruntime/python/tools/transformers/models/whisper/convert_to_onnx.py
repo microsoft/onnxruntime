@@ -334,6 +334,7 @@ def export_onnx_models(
     use_forced_decoder_ids: bool = False,
     merge_encoder_and_decoder_init: bool = True,
     no_beam_search_op: bool = False,
+    output_qk: bool = False,
     overwrite: bool = False,
     use_int32_inputs: bool = True,
     quantize_embedding_layer: bool = False,
@@ -413,6 +414,7 @@ def export_onnx_models(
                         provider=provider,
                         is_decoder=(name == "decoder"),
                         no_beam_search_op=no_beam_search_op,
+                        output_qk=output_qk,
                     )
                     # Remove old ONNX model and old data file
                     if os.path.exists(onnx_path):
@@ -491,6 +493,7 @@ def main(argv=None):
         args.use_forced_decoder_ids,
         not args.separate_encoder_and_decoder_init,
         args.no_beam_search_op,
+        args.output_cross_qk,
         args.overwrite,
         not args.use_int64_inputs,
         args.quantize_embedding_layer,

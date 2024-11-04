@@ -185,6 +185,7 @@ class WhisperHelper:
         provider: str = "cpu",
         is_decoder: bool = False,
         no_beam_search_op: bool = False,
+        output_qk: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -205,13 +206,17 @@ class WhisperHelper:
             only_onnxruntime=False,
         )
 
+        # Add `past_sequence_length`, `cache_indirection`, and `output_qk` to `MultiHeadAttention` ops
         if is_decoder and no_beam_search_op:
-            # Add `cache_indirection` and `output_qk` to MultiHeadAttention ops
             if (is_float16 and provider == "cuda"):  # if (is_float16 and provider == "cuda") or (not is_float16 and provider == "cpu"):
-                # FP16 CUDA and FP32 CPU use the `DecoderMaskedMultiHeadAttention` kernel via `MultiHeadAttention`, which requires the `cache_indirection` input
+                # FP16 CUDA and FP32 CPU use the `DecoderMaskedMultiHeadAttention` kernel
+                # via `MultiHeadAttention`, which requires the `past_sequence_length` and
+                # `cache_indirection` inputs
                 m, past_seq_len_name = fix_past_sequence_length(m)
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
-            m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2*num_layers, 2)))
+            
+            if output_qk:
+                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2*num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
