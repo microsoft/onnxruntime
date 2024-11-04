@@ -43,6 +43,7 @@ struct WebgpuAttentionParameters {
                                                                                               batch_size_(parameters.batch_size),
                                                                                               sequence_length_(parameters.sequence_length),
                                                                                               kv_sequence_length_(parameters.sequence_length),
+                                                                                              past_sequence_length_(parameters.seqlen_past_kv_cache),
                                                                                               total_sequence_length_(parameters.total_sequence_length),
                                                                                               hidden_size_(parameters.hidden_size),
                                                                                               head_size_(parameters.head_size),
@@ -56,6 +57,8 @@ struct WebgpuAttentionParameters {
                                                                                               kv_num_heads_(parameters.kv_num_heads),
                                                                                               num_splits_(parameters.num_splits),
                                                                                               rotary_dim_(parameters.rotary_dim),
+                                                                                              is_subsequent_prompt_(parameters.is_subsequent_prompt),
+                                                                                              is_first_prompt_(parameters.is_first_prompt),
                                                                                               rotary_interleaved_(parameters.rotary_interleaved),
                                                                                               use_smooth_softmax_(parameters.use_smooth_softmax),
                                                                                               softcap_(parameters.softcap),
@@ -118,7 +121,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr, const Tensor* total_seqlen_tensor = nullptr);
+                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib
