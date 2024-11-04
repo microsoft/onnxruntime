@@ -20,18 +20,20 @@ The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [Tenso
 {:toc}
 
 ## Install
-Please select the GPU (CUDA/TensorRT) version of OnnxRuntime: https://onnxruntime.ai/docs/install. Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
+Please select the GPU (CUDA/TensorRT) version of Onnx Runtime: https://onnxruntime.ai/docs/install. Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
 
 ## Build from source
 See [Build instructions](../build/eps.md#tensorrt).
 
 ## Requirements
 
-Note: starting ORT 1.19, **CUDA 12** becomes default version when distributing ONNX Runtime GPU packages.
+Note: Starting ORT 1.19, **CUDA 12** becomes the default version when distributing ONNX Runtime GPU packages.
 
 | ONNX Runtime | TensorRT | CUDA           |
 | :----------- | :------- | :------------- |
-| 1.19-main    | 10.2     | **12.x**, 11.8 |
+| main         | 10.5     | **12.x**, 11.8 |
+| 1.20         | 10.5     | **12.x**, 11.8 |
+| 1.19         | 10.2     | **12.x**, 11.8 |
 | 1.18         | 10.0     | 11.8, 12.x     |
 | 1.17         | 8.6      | 11.8, 12.x     |
 | 1.16         | 8.6      | 11.8           |
