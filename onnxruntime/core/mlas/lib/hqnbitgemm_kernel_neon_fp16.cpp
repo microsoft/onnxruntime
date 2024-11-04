@@ -321,7 +321,7 @@ HQ4BitBlkDequantBKernel(
 }
 
 void
-HQ4BitBlkDequantBForSgemm_CompFp16(
+HQ4BitBlkDequantBForHgemm_CompFp16(
     size_t BlkLen,
     MLAS_FP16* FpData,
     const std::byte* QuantBData,

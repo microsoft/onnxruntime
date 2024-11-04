@@ -87,7 +87,7 @@ MlasIsQNBitGemmAvailable(
         }
         case HQNBitGemmVariant_BitWidth4_CompFp16: {
             return Dispatch->HQ4BitGemmKernel_CompFp16 != nullptr &&
-                   Dispatch->HQ4BitBlkDequantBForSgemm_CompFp16 != nullptr;
+                   Dispatch->HQ4BitBlkDequantBForHgemm_CompFp16 != nullptr;
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
@@ -366,6 +366,7 @@ SQ4BitGemm_CompFp32(
     }
 
     constexpr size_t StrideN = 32;
+    // TODO(fajin): move the allocation up to the op.
     size_t bufsize = k_blks * BlkLen * StrideN * sizeof(float);
     MlasThreadedBufAlloc(bufsize);
     auto* dequant_b = reinterpret_cast<float*>(ThreadedBufHolder.get());
@@ -456,13 +457,14 @@ HQ4BitGemm_CompFp16(
     constexpr size_t StrideM = 2;
     constexpr size_t StrideN = 32;
 
+    // TODO(fajin): move allocation up to the op.
     size_t bufsize = ldb * StrideN * sizeof(MLAS_FP16);
     MlasThreadedBufAlloc(bufsize);
     auto* dequant_b = reinterpret_cast<MLAS_FP16*>(ThreadedBufHolder.get());
 
     for (size_t n = 0, countN; n < RangeCountN; n += countN) {
         countN = std::min(StrideN, RangeCountN - n);
-        GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForSgemm_CompFp16(
+        GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForHgemm_CompFp16(
             BlkLen, dequant_b, QuantBData, QuantBScale, QuantBZeroPoint, countN, K, k_blk_num
         );
 

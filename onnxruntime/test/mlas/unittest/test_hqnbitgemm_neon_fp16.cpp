@@ -81,9 +81,10 @@ class MlasNeonFp16CastTest : public MlasTestBase {
 
 class MlasNeonFp16PrepackTest : public MlasTestBase {
  private:
-  std::random_device _rd;  // a seed source for the random number engine
-  std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
-  std::uniform_int_distribution<> _distrib;
+  std::random_device rd_;  // a seed source for the random number engine
+  unsigned int seed_;
+  std::mt19937 gen_;       // mersenne_twister_engine seeded with rd()
+  std::uniform_int_distribution<> distrib_;
   MatrixGuardBuffer<uint8_t> input_, ref_, packed_;
 
   template <size_t Ldb>
@@ -134,6 +135,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
       for (size_t i = 0; i < K; i += 2) {
         for (size_t j = 0; j < 8; ++j) {
           ASSERT_EQ(packed[n * Ldb + (i >> 1) * 8 + j], ref[n * Ldb + (i >> 1) * 8 + j])
+              << " seed " << seed_
               << " n " << n << " i " << i << " j " << j;
         }
       }
@@ -142,6 +144,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     for (; n < N; ++n) {
       for (size_t i = 0; i < K; i += 2) {
         ASSERT_EQ(packed[n * Ldb + (i >> 1)], ref[n * Ldb + (i >> 1)])
+            << " seed " << seed_
             << " n " << n << " i " << i;
       }
     }
@@ -154,7 +157,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     constexpr size_t BufferSize = N * Ldb;
     auto InitializeBuffer = [this](uint8_t* buffer, size_t count) {
       for (size_t i = 0; i < count; i++) {
-        buffer[i] = static_cast<uint8_t>(_distrib(_gen));
+        buffer[i] = static_cast<uint8_t>(distrib_(gen_));
       }
     };
 
@@ -170,7 +173,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
 
  public:
   MlasNeonFp16PrepackTest()
-      : _gen(_rd()), _distrib(0, 255) {
+      : seed_(rd_()), gen_(seed_), distrib_(0, 255) {
   }
 
   static const char* GetTestSuiteName() {
@@ -194,9 +197,10 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
 
 class MlasNeonFp16DequantBTest : public MlasTestBase {
  private:
-  std::random_device _rd;  // a seed source for the random number engine
-  std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
-  std::uniform_int_distribution<> _distrib;
+  std::random_device rd_;  // a seed source for the random number engine
+  unsigned int seed_;
+  std::mt19937 gen_;       // mersenne_twister_engine seeded with rd()
+  std::uniform_int_distribution<> distrib_;
   std::uniform_real_distribution<float> _distribFp;
   MatrixGuardBuffer<uint8_t> input_, zero_points_;
   MatrixGuardBuffer<MLAS_FP16> dequant_, ref_, scales_;
@@ -262,6 +266,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
         for (size_t j = 0; j < 8; ++j) {
           size_t idx = n * Ldb + i * 8 + j;
           ASSERT_TRUE(FloatEqual(target[idx], ref[idx], 0.01f, 0.01f))
+              << " seed " << seed_
               << " v0 " << target[idx] << " v1 " << ref[idx]
               << " n " << n << " i " << i << " j " << j;
         }
@@ -272,6 +277,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
       for (size_t i = 0; i < K; ++i) {
         size_t idx = n * Ldb + i;
         ASSERT_TRUE(FloatEqual(target[idx], ref[idx], 0.01f, 0.01f))
+            << " seed " << seed_
             << " v0 " << target[idx] << " v1 " << ref[idx]
             << " n " << n << " i " << i;
       }
@@ -287,13 +293,13 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
 
     auto InitializeBuffer_i8 = [this](uint8_t* buffer, size_t count) {
       for (size_t i = 0; i < count; i++) {
-        buffer[i] = static_cast<uint8_t>(_distrib(_gen));
+        buffer[i] = static_cast<uint8_t>(distrib_(gen_));
       }
     };
 
     auto InitializeBuffer_fp16 = [this](MLAS_FP16* buffer, size_t count) {
       for (size_t i = 0; i < count; i++) {
-        buffer[i] = MLAS_FP16(_distribFp(_gen));
+        buffer[i] = MLAS_FP16(_distribFp(gen_));
       }
     };
 
@@ -302,7 +308,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
     auto* dequant = dequant_.GetBuffer(BCount);
     auto* ref = ref_.GetBuffer(BCount);
     const auto* scales = scales_.GetFilledBuffer(ScaleCount, InitializeBuffer_fp16);
-    GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForSgemm_CompFp16(
+    GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForHgemm_CompFp16(
         BlkLen, dequant, reinterpret_cast<const std::byte*>(input), scales,
         UseZeroPoints ? reinterpret_cast<const std::byte*>(zero_points) : nullptr,
         N, K, BlkNum);
@@ -312,7 +318,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
 
  public:
   MlasNeonFp16DequantBTest()
-      : _gen(_rd()), _distrib(0, 255), _distribFp(0.5f, 2.0f) {
+      : seed_(rd_()), gen_(seed_), distrib_(0, 255), _distribFp(0.5f, 2.0f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -345,17 +351,18 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
   }
 };
 
-class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
+class MlasNeonFp16HQ4BitGemmKernelTest : public MlasTestBase {
  private:
-  std::random_device _rd;  // a seed source for the random number engine
-  std::mt19937 _gen;       // mersenne_twister_engine seeded with rd()
+  std::random_device rd_;  // a seed source for the random number engine
+  unsigned int seed_;
+  std::mt19937 gen_;       // mersenne_twister_engine seeded with rd()
   MatrixGuardBuffer<MLAS_FP16> A_, B_, C_, ref_, bias_;
 
   MLAS_FORCEINLINE
   void InitializeBuffer(MLAS_FP16* buffer, float min, float max, size_t count) {
     std::uniform_real_distribution<float> distrib(min, max);
     for (size_t i = 0; i < count; i++) {
-      buffer[i] = MLAS_FP16(distrib(_gen));
+      buffer[i] = MLAS_FP16(distrib(gen_));
     }
   }
 
@@ -398,6 +405,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * Ldc + n;
         ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.015f, 0.03f))
+            << " seed " << seed_
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
       }
@@ -405,7 +413,7 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   }
 
   template <size_t M, size_t N, size_t K, size_t BlkLen, bool UseBias>
-  void TestSQ4BitGemmKernel() {
+  void TestHQ4BitGemmKernel() {
     static_assert(M <= 2);
     constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkNum * BlkLen;
@@ -430,42 +438,42 @@ class MlasNeonFp16SQ4BitGemmKernelTest : public MlasTestBase {
   }
 
  public:
-  MlasNeonFp16SQ4BitGemmKernelTest()
-      : _gen(_rd()) {
+  MlasNeonFp16HQ4BitGemmKernelTest()
+      : seed_(rd_()), gen_(seed_) {
   }
 
   static const char* GetTestSuiteName() {
-    return "NeonFp16SQ4BitGemmKernel";
+    return "NeonFp16HQ4BitGemmKernel";
   }
 
   template <size_t M>
   void ExecuteShort_T(void) {
-    TestSQ4BitGemmKernel<M, 1, 1, 16, false>();
-    TestSQ4BitGemmKernel<M, 1, 1, 16, true>();
-    TestSQ4BitGemmKernel<M, 1, 15, 16, false>();
-    TestSQ4BitGemmKernel<M, 1, 15, 16, true>();
-    TestSQ4BitGemmKernel<M, 1, 31, 16, false>();
-    TestSQ4BitGemmKernel<M, 1, 31, 16, true>();
-    TestSQ4BitGemmKernel<M, 31, 1, 16, false>();
-    TestSQ4BitGemmKernel<M, 31, 1, 16, true>();
-    TestSQ4BitGemmKernel<M, 31, 15, 16, false>();
-    TestSQ4BitGemmKernel<M, 31, 15, 16, true>();
-    TestSQ4BitGemmKernel<M, 31, 31, 16, false>();
-    TestSQ4BitGemmKernel<M, 31, 31, 16, true>();
-    TestSQ4BitGemmKernel<M, 31, 63, 128, false>();
-    TestSQ4BitGemmKernel<M, 31, 63, 128, true>();
-    TestSQ4BitGemmKernel<M, 31, 511, 128, false>();
-    TestSQ4BitGemmKernel<M, 31, 511, 128, true>();
-    TestSQ4BitGemmKernel<M, 128, 1, 16, false>();
-    TestSQ4BitGemmKernel<M, 128, 1, 16, true>();
-    TestSQ4BitGemmKernel<M, 128, 15, 16, false>();
-    TestSQ4BitGemmKernel<M, 128, 15, 16, true>();
-    TestSQ4BitGemmKernel<M, 128, 31, 16, false>();
-    TestSQ4BitGemmKernel<M, 128, 31, 16, true>();
-    TestSQ4BitGemmKernel<M, 128, 63, 128, false>();
-    TestSQ4BitGemmKernel<M, 128, 63, 128, true>();
-    TestSQ4BitGemmKernel<M, 128, 511, 128, false>();
-    TestSQ4BitGemmKernel<M, 128, 511, 128, true>();
+    TestHQ4BitGemmKernel<M, 1, 1, 16, false>();
+    TestHQ4BitGemmKernel<M, 1, 1, 16, true>();
+    TestHQ4BitGemmKernel<M, 1, 15, 16, false>();
+    TestHQ4BitGemmKernel<M, 1, 15, 16, true>();
+    TestHQ4BitGemmKernel<M, 1, 31, 16, false>();
+    TestHQ4BitGemmKernel<M, 1, 31, 16, true>();
+    TestHQ4BitGemmKernel<M, 31, 1, 16, false>();
+    TestHQ4BitGemmKernel<M, 31, 1, 16, true>();
+    TestHQ4BitGemmKernel<M, 31, 15, 16, false>();
+    TestHQ4BitGemmKernel<M, 31, 15, 16, true>();
+    TestHQ4BitGemmKernel<M, 31, 31, 16, false>();
+    TestHQ4BitGemmKernel<M, 31, 31, 16, true>();
+    TestHQ4BitGemmKernel<M, 31, 63, 128, false>();
+    TestHQ4BitGemmKernel<M, 31, 63, 128, true>();
+    TestHQ4BitGemmKernel<M, 31, 511, 128, false>();
+    TestHQ4BitGemmKernel<M, 31, 511, 128, true>();
+    TestHQ4BitGemmKernel<M, 128, 1, 16, false>();
+    TestHQ4BitGemmKernel<M, 128, 1, 16, true>();
+    TestHQ4BitGemmKernel<M, 128, 15, 16, false>();
+    TestHQ4BitGemmKernel<M, 128, 15, 16, true>();
+    TestHQ4BitGemmKernel<M, 128, 31, 16, false>();
+    TestHQ4BitGemmKernel<M, 128, 31, 16, true>();
+    TestHQ4BitGemmKernel<M, 128, 63, 128, false>();
+    TestHQ4BitGemmKernel<M, 128, 63, 128, true>();
+    TestHQ4BitGemmKernel<M, 128, 511, 128, false>();
+    TestHQ4BitGemmKernel<M, 128, 511, 128, true>();
   }
 
   void ExecuteShort(void) override {
@@ -480,7 +488,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
     count += MlasDirectShortExecuteTests<MlasNeonFp16CastTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonFp16PrepackTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonFp16DequantBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonFp16SQ4BitGemmKernelTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasNeonFp16HQ4BitGemmKernelTest>::RegisterShortExecute();
   }
   return count;
 });

@@ -149,7 +149,7 @@ class MatMulNBits final : public OpKernel {
   }
 
   Status SetPrePackTensor(int input_idx, const Tensor& pre_packed_tensor) override {
-    if (input_idx == 1) {
+    if (input_idx == InputIndex::B) {
       // pre_packed_tensor is constant initialized tensor and its lifecycle is managed by session_state,
       // session_state will release memory from pre_packed_tensor. packed_b_ will not release memory so
       // pass empty/default buffer deleter here.
@@ -263,7 +263,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 }
 
 #if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
-// Non-ARM fall back fp16 to fp32.
+// Non-ARM-with-fp16-intrinsics fall back fp16 to fp32.
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        bool save_prepacked_initializers,

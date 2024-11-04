@@ -11,9 +11,9 @@ Module Name:
 Abstract:
 
     This module includes kernel function prototypes and helper functions for
-    implementing SQNBitGemm.
+    implementing QNBitGemm.
 
-    SQNBitGemm is a matrix/matrix multiplication, A*B, where A is a float
+    QNBitGemm is a matrix/matrix multiplication, A*B, where A is a float
     matrix and B is a n-bit quantized integer matrix. B is block quantized,
     meaning values of B are divided into blocks and each block has its own
     scale and optional zero point.
@@ -222,7 +222,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
      */
     template<typename T>
-    using Q4BitBlkDequantBForSgemm_Fn = std::function<void(
+    using Q4BitBlkDequantBForGemm_Fn = std::function<void(
         size_t BlkLen,
         T* FpData,
         const std::byte* QuantBData,
@@ -233,8 +233,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t BlockStrideQuantB
     )>;
 
-    Q4BitBlkDequantBForSgemm_Fn<float> SQ4BitBlkDequantBForSgemm_CompFp32;
-    Q4BitBlkDequantBForSgemm_Fn<MLAS_FP16> HQ4BitBlkDequantBForSgemm_CompFp16;
+    Q4BitBlkDequantBForGemm_Fn<float> SQ4BitBlkDequantBForSgemm_CompFp32;
+    Q4BitBlkDequantBForGemm_Fn<MLAS_FP16> HQ4BitBlkDequantBForHgemm_CompFp16;
 
     //
     // SQNBIT_CompInt8 kernel function prototypes.
