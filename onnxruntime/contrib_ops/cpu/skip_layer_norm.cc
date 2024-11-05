@@ -102,6 +102,8 @@ void ComputeJob(
     const float* gamma_float_ptr,
     const float* beta_float_ptr,
     const float* bias_float_ptr,
+    float* input_float_ptr,
+    float* output_float_ptr,
     float* skip_float_ptr,
     ptrdiff_t task_idx,
     int hidden_size,
@@ -120,18 +122,13 @@ void ComputeJob(
   float mean_square(0.0f);
   const size_t num_elems = static_cast<size_t>(hidden_size);
 
-  IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-  MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
+  MlasConvertHalfToFloatBuffer(p_input, input_float_ptr, num_elems);
 
   if (skip_data) {
     const MLFloat16* p_skip = skip_data + (offset % skip_size);
     MlasConvertHalfToFloatBuffer(p_skip, skip_float_ptr, num_elems);
   }
 
-  IAllocatorUniquePtr<float> output_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-  float* output_float_ptr = output_float_uptr.get();
-
-  const float* input_float_ptr = input_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
     float val = input_float_ptr[h] + skip_float_ptr[h];
 
@@ -234,12 +231,18 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
 
+  IAllocatorUniquePtr<float> input_fp32;
+  IAllocatorUniquePtr<float> output_fp32;
   IAllocatorUniquePtr<float> skip_fp32;
   IAllocatorUniquePtr<float> gamma_fp32;
   IAllocatorUniquePtr<float> beta_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
+
   if constexpr (std::is_same_v<T, MLFloat16>) {
     const size_t num_elems = static_cast<size_t>(hidden_size);
+
+    input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+    output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
 
     if (prepacked_skip_fp32_data_ == nullptr && skip_data) {
       skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
@@ -270,6 +273,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                      prepacked_gamma_fp32_data_ ? prepacked_gamma_fp32_data_.get() : gamma_fp32.get(),
                      prepacked_beta_fp32_data_ ? prepacked_beta_fp32_data_.get() : beta_fp32.get(),
                      prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
+                     input_fp32.get(), output_fp32.get(),
                      prepacked_skip_fp32_data_ ? prepacked_skip_fp32_data_.get() : skip_fp32.get(),
                      task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
                      skip_input_bias_add_output_data, alloc);
