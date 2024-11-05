@@ -10,10 +10,10 @@ def GenerateModel(model_name):  # noqa: N802
     initializers = []
     nodes = []
 
-    inputs.append(helper.make_tensor_value_info('inputA', TensorProto.FLOAT, [16, 32, 1280, 1280]))
-    inputs.append(helper.make_tensor_value_info('inputB', TensorProto.INT8, [1280, 1280]))
-    inputs.append(helper.make_tensor_value_info('inputBZP', TensorProto.INT8, [1]))
-    inputs.append(helper.make_tensor_value_info('inputBScale', TensorProto.FLOAT, [1]))
+    inputs.append(helper.make_tensor_value_info("inputA", TensorProto.FLOAT, [16, 32, 1280, 1280]))
+    inputs.append(helper.make_tensor_value_info("inputB", TensorProto.INT8, [1280, 1280]))
+    inputs.append(helper.make_tensor_value_info("inputBZP", TensorProto.INT8, [1]))
+    inputs.append(helper.make_tensor_value_info("inputBScale", TensorProto.FLOAT, [1]))
 
     nodes = [  # construct graph
         helper.make_node(
@@ -30,7 +30,7 @@ def GenerateModel(model_name):  # noqa: N802
         ),
         helper.make_node("Mul", ["a_scale", "inputBScale"], ["mul_1"], "mul_right"),
         helper.make_node("Cast", ["matmulinteger_output"], ["cast_output"], "cast", to=1),
-        helper.make_node("Mul", ["mul_1", "cast_output"], ['output'], "mul_bottom"),
+        helper.make_node("Mul", ["mul_1", "cast_output"], ["output"], "mul_bottom"),
     ]
 
     graph = helper.make_graph(
