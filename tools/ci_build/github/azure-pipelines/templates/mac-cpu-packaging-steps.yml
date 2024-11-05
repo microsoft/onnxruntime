@@ -37,13 +37,6 @@ parameters:
   default: ""
 
 steps:
-- task: UsePythonVersion@0
-  displayName: Use python 3.10
-  inputs:
-    versionSpec: "3.10"
-    addToPath: true
-    architecture: "x64"
-
 - template: mac-build-step-with-cache.yml
   parameters:
     WithCache: ${{ parameters.WithCache }}
