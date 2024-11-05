@@ -3110,237 +3110,233 @@ TEST(QDQTransformerTests, Clip) {
 //     MinLower  MinUpper
 //
 // Clip and Quant can be fused iff Clip Codomain is a subset of [MinUpper, MaxLower]
-template <typename T>
-struct ClipQuantFusionTestHelper {
-  bool should_fuse_;
-  float min_upper_;  // desired Q domain
-  float max_lower_;  // desired Q domain
+TEST(QDQTransformerTests, ClipQuantFusion) {
+  auto test_cases = [](auto quant_type_stub, float l, float r) {
+    using T = decltype(quant_type_stub);
 
-  float clip_min_;  // desired Clip codomain
-  float clip_max_;  // desired Clip codomain
+    // states, use underscore suffix as state for functor
+    bool should_fuse_;
+    float min_upper_;  // desired Q domain
+    float max_lower_;  // desired Q domain
 
-  std::pair<float, int32_t> GetScaleZp() {
-    // solve the following equation to get scale and zp for testing purpose
-    //  min_upper/scale - 0.5 + zp = q_codomain_min
-    //  max_lower/scale + 0.5 + zp = q_codomain_max
-    float q_codomain_min = std::numeric_limits<T>::lowest();
-    float q_codomain_max = std::numeric_limits<T>::max();
+    float clip_min_;  // desired Clip codomain
+    float clip_max_;  // desired Clip codomain
 
-    float scale = (max_lower_ - min_upper_) / (q_codomain_max - q_codomain_min - 1);
-    float zp = q_codomain_min + 0.5f - min_upper_ / scale;
-    return {scale, static_cast<int32_t>(zp)};
-  }
+    auto get_scale_zp = [&]() {
+      // solve the following equation to get scale and zp for testing purpose
+      //  min_upper/scale - 0.5 + zp = q_codomain_min
+      //  max_lower/scale + 0.5 + zp = q_codomain_max
+      float q_codomain_min = std::numeric_limits<T>::lowest();
+      float q_codomain_max = std::numeric_limits<T>::max();
 
-  void SetTestState(bool should_fuse, float desired_min_upper, float desired_max_lower,
-                    float clip_min_delta, float clip_max_delta) {
-    should_fuse_ = should_fuse;
-    min_upper_ = desired_min_upper;
-    max_lower_ = desired_max_lower;
+      float scale = (max_lower_ - min_upper_) / (q_codomain_max - q_codomain_min - 1);
+      float zp = q_codomain_min + 0.5f - min_upper_ / scale;
+      return std::pair<float, int32_t>{scale, static_cast<int32_t>(zp)};
+    };
 
-    // zp can be calculated to fp number then casted to integer.
-    // We use the true implementation to calibrate to true values
-    auto [scale, zp] = GetScaleZp();
-    min_upper_ = onnxruntime::QDQ::QuantizeDomain<T>::MinUpper(scale, zp);
-    max_lower_ = onnxruntime::QDQ::QuantizeDomain<T>::MaxLower(scale, zp);
-    // std::cout << "Desired min_upper:" << desired_min_upper << ", max_lower:" << desired_max_lower << std::endl;
-    // std::cout << "Calibrated min_upper:" << min_upper_ << ", max_lower:" << max_lower_ << std::endl;
+    auto set_test_state = [&](bool should_fuse, float desired_min_upper, float desired_max_lower,
+                              float clip_min_delta, float clip_max_delta) {
+      should_fuse_ = should_fuse;
+      min_upper_ = desired_min_upper;
+      max_lower_ = desired_max_lower;
 
-    clip_min_ = min_upper_ + clip_min_delta;
-    clip_max_ = max_lower_ + clip_max_delta;
-  }
+      // zp can be calculated to fp number then casted to integer.
+      // We use the true implementation to calibrate to true values
+      auto [scale, zp] = get_scale_zp();
+      min_upper_ = onnxruntime::QDQ::QuantizeDomain<T>::MinUpper(scale, zp);
+      max_lower_ = onnxruntime::QDQ::QuantizeDomain<T>::MaxLower(scale, zp);
+      // Uncomment to debug
+      // std::cout << "Desired min_upper:" << desired_min_upper << ", max_lower:" << desired_max_lower << std::endl;
+      // std::cout << "Calibrated min_upper:" << min_upper_ << ", max_lower:" << max_lower_ << std::endl;
 
-  std::vector<float> GetInputBuf() {
-    std::vector<float> input_buf;
-    input_buf.reserve(128);
+      clip_min_ = min_upper_ + clip_min_delta;
+      clip_max_ = max_lower_ + clip_max_delta;
+    };
 
-    input_buf.push_back(clip_min_ - 0.05f);
-    input_buf.push_back(clip_min_ - 0.001f);
-    input_buf.push_back(clip_min_ + 0.001f);
-    input_buf.push_back(clip_min_ + 0.05f);
+    auto get_input_buf = [&]() {
+      std::vector<float> input_buf;
+      input_buf.reserve(128);
 
-    input_buf.push_back(clip_max_ - 0.05f);
-    input_buf.push_back(clip_max_ - 0.001f);
-    input_buf.push_back(clip_max_ + 0.001f);
-    input_buf.push_back(clip_max_ + 0.05f);
+      input_buf.push_back(clip_min_ - 0.05f);
+      input_buf.push_back(clip_min_ - 0.001f);
+      input_buf.push_back(clip_min_ + 0.001f);
+      input_buf.push_back(clip_min_ + 0.05f);
 
-    float d = (clip_max_ - clip_min_ + 20.0f) / 100.0f;
-    float val = clip_min_ - 10.0f;
+      input_buf.push_back(clip_max_ - 0.05f);
+      input_buf.push_back(clip_max_ - 0.001f);
+      input_buf.push_back(clip_max_ + 0.001f);
+      input_buf.push_back(clip_max_ + 0.05f);
 
-    while (val < clip_max_ + 10.0f) {
-      input_buf.push_back(val);
-      val += d;
-    }
-    input_buf.push_back(val + d);
+      float d = (clip_max_ - clip_min_ + 20.0f) / 100.0f;
+      float val = clip_min_ - 10.0f;
 
-    return input_buf;
-  }
+      while (val < clip_max_ + 10.0f) {
+        input_buf.push_back(val);
+        val += d;
+      }
+      input_buf.push_back(val + d);
 
-  void TestCaseBuildFn(ModelTestBuilder& builder) {
-    auto input_buf = GetInputBuf();
-    NodeArg* input = builder.MakeInput<float>({static_cast<int64_t>(input_buf.size())}, input_buf);
-    NodeArg* zero = builder.MakeInput<float>({1}, {0.0f});
+      return input_buf;
+    };
 
-    // NOTE: emulate an Identity that cannot be optimized away. Because the optimizer does not play well with a
-    // removable node which immediately take the graph input as its node input.
-    auto* act_input = builder.MakeIntermediate();
-    builder.AddNode("Add", {input, zero}, {act_input});
+    auto build_graph = [&](ModelTestBuilder& builder) {
+      auto input_buf = get_input_buf();
+      NodeArg* input = builder.MakeInput<float>({static_cast<int64_t>(input_buf.size())}, input_buf);
+      NodeArg* zero = builder.MakeInput<float>({1}, {0.0f});
 
-    auto* act_output = builder.MakeIntermediate();
-    auto* clip_min_init = builder.MakeScalarInitializer(static_cast<float>(clip_min_));
-    auto* clip_max_init = builder.MakeScalarInitializer(static_cast<float>(clip_max_));
-    builder.AddNode("Clip", {act_input, clip_min_init, clip_max_init}, {act_output});
+      // NOTE: emulate an Identity that cannot be optimized away. Because the optimizer does not play well with a
+      // removable node which immediately take the graph input as its node input.
+      auto* act_input = builder.MakeIntermediate();
+      builder.AddNode("Add", {input, zero}, {act_input});
 
-    // Create QuantizeLinear node
-    auto [scale, zp] = GetScaleZp();
-    NodeArg* q_output = builder.MakeIntermediate();
-    NodeArg* output = builder.MakeOutput();
-    builder.AddQuantizeLinearNode<T>(act_output, scale, zp, q_output);
-    builder.AddDequantizeLinearNode<T>(q_output, 1.0f, 0, output);
-  }
+      auto* act_output = builder.MakeIntermediate();
+      auto* clip_min_init = builder.MakeScalarInitializer(static_cast<float>(clip_min_));
+      auto* clip_max_init = builder.MakeScalarInitializer(static_cast<float>(clip_max_));
+      builder.AddNode("Clip", {act_input, clip_min_init, clip_max_init}, {act_output});
 
-  void CheckGraph(InferenceSessionWrapper& session) {
-    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["Clip"], should_fuse_ ? 0 : 1);
-    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
-  }
+      // Create QuantizeLinear node
+      auto [scale, zp] = get_scale_zp();
+      NodeArg* q_output = builder.MakeIntermediate();
+      NodeArg* output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<T>(act_output, scale, zp, q_output);
+      builder.AddDequantizeLinearNode<T>(q_output, 1.0f, 0, output);
+    };
 
-  void operator()(float l, float r) {
-    constexpr float epsilon = std::numeric_limits<float>::epsilon();
-    auto build = [this](auto& builder) { this->TestCaseBuildFn(builder); };
-    auto check = [this](auto& session) { this->CheckGraph(session); };
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Clip"], should_fuse_ ? 0 : 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+    };
 
+    constexpr float eps = std::numeric_limits<float>::epsilon();
     const float small_delta = 0.01f;
     const float large_delta = 1.0f;
 
     // left, right large gap fit, fuse
-    SetTestState(true, l, r, -large_delta, large_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(true, l, r, -large_delta, large_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // left small gap fit, right large gap fit, fuse
-    SetTestState(true, l, r, -small_delta, large_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(true, l, r, -small_delta, large_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // left large gap fit, right small gap fit, fuse
-    SetTestState(true, l, r, -large_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(true, l, r, -large_delta, small_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // left, right small gap fit, fuse
-    SetTestState(true, l, r, -small_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(true, l, r, -small_delta, small_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // left large overflow, NO fuse
-    SetTestState(false, l, r, large_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(false, l, r, large_delta, small_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // left small overflow, NO fuse
-    SetTestState(false, l, r, small_delta, small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(false, l, r, small_delta, small_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // right large overflow, NO fuse
-    SetTestState(false, l, r, -small_delta, -large_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(false, l, r, -small_delta, -large_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // right small overflow, NO fuse
-    SetTestState(false, l, r, -small_delta, -small_delta);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
-  }
-};
+    set_test_state(false, l, r, -small_delta, -small_delta);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
+  };
 
-TEST(QDQTransformerTests, ClipQuantFusion) {
-  ClipQuantFusionTestHelper<int8_t>{}(-120.0f, 120.0f);
-  ClipQuantFusionTestHelper<uint8_t>{}(0.0f, 250.0f);
-  ClipQuantFusionTestHelper<int16_t>{}(-32700.0f, 32700.0f);
-  ClipQuantFusionTestHelper<uint16_t>{}(0.0f, 65500.0f);
+  test_cases(int8_t{}, -120.0f, 120.0f);
+  test_cases(uint8_t{}, 0.0f, 250.0f);
+  test_cases(int16_t{}, -32700.0f, 32700.0f);
+  test_cases(uint16_t{}, 0.0f, 65500.0f);
 }
 
-template <typename T>
-struct ReluQuantFusionTestHelper {
-  bool should_fuse_;
+TEST(QDQTransformerTests, ReluQuantFusion) {
+  auto test_cases = [](auto quant_type_stub) {
+    using T = decltype(quant_type_stub);
 
-  // relu codomain is [0, +inf), cannot be changed, control the zp directly, and set scale = 1.0
-  float zp_;
+    // states, use underscore suffix as state for functor
 
-  std::pair<float, int32_t> GetScaleZp() {
-    return {1.0f, zp_};
-  }
+    bool should_fuse_;
 
-  void SetTestState(bool should_fuse, T zp) {
-    should_fuse_ = should_fuse;
-    zp_ = zp;
-  }
+    // relu codomain is [0, +inf), cannot be changed, control the zp directly, and set scale = 1.0
+    float zp_;
 
-  std::vector<float> GetInputBuf() {
-    std::vector<float> input_buf;
-    input_buf.reserve(128);
+    auto get_scale_zp = [&]() {
+      return std::pair<float, int32_t>{1.0f, static_cast<int32_t>(zp_)};
+    };
 
-    input_buf.push_back(0.0f - 0.05f);
-    input_buf.push_back(0.0f - 0.001f);
-    input_buf.push_back(0.0f + 0.001f);
-    input_buf.push_back(0.0f + 0.05f);
+    auto set_test_state = [&](bool should_fuse, T zp) {
+      should_fuse_ = should_fuse;
+      zp_ = zp;
+    };
 
-    float d = 84.0f / 100.0f;
-    float val = -10.0f;
+    auto get_input_buf = []() {
+      std::vector<float> input_buf;
+      input_buf.reserve(128);
 
-    while (val < 74.0f) {
-      input_buf.push_back(val);
-      val += d;
-    }
-    input_buf.push_back(val + d);
+      input_buf.push_back(0.0f - 0.05f);
+      input_buf.push_back(0.0f - 0.001f);
+      input_buf.push_back(0.0f + 0.001f);
+      input_buf.push_back(0.0f + 0.05f);
 
-    return input_buf;
-  }
+      float d = 84.0f / 100.0f;
+      float val = -10.0f;
 
-  void TestCaseBuildFn(ModelTestBuilder& builder) {
-    auto input_buf = GetInputBuf();
-    NodeArg* input = builder.MakeInput<float>({static_cast<int64_t>(input_buf.size())}, input_buf);
-    NodeArg* zero = builder.MakeInput<float>({1}, {0.0f});
+      while (val < 74.0f) {
+        input_buf.push_back(val);
+        val += d;
+      }
+      input_buf.push_back(val + d);
 
-    // NOTE: emulate an Identity that cannot be optimized away. Because the optimizer does not play well with a
-    // removable node which immediately take the graph input as its node input.
-    auto* act_input = builder.MakeIntermediate();
-    builder.AddNode("Add", {input, zero}, {act_input});
+      return input_buf;
+    };
 
-    auto* act_output = builder.MakeIntermediate();
-    builder.AddNode("Relu", {act_input}, {act_output});
+    auto build_graph = [&](ModelTestBuilder& builder) {
+      auto input_buf = get_input_buf();
+      NodeArg* input = builder.MakeInput<float>({static_cast<int64_t>(input_buf.size())}, input_buf);
+      NodeArg* zero = builder.MakeInput<float>({1}, {0.0f});
 
-    // Create QuantizeLinear node
-    auto [scale, zp] = GetScaleZp();
-    NodeArg* q_output = builder.MakeIntermediate();
-    NodeArg* output = builder.MakeOutput();
-    builder.AddQuantizeLinearNode<T>(act_output, scale, zp, q_output);
-    builder.AddDequantizeLinearNode<T>(q_output, 1.0f, 0, output);
-  }
+      // NOTE: emulate an Identity that cannot be optimized away. Because the optimizer does not play well with a
+      // removable node which immediately take the graph input as its node input.
+      auto* act_input = builder.MakeIntermediate();
+      builder.AddNode("Add", {input, zero}, {act_input});
 
-  void CheckGraph(InferenceSessionWrapper& session) {
-    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["Relu"], should_fuse_ ? 0 : 1);
-    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
-  }
+      auto* act_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {act_input}, {act_output});
 
-  void operator()() {
-    constexpr float epsilon = std::numeric_limits<float>::epsilon();
-    auto build = [this](auto& builder) { this->TestCaseBuildFn(builder); };
-    auto check = [this](auto& session) { this->CheckGraph(session); };
+      // Create QuantizeLinear node
+      auto [scale, zp] = get_scale_zp();
+      NodeArg* q_output = builder.MakeIntermediate();
+      NodeArg* output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<T>(act_output, scale, zp, q_output);
+      builder.AddDequantizeLinearNode<T>(q_output, 1.0f, 0, output);
+    };
 
-    int zp_base = std::numeric_limits<T>::lowest();
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Relu"], should_fuse_ ? 0 : 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+    };
+
+    constexpr float eps = std::numeric_limits<float>::epsilon();
+    constexpr int zp_base = std::numeric_limits<T>::lowest();
 
     // min_upper>=0, fuse
-    SetTestState(true, zp_base);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
+    set_test_state(true, zp_base);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
 
     // min_upper<0, NO fuse
-    SetTestState(false, zp_base + 1);
-    TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level2, 21, epsilon, epsilon);
-  }
-};
+    set_test_state(false, zp_base + 1);
+    TransformerTester(build_graph, check_graph, TransformerLevel::Default, TransformerLevel::Level2, 21, eps, eps);
+  };
 
-TEST(QDQTransformerTests, ReluQuantFusion) {
-  ReluQuantFusionTestHelper<int8_t>{}();
-  ReluQuantFusionTestHelper<uint8_t>{}();
-  ReluQuantFusionTestHelper<int16_t>{}();
-  ReluQuantFusionTestHelper<uint16_t>{}();
+  test_cases(int8_t{});
+  test_cases(uint8_t{});
+  test_cases(int16_t{});
+  test_cases(uint16_t{});
 }
 
 // Test that the ReluQuantFusion transformer only runs for optimization level >= 2.
