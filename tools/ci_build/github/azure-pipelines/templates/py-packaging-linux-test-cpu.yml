@@ -29,13 +29,16 @@ parameters:
   default: 120
 
 jobs:
-- job: Linux_Test_CPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
+- job: Linux_Test1_CPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: ${{ parameters.machine_pool }}
+  pool:
+    name: ${{ parameters.machine_pool }}
+    demands:
+    - HoldMachine -equals true
   steps:
   - checkout: self
     clean: true
@@ -99,7 +102,8 @@ jobs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
       arguments: -d CPU -c ${{parameters.cmake_build_type}} -i onnxruntimecpubuildpython${{ parameters.arch }}
+    continueOnError: true
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+  - script: |
+      ps aux
+    condition: failed()
