@@ -103,7 +103,6 @@ void ComputeJob(
     const float* beta_float_ptr,
     const float* bias_float_ptr,
     float* skip_float_ptr,
-    bool should_convert_skip,
     ptrdiff_t task_idx,
     int hidden_size,
     int64_t skip_size,
@@ -114,7 +113,6 @@ void ComputeJob(
     AllocatorPtr alloc) {
   auto offset = task_idx * hidden_size;
   const MLFloat16* p_input = input_data + offset;
-  const MLFloat16* p_skip = skip_data + (offset % skip_size);
   MLFloat16* p_output = output_data + offset;
   MLFloat16* p_skip_input_bias_add_output = skip_input_bias_add_output_data == nullptr ? nullptr : skip_input_bias_add_output_data + offset;
 
@@ -125,7 +123,8 @@ void ComputeJob(
   IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
   MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
 
-  if (should_convert_skip) {
+  if (skip_data) {
+    const MLFloat16* p_skip = skip_data + (offset % skip_size);
     MlasConvertHalfToFloatBuffer(p_skip, skip_float_ptr, num_elems);
   }
 
@@ -239,14 +238,12 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   IAllocatorUniquePtr<float> gamma_fp32;
   IAllocatorUniquePtr<float> beta_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
-  bool should_convert_skip = false;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     const size_t num_elems = static_cast<size_t>(hidden_size);
 
     if (prepacked_skip_fp32_data_ == nullptr && skip_data) {
       skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-      should_convert_skip = true;
-      // skip data will be converted inside ComputeJob, because it needs to use the offset.
+      // skip data will be converted inside ComputeJob, because it needs to use an offset based on task_idx.
     }
 
     if (prepacked_gamma_fp32_data_ == nullptr && gamma_data) {
@@ -274,7 +271,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                      prepacked_beta_fp32_data_ ? prepacked_beta_fp32_data_.get() : beta_fp32.get(),
                      prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
                      prepacked_skip_fp32_data_ ? prepacked_skip_fp32_data_.get() : skip_fp32.get(),
-                     should_convert_skip, task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
+                     task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
                      skip_input_bias_add_output_data, alloc);
         } else {
           ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size,
