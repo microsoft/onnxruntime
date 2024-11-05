@@ -98,6 +98,7 @@ class SimpleTest {
 
                 else -> {
                     //  Non exhaustive when statements on enum will be prohibited in future Gradle versions
+                    Log.println(Log.INFO, TAG, "Skipping test as OrtProvider is not implemented")
                 }
             }
 
