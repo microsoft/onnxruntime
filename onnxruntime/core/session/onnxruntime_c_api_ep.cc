@@ -509,12 +509,14 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
   return nullptr;
 }
 
-/*
- * Construct an "EP Context" graph if the given ep_context_graph graph is empty,
- * otherwise add an "EP Context" node to the existing ep_context_graph graph.  
+/* Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise: 
+ *   1. if node doesn't exist, add an "EP Context" node to the existing ep_context_graph graph
+ *   2. if node already exists, update the node attributes
+ *
  */
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
+                    const char* node_name, 
                     const int64_t main_context,
                     const int64_t embed_mode,
                     const char* cache_path,
@@ -536,15 +538,17 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
                                               make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
                                               for the best model loading time";
 
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  ::onnxruntime::Graph* graph_build;
+
+  if (!graph_viewer && !(*ep_context_graph)) return nullptr;
+
   std::unordered_map<std::string, std::string> attr_keys_values;
   for (size_t i = 0; i < extra_attr_num; i++) {
     attr_keys_values[extra_attr_keys[i]] = extra_attr_values[i];
   }
 
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  ::onnxruntime::Graph* graph_build;
-
-  // Create a new model/graph or update the existing one 
+  // Create a new graph or use the existing one 
   if (*ep_context_graph == nullptr) {
     Model* model_build = new Model (graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
@@ -561,18 +565,39 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
 
   // Get graph inputs and outputs
   std::vector<onnxruntime::NodeArg*> inputs, outputs;
-  for (auto input : graph_viewer->GetInputs()) {
-    auto& n_input = graph_build->GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-    inputs.push_back(&n_input);
+  if (graph_viewer) {
+    for (auto input : graph_viewer->GetInputs()) {
+      auto& n_input = graph_build->GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+      inputs.push_back(&n_input);
+    }
+
+    for (auto output : graph_viewer->GetOutputs()) {
+      auto& n_output = graph_build->GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+      outputs.push_back(&n_output);
+    }
   }
 
-  for (auto output : graph_viewer->GetOutputs()) {
-    auto& n_output = graph_build->GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-    outputs.push_back(&n_output);
-  }
+  // locate specific node if any
+  auto get_node_index = [&](Graph* graph, const char* node_name) -> size_t {
+    std::string name = node_name;
+    for (auto& node : graph->Nodes()) {
+      if (name == node.Name()) {
+        return node.Index();
+      }
+    }
+    // return impossible value to indicate the node is not existed
+    return std::numeric_limits<size_t>::max();
+  };
+  size_t node_idx = get_node_index(graph_build, node_name);
+  bool node_existed = node_idx != std::numeric_limits<size_t>::max() ? true : false;
 
-  // Create EP context node attributes
-  std::unique_ptr<NodeAttributes> node_attributes = std::make_unique<NodeAttributes>();
+  // Create or get EP context node attributes
+  NodeAttributes node_attributes;
+  if (node_existed) { 
+    node_attributes = graph_build->GetNode(node_idx)->GetMutableAttributes();
+  } else {
+    node_attributes.reserve(3 + extra_attr_num);
+  }
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_0 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // main_context
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_1 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // embed_mode 
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_2 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // ep_cache_context 
@@ -603,10 +628,9 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
     attr_2->set_s(cache_path_str);
   }
 
-  node_attributes->reserve(3 + extra_attr_num);
-  node_attributes->emplace(MAIN_CONTEXT, *attr_0);
-  node_attributes->emplace(EMBED_MODE, *attr_1);
-  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_2);
+  node_attributes[MAIN_CONTEXT] = *attr_0;
+  node_attributes[EMBED_MODE] = *attr_1;
+  node_attributes[EP_CACHE_CONTEXT] = *attr_2;
 
   // other attributes
   std::unordered_map<std::string, std::string>::iterator it;
@@ -619,11 +643,14 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
     attr->set_name(key);
     attr->set_type(onnx::AttributeProto_AttributeType_STRING);
     attr->set_s(value);
-    node_attributes->emplace(key, *attr);
+    node_attributes[key] = *attr;
   }
 
-  // Create EP context node
-  graph_build->AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  if (!node_existed && graph_viewer) {
+    std::string name = node_name;
+    graph_build->AddNode(name, EPCONTEXT_OP, "", inputs, outputs, &node_attributes, EPCONTEXT_OP_DOMAIN);
+  }
+
   common::Status status = graph_build->Resolve();
   if (status != Status::OK()) return onnxruntime::ToOrtStatus(status);
 

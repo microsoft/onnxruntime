@@ -59,6 +59,7 @@ ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* o
 
 ORT_API_STATUS_IMPL(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
+                    const char* node_name, 
                     const int64_t main_context,
                     const int64_t embed_mode,
                     const char* cache_path,
