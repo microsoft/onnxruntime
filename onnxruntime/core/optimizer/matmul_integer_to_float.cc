@@ -6,7 +6,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-//#include <cstdint>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
