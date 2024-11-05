@@ -574,7 +574,8 @@ namespace DmlGraphFusionHelper
             IID_PPV_ARGS(&compiledExecutionPlanOperator)));
 
         // UINT32_MAX is currently the maximum number of bytes allowed by D3D12 for the offset of a view over a resource
-        if (compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize > UINT32_MAX)
+        if (compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize > UINT32_MAX//)
+             || compiledExecutionPlanOperator->GetBindingProperties().TemporaryResourceSize > UINT32_MAX)
         {
             return nullptr;
         }

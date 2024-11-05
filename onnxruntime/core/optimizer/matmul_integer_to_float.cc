@@ -6,6 +6,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
+//#include <cstdint>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -47,6 +48,49 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   }
 
   return data_type == actual_data_type;
+}
+
+// Return total mnumber of Elements.
+static uint64_t NumElements(const TensorShapeProto* tensor_shape) {
+  if (nullptr == tensor_shape || tensor_shape->dim_size() < 1) {
+    return 0;
+  }
+  uint64_t num_elements = 1;
+  // First N-1 dimension must equal to 1
+  for (int i = 0; i <= tensor_shape->dim_size() - 1; i++) {
+    num_elements *= tensor_shape->dim(i).dim_value();
+  }
+  return num_elements;
+}
+
+bool CheckMatMulLargeTensors(const Node& matmulinteger_node, const Node& cast_node) {
+  const auto a_def = matmulinteger_node.InputDefs()[0];
+  const auto b_def = matmulinteger_node.InputDefs()[1];
+  const int a_dim_size = a_def->Shape()->dim_size();
+  const int b_dim_size = b_def->Shape()->dim_size();
+  uint64_t inputA_bytes = NumElements(a_def->Shape());
+  uint64_t inputB_bytes = NumElements(b_def->Shape());
+
+  if (a_dim_size != b_dim_size) {
+    bool a_is_broadcasted = a_dim_size < b_dim_size;
+    if (a_is_broadcasted) {
+      for (int i = 0; i < b_dim_size - a_dim_size; i++) {
+        inputA_bytes *= b_def->Shape()->dim(i).dim_value();
+      }
+    } else {
+      for (int i = 0; i < a_dim_size - b_dim_size; i++) {
+        inputB_bytes *= a_def->Shape()->dim(i).dim_value();
+      }
+    }
+  }
+
+  int output_data_type = HasElementDataType(*cast_node.OutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) ? 2 : 4;
+  uint64_t total_bytes = (inputA_bytes + inputB_bytes) * output_data_type;
+
+  if (total_bytes > UINT32_MAX) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -120,7 +164,9 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     // For larger tensors DynamicQuantizeLinear -> MatMulInteger is used to be resource efficient
     // And we have better MatMulInteger Metacommand coverage in DML
     if (is_dml_ep && p_dynamicquantize_node) {
-      continue;
+      if (CheckMatMulLargeTensors(matmulinteger_node, cast_node)) {
+        continue;
+      }
     }
 
     // Find bias node
