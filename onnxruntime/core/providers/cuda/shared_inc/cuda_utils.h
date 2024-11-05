@@ -129,18 +129,18 @@ struct NumericLimits {
   }
 };
 
-#ifndef CUDART_MAX_NORMAL_FP16  // CUDA 12.3 or later has this macro
-#define CUDART_MAX_NORMAL_FP16 __ushort_as_half((unsigned short)0x7BFFU)
-#endif
-
 template <>
 struct NumericLimits<half> {
   __inline__ __host__ __device__ static half Lowest() {
-    return -CUDART_MAX_NORMAL_FP16;
+    return -65504.0f;
   }
 
   __inline__ __host__ __device__ static half Max() {
+#ifdef CUDART_MAX_NORMAL_FP16  // defined in cuda 12.3 or later
     return CUDART_MAX_NORMAL_FP16;
+#else
+    return 65504.0f;
+#endif
   }
 };
 
