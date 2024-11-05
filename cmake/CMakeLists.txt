@@ -129,6 +129,10 @@ option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
 cmake_dependent_option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB "Build dump debug information about node inputs and outputs with support for sql database." OFF "onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS" OFF)
+
+# When loading a delay loaded DLL, Windows searches the main EXE's folder first.
+# In a Python process, it searches where python.exe lives, but it doesn't search the python package's installation folder. Therefore we cannot enable this flag when Python is enabled.
+cmake_dependent_option(onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS "Delay load some of the dependent DLls that are part of the OS" ON "WIN32;NOT GDK_PLATFORM;NOT onnxruntime_ENABLE_PYTHON" OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
@@ -148,6 +152,7 @@ option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algor
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
+option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 
 # Options related to reducing the binary size produced by the build
 # XNNPACK EP requires the internal NHWC contrib ops to be available, so this option must be OFF when onnxruntime_USE_XNNPACK is ON
@@ -958,6 +963,9 @@ if (onnxruntime_USE_WEBGPU)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBGPU=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WEBGPU=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES webgpu)
+  if (onnxruntime_USE_EXTERNAL_DAWN)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_EXTERNAL_DAWN=1)
+  endif()
 endif()
 if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
@@ -1359,7 +1367,7 @@ endif()
 #Adjust warning flags
 set_msvc_c_cpp_compiler_warning_level(4)
 
-set(onnxruntime_DELAYLOAD_FLAGS "")
+set(onnxruntime_DELAYLOAD_FLAGS )
 
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
