@@ -184,11 +184,6 @@ public:
     
     bool CompareActivationName(std::string_view activationName, std::string_view attrValue)
     {
-        if (activationName.size() != attrValue.size()) 
-        {
-            return false;
-        }
-
         auto comparer = [](char a, char b) {return std::tolower(a) == std::tolower(b);};
         return std::equal(activationName.begin(), activationName.end(), attrValue.begin(), attrValue.end(), comparer);
     }
