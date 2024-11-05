@@ -29,18 +29,7 @@ pr:
 #### end trigger ####
 
 stages:
-- stage: arm64_build
-  dependsOn: []
-  jobs:
-  - template: templates/py-linux.yml
-    parameters:
-      arch: 'aarch64'
-      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      with_cache: true
-      cmake_build_type: Release
-
 - stage: arm64_test
-  dependsOn: ['arm64_build']
   jobs:
   - template: templates/py-packaging-linux-test-cpu.yml
     parameters:

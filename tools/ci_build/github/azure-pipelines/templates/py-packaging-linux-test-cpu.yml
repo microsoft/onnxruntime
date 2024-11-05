@@ -45,11 +45,19 @@ jobs:
     submodules: none
   # The public ADO project
   - ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
-    - download: current   # pipeline resource identifier.
-      artifact: 'drop-linux-cpu-${{ parameters.arch }}'
 
-    - download: current   # pipeline resource identifier.
-      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
+    steps:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: 'drop-linux-cpu-${{ parameters.arch }}'
+	buildType: specific
+	pipelineId: 1547802
+
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
+	buildType: specific
+	pipelineId: 1547802
 
     - bash: |
         set -e -x
@@ -102,8 +110,7 @@ jobs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
       arguments: -d CPU -c ${{parameters.cmake_build_type}} -i onnxruntimecpubuildpython${{ parameters.arch }}
-    continueOnError: true
 
   - script: |
       ps aux
-    condition: failed()
+    condition: succeededOrFailed()
