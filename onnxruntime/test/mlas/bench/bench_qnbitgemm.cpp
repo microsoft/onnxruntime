@@ -19,12 +19,12 @@
 
 template <typename AType, size_t BlkBitWidth>
 void RunQNBitGemmBenchmark(size_t BlkLen,
-                            size_t M, size_t N, size_t K,
-                            size_t Threads,
-                            bool Symmetric,
-                            bool HasBias,
-                            MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-                            benchmark::State& state) {
+                           size_t M, size_t N, size_t K,
+                           size_t Threads,
+                           bool Symmetric,
+                           bool HasBias,
+                           MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+                           benchmark::State& state) {
   if (!MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
     state.SkipWithMessage("QNBitGemm is not available with the given configuration on the current machine.");
     return;
@@ -153,8 +153,8 @@ void QNBITGEMM_ENV(benchmark::State& state) {
                                                                         static_cast<int32_t>(SQNBIT_CompFp32));
 
   RunQNBitGemmBenchmark<AType, BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
-                                             static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
-                                             state);
+                                            static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
+                                            state);
 
   std::ostringstream s;
   s << "BlkBitWidth:" << BlkBitWidth << "/BlkLen:" << BlkLen
