@@ -118,6 +118,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"CumSum", V_2022_1, {"CPU", "GPU"}},
     {"DepthToSpace", V_2020_4, {"CPU", "GPU"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
+    {"DequantizeLinear", V_2024_4, {"NPU"}},
     {"Div", V_2020_4, {"CPU", "GPU"}},
     {"Dropout", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2020_4, {"CPU", "GPU"}},
@@ -264,6 +265,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
   supported_types_initializer_.insert(
       std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
 
   supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
@@ -287,6 +292,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2024_3, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
   supported_types_npu_.insert(
       std::make_pair(V_2024_3, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ));
+  supported_types_npu_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
+  supported_types_npu_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
 
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
@@ -306,6 +315,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_cpu_.insert(
       std::make_pair(V_2022_2, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
 
   supported_types_gpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
@@ -321,6 +334,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
   supported_types_gpu_.insert(
       std::make_pair(V_2022_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
 }
 
 void DataOps::populate_op_mode_supported() {
