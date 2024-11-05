@@ -113,6 +113,7 @@ jobs:
 
   - task: Bash@3
     displayName: 'Bash Script'
+    timeoutInMinutes: 15
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
