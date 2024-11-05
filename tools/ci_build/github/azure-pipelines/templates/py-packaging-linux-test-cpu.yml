@@ -52,6 +52,7 @@ jobs:
         project: onnxruntime
         definition: 11
         pipelineId: 1547802
+        targetPath: '$(Pipeline.Workspace)/drop-linux-cpu-${{ parameters.arch }}'
 
     - task: DownloadPipelineArtifact@2
       inputs:
@@ -60,6 +61,7 @@ jobs:
         project: onnxruntime
         definition: 11
         pipelineId: 1547802
+        targetPath: '$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}'
 
     - bash: |
         set -e -x
