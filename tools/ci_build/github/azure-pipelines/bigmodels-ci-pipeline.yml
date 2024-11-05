@@ -190,6 +190,13 @@ stages:
         path: $(STABLE_DIFFUSION_MODEL_CACHE)
       displayName: Cache stable diffusion model
 
+    - task: UsePythonVersion@0
+      displayName: Use python 3.10
+      inputs:
+        versionSpec: "3.10"
+        addToPath: true
+        architecture: "x64"
+
     - script: |
         mkdir -p $(GenerateImage_DIR)
         docker run --rm --gpus all -v $PWD:/workspace \
