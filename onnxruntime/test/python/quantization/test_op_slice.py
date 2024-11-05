@@ -12,7 +12,12 @@ import unittest
 
 import numpy as np
 import onnx
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from op_test_utils import (
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    get_tensor_consumers_and_producers,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
@@ -124,27 +129,13 @@ class TestQDQSlice(unittest.TestCase):
                 check_model_correctness(self, float_model_path, qdq_model_path, data_reader.get_next())
 
                 qdq_model = onnx.load_model(qdq_model_path)
-                consumers = {}
-                producers = {}
-                slice_node = None
 
-                # Build dictionaries that map a tensor name to the consumer or producer nodes.
-                for node in qdq_model.graph.node:
-                    if node.op_type == "Slice":
-                        slice_node = node
-
-                    for input_name in node.input:
-                        if input_name:
-                            if input_name not in consumers:
-                                consumers[input_name] = []
-
-                            consumers[input_name].append(node)
-
-                    for output_name in node.output:
-                        producers[output_name] = node
-
+                slice_node = next((node for node in qdq_model.graph.node if node.op_type == "Slice"), None)
+                self.assertNotEqual(slice_node, None)
                 self.assertEqual(slice_node.op_type, "Slice")
 
+                # Get the parent and child nodes of the Slice and check that they are DQ/Q.
+                consumers, producers = get_tensor_consumers_and_producers(qdq_model)
                 input_dq_node = producers.get(slice_node.input[0], None)
                 self.assertNotEqual(input_dq_node, None)
                 self.assertEqual(input_dq_node.op_type, "DequantizeLinear")

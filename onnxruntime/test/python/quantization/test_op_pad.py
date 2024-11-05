@@ -14,7 +14,13 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import (
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+    get_tensor_consumers_and_producers,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
@@ -653,27 +659,12 @@ class TestQDQPad(unittest.TestCase):
                 if pad_mode == "constant" and constant_value in (None, 0):
                     quant_output_same_as_input = True
 
-                consumers = {}
-                producers = {}
-                pad_node = None
-
-                # Build dictionaries that map a tensor name to the consumer or producer nodes.
-                for node in qdq_model.graph.node:
-                    if node.op_type == "Pad":
-                        pad_node = node
-
-                    for input_name in node.input:
-                        if input_name:
-                            if input_name not in consumers:
-                                consumers[input_name] = []
-
-                            consumers[input_name].append(node)
-
-                    for output_name in node.output:
-                        producers[output_name] = node
-
+                pad_node = next((node for node in qdq_model.graph.node if node.op_type == "Pad"), None)
+                self.assertNotEqual(pad_node, None)
                 self.assertEqual(pad_node.op_type, "Pad")
 
+                # Get the parent and child nodes of the Pad and check that they are DQ/Q.
+                consumers, producers = get_tensor_consumers_and_producers(qdq_model)
                 input_dq_node = producers.get(pad_node.input[0], None)
                 self.assertNotEqual(input_dq_node, None)
                 self.assertEqual(input_dq_node.op_type, "DequantizeLinear")
