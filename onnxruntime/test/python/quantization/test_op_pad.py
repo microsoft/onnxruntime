@@ -540,9 +540,10 @@ class TestQDQPad(unittest.TestCase):
         mode: str,
         constant_value: float | None = None,
         opset: int = 21,
+        float_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT,
     ) -> onnx.ModelProto:
-        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (3, 2))
-        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (3, 4))
+        input_0 = onnx.helper.make_tensor_value_info("input_0", float_type, (3, 2))
+        output_0 = onnx.helper.make_tensor_value_info("output_0", float_type, (3, 4))
 
         initializers = []
         pad_input_names = ["input_0"]
@@ -557,9 +558,7 @@ class TestQDQPad(unittest.TestCase):
 
         if mode == "constant" and constant_value is not None:
             if opset >= 11:
-                initializers.append(
-                    onnx.helper.make_tensor("constant_value", onnx.TensorProto.FLOAT, [], [constant_value])
-                )
+                initializers.append(onnx.helper.make_tensor("constant_value", float_type, [], [constant_value]))
                 pad_input_names.append("constant_value")
             else:
                 attrs["value"] = float(constant_value)
@@ -585,33 +584,41 @@ class TestQDQPad(unittest.TestCase):
         """
         test_configs = [
             # Opset 21
-            ("constant", None, 21),
-            ("constant", 0, 21),
-            ("constant", 10.0, 21),
-            ("reflect", None, 21),
-            ("edge", None, 21),
-            ("wrap", None, 21),
+            ("constant", None, 21, onnx.TensorProto.FLOAT),
+            ("constant", None, 21, onnx.TensorProto.FLOAT16),
+            ("constant", 0, 21, onnx.TensorProto.FLOAT),
+            ("constant", 0, 21, onnx.TensorProto.FLOAT16),
+            ("constant", 10.0, 21, onnx.TensorProto.FLOAT),
+            ("constant", 10.0, 21, onnx.TensorProto.FLOAT16),
+            ("reflect", None, 21, onnx.TensorProto.FLOAT),
+            ("reflect", None, 21, onnx.TensorProto.FLOAT16),
+            ("edge", None, 21, onnx.TensorProto.FLOAT),
+            ("edge", None, 21, onnx.TensorProto.FLOAT16),
+            ("wrap", None, 21, onnx.TensorProto.FLOAT),
+            ("wrap", None, 21, onnx.TensorProto.FLOAT16),
             # Model with opset 10 will use pad of opset 2, which uses attributes instead of inputs.
-            ("constant", None, 10),
-            ("constant", 0, 10),
-            ("constant", 10.0, 10),
-            ("reflect", None, 10),
-            ("edge", None, 10),
+            # Opset 10 Q/DQ ops don't support float16.
+            ("constant", None, 10, onnx.TensorProto.FLOAT),
+            ("constant", 0, 10, onnx.TensorProto.FLOAT),
+            ("constant", 10.0, 10, onnx.TensorProto.FLOAT),
+            ("reflect", None, 10, onnx.TensorProto.FLOAT),
+            ("edge", None, 10, onnx.TensorProto.FLOAT),
         ]
 
-        for pad_mode, constant_value, opset in test_configs:
-            with self.subTest(pad_mode=pad_mode, constant_value=constant_value, opset=opset):
+        for pad_mode, constant_value, opset, float_type in test_configs:
+            with self.subTest(pad_mode=pad_mode, constant_value=constant_value, opset=opset, float_type=float_type):
                 label = f"_{pad_mode}_{constant_value}"
                 float_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.float.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.qdq.onnx")
 
-                float_model = self.build_pad_model(pad_mode, constant_value, opset=opset)
+                float_model = self.build_pad_model(pad_mode, constant_value, opset=opset, float_type=float_type)
                 onnx.save_model(float_model, float_model_path)
 
                 # Create a data reader
+                np_dtype = onnx.helper.tensor_dtype_to_np_dtype(float_type)
                 input_data_list = [
-                    {"input_0": np.array([[1.0, 1.2], [2.3, 3.4], [4.5, 5.7]], dtype=np.float32)},
-                    {"input_0": np.array([[2.3, 3.4], [4.5, 5.7], [1.0, 1.2]], dtype=np.float32)},
+                    {"input_0": np.array([[1.0, 1.2], [2.3, 3.4], [4.5, 5.7]], dtype=np_dtype)},
+                    {"input_0": np.array([[2.3, 3.4], [4.5, 5.7], [1.0, 1.2]], dtype=np_dtype)},
                 ]
                 data_reader = TestDataFeeds(input_data_list)
 
