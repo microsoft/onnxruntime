@@ -735,8 +735,12 @@ InferenceSession::~InferenceSession() {
   // Unregister the session and ETW callbacks
 #ifdef _WIN32
   std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-  WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
-  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
+  if (callback_ML_ORT_provider_ != nullptr) {
+    WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
+  }
+  if (callback_ETWSink_provider_ != nullptr) {
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
+  }
 #endif
   active_sessions_.erase(session_id_);
 

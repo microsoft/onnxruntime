@@ -88,11 +88,15 @@ Status ModelBuilder::RegisterInitializers() {
   for (const auto& pair : GetInitializerTensors()) {
     const auto& tensor = *pair.second;
     const auto& name = tensor.name();
-    // Optional tensors can be indicated by an empty name, just ignore it.
-    if (name.empty() || Contains(skipped_initializers_, name))
+    const auto& shape = tensor.dims();
+
+    // Ignore the following tensors:
+    // 1. Empty tensors: optional tensors can be indicated by an empty name.
+    // 2. Tensors in skipped_initializers_: These are tensors that are not used as WebNN Constants.
+    //    Note: Scalar tensors are excluded because ONNX Runtime will optimize same scalar initializers into one.
+    if (name.empty() || (Contains(skipped_initializers_, name) && !shape.empty()))
       continue;
 
-    const auto& shape = tensor.dims();
     std::vector<int32_t> dims;
     // When the shape is empty, it is scalar initializer that dims = {};
     std::transform(shape.cbegin(), shape.cend(),
