@@ -59,12 +59,14 @@ ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* o
 
 ORT_API_STATUS_IMPL(OrtGraph_GetEpContextGraph,
                     const OrtGraphViewer* graph,
+                    const int64_t main_context,
+                    const int64_t embed_mode,
                     const char* cache_path,
                     char* cache_data,
                     size_t size,
-                    const int64_t embed_mode,
-                    const char* compute_capability,
-                    const char* onnx_model_path,
+                    const char* const* extra_attr_keys,
+                    const char* const* extra_attr_values,
+                    size_t extra_attr_num,
                     _Outptr_ OrtGraph** ep_context_graph); 
 
 ORT_API_STATUS_IMPL(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph);

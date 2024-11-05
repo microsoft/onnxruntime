@@ -480,52 +480,66 @@ static void SetAllGraphInputs(Graph& graph, std::unordered_map<std::string, std:
   graph.SetInputs(graph_inputs_including_initializers);
 }
 
+/*
+ * Given a graph, get the corresponding model and serialize it to disk.
+ */
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
-                    const OrtGraph* ort_graph,
+                    const OrtGraph* graph,
                     const char* onnx_model_path) {
-  //const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  //auto model = &(graph_viewer->GetGraph()).GetModel();
-  const ::onnxruntime::Graph* graph = reinterpret_cast<const ::onnxruntime::Graph*>(ort_graph);
-  auto model = &(graph->GetModel());
+  const ::onnxruntime::Graph* internal_graph = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
+  auto model = &(internal_graph->GetModel());
 
   // Two options to generate model proto:
-  //   1. model->ToProto()
+  //   1. directly call model->ToProto()
   //   2. new model ---> model->ToProto ---> update graph proto in model proto with GraphViewerToProto() 
   //
-  //auto model_proto = model->ToProto();
-  //graph->ToProto(*model_proto->mutable_graph(), true, true);
-  //model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  // TODO: (Chi) Need more thinking on which to choose 
 
   // option 1
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
 
+  // option 2
+  //auto model_proto = model->ToProto();
+  //graph->ToProto(*model_proto->mutable_graph(), true, true);
+  //model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
   std::fstream dump(onnx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(&dump);
   //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
-  std::cout << "dump model to " << onnx_model_path;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
+/*
+ * Construct an "EP Context" graph if the given ep_context_graph graph is empty,
+ * otherwise add an "EP Context" node to the existing ep_context_graph graph.  
+ */
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
+                    const int64_t main_context,
+                    const int64_t embed_mode,
                     const char* cache_path,
                     char* cache_data,
                     size_t size,
-                    const int64_t embed_mode,
-                    const char* compute_capability,
-                    const char* onnx_model_path,
+                    const char* const* extra_attr_keys,
+                    const char* const* extra_attr_values,
+                    size_t extra_attr_num,
                     _Outptr_ OrtGraph** ep_context_graph) {
 
-  static const std::string EPCONTEXT_OP = "EPContext";
-  static const std::string EMBED_MODE = "embed_mode";
-  static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
-  static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
-  static const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
-  static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
-  static const std::string EPCONTEXT_WARNING =
+  const std::string EPCONTEXT_OP = "EPContext";
+  const std::string MAIN_CONTEXT = "main_context";
+  const std::string EMBED_MODE = "embed_mode";
+  const std::string EP_CACHE_CONTEXT = "ep_cache_context";
+  const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
+  const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
+  const std::string EPCONTEXT_WARNING =
     "It's suggested to set the ORT graph optimization level to 0 and  \
                                               make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
                                               for the best model loading time";
+
+  std::unordered_map<std::string, std::string> attr_keys_values;
+  for (size_t i = 0; i < extra_attr_num; i++) {
+    attr_keys_values[extra_attr_keys[i]] = extra_attr_values[i];
+  }
 
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   ::onnxruntime::Graph* graph_build;
@@ -558,61 +572,61 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
   }
 
   // Create EP context node attributes
-  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_0 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // embed_mode
-  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_1 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // ep_cache_context
-  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_2 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // hardware_architecture
-  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_3 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // onnx_model_filename
+  std::unique_ptr<NodeAttributes> node_attributes = std::make_unique<NodeAttributes>();
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_0 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // main_context
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_1 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // embed_mode 
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_2 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // ep_cache_context 
 
   std::string cache_data_str = "";
   std::string cache_path_str = cache_path;
-  std::string compute_capability_str = compute_capability;
-  std::string onnx_model_path_str = onnx_model_path;
 
-  attr_0->set_name(EMBED_MODE);
+  // main_context
+  attr_0->set_name(MAIN_CONTEXT);
   attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
-  attr_0->set_i(embed_mode);
-  attr_1->set_name(EP_CACHE_CONTEXT);
-  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_0->set_i(main_context);
+
+  // embed_mode 
+  attr_1->set_name(EMBED_MODE);
+  attr_1->set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_1->set_i(embed_mode);
+
+  // ep_cache_context
+  attr_2->set_name(EP_CACHE_CONTEXT);
+  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
   if (embed_mode) {
     if (size > 0) {
       cache_data_str.assign(cache_data, size);
     }
-    attr_1->set_s(cache_data_str);
-    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
+    attr_2->set_s(cache_data_str);
+    //LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
   } else {
-    attr_1->set_s(cache_path_str);
+    attr_2->set_s(cache_path_str);
   }
-  attr_2->set_name(COMPUTE_CAPABILITY);
-  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_2->set_s(compute_capability_str);
-  attr_3->set_name(ONNX_MODEL_FILENAME);
-  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(std::filesystem::path(onnx_model_path_str).filename().string());
 
-  std::unique_ptr<NodeAttributes> node_attributes = std::make_unique<NodeAttributes>();
-  constexpr int num_attributes = 4;
-  node_attributes->reserve(num_attributes);
-  node_attributes->emplace(EMBED_MODE, *attr_0);
-  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
-  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
-  node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
+  node_attributes->reserve(3 + extra_attr_num);
+  node_attributes->emplace(MAIN_CONTEXT, *attr_0);
+  node_attributes->emplace(EMBED_MODE, *attr_1);
+  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_2);
+
+  // other attributes
+  std::unordered_map<std::string, std::string>::iterator it;
+  for (it = attr_keys_values.begin(); it != attr_keys_values.end(); ++it) {
+    std::string key = it->first;
+    std::string value = it->second;
+    if (key == ONNX_MODEL_FILENAME) value = std::filesystem::path(value).filename().string(); 
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
+    attr->set_name(key);
+    attr->set_type(onnx::AttributeProto_AttributeType_STRING);
+    attr->set_s(value);
+    node_attributes->emplace(key, *attr);
+  }
 
   // Create EP context node
   graph_build->AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
   common::Status status = graph_build->Resolve();
   if (status != Status::OK()) return onnxruntime::ToOrtStatus(status);
 
-  // Serialize modelproto to string
-  //auto new_graph_viewer = graph_build.CreateGraphViewer();
-  //auto model = new_graph_viewer->CreateModel(*logger);
-  //auto model_proto = model->ToProto();
-  //new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
-  //model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  //return model_proto.release();
-
-  //auto ep_context_graph_viewer = std::make_unique<GraphViewer>(graph_build);
-  //*ep_context_graph = reinterpret_cast<const OrtGraphViewer*>(ep_context_graph_viewer.release());
   return nullptr;
 }
 
