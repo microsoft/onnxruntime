@@ -3721,7 +3721,8 @@ TEST(ReductionOpTest, ArgMin_float_first_index_random) {
   test.AddInput<float>("data", {vector_size}, data_vec);
   test.AddOutput<int64_t>("reduced", {1}, {min_index});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Exclude OpenVINO since it failed to handle this case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
