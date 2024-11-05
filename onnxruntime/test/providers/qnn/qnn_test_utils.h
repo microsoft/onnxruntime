@@ -528,7 +528,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                                  logging::Severity log_severity = logging::Severity::kERROR,
                                  const std::string& qnn_ctx_model_path = "",
                                  const std::unordered_map<std::string, std::string>& session_option_pairs = {},
-                                 std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
+                                 std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr,
+                                 const std::vector<QuantParams<QuantType>>& precomputed_output_qparams = {}) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -561,6 +562,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
   const size_t num_outputs = cpu_f32_outputs.size();
 
+  ASSERT_TRUE(precomputed_output_qparams.size() == 0 || precomputed_output_qparams.size() == num_outputs);
+
   // Compute output range(s) and quantization params.
   std::vector<QuantParams<QuantType>> output_qparams;
   std::vector<gsl::span<const float>> output_vals;
@@ -575,7 +578,11 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       output_vals[i] = tensor.DataAsSpan<float>();
-      output_qparams[i] = GetDataQuantParams<QuantType>(output_vals[i]);
+      if (precomputed_output_qparams.empty()) {
+        output_qparams[i] = GetDataQuantParams<QuantType>(output_vals[i]);
+      } else {
+        output_qparams[i] = precomputed_output_qparams[i];
+      }
     }
 
     output_types[i] = elem_type;

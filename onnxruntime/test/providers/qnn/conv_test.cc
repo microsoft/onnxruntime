@@ -7,6 +7,7 @@
 #include <string>
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -346,7 +347,9 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                        bool use_contrib_qdq = false,
                                        int opset = 13,
                                        QDQTolerance tolerance = QDQTolerance(),
-                                       std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+                                       std::optional<OutputActivationInfo> output_activation = std::nullopt,
+                                       const std::vector<QuantParams<ActivationQType>>&
+                                           precomputed_output_qparams = {}) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -361,7 +364,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                                                              bias_def, weight_quant_axis, strides,
                                                                              pads, dilations, group, auto_pad,
                                                                              use_contrib_qdq, output_activation);
-  TestQDQModelAccuracy(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance);
+  TestQDQModelAccuracy(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance,
+                       logging::Severity::kERROR, "", {}, nullptr, precomputed_output_qparams);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -1022,6 +1026,115 @@ TEST_F(QnnHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
                                              21,     // opset
                                              QDQTolerance(),
                                              clip_info);
+}
+
+TEST_F(QnnHTPBackendTests, ClipQuantFusion) {
+  auto get_input_buf = [](float min_upper, float max_lower){
+    std::vector<float> input_buf;
+    input_buf.reserve(128);
+
+    input_buf.push_back(min_upper - 0.05f);
+    input_buf.push_back(min_upper - 0.001f);
+    input_buf.push_back(min_upper + 0.001f);
+    input_buf.push_back(min_upper + 0.05f);
+
+    input_buf.push_back(max_lower - 0.05f);
+    input_buf.push_back(max_lower - 0.001f);
+    input_buf.push_back(max_lower + 0.001f);
+    input_buf.push_back(max_lower + 0.05f);
+
+    float d = (max_lower - min_upper + 2.0f) / 100.0f;
+    float val = min_upper - 1.0f;
+
+    while (val < max_lower + 1.0f) {
+      input_buf.push_back(val);
+      val += d;
+    }
+    input_buf.push_back(val + d);
+    return input_buf;
+  };
+
+  // Replicate QDQTransformerTests.ClipQuantFusion
+  auto test_cases = [&](auto quant_type_stub, float min_upper, float max_lower, QDQTolerance qdq_tolerance) {
+    using T = decltype(quant_type_stub);
+
+    // create input buffer and then pad it for 2d conv input
+    auto input_buf = get_input_buf(min_upper, max_lower);
+    input_buf.resize(((input_buf.size() - 1) / 16 + 1) * 16, 0.0f);
+
+    // Construct 1x1 conv with trival identity mapping
+    std::vector<int64_t> input_shape = {1, 1, static_cast<int64_t>(input_buf.size()) / 16, 16};
+    std::vector<int64_t> weight_shape = {1, 1, 1, 1};
+    std::vector<int64_t> bias_shape = {1};
+    TestInputDef<float> input_def(input_shape, false, input_buf);
+    TestInputDef<float> weight_def(weight_shape, true, std::vector<float>{1.0f});
+    TestInputDef<float> bias_def(bias_shape, true, std::vector<float>{0.0f});
+
+    std::vector<QuantParams<T>> precomputed_output_qparams = {
+        GetDataQuantParams<T>(std::vector<float>{min_upper, max_lower})};
+
+    // relaxed compared to QDQTransformerTests.ClipQuantFusion
+    const float small_delta = 0.05f;
+    const float large_delta = 1.0f;
+
+    OutputActivationInfo clip_info;
+
+    auto run_single_test_case = [&](bool should_fused) {
+      RunHTPConvOpPerChannelTest<int8_t, int8_t>("Conv",
+                                                 input_def,
+                                                 weight_def,
+                                                 bias_def,
+                                                 0,             // weight quant axis
+                                                 {1, 1},        // Strides
+                                                 {0, 0, 0, 0},  // Pads
+                                                 {1, 1},        // Dilations
+                                                 1,             // default group
+                                                 "NOTSET",
+                                                 should_fused ? ExpectedEPNodeAssignment::All
+                                                              : ExpectedEPNodeAssignment::Some,
+                                                 false,  // use_qdq_contrib_ops
+                                                 21,     // opset
+                                                 qdq_tolerance,
+                                                 clip_info);
+    };
+
+    // left, right large gap fit, fuse
+    clip_info = {"Clip", {min_upper - large_delta, max_lower + large_delta}};
+    run_single_test_case(true);
+
+    // left small gap fit, right large gap fit, fuse
+    clip_info = {"Clip", {min_upper - small_delta, max_lower + large_delta}};
+    run_single_test_case(true);
+
+    // left large gap fit, right small gap fit, fuse
+    clip_info = {"Clip", {min_upper - large_delta, max_lower + small_delta}};
+    run_single_test_case(true);
+
+    // left, right small gap fit, fuse
+    clip_info = {"Clip", {min_upper - small_delta, max_lower + small_delta}};
+    run_single_test_case(true);
+
+    // left large overflow, NO fuse
+    clip_info = {"Clip", {min_upper + large_delta, max_lower + large_delta}};
+    run_single_test_case(false);
+
+    // left small overflow, NO fuse
+    clip_info = {"Clip", {min_upper + small_delta, max_lower + large_delta}};
+    run_single_test_case(false);
+
+    // right large overflow, NO fuse
+    clip_info = {"Clip", {min_upper - large_delta, max_lower - large_delta}};
+    run_single_test_case(false);
+
+    // right small overflow, NO fuse
+    clip_info = {"Clip", {min_upper - large_delta, max_lower - small_delta}};
+    run_single_test_case(false);
+  };
+
+  test_cases(int8_t{}, -120.0f, 120.0f, QDQTolerance(0.0076f));
+  test_cases(uint8_t{}, 0.0f, 240.0f, QDQTolerance(0.0076f));
+  test_cases(int16_t{}, -32700.0f, 32700.0f, QDQTolerance());
+  test_cases(uint16_t{}, 0.0f, 65500.0f, QDQTolerance());
 }
 
 // Test per-channel QDQ Conv with INT4 weights and a negative weight quantization axis that still points to dimension 0.
