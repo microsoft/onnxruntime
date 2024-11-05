@@ -57,7 +57,7 @@ ORT_API_STATUS_IMPL(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out
 
 ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
 
-ORT_API_STATUS_IMPL(OrtGraph_GetEpContextGraph,
+ORT_API_STATUS_IMPL(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
                     const int64_t main_context,
                     const int64_t embed_mode,

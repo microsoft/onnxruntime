@@ -978,7 +978,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_ReleaseValueInfo,
     &OrtGraphApis::OrtGraph_SerializeToArray,
     &OrtGraphApis::OrtGraph_DumpOnnxModel,
-    &OrtGraphApis::OrtGraph_GetEpContextGraph,
+    &OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
     &OrtGraphApis::OrtGraph_GetSubGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraphViewer,
