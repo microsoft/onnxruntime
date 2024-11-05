@@ -49,6 +49,7 @@ jobs:
       inputs:
         artifact: 'drop-linux-cpu-${{ parameters.arch }}'
         buildType: specific
+        buildVersionToDownload: specific
         project: onnxruntime
         definition: 11
         pipelineId: 1547802
@@ -58,6 +59,7 @@ jobs:
       inputs:
         artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
         buildType: specific
+        buildVersionToDownload: specific
         project: onnxruntime
         definition: 11
         pipelineId: 1547802
