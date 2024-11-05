@@ -249,10 +249,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     gpuBufferForUploading.unmap();
 
     // GPU copy
-    const commandEncoder = this.backend.getCommandEncoder();
-    this.backend.endComputePass();
+    const commandEncoder = this.backend.device.createCommandEncoder();
     commandEncoder.copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
-
     this.backend.device.queue.submit([commandEncoder.finish()]);
     gpuBufferForUploading.destroy();
 
