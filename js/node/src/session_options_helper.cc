@@ -6,14 +6,19 @@
 
 #include <cmath>
 #include <unordered_map>
+#include <filesystem>
 
 #include "common.h"
 #include "session_options_helper.h"
+#include "tensor_helper.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#endif
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -36,7 +41,12 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
     Napi::Value epValue = epList[i];
     std::string name;
     int deviceId = 0;
+#ifdef USE_COREML
     int coreMlFlags = 0;
+#endif
+#ifdef USE_WEBGPU
+    std::unordered_map<std::string, std::string> webgpu_options;
+#endif
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
     } else if (!epValue.IsObject() || epValue.IsNull() || !epValue.As<Napi::Object>().Has("name") ||
@@ -49,9 +59,23 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       if (obj.Has("deviceId")) {
         deviceId = obj.Get("deviceId").As<Napi::Number>();
       }
+#ifdef USE_COREML
       if (obj.Has("coreMlFlags")) {
         coreMlFlags = obj.Get("coreMlFlags").As<Napi::Number>();
       }
+#endif
+#ifdef USE_WEBGPU
+      for (const auto& nameIter : obj.GetPropertyNames()) {
+        Napi::Value nameVar = nameIter.second;
+        std::string name = nameVar.As<Napi::String>().Utf8Value();
+        if (name != "name") {
+          Napi::Value valueVar = obj.Get(nameVar);
+          ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
+          std::string value = valueVar.As<Napi::String>().Utf8Value();
+          webgpu_options[name] = value;
+        }
+      }
+#endif
     }
 
     // CPU execution provider
@@ -77,6 +101,10 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
     } else if (name == "dml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sessionOptions, deviceId));
 #endif
+#ifdef USE_WEBGPU
+    } else if (name == "webgpu") {
+      sessionOptions.AppendExecutionProvider("WebGPU", webgpu_options);
+#endif
 #ifdef USE_COREML
     } else if (name == "coreml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreMlFlags));
@@ -91,6 +119,22 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
                            "] is unsupported: '", name, "'.");
+    }
+  }
+}
+
+void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort::SessionOptions& sessionOptions) {
+  for (const auto& kvp : obj) {
+    auto key = kvp.first.As<Napi::String>().Utf8Value();
+    Napi::Value value = kvp.second;
+    if (value.IsObject()) {
+      IterateExtraOptions(prefix + key + ".", value.As<Napi::Object>(), sessionOptions);
+    } else {
+      ORT_NAPI_THROW_TYPEERROR_IF(!value.IsString(), obj.Env(),
+                                  "Invalid argument: sessionOptions.extra value must be a string in Node.js binding.");
+      std::string entry = prefix + key;
+      auto val = value.As<Napi::String>().Utf8Value();
+      sessionOptions.AddConfigEntry(entry.c_str(), val.c_str());
     }
   }
 }
@@ -162,6 +206,28 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
     }
   }
 
+  // optimizedModelFilePath
+  if (options.Has("optimizedModelFilePath")) {
+    auto optimizedModelFilePathValue = options.Get("optimizedModelFilePath");
+    ORT_NAPI_THROW_TYPEERROR_IF(!optimizedModelFilePathValue.IsString(), options.Env(),
+                                "Invalid argument: sessionOptions.optimizedModelFilePath must be a string.");
+#ifdef _WIN32
+    auto str = optimizedModelFilePathValue.As<Napi::String>().Utf16Value();
+    std::filesystem::path optimizedModelFilePath{std::wstring{str.begin(), str.end()}};
+#else
+    std::filesystem::path optimizedModelFilePath{optimizedModelFilePathValue.As<Napi::String>().Utf8Value()};
+#endif
+    sessionOptions.SetOptimizedModelFilePath(optimizedModelFilePath.c_str());
+  }
+
+  // extra
+  if (options.Has("extra")) {
+    auto extraValue = options.Get("extra");
+    ORT_NAPI_THROW_TYPEERROR_IF(!extraValue.IsObject(), options.Env(),
+                                "Invalid argument: sessionOptions.extra must be an object.");
+    IterateExtraOptions("", extraValue.As<Napi::Object>(), sessionOptions);
+  }
+
   // execution mode
   if (options.Has("executionMode")) {
     auto executionModeValue = options.Get("executionMode");
@@ -194,5 +260,119 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
         "Invalid argument: sessionOptions.logSeverityLevel must be one of the following: 0, 1, 2, 3, 4.");
 
     sessionOptions.SetLogSeverityLevel(static_cast<int>(logLevelNumber));
+  }
+
+  // Profiling
+  if (options.Has("enableProfiling")) {
+    auto enableProfilingValue = options.Get("enableProfiling");
+    ORT_NAPI_THROW_TYPEERROR_IF(!enableProfilingValue.IsBoolean(), options.Env(),
+                                "Invalid argument: sessionOptions.enableProfiling must be a boolean value.");
+
+    if (enableProfilingValue.As<Napi::Boolean>().Value()) {
+      ORT_NAPI_THROW_TYPEERROR_IF(!options.Has("profileFilePrefix"), options.Env(),
+                                  "Invalid argument: sessionOptions.profileFilePrefix is required"
+                                  " when sessionOptions.enableProfiling is set to true.");
+      auto profileFilePrefixValue = options.Get("profileFilePrefix");
+      ORT_NAPI_THROW_TYPEERROR_IF(!profileFilePrefixValue.IsString(), options.Env(),
+                                  "Invalid argument: sessionOptions.profileFilePrefix must be a string."
+                                  " when sessionOptions.enableProfiling is set to true.");
+#ifdef _WIN32
+      auto str = profileFilePrefixValue.As<Napi::String>().Utf16Value();
+      std::basic_string<ORTCHAR_T> profileFilePrefix = std::wstring{str.begin(), str.end()};
+#else
+      std::basic_string<ORTCHAR_T> profileFilePrefix = profileFilePrefixValue.As<Napi::String>().Utf8Value();
+#endif
+      sessionOptions.EnableProfiling(profileFilePrefix.c_str());
+    } else {
+      sessionOptions.DisableProfiling();
+    }
+  }
+
+  // external data
+  if (options.Has("externalData")) {
+    auto externalDataValue = options.Get("externalData");
+    ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
+                                "Invalid argument: sessionOptions.externalData must be an array.");
+    auto externalData = externalDataValue.As<Napi::Array>();
+    std::vector<std::basic_string<ORTCHAR_T>> paths;
+    std::vector<char*> buffs;
+    std::vector<size_t> sizes;
+
+    for (const auto& kvp : externalData) {
+      Napi::Value value = kvp.second;
+      ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), options.Env(),
+                                  "Invalid argument: sessionOptions.externalData value must be an object in Node.js binding.");
+      Napi::Object obj = value.As<Napi::Object>();
+      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
+                                  "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
+#ifdef _WIN32
+      auto path = obj.Get("path").As<Napi::String>().Utf16Value();
+      paths.push_back(std::wstring{path.begin(), path.end()});
+#else
+      auto path = obj.Get("path").As<Napi::String>().Utf8Value();
+      paths.push_back(path);
+#endif
+      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
+                                      !obj.Get("data").IsBuffer() ||
+                                      !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
+                                  options.Env(),
+                                  "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
+
+      auto data = obj.Get("data");
+      if (data.IsBuffer()) {
+        buffs.push_back(data.As<Napi::Buffer<char>>().Data());
+        sizes.push_back(data.As<Napi::Buffer<char>>().Length());
+      } else {
+        auto typedArray = data.As<Napi::TypedArray>();
+        buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
+        sizes.push_back(typedArray.ByteLength());
+      }
+    }
+    sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
+  }
+}
+
+void ParsePreferredOutputLocations(const Napi::Object options, const std::vector<std::string>& outputNames, std::vector<int>& preferredOutputLocations) {
+  if (options.Has("preferredOutputLocation")) {
+    auto polValue = options.Get("preferredOutputLocation");
+    if (polValue.IsNull() || polValue.IsUndefined()) {
+      return;
+    }
+    if (polValue.IsString()) {
+      DataLocation location = ParseDataLocation(polValue.As<Napi::String>().Utf8Value());
+      ORT_NAPI_THROW_TYPEERROR_IF(location == DATA_LOCATION_NONE, options.Env(),
+                                  "Invalid argument: preferredOutputLocation must be an array or a valid string.");
+
+      if (location == DATA_LOCATION_GPU_BUFFER || location == DATA_LOCATION_ML_TENSOR) {
+        preferredOutputLocations.resize(outputNames.size(), location);
+      }
+    } else if (polValue.IsObject()) {
+      preferredOutputLocations.resize(outputNames.size(), DATA_LOCATION_CPU);
+
+      auto pol = polValue.As<Napi::Object>();
+      for (const auto& nameIter : pol.GetPropertyNames()) {
+        Napi::Value nameVar = nameIter.second;
+        std::string name = nameVar.As<Napi::String>().Utf8Value();
+        // find the name in outputNames
+        auto it = std::find(outputNames.begin(), outputNames.end(), name);
+        ORT_NAPI_THROW_TYPEERROR_IF(it == outputNames.end(), options.Env(),
+                                    "Invalid argument: \"", name, "\" is not a valid output name.");
+
+        Napi::Value value = pol.Get(nameVar);
+        DataLocation location = DATA_LOCATION_NONE;
+        ORT_NAPI_THROW_TYPEERROR_IF(!value.IsString() || (location = ParseDataLocation(value.As<Napi::String>().Utf8Value())) == DATA_LOCATION_NONE,
+                                    options.Env(),
+                                    "Invalid argument: preferredOutputLocation[\"", name, "\"] must be a valid string.");
+
+        size_t index = it - outputNames.begin();
+        preferredOutputLocations[index] = location;
+      }
+
+      if (std::all_of(preferredOutputLocations.begin(), preferredOutputLocations.end(), [](int loc) { return loc == DATA_LOCATION_CPU; })) {
+        preferredOutputLocations.clear();
+      }
+    } else {
+      ORT_NAPI_THROW_TYPEERROR(options.Env(), "Invalid argument: preferredOutputLocation must be an array or a valid string.");
+    }
   }
 }
