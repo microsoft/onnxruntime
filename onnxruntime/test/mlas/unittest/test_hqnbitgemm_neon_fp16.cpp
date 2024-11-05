@@ -83,7 +83,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
  private:
   std::random_device rd_;  // a seed source for the random number engine
   unsigned int seed_;
-  std::mt19937 gen_;       // mersenne_twister_engine seeded with rd()
+  std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
   std::uniform_int_distribution<> distrib_;
   MatrixGuardBuffer<uint8_t> input_, ref_, packed_;
 
@@ -199,7 +199,7 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
  private:
   std::random_device rd_;  // a seed source for the random number engine
   unsigned int seed_;
-  std::mt19937 gen_;       // mersenne_twister_engine seeded with rd()
+  std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
   std::uniform_int_distribution<> distrib_;
   std::uniform_real_distribution<float> _distribFp;
   MatrixGuardBuffer<uint8_t> input_, zero_points_;
@@ -355,7 +355,7 @@ class MlasNeonFp16HQ4BitGemmKernelTest : public MlasTestBase {
  private:
   std::random_device rd_;  // a seed source for the random number engine
   unsigned int seed_;
-  std::mt19937 gen_;       // mersenne_twister_engine seeded with rd()
+  std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
   MatrixGuardBuffer<MLAS_FP16> A_, B_, C_, ref_, bias_;
 
   MLAS_FORCEINLINE
