@@ -539,22 +539,32 @@ class TestQDQPad(unittest.TestCase):
         self,
         mode: str,
         constant_value: float | None = None,
+        opset: int = 21,
     ) -> onnx.ModelProto:
         input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (3, 2))
         output_0 = onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (3, 4))
 
         initializers = []
         pad_input_names = ["input_0"]
+        attrs = {"mode": mode}
 
         pads_data = np.array([0, 2, 0, 0], dtype=np.int64)  # Pad two vals at beginning of axis 1.
-        initializers.append(onnx.numpy_helper.from_array(pads_data, "pads"))
-        pad_input_names.append("pads")
+        if opset >= 11:
+            initializers.append(onnx.numpy_helper.from_array(pads_data, "pads"))
+            pad_input_names.append("pads")
+        else:
+            attrs["pads"] = pads_data.tolist()
 
         if mode == "constant" and constant_value is not None:
-            initializers.append(onnx.helper.make_tensor("constant_value", onnx.TensorProto.FLOAT, [], [constant_value]))
-            pad_input_names.append("constant_value")
+            if opset >= 11:
+                initializers.append(
+                    onnx.helper.make_tensor("constant_value", onnx.TensorProto.FLOAT, [], [constant_value])
+                )
+                pad_input_names.append("constant_value")
+            else:
+                attrs["value"] = float(constant_value)
 
-        pad_node = onnx.helper.make_node("Pad", pad_input_names, ["output_0"], name="Pad0", mode=mode)
+        pad_node = onnx.helper.make_node("Pad", pad_input_names, ["output_0"], name="Pad0", **attrs)
 
         graph = onnx.helper.make_graph(
             [pad_node],
@@ -563,7 +573,7 @@ class TestQDQPad(unittest.TestCase):
             [output_0],
             initializer=initializers,
         )
-        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        opset_imports = [onnx.helper.make_opsetid("", opset)]
         model = onnx.helper.make_model(graph, opset_imports=opset_imports)
         model = onnx.shape_inference.infer_shapes(model)
         onnx.checker.check_model(model, True)
@@ -574,21 +584,28 @@ class TestQDQPad(unittest.TestCase):
         Test that QDQ Pad has equal scale/zero-point for its input and output for certain configurations.
         """
         test_configs = [
-            ("constant", None),
-            ("constant", 0),
-            ("constant", 10.0),
-            ("reflect", None),
-            ("edge", None),
-            ("wrap", None),
+            # Opset 21
+            ("constant", None, 21),
+            ("constant", 0, 21),
+            ("constant", 10.0, 21),
+            ("reflect", None, 21),
+            ("edge", None, 21),
+            ("wrap", None, 21),
+            # Model with opset 10 will use pad of opset 2, which uses attributes instead of inputs.
+            ("constant", None, 10),
+            ("constant", 0, 10),
+            ("constant", 10.0, 10),
+            ("reflect", None, 10),
+            ("edge", None, 10),
         ]
 
-        for pad_mode, constant_value in test_configs:
-            with self.subTest(pad_mode=pad_mode, constant_value=constant_value):
+        for pad_mode, constant_value, opset in test_configs:
+            with self.subTest(pad_mode=pad_mode, constant_value=constant_value, opset=opset):
                 label = f"_{pad_mode}_{constant_value}"
                 float_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.float.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.qdq.onnx")
 
-                float_model = self.build_pad_model(pad_mode, constant_value)
+                float_model = self.build_pad_model(pad_mode, constant_value, opset=opset)
                 onnx.save_model(float_model, float_model_path)
 
                 # Create a data reader
@@ -610,7 +627,7 @@ class TestQDQPad(unittest.TestCase):
                 )
 
                 expected_op_counts = {"DequantizeLinear": 2, "QuantizeLinear": 2, "Pad": 1}
-                if constant_value is not None:
+                if constant_value is not None and opset >= 11:
                     expected_op_counts["DequantizeLinear"] += 1  # The constant padding value is quantized.
                 check_op_type_count(self, qdq_model_path, **expected_op_counts)
 

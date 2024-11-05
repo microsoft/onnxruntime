@@ -125,7 +125,7 @@ class QDQPad(QDQOperatorBase):
             return None
 
         np_dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_tensor_type.elem_type)
-        if self.quantizer.opset_version <= 2:
+        if self.quantizer.opset_version < 11:
             const_val = np.array(attrs_dict.get("value", 0), dtype=np_dtype)
         elif len(self.node.input) >= 3 and self.node.input[2]:
             const_val = self.quantizer.model.get_constant_value(self.node.input[2])
