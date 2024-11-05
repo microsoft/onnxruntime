@@ -14,10 +14,10 @@ import numpy as np
 import onnx
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
-from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, get_int_qdq_config, quantize
+from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, get_qdq_config, quantize
 
 
-class TestGetIntQDQConfig(unittest.TestCase):
+class TestGetQDQConfig(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.int_qdq_config_")
@@ -70,7 +70,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
 
     def test_basic_args(self):
         """
-        Test that get_int_qdq_config() returns a config that sets the basic args.
+        Test that get_qdq_config() returns a config that sets the basic args.
         """
 
         shape = [1, 8, 8]
@@ -85,7 +85,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
         ]
         data_reader = TestDataFeeds(input_data_list)
 
-        qdq_config = get_int_qdq_config(
+        qdq_config = get_qdq_config(
             float_model,
             data_reader,
             calibrate_method=CalibrationMethod.Percentile,
@@ -144,7 +144,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
         def should_exclude_node_(model: onnx.ModelProto, node: onnx.NodeProto) -> bool:
             return node.op_type == "Add"
 
-        qdq_config = get_int_qdq_config(
+        qdq_config = get_qdq_config(
             float_model,
             data_reader,
             nodes_to_exclude=should_exclude_node_,
@@ -156,7 +156,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
 
     def test_external_data(self):
         """
-        Test that get_int_qdq_config() returns a config that enables external data
+        Test that get_qdq_config() returns a config that enables external data
         if the input model has external data.
         """
 
@@ -184,7 +184,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
         data_reader = TestDataFeeds(input_data_list)
 
         # Create a quantization config and check that it sets boolean to use external data
-        qdq_config = get_int_qdq_config(
+        qdq_config = get_qdq_config(
             float_model_path, data_reader, activation_type=QuantType.QUInt8, weight_type=QuantType.QInt8
         )
         self.assertEqual(set(qdq_config.op_types_to_quantize), {"Add"})
@@ -215,7 +215,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
 
     def test_use_qdq_contrib_ops_for_int16_opset19(self):
         """
-        Test that get_int_qdq_config() returns a config that forces 'com.microsoft' Q/DQ ops for
+        Test that get_qdq_config() returns a config that forces 'com.microsoft' Q/DQ ops for
         use of int16 in opset < 21.
         """
 
@@ -231,7 +231,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
         ]
         data_reader = TestDataFeeds(input_data_list)
 
-        qdq_config = get_int_qdq_config(
+        qdq_config = get_qdq_config(
             float_model,
             data_reader,
             activation_type=QuantType.QUInt16,
@@ -243,7 +243,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
 
     def test_use_qdq_contrib_ops_for_int4_opset19(self):
         """
-        Test that get_int_qdq_config() returns a config that forces 'com.microsoft' Q/DQ ops for
+        Test that get_qdq_config() returns a config that forces 'com.microsoft' Q/DQ ops for
         use of int4 in opset < 21.
         """
 
@@ -260,7 +260,7 @@ class TestGetIntQDQConfig(unittest.TestCase):
         data_reader = TestDataFeeds(input_data_list)
 
         # Use int4 in tensor quantization overrides. This should still force use of 'com.microsoft' Q/DQ ops.
-        qdq_config = get_int_qdq_config(
+        qdq_config = get_qdq_config(
             float_model,
             data_reader,
             activation_type=QuantType.QUInt8,

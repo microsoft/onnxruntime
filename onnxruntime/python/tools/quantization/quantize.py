@@ -17,6 +17,7 @@ from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, cr
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
+    MODEL_SIZE_THRESHOLD,
     QuantFormat,
     QuantizationMode,
     QuantType,
@@ -217,7 +218,7 @@ class StaticQuantConfig(QuantConfig):
         self.extra_options = extra_options or {}
 
 
-def get_int_qdq_config(
+def get_qdq_config(
     model_input: str | Path | onnx.ModelProto,
     calibration_data_reader: CalibrationDataReader,
     calibrate_method=CalibrationMethod.MinMax,
@@ -294,7 +295,6 @@ def get_int_qdq_config(
     q16_types = {QuantType.QInt16, QuantType.QUInt16}
     q4_types = {QuantType.QInt4, QuantType.QUInt4}
     op_types_to_exclude = {"Cast", "DequantizeLinear", "QuantizeLinear"}
-    model_size_threshold = 2147483648  # Quant model should use external data if >= 2GB
 
     model = (
         model_input
@@ -370,7 +370,7 @@ def get_int_qdq_config(
         op_types_to_quantize=list(op_types.difference(op_types_to_exclude)),
         nodes_to_exclude=final_nodes_to_exclude,
         per_channel=per_channel,
-        use_external_data_format=(model_has_external_data or model.ByteSize() >= model_size_threshold),
+        use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
         extra_options=final_extra_options,
     )
 

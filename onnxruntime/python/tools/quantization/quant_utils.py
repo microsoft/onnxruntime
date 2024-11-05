@@ -43,6 +43,7 @@ QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
 DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
 TENSOR_NAME_QUANT_SUFFIX = "_quantized"
+MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
 FLOAT8_DISTRIBUTIONS = {}
 
