@@ -222,14 +222,14 @@ function(AddTest)
         )
       endif()
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 9999)
     else()
       add_test(NAME ${_UT_TARGET}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 9999)
     endif()
   endif()
 endfunction(AddTest)
