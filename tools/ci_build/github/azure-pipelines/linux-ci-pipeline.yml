@@ -217,7 +217,7 @@ stages:
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
-                      /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                      /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Release \
                         --skip_submodule_sync \
