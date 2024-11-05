@@ -334,7 +334,7 @@ ORT_API2_STATUS(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
  */
 ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);  // TODO(leca): review and discuss
  
-ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char* onnx_model_path);
+ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
 
 ORT_API2_STATUS(OrtGraph_GetEpContextGraph,
                     const OrtGraphViewer* graph,
@@ -344,7 +344,7 @@ ORT_API2_STATUS(OrtGraph_GetEpContextGraph,
                     const int64_t embed_mode,
                     const char* compute_capability,
                     const char* onnx_model_path,
-                    _Outptr_ const OrtGraphViewer** ep_context_graph); 
+                    _Outptr_ OrtGraph** ep_context_graph);
 
 /** \brief Construct a subgraph from the Graph with the given node indices.
  *
@@ -357,6 +357,8 @@ ORT_API2_STATUS(OrtGraph_GetEpContextGraph,
  *
  */
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
+                                                                                                                                                              //
+ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraph* graph);
 
 /** \brief Release the graph.
  *
@@ -367,7 +369,7 @@ ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int nod
  * \param[in] graph The graph to release
  *
  */
-ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraphViewer* graph);
+ORT_API2_STATUS(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph);
 
 /** \brief Gets the name of the node
  *

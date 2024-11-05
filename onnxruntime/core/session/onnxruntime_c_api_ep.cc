@@ -481,10 +481,12 @@ static void SetAllGraphInputs(Graph& graph, std::unordered_map<std::string, std:
 }
 
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
-                    const OrtGraphViewer* graph,
+                    const OrtGraph* ort_graph,
                     const char* onnx_model_path) {
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  auto model = &(graph_viewer->GetGraph()).GetModel();
+  //const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  //auto model = &(graph_viewer->GetGraph()).GetModel();
+  const ::onnxruntime::Graph* graph = reinterpret_cast<const ::onnxruntime::Graph*>(ort_graph);
+  auto model = &(graph->GetModel());
 
   // Two options to generate model proto:
   //   1. model->ToProto()
@@ -512,7 +514,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
                     const int64_t embed_mode,
                     const char* compute_capability,
                     const char* onnx_model_path,
-                    _Outptr_ const OrtGraphViewer** ep_context_graph) {
+                    _Outptr_ OrtGraph** ep_context_graph) {
 
   static const std::string EPCONTEXT_OP = "EPContext";
   static const std::string EMBED_MODE = "embed_mode";
@@ -526,26 +528,32 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
                                               for the best model loading time";
 
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  ::onnxruntime::Graph* graph_build;
 
-  // The model instance won't be released until user calls OrtGraph_ReleaseGraph
-  Model* model_build = new Model (graph_viewer->Name(), true, ModelMetaData(), PathString(),
+  // Create a new model/graph or update the existing one 
+  if (*ep_context_graph == nullptr) {
+    Model* model_build = new Model (graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
                                    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
 #else
                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
 #endif  // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
-  auto& graph_build = model_build->MainGraph();
+    graph_build = &(model_build->MainGraph());
+    *ep_context_graph = reinterpret_cast<OrtGraph*>(graph_build);
+  } else {
+    graph_build = reinterpret_cast<::onnxruntime::Graph*>(*ep_context_graph);
+  }
 
   // Get graph inputs and outputs
   std::vector<onnxruntime::NodeArg*> inputs, outputs;
   for (auto input : graph_viewer->GetInputs()) {
-    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+    auto& n_input = graph_build->GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
     inputs.push_back(&n_input);
   }
 
   for (auto output : graph_viewer->GetOutputs()) {
-    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+    auto& n_output = graph_build->GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
     outputs.push_back(&n_output);
   }
 
@@ -590,8 +598,8 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
 
   // Create EP context node
-  graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
-  common::Status status = graph_build.Resolve();
+  graph_build->AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  common::Status status = graph_build->Resolve();
   if (status != Status::OK()) return onnxruntime::ToOrtStatus(status);
 
   // Serialize modelproto to string
@@ -603,8 +611,8 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetEpContextGraph,
 
   //return model_proto.release();
 
-  auto ep_context_graph_viewer = std::make_unique<GraphViewer>(graph_build);
-  *ep_context_graph = reinterpret_cast<const OrtGraphViewer*>(ep_context_graph_viewer.release());
+  //auto ep_context_graph_viewer = std::make_unique<GraphViewer>(graph_build);
+  //*ep_context_graph = reinterpret_cast<const OrtGraphViewer*>(ep_context_graph_viewer.release());
   return nullptr;
 }
 
@@ -726,7 +734,15 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraph, const OrtGraphViewer* graph) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraph, const OrtGraph* ort_graph) {
+  if (ort_graph) {
+    const ::onnxruntime::Graph* graph = reinterpret_cast<const ::onnxruntime::Graph*>(ort_graph);
+    delete &(graph->GetModel());
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph) {
   if (graph) {
     const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
     delete &(graph_viewer->GetGraph()).GetModel();
@@ -951,6 +967,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetEpContextGraph,
     &OrtGraphApis::OrtGraph_GetSubGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraph,
+    &OrtGraphApis::OrtGraph_ReleaseGraphViewer,
     &OrtGraphApis::OrtNode_GetName,
     &OrtGraphApis::OrtNode_GetDescription,
     &OrtGraphApis::OrtNode_GetDomain,
