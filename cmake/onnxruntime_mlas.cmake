@@ -628,7 +628,6 @@ endif()
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
-
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
           ${mlas_platform_srcs_avx2}
@@ -653,7 +652,6 @@ endif()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-          set_source_files_properties(${MLAS_SRC_DIR}/qsoftmax_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "-mavx2")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
