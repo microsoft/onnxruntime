@@ -1029,7 +1029,7 @@ TEST_F(QnnHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
 }
 
 TEST_F(QnnHTPBackendTests, ClipQuantFusion) {
-  auto get_input_buf = [](float min_upper, float max_lower){
+  auto get_input_buf = [](float min_upper, float max_lower) {
     std::vector<float> input_buf;
     input_buf.reserve(128);
 
