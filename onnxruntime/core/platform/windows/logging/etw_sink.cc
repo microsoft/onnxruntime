@@ -160,7 +160,7 @@ void EtwRegistrationManager::LazyInitialize() {
       if (FAILED(etw_status_)) {
         // Registration can fail when running under Low Integrity process, and should be non-fatal
         initialization_status_ = InitializationStatus::Failed;
-        LOGS_DEFAULT(WARNING) << "Error in ETW registration: " << std::to_string(etw_status_);
+        std::cerr << "Error in ETW registration: " << std::to_string(etw_status_) << std::endl;
       }
       initialization_status_ = InitializationStatus::Initialized;
     }
