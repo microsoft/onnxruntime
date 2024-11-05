@@ -1603,36 +1603,47 @@ class SymbolicShapeInference:
 
     def _infer_ReduceMean(self, node):  # noqa: N802
         keep_dims = get_attribute(node, "keepdims", 1)
-        if get_opset(self.out_mp_) >= 13 and len(node.input) > 1:
-            # ReduceMean changes axes to input[1] in opset 13
+        opset = get_opset(self.out_mp_)
+
+        if opset >= 13 and len(node.input) > 1:
             axes = self._try_get_value(node, 1)
-            vi = self.known_vi_[node.output[0]]
-            if axes is None:
-                assert keep_dims  # can only handle keep_dims==True when axes is unknown, by generating new ranks
-                vi.CopyFrom(
-                    helper.make_tensor_value_info(
-                        node.output[0],
-                        self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                        get_shape_from_sympy_shape(self._new_symbolic_shape(self._get_shape_rank(node, 0), node)),
-                    )
+        else:
+            axes = get_attribute(node, "axes")
+
+        vi = self.known_vi_[node.output[0]]
+
+        if axes is None:
+            assert keep_dims == 1, "ReduceMean Op: Cannot infer shape when axes is unknown and keepdims is not 1."
+            rank = self._get_shape_rank(node, 0)
+            new_shape = self._new_symbolic_shape(rank, node)
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[0],
+                    self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                    get_shape_from_sympy_shape(new_shape),
                 )
-            else:
-                shape = self._get_shape(node, 0)
-                output_shape = []
-                axes = [handle_negative_axis(a, len(shape)) for a in axes]
-                for i, d in enumerate(shape):
-                    if i in axes:
-                        if keep_dims:
-                            output_shape.append(1)
+            )
+        else:
+            input_shape = self._get_shape(node, 0)
+            assert input_shape, "ReduceMean Op: Reduction over an empty set of values yields undefined."
+
+            axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
+            output_shape = []
+            for i, dim in enumerate(input_shape):
+                if i in axes:
+                    if keep_dims == 1:
+                        output_shape.append(1)
                     else:
-                        output_shape.append(d)
-                vi.CopyFrom(
-                    helper.make_tensor_value_info(
-                        node.output[0],
-                        self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                        output_shape,
-                    )
+                        continue
+                else:
+                    output_shape.append(dim)
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[0],
+                    self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                    output_shape,
                 )
+            )
 
     def _infer_ReduceProd(self, node):  # noqa: N802
         axes = get_attribute(node, "axes")
