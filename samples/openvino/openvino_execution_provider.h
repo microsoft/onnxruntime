@@ -83,7 +83,9 @@ struct OpenVINOExecutionProviderInfo {
   bool enable_qdq_optimizer_{false};
   bool disable_cpu_fallback_{false};
 
-  OpenVINOExecutionProviderInfo() = delete;
+  OpenVINOExecutionProviderInfo(){};
+
+  static OpenVINOExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
 
   explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
                                          size_t num_of_threads, std::string cache_dir, std::string model_priority,
@@ -159,6 +161,7 @@ class OpenVINOExecutionProvider : public OrtExecutionProvider {
   ~OpenVINOExecutionProvider() = default;
 
  private:
+  mutable OpenVINOExecutionProviderInfo info_;
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
   openvino_ep::EPCtxHandler ep_ctx_handle_{};
   std::unordered_map<std::string, std::unique_ptr<openvino_ep::BackendManager>> backend_managers_;

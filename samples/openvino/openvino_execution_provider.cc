@@ -1,10 +1,32 @@
 #include <cassert>
 #include <filesystem>
+#include "provider_options_utils.h"
 #include "openvino_execution_provider.h"
 #include "openvino_utils.h"
 #include "ov_versions/capability.h"
 
 namespace onnxruntime {
+
+OpenVINOExecutionProviderInfo OpenVINOExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
+  OpenVINOExecutionProviderInfo info{};
+  ORT_THROW_IF_ERROR(
+        ProviderOptionsParser{}
+            .AddAssignmentToReference("device_type", info.device_type_)
+            .AddAssignmentToReference("precision", info.precision_)
+            .AddAssignmentToReference("enable_npu_fast_compile", info.enable_npu_fast_compile_)
+            .AddAssignmentToReference("cache_dir", info.cache_dir_)
+            .AddAssignmentToReference("model_priority", info.model_priority_)
+            .AddAssignmentToReference("num_streams", info.num_streams_)
+            .AddAssignmentToReference("context", info.context_)
+            .AddAssignmentToReference("enable_opencl_throttling", info.enable_opencl_throttling_)
+            .AddAssignmentToReference("disable_dynamic_shapes", info.disable_dynamic_shapes_)
+            .AddAssignmentToReference("num_of_threads", info.num_of_threads_)
+            .AddAssignmentToReference("export_ep_ctx_blob", info.export_ep_ctx_blob_)
+            .AddAssignmentToReference("enable_qdq_optimizer", info.enable_qdq_optimizer_)
+            .AddAssignmentToReference("disable_cpu_fallback", info.disable_cpu_fallback_)
+            .Parse(options));
+    return info;
+}
 
 const OrtApi* OpenVINOExecutionProvider::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 const OrtGraphApi* OpenVINOExecutionProvider::graph_api_ = OpenVINOExecutionProvider::api_->GetGraphApi(ORT_API_VERSION);
@@ -123,8 +145,24 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
       }
       delete[] indexed_sub_graphs;
     };
+    type = ep_type;
+    info_ = OpenVINOExecutionProviderInfo::FromProviderOptions(provider_options);
+    global_context_ = std::make_unique<openvino_ep::GlobalContext>();
+    global_context_->device_type = info_.device_type_;
+    global_context_->precision_str = info_.precision_;
+    global_context_->enable_npu_fast_compile = info_.enable_npu_fast_compile_;
+    global_context_->cache_dir = info_.cache_dir_;
+    global_context_->model_priority = info_.model_priority_;
+    global_context_->num_streams = info_.num_streams_;
+    global_context_->context = info_.context_;
+    global_context_->enable_opencl_throttling = info_.enable_opencl_throttling_;
+    global_context_->disable_dynamic_shapes = info_.disable_dynamic_shapes_;
+    global_context_->num_of_threads = info_.num_of_threads_;
+    global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
+    global_context_->export_ep_ctx_blob = info_.export_ep_ctx_blob_;
+    global_context_->enable_qdq_optimizer = info_.enable_qdq_optimizer_;
+    global_context_->disable_cpu_fallback = info_.disable_cpu_fallback_;
 }
-
 OpenVINOExecutionProviderFactory::OpenVINOExecutionProviderFactory() {
     OrtExecutionProviderFactory::CreateExecutionProvider = [](OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size) -> OrtExecutionProvider* {
         ProviderOptions options;
