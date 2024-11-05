@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace ml {
 
 template <typename T>
-Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<T>& data) {
+Status GetAnyVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<T>& data) {
   ONNX_NAMESPACE::TensorProto proto;
   auto result = info.GetAttr(name, &proto);
 
@@ -39,19 +39,19 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
 }
 
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<double>& data) {
-  return GetVectorAttrsOrDefault(info, name, data);
+  return GetAnyVectorAttrsOrDefault(info, name, data);
 }
 
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<float>& data) {
-  return GetVectorAttrsOrDefault(info, name, data);
+  return GetAnyVectorAttrsOrDefault(info, name, data);
 }
 
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<MLFloat16>& data) {
-  return GetVectorAttrsOrDefault(info, name, data);
+  return GetAnyVectorAttrsOrDefault(info, name, data);
 }
 
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<uint8_t>& data) {
-  return GetVectorAttrsOrDefault(info, name, data);
+  return GetAnyVectorAttrsOrDefault(info, name, data);
 }
 
 }  // namespace ml

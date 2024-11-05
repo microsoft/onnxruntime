@@ -905,11 +905,6 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compu
 
 template <typename IOType, typename ThresholdType>
 class TreeEnsembleCommonV5 : public TreeEnsembleCommon<IOType, ThresholdType, IOType> {
- private:
-  void aggregateFunctionToString(const int64_t& aggregate_function, std::string& aggregate_function_as_string);
-  void postTransformToString(const int64_t& post_transform, std::string& post_transform_as_string);
-  void nodeModesToStrings(const std::vector<uint8_t>& node_modes, std::vector<std::string>& node_modes_as_strings);
-
  public:
   virtual Status Init(const OpKernelInfo& info);
 
@@ -933,6 +928,12 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(
     const TreeEnsembleAttributesV5<ThresholdType>& attributes) {
   TreeEnsembleAttributesV3<ThresholdType> attributes_v3;
   attributes.convert_to_v3(attributes_v3);
+  
+  attributes_v3.base_values.clear();
+  attributes_v3.base_values_as_tensor.clear();
+  attributes_v3.nodes_hitrates.clear();
+  attributes_v3.nodes_values.clear();
+  attributes_v3.target_class_weights.clear();
 
   auto status = TreeEnsembleCommon<IOType, ThresholdType, IOType>::Init(parallel_tree, parallel_tree_N, parallel_N, attributes_v3);
   ORT_RETURN_IF_ERROR(status);

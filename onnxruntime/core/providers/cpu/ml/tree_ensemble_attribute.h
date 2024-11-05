@@ -263,9 +263,9 @@ struct TreeEnsembleAttributesV5 {
       output.nodes_featureids.push_back(0);
       output.nodes_truenodeids.push_back(0);
       output.nodes_falsenodeids.push_back(0);
-      output.nodes_values_as_tensor.push_back(0);
+      output.nodes_values.push_back(0);
       if (!nodes_hitrates.empty()) {
-        output.nodes_hitrates_as_tensor.push_back(0);
+        output.nodes_hitrates.push_back(0);
       }
       if (!nodes_missing_value_tracks_true.empty()) {
         output.nodes_missing_value_tracks_true.push_back(0);
