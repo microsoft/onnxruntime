@@ -29,7 +29,7 @@ steps:
   - ${{ if eq(parameters.DownloadTRT, 'true') }}:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/${{ parameters.win_trt_folder_cuda12 }}" $(Agent.TempDirectory)
-        displayName: 'Download ${{ variables.win_trt_folder_cuda12 }}'
+        displayName: 'Download ${{ parameters.win_trt_folder_cuda12 }}'
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/${{ parameters.win_trt_folder_cuda11 }}" $(Agent.TempDirectory)
         displayName: 'Download ${{ parameters.win_trt_folder_cuda11 }}'
