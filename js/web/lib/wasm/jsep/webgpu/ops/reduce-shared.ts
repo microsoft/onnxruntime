@@ -192,6 +192,7 @@ export const createReduceSharedProgramInfo = (
   // One work group is responsible for only one element of output.
   return {
     name,
+    // Note that in JSEP, WG size is not included in cache by default, but WebGPU EP it is.
     shaderCache: { hint: `${cacheKey};${workgroupSize}`, inputDependencies: ['type'] },
     getShaderSource,
     getRunData: () => ({

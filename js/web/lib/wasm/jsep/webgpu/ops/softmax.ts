@@ -159,6 +159,7 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
   const result = context.compute(
     {
       name: 'Softmax',
+      // Note that in JSEP, WG size is not included in cache by default, but WebGPU EP it is.
       shaderCache: { hint: `${components};${WG}`, inputDependencies: ['type'] },
       getRunData: () => ({
         outputs: [{ dims: transposedInputShape, dataType: transposedInput.dataType }],
