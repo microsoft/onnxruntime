@@ -681,7 +681,7 @@ def get_tensor_consumers_and_producers(
     consumers: dict[str, list[onnx.NodeProto]] = {}
     producers: dict[str, onnx.NodeProto] = {}
     for node in model.graph.node:
-        # Iterate throught node's inputs to build the consumers dictionary.
+        # Iterate through node's inputs to build the consumers dictionary.
         for input_name in node.input:
             if input_name:
                 if input_name not in consumers:
