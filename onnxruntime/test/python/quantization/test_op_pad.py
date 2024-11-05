@@ -630,7 +630,6 @@ class TestQDQPad(unittest.TestCase):
                     quant_format=QuantFormat.QDQ,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QInt8,
-                    extra_options={"ForceQuantizeNoInputCheck": True},
                 )
 
                 expected_op_counts = {"DequantizeLinear": 2, "QuantizeLinear": 2, "Pad": 1}
