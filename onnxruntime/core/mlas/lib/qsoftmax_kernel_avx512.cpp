@@ -10,8 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the float/quantized n-bit integer matrix
-    multiplication kernels for x64 avx2.
+    This module implements the lookup-based quantized softmax kernels for x64 avx512.
 
 --*/
 #include "mlas.h"
@@ -113,7 +112,6 @@ __m128i convert_float_to_u8_avx512bw(__m512 float_vals) {
   __m128i packed8 = _mm_packus_epi16(_mm256_castsi256_si128(packed16_1), _mm256_extracti128_si256(packed16_1, 1));
   __m128i lanefix = _mm_castps_si128(_mm_permutevar_ps(_mm_castsi128_ps(packed8), _mm_setr_epi32(0, 2, 1, 3)));
   return lanefix;
-  // _mm_storeu_si128((__m128i*)&uint8_result[i], lanefix);
 }
 
 __m128i convert_float_to_i8_avx512bw(__m512 float_vals) {
@@ -130,7 +128,6 @@ __m128i convert_float_to_i8_avx512bw(__m512 float_vals) {
   __m128i packed8 = _mm_packs_epi16(_mm256_castsi256_si128(packed16_1), _mm256_extracti128_si256(packed16_1, 1));
   __m128i lanefix = _mm_castps_si128(_mm_permutevar_ps(_mm_castsi128_ps(packed8), _mm_setr_epi32(0, 2, 1, 3)));
   return lanefix;
-  // _mm_storeu_si128((__m128i*)&uint8_result[i], lanefix);
 }
 
 float exp_and_sum_i8_avx512(const float* base_addr, const int8_t* indice, size_t size, int32_t adjustment,
@@ -274,20 +271,18 @@ int32_t normalize_sum_avx512(float total_sum, size_t size, float x_scale, float*
 
 void MlasQuantizeSoftmaxI8KernelAvx512(size_t D, const int8_t* x_data, int8_t* y_data,
                                        const float* lookup_table, float y_scale, int8_t yzp, float* tempaddr) {
-  constexpr int i = 0;
-  int32_t xmax = reduce_max_i8_avx512(x_data + i * D, D);
+  int32_t xmax = reduce_max_i8_avx512(x_data, D);
   const int32_t adjustment = int32_t(127) - xmax;
   const float* shifted_lookuptable = lookup_table;
-  float total_sum = exp_and_sum_i8_avx512(shifted_lookuptable, x_data + i * D, D, adjustment, (float*)tempaddr);
-  normalize_sum_avx512(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data + i * D);
+  float total_sum = exp_and_sum_i8_avx512(shifted_lookuptable, x_data, D, adjustment, (float*)tempaddr);
+  normalize_sum_avx512(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data);
 }
 
 void MlasQuantizeSoftmaxU8KernelAvx512(size_t D, const uint8_t* x_data, uint8_t* y_data,
                                        const float* lookup_table, float y_scale, uint8_t yzp, float* tempaddr) {
-  constexpr int i = 0;
-  int32_t xmax = reduce_max_u8_avx512(x_data + i * D, D);
+  int32_t xmax = reduce_max_u8_avx512(x_data, D);
   const int32_t adjustment = int32_t(255) - xmax;
   const float* shifted_lookuptable = lookup_table + adjustment;
-  float total_sum = exp_and_sum_u8_avx512(shifted_lookuptable, x_data + i * D, D, adjustment, (float*)tempaddr);
-  normalize_sum_avx512(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data + i * D);
+  float total_sum = exp_and_sum_u8_avx512(shifted_lookuptable, x_data, D, adjustment, (float*)tempaddr);
+  normalize_sum_avx512(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data);
 }

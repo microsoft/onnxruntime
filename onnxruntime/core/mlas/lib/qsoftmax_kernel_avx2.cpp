@@ -10,8 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the float/quantized n-bit integer matrix
-    multiplication kernels for x64 avx2.
+    This module implements the lookup-based quantized softmax kernels for x64 avx2.
 
 --*/
 
@@ -69,15 +68,23 @@ int8_t reduce_max_i8_avx2(const int8_t* data, size_t size) {
     }
   }
 
-  alignas(32) int8_t max_arr[32];
-  _mm256_storeu_si256((__m256i*)max_arr, max_vec);
+  // Now reduce the 256-bit max_vec into a single max value
+  // First, split the 256-bit vector into two 128-bit halves and compute the max
+  // between them
+  __m128i max_128 = _mm_max_epi8(_mm256_castsi256_si128(max_vec), _mm256_extracti128_si256(max_vec, 1));
 
-  int8_t max_value = max_arr[0];
-  for (size_t j = 1; j < 32; ++j) {
-    if (max_arr[j] > max_value) {
-      max_value = max_arr[j];
-    }
-  }
+  // Further reduce the 128-bit vector to a scalar
+  // Extract the upper 64-bit part and compute the max
+  max_128 = _mm_max_epi8(max_128, _mm_srli_si128(max_128, 8));
+  // Extract the upper 32-bit part and compute the max
+  max_128 = _mm_max_epi8(max_128, _mm_srli_si128(max_128, 4));
+  // Extract the upper 16-bit part and compute the max
+  max_128 = _mm_max_epi8(max_128, _mm_srli_si128(max_128, 2));
+  // Extract the upper 8-bit part and compute the max
+  max_128 = _mm_max_epi8(max_128, _mm_srli_si128(max_128, 1));
+
+  // Extract the final max value
+  int8_t max_value = static_cast<int8_t>(_mm_extract_epi8(max_128, 0));
 
   if (remaining_max > max_value) {
     max_value = remaining_max;
@@ -248,20 +255,18 @@ int32_t normalize_sum_avx2(float total_sum, size_t size, float x_scale, float* t
 // compute softmax for a row with D elements
 void MlasQuantizeSoftmaxI8KernelAvx2(size_t D, const int8_t* x_data, int8_t* y_data, const float* lookup_table,
                                      float y_scale, int8_t yzp, float* tempaddr) {
-  constexpr int i = 0;
-  int32_t xmax = reduce_max_i8_avx2(x_data + i * D, D);
+  int32_t xmax = reduce_max_i8_avx2(x_data, D);
   const int32_t adjustment = int32_t(127) - xmax;
   const float* shifted_lookuptable = lookup_table;
-  float total_sum = exp_and_sum_i8_avx2(shifted_lookuptable, x_data + i * D, D, adjustment, (float*)tempaddr);
-  normalize_sum_avx2(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data + i * D);
+  float total_sum = exp_and_sum_i8_avx2(shifted_lookuptable, x_data, D, adjustment, (float*)tempaddr);
+  normalize_sum_avx2(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data);
 }
 
 void MlasQuantizeSoftmaxU8KernelAvx2(size_t D, const uint8_t* x_data, uint8_t* y_data, const float* lookup_table,
                                      float y_scale, uint8_t yzp, float* tempaddr) {
-  constexpr int i = 0;
-  int32_t xmax = reduce_max_u8_avx2(x_data + i * D, D);
+  int32_t xmax = reduce_max_u8_avx2(x_data , D);
   const int32_t adjustment = int32_t(255) - xmax;
   const float* shifted_lookuptable = lookup_table + adjustment;
-  float total_sum = exp_and_sum_u8_avx2(shifted_lookuptable, x_data + i * D, D, adjustment, (float*)tempaddr);
-  normalize_sum_avx2(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data + i * D);
+  float total_sum = exp_and_sum_u8_avx2(shifted_lookuptable, x_data, D, adjustment, (float*)tempaddr);
+  normalize_sum_avx2(total_sum, D, y_scale, (float*)tempaddr, yzp, y_data);
 }

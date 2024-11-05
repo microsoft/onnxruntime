@@ -10,8 +10,9 @@ Module Name:
 
 Abstract:
 
-    This module implements the float/quantized n-bit integer matrix
-    multiplication kernels for x64 avx2.
+    This module implements the lookup-based quantized softmax kernels,
+    it's a naive implementation and works for all arch.
+
 
 --*/
 
