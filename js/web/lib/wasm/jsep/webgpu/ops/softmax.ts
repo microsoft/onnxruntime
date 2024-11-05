@@ -35,7 +35,6 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
   const input = context.inputs[0];
   const inputShape = input.dims;
   const outputSize = ShapeUtil.size(inputShape);
-  const WG = 64;
   const inputRank = inputShape.length;
   const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
   const isTransposeRequired = axis < inputShape.length - 1;
@@ -60,7 +59,11 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
   const rows = outputSize / cols;
   const components = getMaxComponents(cols);
   const packedCols = cols / components;
-
+  let WG = 64;
+  // If only one workgroup is dispatched, increase workgroupSize to improve parallelism.
+  if (rows === 1) {
+    WG = 256;
+  }
   const maxVector = (name: string, components: number) => {
     if (components === 4) {
       return `max(max(${name}.x, ${name}.y), max(${name}.z, ${name}.w))`;
@@ -95,7 +98,7 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
         result[index] = value;
       }
       ${shaderHelper.registerUniform('packedCols', 'i32').declareVariables(x, output)}
-      ${shaderHelper.mainStart()}
+      ${shaderHelper.mainStart(WG)}
         let gindex = i32(global_idx);
         let lindex = i32(local_idx);
         const wg = ${WG};
@@ -156,7 +159,8 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
   const result = context.compute(
     {
       name: 'Softmax',
-      shaderCache: { hint: `${components}`, inputDependencies: ['type'] },
+      // Note that in JSEP, WG size is not included in cache by default, but WebGPU EP it is.
+      shaderCache: { hint: `${components};${WG}`, inputDependencies: ['type'] },
       getRunData: () => ({
         outputs: [{ dims: transposedInputShape, dataType: transposedInput.dataType }],
         dispatchGroup: { x: rows },
