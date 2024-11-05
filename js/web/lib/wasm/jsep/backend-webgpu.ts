@@ -138,14 +138,14 @@ class AdapterInfoImpl implements AdapterInfo {
 class DeviceInfoImpl implements DeviceInfo {
   readonly subgroupsSupported: boolean;
   readonly subgroupsF16Supported: boolean;
-  readonly subgroupSizeRange?: [number, number];
+  readonly subgroupSizeRange?: readonly [number, number];
 
   constructor(device: GPUDevice) {
     this.subgroupsSupported = device.features.has('subgroups' as GPUFeatureName);
     this.subgroupsF16Supported = device.features.has('subgroups' as GPUFeatureName);
     // Currently subgroups feature is still experimental and size attributes are not in the WebGPU IDL, so we have to
     // workaround the IDL type checks.
-    // TODO: clean this after subgroups feature is sattled in IDL.
+    // TODO: clean this after subgroups feature is settled in IDL.
     const deviceSubgroupsLimits = device.limits as { minSubgroupSize?: number; maxSubgroupSize?: number };
     if (!this.subgroupsSupported || !deviceSubgroupsLimits.minSubgroupSize || !deviceSubgroupsLimits.maxSubgroupSize) {
       this.subgroupSizeRange = undefined;

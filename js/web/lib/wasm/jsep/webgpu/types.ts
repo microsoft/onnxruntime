@@ -24,7 +24,7 @@ export interface AdapterInfo {
 export interface DeviceInfo {
   readonly subgroupsSupported: boolean;
   readonly subgroupsF16Supported: boolean;
-  readonly subgroupSizeRange?: [number, number];
+  readonly subgroupSizeRange?: readonly [number, number];
 }
 
 export interface GpuData {
