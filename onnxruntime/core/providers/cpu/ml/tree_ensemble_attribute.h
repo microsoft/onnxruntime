@@ -138,8 +138,9 @@ struct TreeEnsembleAttributesV5 {
 
   void convert_to_v3(TreeEnsembleAttributesV3<ThresholdType>& output) const {
     // doing all transformation to get the old format
-    aggregateFunctionToString(output.aggregate_function);
-    postTransformToString(output.post_transform);
+    output.n_targets_or_classes = n_targets;
+    output.aggregate_function = aggregateFunctionToString();
+    output.post_transform = postTransformToString();
     std::vector<std::vector<ThresholdType>> membership_values_by_id;
     getMembershipValuesById(membership_values_by_id);
     transformInputAllTrees(output, membership_values_by_id);
@@ -185,40 +186,35 @@ struct TreeEnsembleAttributesV5 {
     }
   }
 
-  void aggregateFunctionToString(std::string& aggregate_function_as_string) const {
+  std::string aggregateFunctionToString() const {
     switch (aggregate_function) {
       case static_cast<int64_t>(AGGREGATE_FUNCTION::AVERAGE):
-        aggregate_function_as_string = "AVERAGE";
-        break;
+        return "AVERAGE";
       case static_cast<int64_t>(AGGREGATE_FUNCTION::SUM):
-        aggregate_function_as_string = "SUM";
-        break;
+        return "SUM";
       case static_cast<int64_t>(AGGREGATE_FUNCTION::MIN):
-        aggregate_function_as_string = "MIN";
-        break;
+        return "MIN";
       case static_cast<int64_t>(AGGREGATE_FUNCTION::MAX):
-        aggregate_function_as_string = "MAX";
-        break;
+        return "MAX";
+      default:
+        ORT_THROW("Unknown value for aggregate_function.");
     }
   }
 
-  void postTransformToString(std::string& post_transform_as_string) const {
+  std::string postTransformToString() const {
     switch (post_transform) {
       case static_cast<int64_t>(POST_EVAL_TRANSFORM::NONE):
-        post_transform_as_string = "NONE";
-        break;
+        return "NONE";
       case static_cast<int64_t>(POST_EVAL_TRANSFORM::SOFTMAX):
-        post_transform_as_string = "SOFTMAX";
-        break;
+        return "SOFTMAX";
       case static_cast<int64_t>(POST_EVAL_TRANSFORM::LOGISTIC):
-        post_transform_as_string = "LOGISTIC";
-        break;
+        return "LOGISTIC";
       case static_cast<int64_t>(POST_EVAL_TRANSFORM::SOFTMAX_ZERO):
-        post_transform_as_string = "SOFTMAX_ZERO";
-        break;
+        return "SOFTMAX_ZERO";
       case static_cast<int64_t>(POST_EVAL_TRANSFORM::PROBIT):
-        post_transform_as_string = "PROBIT";
-        break;
+        return "PROBIT";
+      default:
+        ORT_THROW("Unknown value for post_transform.");
     }
   }
 
@@ -263,7 +259,7 @@ struct TreeEnsembleAttributesV5 {
       output.nodes_featureids.push_back(0);
       output.nodes_truenodeids.push_back(0);
       output.nodes_falsenodeids.push_back(0);
-      output.nodes_values.push_back(0);
+      output.nodes_values_as_tensor.push_back(0);
       if (!nodes_hitrates.empty()) {
         output.nodes_hitrates.push_back(0);
       }
