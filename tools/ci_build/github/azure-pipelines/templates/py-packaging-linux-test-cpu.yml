@@ -50,14 +50,14 @@ jobs:
     - task: DownloadPipelineArtifact@2
       inputs:
         artifact: 'drop-linux-cpu-${{ parameters.arch }}'
-	buildType: specific
-	pipelineId: 1547802
+        buildType: specific
+        pipelineId: 1547802
 
     - task: DownloadPipelineArtifact@2
       inputs:
         artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
-	buildType: specific
-	pipelineId: 1547802
+        buildType: specific
+        pipelineId: 1547802
 
     - bash: |
         set -e -x
