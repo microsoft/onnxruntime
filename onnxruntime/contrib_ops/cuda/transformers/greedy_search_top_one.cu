@@ -19,7 +19,7 @@ struct TopOne {
   int32_t key;
   T value;
 
-  __device__ __host__ __forceinline__ TopOne(int32_t key = -1, T value = NumericLimits<T>::Min()) : key(key), value(value) {
+  __device__ __host__ __forceinline__ TopOne(int32_t key = -1, T value = NumericLimits<T>::Lowest()) : key(key), value(value) {
   }
 
   __device__ __forceinline__ void Reduce(int32_t k, T v) {

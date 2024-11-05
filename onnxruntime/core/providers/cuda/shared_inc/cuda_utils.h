@@ -10,6 +10,7 @@
 #include <memory>
 #include <type_traits>
 #include <vector>
+#include <limits>
 
 #include <gsl/gsl>
 #include "core/framework/float16.h"
@@ -120,7 +121,7 @@ constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType
 
 template <typename T>
 struct NumericLimits {
-  __inline__ __host__ __device__ static T Min() {
+  __inline__ __host__ __device__ static T Lowest() {
     return std::numeric_limits<T>::lowest();
   }
   __inline__ __host__ __device__ static T Max() {
@@ -128,43 +129,18 @@ struct NumericLimits {
   }
 };
 
-template <>
-struct NumericLimits<MLFloat16> {
-  __inline__ __host__ __device__ static half Min() {
-    return -65504.0;
-  }
-  __inline__ __host__ __device__ static half Max() {
-    return 65504.0;
-  }
-};
+#ifndef CUDART_MAX_NORMAL_FP16  // CUDA 12.3 or later has this macro
+#define CUDART_MAX_NORMAL_FP16 __ushort_as_half((unsigned short)0x7BFFU)
+#endif
 
 template <>
 struct NumericLimits<half> {
-  __inline__ __host__ __device__ static half Min() {
-    return -65504.0;
+  __inline__ __host__ __device__ static half Lowest() {
+    return -CUDART_MAX_NORMAL_FP16;
   }
+
   __inline__ __host__ __device__ static half Max() {
-    return 65504.0;
-  }
-};
-
-template <>
-struct NumericLimits<float> {
-  __inline__ __host__ __device__ static float Min() {
-    return -INFINITY;
-  }
-  __inline__ __host__ __device__ static float Max() {
-    return INFINITY;
-  }
-};
-
-template <>
-struct NumericLimits<double> {
-  __inline__ __host__ __device__ static double Min() {
-    return -HUGE_VAL;
-  }
-  __inline__ __host__ __device__ static double Max() {
-    return HUGE_VAL;
+    return CUDART_MAX_NORMAL_FP16;
   }
 };
 
