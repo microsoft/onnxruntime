@@ -65,6 +65,7 @@ jobs:
 
     - bash: |
         set -e -x
+        docker  system prune -a -f
         mv "$(Pipeline.Workspace)/drop-linux-cpu-${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
         mv "$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
