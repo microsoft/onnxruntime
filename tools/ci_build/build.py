@@ -1598,8 +1598,6 @@ def generate_build_tree(
                         "-O3",
                         "-pipe",
                     ]
-                    if is_linux():
-                        ldflags += ["-Wl,--strip-all"]
                 elif config == "RelWithDebInfo":
                     cflags = [
                         "-DNDEBUG",
