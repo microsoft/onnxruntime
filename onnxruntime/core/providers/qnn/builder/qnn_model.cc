@@ -346,6 +346,8 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
 
     input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
     output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context graph info version.");
   }
   ORT_RETURN_IF(nullptr == input_tensors, "Graph from cached context doesn't have any inputs.");
   ORT_RETURN_IF(nullptr == output_tensors, "Graph from cached context doesn't have any outputs.");
