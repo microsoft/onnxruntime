@@ -35,3 +35,23 @@ pipelines:
           lastModifiedDate: 2024-10-25
         spotbugs:
           lastModifiedDate: 2024-10-25
+  1625:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2024-11-05
+        policheck:
+          lastModifiedDate: 2024-11-05
+        eslint:
+          lastModifiedDate: 2024-11-05
+        psscriptanalyzer:
+          lastModifiedDate: 2024-11-05
+        armory:
+          lastModifiedDate: 2024-11-05
+      binary:
+        credscan:
+          lastModifiedDate: 2024-11-05
+        binskim:
+          lastModifiedDate: 2024-11-05
+        spotbugs:
+          lastModifiedDate: 2024-11-05
