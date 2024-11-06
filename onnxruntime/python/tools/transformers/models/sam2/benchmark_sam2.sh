@@ -191,7 +191,6 @@ build_onnxruntime_gpu_for_profiling() {
                 --build_wheel --skip_tests \
                 --cmake_generator Ninja \
                 --compile_no_warning_as_error \
-                --enable_cuda_nhwc_ops \
                 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=$CUDA_ARCH \
                 --cmake_extra_defines onnxruntime_ENABLE_NVTX_PROFILE=ON \
                 --enable_cuda_line_info
