@@ -170,9 +170,4 @@ template Status RocmCall<ncclResult_t, false>(ncclResult_t retCode, const char* 
 template void RocmCall<ncclResult_t, true>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg, const char* file, const int line);
 #endif
 
-#ifdef USE_HIPBLASLT
-template Status RocmCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg, const char* file, const int line);
-template void RocmCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg, const char* file, const int line);
-#endif
-
 }  // namespace onnxruntime
