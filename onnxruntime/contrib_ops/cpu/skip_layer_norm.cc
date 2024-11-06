@@ -111,8 +111,7 @@ void ComputeJob(
     float epsilon,
     bool simplified,
     MLFloat16* output_data,
-    MLFloat16* skip_input_bias_add_output_data,
-    AllocatorPtr alloc) {
+    MLFloat16* skip_input_bias_add_output_data) {
   auto offset = task_idx * hidden_size;
   const MLFloat16* p_input = input_data + offset;
   MLFloat16* p_output = output_data + offset;
@@ -276,7 +275,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                      input_fp32.get(), output_fp32.get(),
                      prepacked_skip_fp32_data_ ? prepacked_skip_fp32_data_.get() : skip_fp32.get(),
                      task_idx, hidden_size, skip_size, epsilon_, simplified, output_data,
-                     skip_input_bias_add_output_data, alloc);
+                     skip_input_bias_add_output_data);
         } else {
           ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size,
                      epsilon_, simplified, output_data, skip_input_bias_add_output_data);
