@@ -347,8 +347,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
 
         # initializers
-        value = float(numpy.array([0.5], dtype=numpy.float32))
-        constant = numpy_helper.from_array(numpy.array([value], dtype=numpy.float32), name="constant")
+        value = numpy.array([0.5], dtype=numpy.float32)
+        constant = numpy_helper.from_array(value, name="constant")
 
         nodes = [
             # Get the shape of the input tensor: `input_tensor_shape = [1024]`.
@@ -372,8 +372,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
 
         # initializers
-        value = float(numpy.array([1.5], dtype=numpy.float32))
-        constant = numpy_helper.from_array(numpy.array([value], dtype=numpy.float32), name="constant")
+        value = numpy.array([1.5], dtype=numpy.float32)
+        constant = numpy_helper.from_array(value, name="constant")
 
         nodes = [
             # Get the shape of the input tensor: `input_tensor_shape = [768]`.
