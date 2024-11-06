@@ -554,4 +554,6 @@ class BaseQuantizer:
                 self.tensors_range[node.input[0]] = td
             # Adjust Softmax to range from 0.0 to 1.0
             elif node.op_type == "Softmax":
+                if not self.should_quantize_node(node):
+                    continue
                 self.tensors_range[node.output[0]] = TensorData(lowest=np.float32(0.0), highest=np.float32(1.0))
