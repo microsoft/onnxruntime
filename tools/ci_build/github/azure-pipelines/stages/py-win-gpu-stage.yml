@@ -205,14 +205,6 @@ stages:
               DownloadCUDA: true
             DownloadTRT: ${{ parameters.use_tensorrt }}
 
-#        TODO: remove this task
-        - task: BatchScript@1
-          displayName: 'setup env'
-          inputs:
-            filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-            modifyEnvironment: true
-            workingFolder: '$(Build.BinariesDirectory)'
-
         - task: PowerShell@2
           displayName: 'Install Third Party Dependencies'
           inputs:
