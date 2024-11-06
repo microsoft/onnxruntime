@@ -219,8 +219,8 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
-  const T* skip_data = prepacked_skip_fp32_data_ ? nullptr : skip->Data<T>();    // skip is mandatory
-  const T* gamma_data = prepacked_gamma_fp32_data_ ? nullptr : gamma->Data<T>(); // gamma is mandatory
+  const T* skip_data = prepacked_skip_fp32_data_ ? nullptr : skip->Data<T>();     // skip is mandatory
+  const T* gamma_data = prepacked_gamma_fp32_data_ ? nullptr : gamma->Data<T>();  // gamma is mandatory
   const T* beta_data = (prepacked_beta_fp32_data_ || beta == nullptr) ? nullptr : beta->Data<T>();
   const T* bias_data = (prepacked_bias_fp32_data_ || bias == nullptr) ? nullptr : bias->Data<T>();
 
