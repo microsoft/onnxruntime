@@ -75,7 +75,7 @@ void TestOpenVINOEp(OrtEnv* env, OrtSessionOptions* so) {
 #else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yangu/work/onnxruntime/samples/openvino/build/libOpenVINOEp.so", env, "OpenVINOEp"));
 #endif
-    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
+    std::vector<const char*> keys{"device_type", "precision"}, values{"CPU", "FP32"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "OpenVINOEp", env, keys.data(), values.data(), keys.size()));
 }
 

@@ -78,11 +78,13 @@ void AppendClusterToSubGraph(const size_t* node_index, size_t node_count,
   meta_def->input_len = inputs.size();
   meta_def->inputs = new char* [inputs.size()];
   for (int i = 0; i < inputs.size(); i++) {
+    meta_def->inputs[i] = new char [inputs[i].length() + 1];
     strcpy(meta_def->inputs[i], inputs[i].c_str());
   }
   meta_def->output_len = outputs.size();
   meta_def->outputs = new char* [outputs.size()];
   for (int i = 0; i < outputs.size(); i++) {
+    meta_def->outputs[i] = new char [outputs[i].length() + 1];
     strcpy(meta_def->outputs[i], outputs[i].c_str());
   }
 
