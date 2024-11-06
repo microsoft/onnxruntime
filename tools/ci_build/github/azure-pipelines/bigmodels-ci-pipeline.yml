@@ -115,7 +115,7 @@ stages:
               set -ex; \
               env; \
               ccache -s; \
-              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
@@ -190,13 +190,6 @@ stages:
         path: $(STABLE_DIFFUSION_MODEL_CACHE)
       displayName: Cache stable diffusion model
 
-    - task: UsePythonVersion@0
-      displayName: Use python 3.10
-      inputs:
-        versionSpec: "3.10"
-        addToPath: true
-        architecture: "x64"
-
     - script: |
         mkdir -p $(GenerateImage_DIR)
         docker run --rm --gpus all -v $PWD:/workspace \
@@ -207,7 +200,7 @@ stages:
           bash -c ' \
             set -ex; \
             pip uninstall -y $(pip list --format=freeze | grep opencv); \
-            rm -rf /usr/local/lib/python3.10/dist-packages/cv2/; \
+            rm -rf /usr/local/lib/python3.8/dist-packages/cv2/; \
             apt-get update; \
             DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
