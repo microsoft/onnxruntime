@@ -98,12 +98,10 @@ def main():
         )
 
     if use_container_registry:
-        run(args.docker_path, "buildx", "create", "--driver=docker-container", "--name=container_builder")
         run(
             args.docker_path,
             "--log-level",
             "error",
-            "buildx",
             "build",
             "--load",
             "--tag",
@@ -117,11 +115,6 @@ def main():
             "-f",
             args.dockerfile,
             args.context,
-        )
-        run(
-            args.docker_path,
-            "push",
-            full_image_name,
         )
     else:
         log.info("Building image...")
