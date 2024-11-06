@@ -100,6 +100,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
+    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -186,7 +187,8 @@ stages:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
           workingDirectory: '$(Build.BinariesDirectory)'
-
+        env:
+          ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
       - task: VSBuild@1
         displayName: 'Build'
