@@ -14,7 +14,7 @@ add_definitions(-DONNX_ML)
 file(GLOB openvino_src "./*.cc" "./ov_versions/*.cc" "./backends/*.cc")
 add_library(OpenVINOEp SHARED ${openvino_src})
 target_include_directories(OpenVINOEp PUBLIC "../../include/onnxruntime"
-                                             "../utils"
+#                                             "../utils"
                                              ${OPENVINO_HOME}/include
                                              "../../build/Windows/Debug/_deps/onnx-src"
                                              "../../build/Windows/Debug/_deps/onnx-build"

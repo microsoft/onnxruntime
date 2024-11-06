@@ -12,25 +12,41 @@ inline void THROW_ON_ERROR(OrtStatus* status) {
 }
 
 void TestCompileBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
+#else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
+#endif
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "outTreeEp", env, keys.data(), values.data(), keys.size()));
 }
 
 void TestKernelBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
+#else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
+#endif
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "kernelEp", env, keys.data(), values.data(), keys.size()));
 }
 
 void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+#else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+#endif
     std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 }
 
 void TestTensorRTAndCudaEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+#else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+#endif
     std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 
@@ -38,12 +54,6 @@ void TestTensorRTAndCudaEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* 
     THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
     THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
     g_ort->ReleaseCUDAProviderOptions(cuda_options);
-}
-
-void TestOpenVinoEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yangu/work/onnxruntime/samples/openvino/build/libOpenVINOEp.so", env, "openvinoEp"));
-    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
-    THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "openvinoEp", env, keys.data(), values.data(), keys.size()));
 }
 
 void TestOriginalTensorRTEp(const OrtApi* g_ort, OrtSessionOptions* so) {
@@ -59,11 +69,25 @@ void TestOriginalTensorRTEp(const OrtApi* g_ort, OrtSessionOptions* so) {
     g_ort->ReleaseTensorRTProviderOptions(tensorrt_options);
 }
 
+void TestOpenVINOEp(OrtEnv* env, OrtSessionOptions* so) {
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"C:/Users/leca/source/onnxruntime/samples/openvino/build/Debug/OpenVINOEp.dll", env, "OpenVINOEp"));
+#else
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yangu/work/onnxruntime/samples/openvino/build/libOpenVINOEp.so", env, "OpenVINOEp"));
+#endif
+    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "OpenVINOEp", env, keys.data(), values.data(), keys.size()));
+}
+
 void RunResnet18v1_7(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     // download resnet18-v1-7 model at:
     // https://github.com/onnx/models/blob/main/validated/vision/classification/resnet/model/resnet18-v1-7.tar.gz
     OrtSession* session = nullptr;
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/resnet18-v1-7/resnet18-v1-7.onnx", so, &session));
+#else
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/resnet18-v1-7/resnet18-v1-7.onnx", so, &session));
+#endif
 
     const int input_data_cnt = 3 * 224 * 224;
     float input_data[input_data_cnt];
@@ -92,7 +116,11 @@ void RunResnet18v1_7(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) 
 
 void RunRelu(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"C:/share/models/relu/Relu.onnx", so, &session));
+#else
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));
+#endif
 
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
@@ -117,7 +145,11 @@ void RunRelu(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 
 void RunDecoder(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/decoder/decoder.onnx", so, &session));
+#else
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/decoder/decoder.onnx", so, &session));
+#endif
 
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
@@ -175,7 +207,11 @@ void RunDecoder(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 
 void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/faster_rcnn/faster_rcnn_R_50_FPN_1x.onnx", so, &session));
+#else
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/faster_rcnn/faster_rcnn_R_50_FPN_1x.onnx", so, &session));
+#endif
 
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
@@ -204,9 +240,13 @@ void RunFastRcnn(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 
 void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so, const char* model) {
     OrtSession* session = nullptr;
+#ifdef _WIN32
+    if (!strcmp(model, "tyolo")) THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/tinyyolov3/yolov3-tiny.onnx", so, &session));
+    else if (!strcmp(model, "yolo")) THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/yolov3/yolov3.onnx", so, &session));
+#else
     if (!strcmp(model, "tyolo")) THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/tinyyolov3/yolov3-tiny.onnx", so, &session));
     else if (!strcmp(model, "yolo")) THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/yolov3/yolov3.onnx", so, &session));
-
+#endif
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
 
@@ -246,7 +286,11 @@ void RunTinyYolov3(OrtEnv* p_env, OrtSessionOptions* so, const char* model) {
 
 void RunControlFlow(OrtEnv* p_env, OrtSessionOptions* so) {
     OrtSession* session = nullptr;
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/control_flow/control_flow_model.onnx", so, &session));
+#else
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/control_flow/control_flow_model.onnx", so, &session));
+#endif
 
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
@@ -281,8 +325,13 @@ void RunControlFlow(OrtEnv* p_env, OrtSessionOptions* so) {
     for (size_t i = 0; i < 2; i++) std::cout<<output_tensor_data[i]<<" \n";
 }
 
-// ./TestOutTreeEp c/k/t/tc/otc/ov relu/resnet/rcnn
+// ./TestOutTreeEp c/k/t/tc/otc/o relu/resnet/rcnn
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+    std::cout << "For attach:";
+    int a;
+    std::cin >> a;
+#endif
     OrtEnv* p_env = nullptr;
     OrtLoggingLevel log_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR;//OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
     THROW_ON_ERROR(g_ort->CreateEnv(log_level, "", &p_env));
@@ -339,8 +388,8 @@ int main(int argc, char *argv[]) {
         TestTensorRTAndCudaEp(g_ort, p_env, so);
     } else if (strcmp(argv[1], "otc") == 0) {
         TestOriginalTensorRTEp(g_ort, so);
-    } else if (strcmp(argv[1], "ov") == 0) {
-        TestOpenVinoEp(g_ort, p_env, so);
+    } else if (!strcmp(argv[1], "o")) {
+        TestOpenVINOEp(p_env, so);
     }
 
     if (!strcmp(argv[2], "relu")) {
@@ -361,6 +410,8 @@ int main(int argc, char *argv[]) {
         g_ort->UnregisterPluginExecutionProviderLibrary(p_env, "kernelEp");
     } else if (!strcmp(argv[1], "t") || !strcmp(argv[1], "tc")) {
         g_ort->UnregisterPluginExecutionProviderLibrary(p_env, "tensorrtEp");
+    } else if (!strcmp(argv[1], "o")) {
+        g_ort->UnregisterPluginExecutionProviderLibrary(p_env, "OpenVINOEp");
     }
 
     g_ort->ReleaseEnv(p_env);
