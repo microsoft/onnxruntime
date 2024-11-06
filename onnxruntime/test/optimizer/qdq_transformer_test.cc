@@ -3126,8 +3126,8 @@ TEST(QDQTransformerTests, ClipQuantFusion) {
       // solve the following equation to get scale and zp for testing purpose
       //  min_upper/scale - 0.5 + zp = q_codomain_min
       //  max_lower/scale + 0.5 + zp = q_codomain_max
-      float q_codomain_min = std::numeric_limits<T>::lowest();
-      float q_codomain_max = std::numeric_limits<T>::max();
+      constexpr float q_codomain_min = std::numeric_limits<T>::lowest();
+      constexpr float q_codomain_max = std::numeric_limits<T>::max();
 
       float scale = (max_lower_ - min_upper_) / (q_codomain_max - q_codomain_min - 1);
       float zp = q_codomain_min + 0.5f - min_upper_ / scale;
