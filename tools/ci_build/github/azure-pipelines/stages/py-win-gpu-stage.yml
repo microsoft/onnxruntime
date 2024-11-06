@@ -12,10 +12,6 @@ parameters:
 - name: EP_BUILD_FLAGS
   type: string
 
-- name: ENV_SETUP_SCRIPT
-  type: string
-  default: ''
-
 - name: BUILD_PY_PARAMETERS
   displayName: >
     Extra parameters to pass to build.py. Don't put newlines in here.
@@ -111,21 +107,12 @@ stages:
 
           - template: ../templates/download-deps.yml
 
-          - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: ../templates/jobs/set-winenv.yml
-              parameters:
-                EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
-                  DownloadCUDA: true
-                DownloadTRT: ${{ parameters.use_tensorrt }}
-
-          - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: ../templates/jobs/download_win_gpu_library.yml
-              parameters:
-                CudaVersion: ${{ parameters.CudaVersion }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
-                  DownloadCUDA: true
-                DownloadTRT: ${{ parameters.use_tensorrt }}
+          - template: ../templates/jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+                DownloadCUDA: true
+              DownloadTRT: ${{ parameters.use_tensorrt }}
 
           - task: PythonScript@0
             displayName: 'Update deps.txt'
@@ -210,6 +197,13 @@ stages:
             ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
+
+        - template: ../templates/jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+              DownloadCUDA: true
+            DownloadTRT: ${{ parameters.use_tensorrt }}
 
         - task: PowerShell@2
           displayName: 'Install ONNX'
