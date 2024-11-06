@@ -334,7 +334,7 @@ ORT_API2_STATUS(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
  */
 ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);  // TODO(leca): review and discuss
  
-/** \brief Serialize graph/model and save it to disk.
+/** \brief Serialize the graph(model) to disk.
  *
  * \param[in] graph The graph to be serialized
  * \param[in] onnx_model_path The file path to save to
@@ -343,13 +343,13 @@ ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ vo
 ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
 
 /** \brief  Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise: 
- *            1. if node doesn't exist, add an "EP Context" node to the existing ep_context_graph graph
- *            2. if node already exists, update the node attributes
+ *            1. if the given node name can't be found in the graph, add an new "EP Context" node to the existing graph
+ *            2. if the node being found with the givne node name, update the node attributes only
  *
  * Please see https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for more details about EP Context design
  *
  * \param[in] graph The graph to create or add
- * \param[in] node_name The node to be added or replaced 
+ * \param[in] node_name The node to be added or updated 
  * \param[in] main_context The attribute of EP Context op 
  * \param[in] embed_mode The attribute of EP Context op 
  * \param[in] cache_path The cache or binary file path. It's for setting the ep_cache_context attribute if embed_mode is 0

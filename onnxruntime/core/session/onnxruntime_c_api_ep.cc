@@ -510,9 +510,8 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
 }
 
 /* Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise: 
- *   1. if node doesn't exist, add an "EP Context" node to the existing ep_context_graph graph
- *   2. if node already exists, update the node attributes
- *
+ *   1. if the given node name can't be found in the graph, add an new "EP Context" node to the existing graph
+ *   2. if the node being found with the givne node name, update the node attributes only
  */
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
