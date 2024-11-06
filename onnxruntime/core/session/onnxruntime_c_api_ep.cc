@@ -511,7 +511,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
 
 /* Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise: 
  *   1. if the given node name can't be found in the graph, add an new "EP Context" node to the existing graph
- *   2. if the node being found with the givne node name, update the node attributes only
+ *   2. if the node is already existed, update the node attributes only
  */
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
@@ -591,11 +591,13 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
   bool node_existed = node_idx != std::numeric_limits<size_t>::max() ? true : false;
 
   // Create or get EP context node attributes
-  NodeAttributes node_attributes;
+  auto new_node_attributes = NodeAttributes(); // using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>
+  NodeAttributes* node_attributes;
   if (node_existed) { 
-    node_attributes = graph_build->GetNode(node_idx)->GetMutableAttributes();
+    node_attributes = &graph_build->GetNode(node_idx)->GetMutableAttributes();
   } else {
-    node_attributes.reserve(3 + extra_attr_num);
+    new_node_attributes.reserve(3 + extra_attr_num);
+    node_attributes = &new_node_attributes;
   }
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_0 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // main_context
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr_1 = std::make_unique<ONNX_NAMESPACE::AttributeProto>(); // embed_mode 
@@ -627,9 +629,9 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
     attr_2->set_s(cache_path_str);
   }
 
-  node_attributes[MAIN_CONTEXT] = *attr_0;
-  node_attributes[EMBED_MODE] = *attr_1;
-  node_attributes[EP_CACHE_CONTEXT] = *attr_2;
+  (*node_attributes)[MAIN_CONTEXT] = *attr_0;
+  (*node_attributes)[EMBED_MODE] = *attr_1;
+  (*node_attributes)[EP_CACHE_CONTEXT] = *attr_2;
 
   // other attributes
   std::unordered_map<std::string, std::string>::iterator it;
@@ -642,12 +644,12 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
     attr->set_name(key);
     attr->set_type(onnx::AttributeProto_AttributeType_STRING);
     attr->set_s(value);
-    node_attributes[key] = *attr;
+    (*node_attributes)[key] = *attr;
   }
 
   if (!node_existed && graph_viewer) {
     std::string name = node_name;
-    graph_build->AddNode(name, EPCONTEXT_OP, "", inputs, outputs, &node_attributes, EPCONTEXT_OP_DOMAIN);
+    graph_build->AddNode(name, EPCONTEXT_OP, "", inputs, outputs, node_attributes, EPCONTEXT_OP_DOMAIN);
   }
 
   common::Status status = graph_build->Resolve();
