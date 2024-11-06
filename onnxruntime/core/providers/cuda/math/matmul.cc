@@ -151,8 +151,8 @@ Status TransposeAndConvertToFp8(cudaStream_t& cuda_stream, const Tensor* right_X
 
   cublasHandle_t cublas_handle;
   CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle));
+  cublasSetStream(cublas_handle, cuda_stream);
 
-  // We don't have access to the context from inside PrePack, which is one of the callers of this method.
   right_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, num_elems * sizeof(Float8E4M3FN), false, stream);
 
   Status return_status;
@@ -320,6 +320,7 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaS
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sy, &scale_y, sizeof(float), cudaMemcpyHostToDevice, stream));
 
   // TODO why does this segfault?
+  // If CUBLASLT_MATMUL_DESC_A_SCALE_POINTER is NULL or not set, the corresponding scale will be 1.
   // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, sa, sizeof(sa)));
   // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, sb, sizeof(sb)));
   // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_C_SCALE_POINTER, sy, sizeof(sy)));
