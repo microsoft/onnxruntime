@@ -25,6 +25,10 @@ class SkipLayerNorm final : public OpKernel {
   IAllocatorUniquePtr<float> prepacked_gamma_fp32_data_;
   IAllocatorUniquePtr<float> prepacked_beta_fp32_data_;
   IAllocatorUniquePtr<float> prepacked_bias_fp32_data_;
+  const Tensor* prepacked_skip_tensor_;
+  const Tensor* prepacked_gamma_tensor_;
+  const Tensor* prepacked_beta_tensor_;
+  const Tensor* prepacked_bias_tensor_;
 };
 
 }  // namespace contrib
