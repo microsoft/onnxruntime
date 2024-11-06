@@ -33,9 +33,12 @@ def get_nvidia_so_paths() -> str:
 
     # Collect all directories under site-packages/nvidia that contain .so files (for Linux)
     so_paths = []
+    # Regular expression to match `.so` optionally followed by `.` and digits
+    pattern = re.compile(r"\.so(\.\d+)?$")
     for root, files in os.walk(nvidia_path):
-        if any(file.endswith(".so") for file in files):
-            so_paths.append(root)
+        for file in files:
+            if pattern.search(file):
+                so_paths.append(root)
     return os.pathsep.join(so_paths)
 
 
