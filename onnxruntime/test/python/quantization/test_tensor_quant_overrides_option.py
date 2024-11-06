@@ -36,7 +36,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.bias = np.array([0.0, 1.0], dtype=np.float32)
         self.default_act_qtype = onnx.TensorProto.UINT8
         self.default_wgt_qtype = onnx.TensorProto.UINT8
-        self.default_wgt_qtype_per_channel = onnx.TensorProto.INT8
+        self.default_wgt_qtype_per_channel = onnx.TensorProto.UINT8
         self.default_bias_qtype = onnx.TensorProto.INT32
 
         self.default_zp_scales = {
@@ -49,7 +49,8 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.default_zp_scales_per_channel = {
             "INP": (0, np.float32(0.0235294122248888)),
             "SIG_OUT": (0, np.float32(0.003911871928721666)),
-            "WGT": ([0, 0], [np.float32(0.015748031437397003), np.float32(0.011811023578047752)]),
+            # per-channel weights are always symmetric (ie. zp = (qmin + qmax) / 2)
+            "WGT": ([127, 127], [np.float32(0.015748031437397003), np.float32(0.011811023578047752)]),
             "BIAS": ([0, 0], [np.float32(0.00006160428165458143), np.float32(0.00004620321124093607)]),
             "OUT": (0, np.float32(0.005075461231172085)),
         }
@@ -420,12 +421,17 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
                 self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
                 for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
-                    wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_range)
+                    wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(
+                        wgt_zp.data_type,
+                        symmetric=True,  # per-channel is always symmetric
+                        reduce_range=reduce_range,
+                    )
                     expected_zp, expected_scale = compute_scale_zp(
                         np.array(rmin_vals[index], dtype=np.float32),
                         np.array(rmax_vals[index], dtype=np.float32),
                         wgt_qmin,
                         wgt_qmax,
+                        symmetric=True,  # per-channel is always symmetric
                     )
                     self.assertEqual(zp, expected_zp)
                     self.assertEqual(scale, np.float32(expected_scale))
