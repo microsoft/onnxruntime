@@ -83,27 +83,22 @@ bool MatchDQNode(const Node& node);
 // For (x / y_scale), it rounds to the nearest even. So the allowed quantize limits before rounding need to be taken
 // care of.
 //
-// 1. Clip can be removed iff the codoamin of QuantizeLinear remain unchanged.
+// 1. Clip can be removed iff the output of QuantizeLinear remain unchanged.
+//
 // 2. To remain unchanged, y=QuantizeLinear(Clip(x)) must span the full range of values that can be represented by the
-//    integer type of y. We can use this precondition to eval QuantizeLinear backward to to get the domain.
-// 3. Indicates the domain of QuantizeLinear is strict subset of the codomain of Clip. We can use this to test if a
-//    removal is valid or not.
-// 4. Due to rounding effect, we can be get the upperbound and lowerbound of min or max
-//    - Which one to use?
-//      upperbound of min and lowerbound of max
-//    - Why?
-//      We want the codomain to be unchanged, so as long as the domain genreate a codomain that fill the integer value
-//      range will be fine. In graphics:
+//    integer type of y. Otherwise y'=QuantizeLinear(x) may generate new values.
+//
 //               lowest
 //               /
-//              [           ]   Clip Codomain
-//             []     []  <------ Derived domain of Q by using Q's output type
+//              [           ]     Clip_codomain, x and clip attribute dependent.
+//             []     []  <------ Derived Q_domain by using Q's output type, this is the intrinsic property of Q.
 //            /  \  <------------ Boundery case when MinLower < lowest but lowest <= MinUpper
 //      MinLower  MinUpper
 //
-//      Domain is float value, and because of DQ's rounding, values in [MinLower, MinUpper] **all** evaluate to
-//      lowest=numeric_linmits<output_type>::lowest(). A relaxation can be applied, all we need is **some** values can
-//      generate lowest (MinUpper > lowest). WLOG, this also applies to MaxLower similarly.
+// 3. Values in Q_domain are floats, and because of Q's rounding, values in [MinLower, MinUpper] **all** evaluate to
+//    lowest=numeric_linmits<output_type>::lowest(). A relaxation can be applied. We take [MinUpper, MaxLower] as the
+//    minimium viable Q_domain_min. If Q_domain_min has already generated values in the full integer range, a superset
+//    of it will produce the same set of output due to `saturate`.
 //
 // The following struct provides a wrapper to compute the domain from codomain (Q output dtype).
 template <typename T>
