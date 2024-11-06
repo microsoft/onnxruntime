@@ -24,7 +24,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .InputMemoryType(OrtMemTypeCPUInput, 6),
+          .MayInplace(3, 1)
+          .MayInplace(4, 2)
+          .InputMemoryType(OrtMemTypeCPUInput, 6),
     GroupQueryAttention);
 
 Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -66,6 +68,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   std::vector<int64_t> present_kv_shape({static_cast<int64_t>(parameters.batch_size_), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(parameters.head_size_)});
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
+  parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
