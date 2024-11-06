@@ -15,7 +15,7 @@ allprojects {
 
 project.group = "com.microsoft.onnxruntime"
 version = rootProject.file('../VERSION_NUMBER').text.trim()
-def releaseVersionSuffix = System.getenv['ReleaseVersionSuffix'] ?: ""
+def releaseVersionSuffix = System.env['ReleaseVersionSuffix'] ?: ""
 version = releaseVersionSuffix ? "${version}-${releaseVersionSuffix}1" : version
 println "ReleaseVersionSuffix: ${releaseVersionSuffix}"
 println "Version: ${version}"
