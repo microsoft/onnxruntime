@@ -196,11 +196,11 @@ stages:
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          nvcr.io/nvidia/pytorch:23.05-py3 \
           bash -c ' \
             set -ex; \
             pip uninstall -y $(pip list --format=freeze | grep opencv); \
-            rm -rf /usr/local/lib/python3.8/dist-packages/cv2/; \
+            rm -rf /usr/local/lib/python3.10/dist-packages/cv2/; \
             apt-get update; \
             DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
@@ -238,7 +238,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          nvcr.io/nvidia/pytorch:23.05-py3 \
           bash -c '
             set -x; \
             python3 --version; \
@@ -265,7 +265,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          nvcr.io/nvidia/pytorch:23.05-py3 \
           bash -c '
             set -ex; \
             python3 --version; \
