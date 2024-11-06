@@ -104,20 +104,20 @@ bool MatchDQNode(const Node& node);
 template <typename T>
 struct QuantizeDomain {
   inline static float MinUpper(float scale, int zp) {
-    int64_t codomain_min = std::numeric_limits<T>::lowest();
+    constexpr int64_t codomain_min = std::numeric_limits<T>::lowest();
     int64_t biased = codomain_min - zp;
     float before_round = static_cast<float>(biased) + 0.5f;  // move to upperbound
-    if (biased % 2 == 1) {                                   // cannot be exact ?.5 because of rounding to even
+    if (biased % 2 != 0) {                                   // cannot be exact ?.5 because of rounding to even
       before_round = std::nextafterf(before_round, static_cast<float>(biased));
     }
     return before_round * scale;
   }
 
   inline static float MaxLower(float scale, int zp) {
-    int64_t codomain_max = std::numeric_limits<T>::max();
+    constexpr int64_t codomain_max = std::numeric_limits<T>::max();
     int64_t biased = codomain_max - zp;
     float before_round = static_cast<float>(biased) - 0.5f;  // move to lowerbound
-    if (biased % 2 == 1) {                                   // cannot be exact ?.5 because of rounding to even
+    if (biased % 2 != 0) {                                   // cannot be exact ?.5 because of rounding to even
       before_round = std::nextafterf(before_round, static_cast<float>(biased));
     }
     return before_round * scale;

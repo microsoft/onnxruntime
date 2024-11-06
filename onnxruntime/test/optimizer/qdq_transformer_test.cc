@@ -3210,8 +3210,8 @@ TEST(QDQTransformerTests, ClipQuantFusion) {
     };
 
     constexpr float eps = std::numeric_limits<float>::epsilon();
-    const float small_delta = 0.01f;
-    const float large_delta = 1.0f;
+    constexpr float small_delta = 0.01f;
+    constexpr float large_delta = 1.0f;
 
     // left, right large gap fit, fuse
     set_test_state(true, l, r, -large_delta, large_delta);
