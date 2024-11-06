@@ -214,6 +214,10 @@ struct TensorrtShortFuncState {
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
 std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
 
+static const std::string k_cc_hw_compatible = "80+";
+static const std::string k_ep_ctx_hardware_architecture = "hardware_architecture";
+static const std::string k_ep_ctx_onnx_model_filename = "onnx_model_filename";
+
 struct TensorrtExecutionProvider : public OrtExecutionProvider {
     TensorrtExecutionProvider(const char* ep_type, const ProviderOptions& provider_options);
     bool IsGraphCaptured(int graph_annotation_id) const { return false; }
@@ -309,6 +313,11 @@ private:
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
+
+  OrtGraph* ep_ctx_graph_ = nullptr;
+  std::vector<const char*> extra_attr_keys_;
+  std::vector<const char*> extra_attr_values_;
+
 //  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};

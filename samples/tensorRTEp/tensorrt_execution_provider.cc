@@ -2097,6 +2097,19 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         auto lock = GetApiLock();
         runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
     }
+
+    // EP Context setting
+    if (dump_ep_context_model_) {
+      extra_attr_keys_.push_back(k_ep_ctx_hardware_architecture.c_str());
+      extra_attr_keys_.push_back(k_ep_ctx_onnx_model_filename.c_str());
+
+      if (engine_cache_enable_ && engine_hw_compatible_) {
+        extra_attr_values_.push_back(k_cc_hw_compatible.c_str());
+      } else {
+        extra_attr_values_.push_back(compute_capability_.c_str());
+      }
+      extra_attr_values_.push_back(model_path_);
+    }
 }
 
 TensorrtExecutionProviderFactory::TensorrtExecutionProviderFactory() {
@@ -2662,19 +2675,21 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
             auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
             ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
           }
-          std::string compute_capability_hw_compat = compute_capability_;
-          if (engine_cache_enable_ && engine_hw_compatible_) {
-            compute_capability_hw_compat = "80+";
-          }
-//          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-//                                                                                 ep_cache_context_attr_,
-//                                                                                 reinterpret_cast<char*>(serialized_engine->data()),
-//                                                                                 serialized_engine->size(),
-//                                                                                 ep_context_embed_mode_,
-//                                                                                 compute_capability_hw_compat,
-//                                                                                 model_path_,
-//                                                                                 GetLogger())};
-//          DumpCtxModel(model_proto.get(), ctx_model_path_);
+
+          graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(graph_body_viewer,
+                                                        node_name,
+                                                        1, // main_context
+                                                        ep_context_embed_mode_,
+                                                        ep_cache_context_attr_.c_str(),
+                                                        reinterpret_cast<char*>(serialized_engine->data()),
+                                                        serialized_engine->size(),
+                                                        extra_attr_keys_.data(),
+                                                        extra_attr_values_.data(),
+                                                        extra_attr_keys_.size(),
+                                                        &ep_ctx_graph_);
+
+          graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
+          graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
         }
       }
     }
@@ -2762,21 +2777,22 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
       auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
       ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
     }
-    std::string compute_capability_hw_compat = compute_capability_;
-    if (engine_cache_enable_ && engine_hw_compatible_) {
-      compute_capability_hw_compat = "80+";
+
+    graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(graph_body_viewer,
+                                                  node_name,
+                                                  1, // main_context
+                                                  ep_context_embed_mode_,
+                                                  ep_cache_context_attr_.c_str(),
+                                                  nullptr,
+                                                  0,
+                                                  extra_attr_keys_.data(),
+                                                  extra_attr_values_.data(),
+                                                  extra_attr_keys_.size(),
+                                                  &ep_ctx_graph_);
+    if (ep_context_embed_mode_ == 0) {
+      graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
+      graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
     }
-//    model_proto_.reset(CreateCtxModel(graph_body_viewer,
-//                                      ep_cache_context_attr_,
-//                                      nullptr,
-//                                      0,
-//                                      ep_context_embed_mode_,
-//                                      compute_capability_hw_compat,
-//                                      model_path_,
-//                                      GetLogger()));
-//    if (ep_context_embed_mode_ == 0) {
-//      DumpCtxModel(model_proto_.get(), ctx_model_path_);
-//    }
   }
 
   // Create function state
@@ -3136,8 +3152,19 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 
       // dump ep context model
       if (this_->dump_ep_context_model_ && this_->ep_context_embed_mode_) {
-        //UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());  // TODO(leca)
-        //DumpCtxModel(model_proto_.get(), ctx_model_path_);
+          graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(nullptr,
+                                                        fused_node_name.c_str(), 
+                                                        1, // main_context
+                                                        this_->ep_context_embed_mode_,
+                                                        this_->ep_cache_context_attr_.c_str(),
+                                                        reinterpret_cast<char*>(serialized_engine->data()),
+                                                        serialized_engine->size(),
+                                                        this_->extra_attr_keys_.data(),
+                                                        this_->extra_attr_values_.data(),
+                                                        this_->extra_attr_keys_.size(),
+                                                        &this_->ep_ctx_graph_);
+          graph_api_->OrtGraph_DumpOnnxModel(this_->ep_ctx_graph_, this_->ctx_model_path_.c_str());
+          graph_api_->OrtGraph_ReleaseGraph(this_->ep_ctx_graph_);
       }
       context_update = true;
 
@@ -3732,7 +3759,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
-        graph_api_->OrtGraph_ReleaseGraph(sub_graph_viewer);
+        graph_api_->OrtGraph_ReleaseGraphViewer(sub_graph_viewer);
       }
     }
   }
