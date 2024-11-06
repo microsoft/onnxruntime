@@ -1,6 +1,6 @@
 #include <cassert>
 #include <filesystem>
-//#include "provider_options_utils.h"
+#include "provider_options_utils.h"
 #include "openvino_execution_provider.h"
 #include "openvino_utils.h"
 #include "ov_versions/capability.h"
@@ -9,22 +9,22 @@ namespace onnxruntime {
 
 OpenVINOExecutionProviderInfo OpenVINOExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   OpenVINOExecutionProviderInfo info{};
-//  ORT_THROW_IF_ERROR(
-//        ProviderOptionsParser{}
-//            .AddAssignmentToReference("device_type", info.device_type_)
-//            .AddAssignmentToReference("precision", info.precision_)
-//            .AddAssignmentToReference("enable_npu_fast_compile", info.enable_npu_fast_compile_)
-//            .AddAssignmentToReference("cache_dir", info.cache_dir_)
-//            .AddAssignmentToReference("model_priority", info.model_priority_)
-//            .AddAssignmentToReference("num_streams", info.num_streams_)
-//            .AddAssignmentToReference("context", info.context_)
-//            .AddAssignmentToReference("enable_opencl_throttling", info.enable_opencl_throttling_)
-//            .AddAssignmentToReference("disable_dynamic_shapes", info.disable_dynamic_shapes_)
-//            .AddAssignmentToReference("num_of_threads", info.num_of_threads_)
-//            .AddAssignmentToReference("export_ep_ctx_blob", info.export_ep_ctx_blob_)
-//            .AddAssignmentToReference("enable_qdq_optimizer", info.enable_qdq_optimizer_)
-//            .AddAssignmentToReference("disable_cpu_fallback", info.disable_cpu_fallback_)
-//            .Parse(options));
+ ORT_THROW_IF_ERROR(
+       ProviderOptionsParser{}
+           .AddAssignmentToReference("device_type", info.device_type_)
+           .AddAssignmentToReference("precision", info.precision_)
+           .AddAssignmentToReference("enable_npu_fast_compile", info.enable_npu_fast_compile_)
+           .AddAssignmentToReference("cache_dir", info.cache_dir_)
+           .AddAssignmentToReference("model_priority", info.model_priority_)
+           .AddAssignmentToReference("num_streams", info.num_streams_)
+           .AddAssignmentToReference("context", info.context_)
+           .AddAssignmentToReference("enable_opencl_throttling", info.enable_opencl_throttling_)
+           .AddAssignmentToReference("disable_dynamic_shapes", info.disable_dynamic_shapes_)
+           .AddAssignmentToReference("num_of_threads", info.num_of_threads_)
+           .AddAssignmentToReference("export_ep_ctx_blob", info.export_ep_ctx_blob_)
+           .AddAssignmentToReference("enable_qdq_optimizer", info.enable_qdq_optimizer_)
+           .AddAssignmentToReference("disable_cpu_fallback", info.disable_cpu_fallback_)
+           .Parse(options));
     return info;
 }
 
