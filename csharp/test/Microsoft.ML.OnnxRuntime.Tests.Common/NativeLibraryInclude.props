@@ -65,7 +65,7 @@ test project only targets net8 and netstandard2.0.
     <Choose>
         <When Condition="'$(UsePrebuiltNativePackage)' != 'true'">
             <PropertyGroup Condition="'$(IsWindowsBuild)'=='true' OR '$(IsWindowsTarget)'=='true'">
-                <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+                <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeRoot)\build\Windows</OnnxRuntimeBuildDirectory>
                 <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
             </PropertyGroup>
 
