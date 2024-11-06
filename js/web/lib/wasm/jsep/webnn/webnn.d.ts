@@ -28,7 +28,7 @@ interface MLContext {
 }
 interface MLGraph {}
 type MLInputOperandLayout = 'nchw'|'nhwc';
-type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8';
+type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8'|'int4'|'uint4';
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
   shape?: readonly number[];
@@ -36,8 +36,8 @@ interface MLOperandDescriptor {
   dimensions?: readonly number[];
 }
 interface MLOperand {
-  dataType(): MLOperandDataType;
-  shape(): number[];
+  dataType: MLOperandDataType;
+  shape: readonly number[];
 }
 interface MLActivation {}
 type MLNamedOperands = Record<string, MLOperand>;

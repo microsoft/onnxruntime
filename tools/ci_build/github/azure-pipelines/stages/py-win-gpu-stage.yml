@@ -12,10 +12,6 @@ parameters:
 - name: EP_BUILD_FLAGS
   type: string
 
-- name: ENV_SETUP_SCRIPT
-  type: string
-  default: ''
-
 - name: BUILD_PY_PARAMETERS
   displayName: >
     Extra parameters to pass to build.py. Don't put newlines in here.
@@ -28,16 +24,6 @@ parameters:
     - 11.8
     - 12.2
 
-- name: SpecificArtifact
-  displayName: Use Specific Artifact
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Specific Artifact's BuildId
-  type: string
-  default: '0'
-
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -47,8 +33,8 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-
-- name: publish_symbols
+   
+- name: use_tensorrt
   type: boolean
   default: false
 
@@ -62,10 +48,40 @@ stages:
         clean: all
       pool:
         name: onnxruntime-Win-CPU-2022
+        os: windows
+      templateContext:
+        codeSignValidation:
+          enabled: true
+          break: true
+        psscriptanalyzer:
+          enabled: true
+        sdl:
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+            targetPathPattern: '+:file|*.dll;-:file|DirectML.dll'
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
       variables:
-        GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-        VSGenerator: 'Visual Studio 17 2022'
-        CUDA_MODULE_LOADING: 'LAZY'
+      - template: ../templates/common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      - name: CUDA_MODULE_LOADING
+        value: 'LAZY'
+      - name: win_trt_folder
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: ${{ variables.win_trt_folder_cuda11 }}
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: ${{ variables.win_trt_folder_cuda12 }}
+      - name: trt_build_flag
+        ${{ if eq(parameters.use_tensorrt, true) }}:
+          value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
+        ${{ if eq(parameters.use_tensorrt, false) }}:
+          value: ''
       steps:
           - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
             displayName: 'Clean Agent Directories'
@@ -75,7 +91,7 @@ stages:
             clean: true
             submodules: recursive
 
-          - template: telemetry-steps.yml
+          - template: ../templates/telemetry-steps.yml
 
           - task: UsePythonVersion@0
             inputs:
@@ -83,31 +99,20 @@ stages:
               addToPath: true
               architecture: 'x64'
 
-          - task: onebranch.pipeline.tsaoptions@1
-            displayName: 'OneBranch TSAOptions'
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
             inputs:
-              tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-              appendSourceBranchName: false
+              artifactFeeds: 'Lotus'
 
-          - template: download-deps.yml
 
-          - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: jobs/set-winenv.yml
-              parameters:
-                EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
-                  DownloadCUDA: true
-                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-                  DownloadTRT: true
+          - template: ../templates/download-deps.yml
 
-          - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: jobs/download_win_gpu_library.yml
-              parameters:
-                CudaVersion: ${{ parameters.CudaVersion }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
-                  DownloadCUDA: true
-                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-                  DownloadTRT: true
+          - template: ../templates/jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+                DownloadCUDA: true
+              DownloadTRT: ${{ parameters.use_tensorrt }}
 
           - task: PythonScript@0
             displayName: 'Update deps.txt'
@@ -116,14 +121,7 @@ stages:
               arguments: --new_dir $(Build.BinariesDirectory)/deps
               workingDirectory: $(Build.BinariesDirectory)
 
-          - task: PowerShell@2
-            displayName: 'Install ONNX'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-              workingDirectory: '$(Build.BinariesDirectory)'
-              arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
-
-          - template: set-nightly-build-option-variable-step.yml
+          - template: ../templates/set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
             displayName: 'Generate cmake config'
@@ -136,24 +134,12 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel --use_binskim_compliant_compile_flags --update
-                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
-              workingDirectory: '$(Build.BinariesDirectory)'
-
-          # building with build.py so the parallelization parameters are added to the msbuild command
-          - task: PythonScript@0
-            displayName: 'Build'
-            inputs:
-              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-              arguments: >
-                --config ${{ parameters.cmake_build_type }}
-                --build_dir $(Build.BinariesDirectory)
-                --parallel --build
-                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+                --parallel --use_binskim_compliant_compile_flags --update --build
+                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
           # Esrp signing
-          - template: win-esrp-dll.yml
+          - template: ../templates/win-esrp-dll.yml
             parameters:
               FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
               DisplayName: 'ESRP - Sign Native dlls'
@@ -174,49 +160,12 @@ stages:
               Contents: '*.whl'
               TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Artifact: ONNXRuntime python wheel'
-            inputs:
-              ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
-
-          - ${{ if eq(parameters.publish_symbols, true) }}:
-            - task: PublishSymbols@2
-              displayName: 'Publish symbols'
-              condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-              inputs:
-                SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
-                SearchPattern: |
-                   onnxruntime_pybind11_state.pdb
-                   onnxruntime_providers_shared.pdb
-                IndexSources: true
-                SymbolServerType: TeamServices
-                SymbolExpirationInDays: 3650
-                SymbolsArtifactName: 'win_${{ parameters.EP_NAME }}_${{ parameters.PYTHON_VERSION }}_$(Build.BuildNumber)'
-
           - script: |
               7z x *.whl
             workingDirectory: '$(Build.ArtifactStagingDirectory)'
             displayName: 'unzip the package'
 
-          - task: CredScan@3
-            displayName: 'Run CredScan'
-            inputs:
-              debugMode: false
-            continueOnError: true
-
-          - task: BinSkim@4
-            displayName: 'Run BinSkim'
-            inputs:
-              AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
-
-          - task: TSAUpload@2
-            displayName: 'TSA upload'
-            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-            inputs:
-              GdnPublishTsaOnboard: false
-              GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-
-          - template: component-governance-component-detection-steps.yml
+          - template: ../templates/component-governance-component-detection-steps.yml
             parameters:
               condition: 'succeeded'
 
@@ -243,13 +192,18 @@ stages:
             addToPath: true
             architecture: 'x64'
 
-        - template: flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
-            ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
+            ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
+
+        - template: ../templates/jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+              DownloadCUDA: true
+            DownloadTRT: ${{ parameters.use_tensorrt }}
 
         - task: PowerShell@2
           displayName: 'Install ONNX'

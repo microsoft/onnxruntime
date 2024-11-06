@@ -523,6 +523,9 @@ set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
 
+set (onnxruntime_webgpu_external_dawn_test_SRC
+          ${TEST_SRC_DIR}/webgpu/external_dawn/main.cc)
+
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
 
@@ -1882,6 +1885,15 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
+endif()
+
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
+  AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+          SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+          LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+          DEPENDS ${all_dependencies}
+  )
+  onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

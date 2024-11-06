@@ -15,40 +15,55 @@ index 9c0bd6fa4e..bf8a57aeac 100644
      ###############################################################################
      # Do the 'complete_lib' build.
 diff --git a/src/dawn/native/Surface_metal.mm b/src/dawn/native/Surface_metal.mm
-index ce55acbd43..baa4835362 100644
+index ce55acbd43..2cfd363479 100644
 --- a/src/dawn/native/Surface_metal.mm
 +++ b/src/dawn/native/Surface_metal.mm
-@@ -36,7 +36,13 @@
+@@ -33,10 +33,18 @@
+
+ #import <QuartzCore/CAMetalLayer.h>
+
++#include "dawn/common/Platform.h"
++
  namespace dawn::native {
 
  bool InheritsFromCAMetalLayer(void* obj) {
 -    id<NSObject> object = static_cast<id>(obj);
 +    id<NSObject> object =
-+#if TARGET_OS_IOS
++#if DAWN_PLATFORM_IS(IOS)
 +        (__bridge id)obj;
-+#else
++#else   // DAWN_PLATFORM_IS(IOS)
 +        static_cast<id>(obj);
-+#endif
++#endif  // DAWN_PLATFORM_IS(IOS)
 +
      return [object isKindOfClass:[CAMetalLayer class]];
  }
 
 diff --git a/src/dawn/native/metal/SharedFenceMTL.mm b/src/dawn/native/metal/SharedFenceMTL.mm
-index bde8bfea07..f2f6459e91 100644
+index bde8bfea07..8906185d6f 100644
 --- a/src/dawn/native/metal/SharedFenceMTL.mm
 +++ b/src/dawn/native/metal/SharedFenceMTL.mm
-@@ -40,7 +40,13 @@ ResultOrError<Ref<SharedFence>> SharedFence::Create(
+@@ -25,6 +25,8 @@
+ // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
++#include "dawn/common/Platform.h"
++
+ #include "dawn/native/metal/SharedFenceMTL.h"
+
+ #include "dawn/native/ChainUtils.h"
+@@ -39,8 +41,13 @@ ResultOrError<Ref<SharedFence>> SharedFence::Create(
+     const SharedFenceMTLSharedEventDescriptor* descriptor) {
      DAWN_INVALID_IF(descriptor->sharedEvent == nullptr, "MTLSharedEvent is missing.");
      if (@available(macOS 10.14, iOS 12.0, *)) {
-         return AcquireRef(new SharedFence(
+-        return AcquireRef(new SharedFence(
 -            device, label, static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)));
-+            device, label,
-+#if TARGET_OS_IOS
-+            (__bridge id<MTLSharedEvent>)(descriptor->sharedEvent)
-+#else
-+            static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)
-+#endif
-+            ));
++        return AcquireRef(new SharedFence(device, label,
++#if DAWN_PLATFORM_IS(IOS)
++                                          (__bridge id<MTLSharedEvent>)(descriptor->sharedEvent)
++#else   // DAWN_PLATFORM_IS(IOS)
++                                          static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)
++#endif  // DAWN_PLATFORM_IS(IOS)
++                                              ));
      } else {
          return DAWN_INTERNAL_ERROR("MTLSharedEvent not supported.");
      }
