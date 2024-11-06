@@ -3,6 +3,7 @@
 
 #include <random>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -3337,6 +3338,41 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ArgMax_float_first_index_random) {
+  OpTester test("ArgMax", 12);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  constexpr size_t vector_size = 64 * 1024;
+  constexpr float max_value = std::numeric_limits<float>::infinity();
+
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<int> distribution(0, static_cast<int>(vector_size) - 1);
+
+  std::vector<float> data_vec(vector_size, 0.0f);
+
+  int min_index = -1;
+
+  // Try replace 8 elements with max_value. It is fine that some elements hit same index.
+  for (int i = 0; i < 8; ++i) {
+    int index = distribution(generator);
+    data_vec[index] = max_value;
+    if (i == 0 || index < min_index) {
+      min_index = index;
+    }
+  }
+
+  test.AddInput<float>("data", {vector_size}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {min_index});
+
+  // Exclude OpenVINO since it failed to handle this case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)(-2));
@@ -3653,6 +3689,41 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
                            0, 0});
 
   test.Run();
+}
+
+TEST(ReductionOpTest, ArgMin_float_first_index_random) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  constexpr size_t vector_size = 64 * 1024;
+  constexpr float min_value = -std::numeric_limits<float>::infinity();
+
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<int> distribution(0, static_cast<int>(vector_size) - 1);
+
+  std::vector<float> data_vec(vector_size, 0.0f);
+
+  int min_index = -1;
+
+  // Try replace 8 elements with min_value. It is fine that some elements hit same index.
+  for (int i = 0; i < 8; ++i) {
+    int index = distribution(generator);
+    data_vec[index] = min_value;
+    if (i == 0 || index < min_index) {
+      min_index = index;
+    }
+  }
+
+  test.AddInput<float>("data", {vector_size}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {min_index});
+
+  // Exclude OpenVINO since it failed to handle this case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
