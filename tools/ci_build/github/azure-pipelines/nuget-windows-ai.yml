@@ -17,8 +17,6 @@ extends:
       name: onnxruntime-Win-CPU-2022
       os: windows
     sdl:
-      git:
-        submodules: false
       tsa:
         enabled: true
       codeSignValidation:
