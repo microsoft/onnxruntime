@@ -613,7 +613,7 @@ class TestQDQPad(unittest.TestCase):
 
         for pad_mode, constant_value, opset, float_type in test_configs:
             with self.subTest(pad_mode=pad_mode, constant_value=constant_value, opset=opset, float_type=float_type):
-                label = f"_{pad_mode}_{constant_value}"
+                label = f"_{pad_mode}_{constant_value}_opset{opset}_{onnx.TensorProto.DataType.Name(float_type)}"
                 float_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.float.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"pad{label}.qdq.onnx")
 
