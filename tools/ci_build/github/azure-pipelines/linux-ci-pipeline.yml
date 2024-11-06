@@ -46,3 +46,4 @@ stages:
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      cmake_build_type: RelWithDebInfo
