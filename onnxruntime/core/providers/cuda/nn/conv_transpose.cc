@@ -45,7 +45,8 @@ REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
 
 // First input (in this case X) is in case NHWC == true also in NHWC format, the other inputs in NCHW
 template <typename T, bool NHWC>
-Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed,
+Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                       bool /*save_prepacked_initializers*/, bool& is_packed,
                                        [[maybe_unused]] PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
@@ -450,7 +451,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
 template <typename T, bool Layout>
 Status ConvTranspose<T, Layout>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
-  std::lock_guard<OrtMutex> lock(s_.mutex);
+  std::lock_guard<std::mutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context, dynamic_padding));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
