@@ -197,6 +197,9 @@ class StaticQuantConfig(QuantConfig):
                         removed if activations are asymmetrically quantized. Keeping these activations is necessary if
                         optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
                         operators from the model.
+                    QDQDisableWeightAdjustForInt32Bias = True/False:
+                        Default is False. If true, QDQ quantizer will not adjust the weight's scale when the bias
+                        has a scale (input_scale * weight_scale) that is too small.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -600,6 +603,9 @@ def quantize_static(
                     removed if activations are asymmetrically quantized. Keeping these activations is necessary if
                     optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
                     operators from the model.
+                QDQDisableWeightAdjustForInt32Bias = True/False:
+                    Default is False. If true, QDQ quantizer will not adjust the weight's scale when the bias
+                    has a scale (input_scale * weight_scale) that is too small.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
