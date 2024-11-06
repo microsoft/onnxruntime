@@ -37,8 +37,6 @@ jobs:
     clean: all
   pool:
     name: ${{ parameters.machine_pool }}
-    demands:
-    - HoldMachine -equals true
   steps:
   - checkout: self
     clean: true
