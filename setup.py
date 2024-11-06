@@ -718,14 +718,17 @@ if wheel_name_suffix:
         # for training packages, local version is used to indicate device types
         package_name = f"{package_name}-{wheel_name_suffix}"
     if wheel_name_suffix == "gpu" and cuda_version_major is not None:
-        extras_require = {
-            # Optional 'cuda_dlls' dependencies
-            "cuda_dlls": [
-                f"nvidia-cudnn-cu{cuda_version_major}",
-                f"nvidia-cufft-cu{cuda_version_major}",
-                f"nvidia-cuda-nvrtc-cu{cuda_version_major}",
-            ]
-        }
+`        pass
+    extras_require = {
+        # Optional 'cuda_dlls' dependencies
+        "cuda_dlls": [
+            f"nvidia-cuda-nvrtc-cu{cuda_version_major}",
+            f"nvidia-cuda-runtime-cu{cuda_version_major}",
+            f"nvidia-cudnn-cu{cuda_version_major}",
+            f"nvidia-cufft-cu{cuda_version_major}",
+            f"nvidia-curand-cu{cuda_version_major}",
+        ]
+    }
 
 cmd_classes = {}
 if bdist_wheel is not None:
