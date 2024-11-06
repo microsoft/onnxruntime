@@ -21,6 +21,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateActivationOpBuilder("Relu", op_registrations);
   CreateActivationOpBuilder("PRelu", op_registrations);
   CreateActivationOpBuilder("LeakyRelu", op_registrations);
+  CreateActivationOpBuilder("Gelu", op_registrations);
 
   // Unary ops
   CreateUnaryOpBuilder("Reciprocal", op_registrations);
@@ -43,8 +44,13 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateReductionOpBuilder("ReduceMean", op_registrations);
   CreateReductionOpBuilder("ReduceSum", op_registrations);
 
-  CreateArgMaxOpBuilder("ArgMax", op_registrations);
+  // Normalization ops
   CreateBatchNormalizationOpBuilder("BatchNormalization", op_registrations);
+  CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
+  CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
+  CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
+
+  CreateArgMaxOpBuilder("ArgMax", op_registrations);
   CreateCastOpBuilder("Cast", op_registrations);
   CreateClipOpBuilder("Clip", op_registrations);
   CreateConcatOpBuilder("Concat", op_registrations);

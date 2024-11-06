@@ -120,9 +120,10 @@ void PrepareMask(const int32_t* mask_index,
                  bool causal,
                  int batch_size,
                  int sequence_length,
+                 int kv_sequence_length,
                  int past_sequence_length,
                  float mask_filter_value) {
-  const int all_sequence_length = past_sequence_length + sequence_length;
+  const int all_sequence_length = past_sequence_length + kv_sequence_length;
 
   // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;

@@ -180,7 +180,7 @@ inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::s
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
-bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
+bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -204,6 +204,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ConvInteger", "conv2dInteger"},
     {"ConvTranspose", "convTranspose2d"},
     {"Cos", "cos"},
+    {"CumSum", "cumulativeSum"},
     {"Div", "div"},
     {"DequantizeLinear", "dequantizeLinear"},
     {"Dropout", "identity"},
@@ -268,6 +269,8 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ScatterND", "scatterND"},
     {"Shape", "slice"},
     {"Sigmoid", "sigmoid"},
+    {"Sign", "sign"},
+    {"SimplifiedLayerNormalization", "layerNormalization"},
     {"Softplus", "softplus"},
     {"Softsign", "softsign"},
     {"Sin", "sin"},

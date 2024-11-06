@@ -34,6 +34,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "test/common/cuda_op_test_utils.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -689,6 +690,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
 #ifdef USE_ROCM
@@ -743,6 +747,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
 #ifdef USE_ROCM
@@ -1055,6 +1062,9 @@ static void TestBindHelper(const std::string& log_str,
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
     auto provider = DefaultCudaExecutionProvider();
+    if (provider == nullptr) {
+      return;
+    }
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
@@ -1650,6 +1660,9 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 #if USE_TENSORRT
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -1802,6 +1815,9 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 #if USE_TENSORRT
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -2157,6 +2173,9 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 #ifdef USE_CUDA
 // disable it, since we are going to enable parallel execution with cuda ep
 TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
@@ -2180,6 +2199,10 @@ TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
 }
 
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+
   OrtArenaCfg arena_cfg;
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 
