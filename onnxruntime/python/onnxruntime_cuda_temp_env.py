@@ -1,7 +1,8 @@
 import os
 import platform
-import site
 import re
+import site
+
 
 class TemporaryEnv:
     def __init__(self, updates):
