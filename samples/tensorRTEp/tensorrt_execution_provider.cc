@@ -3455,7 +3455,8 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
            this_->input_info_[context->node_name],
            this_->output_info_[context->node_name],
            this_->context_memory_sharing_enable_,
-           &this_->max_ctx_mem_size_};
+           &this_->max_ctx_mem_size_,
+           &this_->tensorrt_mu_};
     *state = p.release();
     return 0;
   };
