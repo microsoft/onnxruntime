@@ -23,6 +23,12 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace {
+static void LogWGPUMessage(WGPULoggingType severity, const char* message, void*) {
+  LOGS_DEFAULT(INFO) << "Severity:" << int(severity) << " '" << message << "'\n";
+}
+
+}  // namespace
 void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info, const void* dawn_proc_table) {
   std::call_once(init_flag_, [this, &webgpu_ep_info, dawn_proc_table]() {
     // Initialization.Step.1 - Create wgpu::Instance
@@ -49,10 +55,12 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequestAdapterOptions req_adapter_options = {};
       wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       req_adapter_options.nextInChain = &adapter_toggles_desc;
-#ifdef _WIN32
-      req_adapter_options.backendType = wgpu::BackendType::D3D12;
-#endif
       req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
+
+#ifdef _WIN32
+      req_adapter_options.backendType = wgpu::BackendType::Vulkan;
+      // req_adapter_options.backendType = wgpu::BackendType::D3D12;
+#endif
 
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
       adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
@@ -95,7 +103,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
 
       // TODO: revise temporary error handling
       device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, const char* message) {
-        LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << message;
+        ORT_THROW("WebGPU device error(", int(type), "): ", message);
       });
       // TODO: revise temporary device lost handling
       device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, const char* message) {
@@ -112,6 +120,9 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       req_device_callback_info.userdata = &device_;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter_.RequestDevice(&device_desc, req_device_callback_info), UINT64_MAX));
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
+
+      // TODO: Move to where we have the session logger and pass it through
+      device_.SetLoggingCallback(LogWGPUMessage, nullptr);
     }
 
     // cache adapter info
@@ -428,12 +439,13 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
       "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
+      "dump_shaders",
       "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
-  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
-                                      ? std::begin(toggles) + 1
-                                      : std::begin(toggles),
+  return std::vector<const char*>(ValidationMode() == ValidationMode::Disabled
+                                      ? std::begin(toggles)
+                                      : std::begin(toggles) + 1,
                                   std::end(toggles));
 }
 

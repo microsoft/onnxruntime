@@ -643,27 +643,36 @@ if (onnxruntime_USE_WEBGPU)
   set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
   set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
   set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
-  set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
+  set(TINT_BUILD_SPV_READER ON CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
   set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
 
   # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
-  set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
+  set(DAWN_ENABLE_SPIRV_VALIDATION ON CACHE BOOL "" FORCE)
 
   if (WIN32)
     # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
     set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
     set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
 
-    # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
-    set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
     # We are currently always using the D3D12 backend.
     set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
+
+    # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
+    set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
+    set(USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
+  endif()
+
+  # we only want to apply the Android patch once. TBD if there's a cleaner way than checking if the Dawn source
+  # already exists, as that won't handle a change in the Dawn commit id.
+  if (EXISTS "${FETCHCONTENT_BASE_DIR}/dawn-src")
+    set(_dawn_skip_android_patch TRUE)
   endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
-  if (ANDROID)
-    # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+  if (ANDROID AND NOT _dawn_skip_android_patch)
+    # Some Android devices don't allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
     # in the uniform and converting to fp16 before using.
     execute_process(COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1
                     INPUT_FILE ${PROJECT_SOURCE_DIR}/patches/dawn/uniformAndStorageBuffer16BitAccess.patch
@@ -674,7 +683,13 @@ if (onnxruntime_USE_WEBGPU)
 
   if (NOT onnxruntime_USE_EXTERNAL_DAWN)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
+
+    # fix issue with Dawn setup. add to patch if needed.
+    if (DAWN_ENABLE_VULKAN AND DAWN_ENABLE_SPIRV_VALIDATION)
+        target_compile_definitions(dawn_native_objects PRIVATE "DAWN_ENABLE_SPIRV_VALIDATION")
+    endif()
   endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
 endif()
 
