@@ -182,6 +182,21 @@ stages:
       - template: set-version-number-variables-step.yml
 
       - task: PythonScript@0
+        displayName: 'KYLE DEBUG - Explore Env'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\kyle_test.py'
+          workingDirectory: '$(Build.BinariesDirectory)'
+        env:
+          ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+          ReleaseVersionSuffixSTRING: "$(ReleaseVersionSuffix)"
+          KYLE_ENV: "HELLO"
+
+      - task: PowerShell@2
+        inputs:
+          targetType: 'KYLE DEBUG - END RUNNING'
+          script: exit 1
+
+      - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
