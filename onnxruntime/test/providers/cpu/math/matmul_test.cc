@@ -367,9 +367,14 @@ TEST(MathOpTest, MatMul_float8E4M3FN) {
   // test.AddInput<MLFloat16>("B", {4, 3}, FloatsToMLFloat16s({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
   // test.AddOutput<MLFloat16>("Y", {2, 3}, FloatsToMLFloat16s({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
 
-  test.AddInput<MLFloat16>("A", {2, 2}, FloatsToMLFloat16s({1.0f, 1.0f, 1.0f, 1.0f}));
-  test.AddInput<MLFloat16>("B", {2, 2}, FloatsToMLFloat16s({1.0f, 1.0f, 1.0f, 1.0f}));
-  test.AddOutput<MLFloat16>("Y", {2, 2}, FloatsToMLFloat16s({2.0f, 2.0f, 2.0f, 2.0f}));
+  // test.AddInput<MLFloat16>("A", {2, 2}, FloatsToMLFloat16s({1.0f, 1.0f, 1.0f, 1.0f}));
+  // test.AddInput<MLFloat16>("B", {2, 2}, FloatsToMLFloat16s({1.0f, 1.0f, 1.0f, 1.0f}));
+  // test.AddOutput<MLFloat16>("Y", {2, 2}, FloatsToMLFloat16s({2.0f, 2.0f, 2.0f, 2.0f}));
+
+  auto ones_32 = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  test.AddInput<MLFloat16>("A", {2, 16}, FloatsToMLFloat16s(ones_32));
+  test.AddInput<MLFloat16>("B", {16, 2}, FloatsToMLFloat16s(ones_32));
+  test.AddOutput<MLFloat16>("Y", {2, 2}, FloatsToMLFloat16s({16.0f, 16.0f, 16.0f, 16.0f}));
 
 
   // test.AddInput<MLFloat16>("B", {4, 3}, FloatsToMLFloat16s({10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f, 20.f, 21.f}));
