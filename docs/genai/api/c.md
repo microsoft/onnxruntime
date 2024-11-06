@@ -414,6 +414,23 @@ A pointer to the token sequence
 OGA_EXPORT const int32_t* OGA_API_CALL OgaGenerator_GetSequenceData(const OgaGenerator* generator, size_t index);
 ```
 
+### Set Runtime Option
+
+Provides an option to set Runtime options, more parameters will be added to this generic API to support Runtime options. An example to use this API for terminating the current session would be to call the SetRuntimeOption with key as "terminate_session" and value as "1".
+
+#### Parameters
+
+* Input: generator The generator on which the Runtime option needs to be set
+* Input: key The key for setting the runtime option
+* Input: value The value for the key provided
+
+#### Returns
+`void`
+
+```c
+OGA_EXPORT void OGA_API_CALL OgaGenerator_SetRuntimeOption(OgaGenerator* generator, const char* key, const char* value);
+```
+
 ## Enums and structs
 
 ```c
