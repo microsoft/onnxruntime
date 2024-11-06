@@ -189,13 +189,10 @@ Status TransposeAndConvertToFp8(cudaStream_t& cuda_stream, const Tensor* right_X
 }
 
 Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaStream_t& stream,
-  const cudaDeviceProp& device_prop, const cublasLtEpilogue_t& epilogue, float alpha,
+  cublasLtHandle_t& cublasLt, const cudaDeviceProp& device_prop, const cublasLtEpilogue_t& epilogue, float alpha,
   IAllocatorUniquePtr<void>& right_X_fp8)
 {
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-
-  cublasLtHandle_t cublasLt;
-  CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublasLt));
 
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
@@ -660,7 +657,8 @@ Status MatMul<MLFloat16>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelp
   if (use_fp8_) {
     cudaStream_t stream = Stream(ctx);
     auto& device_prop = GetDeviceProp();
-    return ComputeUsingFp8(ctx, helper, stream, device_prop, epilogue_, alpha_, right_X_fp8_);
+    cublasLtHandle_t cublasLt = CublasLtHandle();
+    return ComputeUsingFp8(ctx, helper, stream, cublasLt, device_prop, epilogue_, alpha_, right_X_fp8_);
   }
 
   return ComputeDefaultImpl(ctx, helper);
