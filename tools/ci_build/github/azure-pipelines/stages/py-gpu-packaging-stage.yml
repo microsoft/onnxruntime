@@ -79,6 +79,5 @@ stages:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: ${{ python_version }}
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
           cmake_build_type: ${{ parameters.cmake_build_type }}
