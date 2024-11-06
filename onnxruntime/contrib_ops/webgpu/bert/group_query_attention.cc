@@ -24,9 +24,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-          .MayInplace(3, 1)
-          .MayInplace(4, 2)
-          .InputMemoryType(OrtMemTypeCPUInput, 6),
+        .MayInplace(3, 1)
+        .MayInplace(4, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 6),
     GroupQueryAttention);
 
 Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {

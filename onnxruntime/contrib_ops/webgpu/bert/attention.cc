@@ -124,7 +124,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   } else {
     shader.MainFunctionBody() << "let kOffset = workgroup_id.z * uniforms.kv_sequence_length * uniforms.K;\n";
-    if ((feed_past_key_  && has_present_key_) || past_present_share_buffer_) {
+    if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
       shader.MainFunctionBody() << "let pastKeyOffset = workgroup_id.z * uniforms.past_sequence_length * uniforms.K;\n";
     }
     if (has_present_key_) {
@@ -142,7 +142,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
-                                 "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
+                              << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
                                  "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
                                  "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
                                  "    }\n";
@@ -431,7 +431,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                                int past_sequence_length,
                                int total_sequence_length,
                                const Tensor* seqlen_k) {
-  const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0 &&  !parameters.past_present_share_buffer_;
+  const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
   const bool has_present_value = output_count > 1 && past_value != nullptr;
   const int tile_size = 12;
 
