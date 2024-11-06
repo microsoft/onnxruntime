@@ -87,7 +87,7 @@ parameters:
 
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
-  dependsOn: []
+  dependsOn: Setup
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
