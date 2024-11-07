@@ -37,7 +37,12 @@ public:
         }
 
         auto [sizesA, stridesA] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape0, transBatchA);
-
+        //if (transA && inputShape0.size() > 1)
+        //{
+        //    const uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(inputShape0.size());
+        //    std::swap(stridesA[dimensionCount - 2], stridesA[dimensionCount - 1]);
+        //    std::swap(sizesA[dimensionCount - 2], sizesA[dimensionCount - 1]);
+        //}
         auto [sizesB, stridesB] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape1, transBatchB);
 
         OperatorHelper::FusedMatMulShapeMapping(sizesA, stridesA, sizesB, stridesB, outputShape);
@@ -67,7 +72,7 @@ public:
         gemmDesc.BTensor = &inputDescs[1];
         gemmDesc.CTensor = nullptr;
         gemmDesc.OutputTensor = &outputDescs[0];
-        gemmDesc.TransA = (transA && inputShape0.size() != 1 ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
+        gemmDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
         gemmDesc.TransB = (transB && inputShape1.size() != 1 ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
         gemmDesc.Alpha = alpha;
         gemmDesc.Beta = 0.0f;
