@@ -296,12 +296,32 @@ stages:
   - template: templates/py-linux.yml
     parameters:
       arch: 'aarch64'
-      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
       with_cache: true
       cmake_build_type: Release
 
 - stage: arm64_test
   dependsOn: ['arm64_build']
+  jobs:
+  - template: templates/py-packaging-linux-test-cpu.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+
+- stage: arm64_build_xnnpack
+  dependsOn: []
+  jobs:
+  - template: templates/py-linux.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      with_cache: true
+      cmake_build_type: Release
+      ep: 'XNNPack'
+      extra_build_arg: '--use_xnnpack'
+
+- stage: arm64_test_xnnpack
+  dependsOn: ['arm64_build_xnnpack']
   jobs:
   - template: templates/py-packaging-linux-test-cpu.yml
     parameters:

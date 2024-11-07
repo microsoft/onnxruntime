@@ -26,8 +26,12 @@ parameters:
   type: string
   default: ''
 
+- name: ep
+  type: string
+  default: ''
+
 jobs:
-- job: Linux_py_Wheels_${{ parameters.arch }}
+- job: Linux_py_Wheels_${{ parameters.arch }}_${{parameters.ep}}
   timeoutInMinutes: 240
   workspace:
     clean: all
@@ -87,12 +91,12 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/dist'
-        ArtifactName: onnxruntime
+        ArtifactName: onnxruntime-${{ parameters.ep }}
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Test Binaries'
       inputs:
-        artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
+        artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
         targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
 
     - template: component-governance-component-detection-steps.yml
