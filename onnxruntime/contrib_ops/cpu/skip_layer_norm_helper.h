@@ -137,7 +137,7 @@ Status CheckPotentiallyPrepackedInputs(const T* input,
                                        const T* beta,
                                        const T* bias,
                                        int hidden_size_check,
-                                       size_t input_dims_size_check
+                                       size_t input_dims_size_check,
                                        bool prepacked_skip,
                                        bool prepacked_gamma) {
   if (input_dims_size_check != 3 && input_dims_size_check != 2) {
