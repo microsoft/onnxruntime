@@ -35,7 +35,7 @@ Q4BitGemmPackQuantBDataSize(
 }
 
 static void
-Q4BitGemmPackQuantBData(
+SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,

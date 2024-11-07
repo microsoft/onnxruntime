@@ -131,11 +131,13 @@ HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,
     size_t K,
     size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
 )
 {
+    MLAS_UNREFERENCED_PARAMETER(ComputeType);
     constexpr size_t nbits = 4;
     constexpr size_t k_blk_dim = 16;
     constexpr size_t n_blk_dim = 8;

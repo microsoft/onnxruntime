@@ -24,6 +24,7 @@ Abstract:
 #include <utility>
 
 #include "mlasi.h"
+#include "mlas_qnbit.h"
 
 namespace sqnbitgemm_neon
 {
@@ -71,6 +72,7 @@ HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,
     size_t K,
     size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool

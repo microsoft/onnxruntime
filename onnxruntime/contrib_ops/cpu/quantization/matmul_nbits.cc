@@ -69,6 +69,8 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
       MlasIsQNBitGemmAvailable(nbits, block_size, HQNBIT_CompInt8)) {
     return HQNBIT_CompInt8;
   }
+
+  // if HQNBIT_CompFp16 is not supported, will fallback to unpacked computation.
   return HQNBIT_CompFp16;
 }
 #else   // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
