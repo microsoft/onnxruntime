@@ -2,7 +2,7 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:" parameter_Option
+while getopts "i:d:x:c:p:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
