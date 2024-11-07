@@ -14,7 +14,7 @@ const NODEJS_TEST_CASES = [
 // [test_for_same_origin, test_for_cross_origin, main_js, ort_main_js, [test_args]]
 const BROWSER_TEST_CASES = [
   // IIFE
-  [true, true, './browser-test-webgl.js', 'ort.min.js'], // webgl
+  [true, true, './browser-test-webgl.js', 'ort.all.min.js'], // webgl
   [true, true, './browser-test-webgl.js', 'ort.webgl.min.js'], // webgl
   [true, true, './browser-test-wasm.js', 'ort.wasm.min.js'], // wasm, ort.wasm
   [true, true, './browser-test-wasm-multi-session-create.js', 'ort.min.js'], // wasm, multi-session create
