@@ -236,17 +236,36 @@ const convTranspose2d = (
   attributes: ConvTransposeAttributes,
 ): void => {
   const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
+  const useConvTranspose2D = true;
+  // Switch to naive method when outChannels and inputChannels are very small. It's because that in this case it's
+  // not suitable for matmul version since matmul uses tile size 32x32 resulting the underlying execution unit
+  // utilization rate is very low.
+  if (useConvTranspose2D) {
+    // STEP.1: transpose weight
+    const transposedWeight =
+      (context.kernelCustomData.wT as TensorView | undefined) ??
+      context.compute(createTransposeProgramInfo(inputs[1], [2, 3, 0, 1]), {
+        inputs: [1],
+        outputs: [attributes.wIsConst ? -2 : -1],
+      })[0];
+    if (attributes.wIsConst && !context.kernelCustomData.wT) {
+      context.kernelCustomData.wT = transposedWeight;
+    }
+
+    // STEP.2: prepare reshaped inputs
+    const convTransposeInputs = [inputs[0], transposedWeight];
+    if (inputs.length === 3) {
+      convTransposeInputs.push(inputs[2]);
+    }
+    context.compute(createConvTranspose2DProgramInfo(convTransposeInputs, adjustedAttributes), {
+      inputs: convTransposeInputs,
+    });
+    return;
+  }
   const isChannelsLast = attributes.format === 'NHWC';
   const outputShape = adjustedAttributes.outputShape;
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
   const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
-  // Switch to naive method when outChannels and inputChannels are very small. It's because that in this case it's
-  // not suitable for matmul version since matmul uses tile size 32x32 resulting the underlying execution unit
-  // utilization rate is very low.
-  if (adjustedAttributes.group !== 1 || (outChannels === 1 && inputChannels === 1)) {
-    context.compute(createConvTranspose2DProgramInfo(inputs, adjustedAttributes));
-    return;
-  }
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const weightHeight = inputs[1].dims[2];
@@ -338,13 +357,30 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
     { ...attributes, pads, strides, dilations, kernelShape },
     inputs,
   );
-  context.compute(
-    createConvTranspose2DProgramInfo(inputs, adjustedAttributes, (outputShape) =>
-      isChannelLast
-        ? [outputShape[0], outputShape[2], outputShape[3]]
-        : [outputShape[0], outputShape[1], outputShape[3]],
-    ),
-  );
+
+      // STEP.1: transpose weight
+      const transposedWeight =
+      (context.kernelCustomData.wT as TensorView | undefined) ??
+      context.compute(createTransposeProgramInfo(inputs[1], [2, 3, 0, 1]), {
+        inputs: [1],
+        outputs: [attributes.wIsConst ? -2 : -1],
+      })[0];
+    if (attributes.wIsConst && !context.kernelCustomData.wT) {
+      context.kernelCustomData.wT = transposedWeight;
+    }
+
+    // STEP.2: prepare reshaped inputs
+    const convTransposeInputs = [inputs[0], transposedWeight];
+    if (inputs.length === 3) {
+      convTransposeInputs.push(inputs[2]);
+    }
+    context.compute(createConvTranspose2DProgramInfo(convTransposeInputs, adjustedAttributes, (outputShape) =>
+    isChannelLast
+      ? [outputShape[0], outputShape[2], outputShape[3]]
+      : [outputShape[0], outputShape[1], outputShape[3]],
+  ), {
+      inputs: convTransposeInputs,
+    });
 };
 
 export const convTranspose = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
