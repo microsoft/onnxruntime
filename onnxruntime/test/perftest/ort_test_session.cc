@@ -367,30 +367,37 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
 #ifdef __APPLE__
 #ifdef USE_COREML
-    uint32_t coreml_flags = 0;
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    std::istringstream ss(ov_string);
+    if (!ParseSessionConfigs(ov_string, provider_options)) {
+      ORT_THROW(
+          "[ERROR] Use a '|' to separate the key and value for the "
+          "run-time option you are trying to use.\n");
+    }
 
-    std::string key;
-    while (ss >> key) {
-      if (key == "COREML_FLAG_CREATE_MLPROGRAM") {
-        coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
-        std::cout << "Enabling ML Program.\n";
-      } else if (key == "COREML_FLAG_USE_CPU_ONLY") {
-        coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
-        std::cout << "CoreML enabled COREML_FLAG_USE_CPU_ONLY.\n";
-      } else if (key == "COREML_FLAG_USE_CPU_AND_GPU") {
-        coreml_flags |= COREML_FLAG_USE_CPU_AND_GPU;
-        std::cout << "CoreML enabled COREML_FLAG_USE_CPU_AND_GPU.\n";
-      } else if (key.empty()) {
+    std::unordered_map<std::string, std::string> available_options = {
+        {"MLComputeUnitsCPUAndNeuralEngine", "1"},
+        {"MLComputeUnitsCPUAndGPU", "1"},
+        {"MLComputeUnitsCPUOnly", "1"},
+        {"MLComputeUnitsAll", "1"},
+    };
+    for (const auto& provider_option : provider_options) {
+      if (provider_option.first == kCoremlProviderOption_MLComputeUnits &&
+          available_options.find(provider_option.second) != available_options.end()) {
+      } else if (provider_option.first == "ModelFormat" &&
+                 (provider_option.second == "MLProgram" || provider_option.second == "NeuralNetwork")) {
+      } else if (provider_option.first == "AllowStaticInputShapes" &&
+                 (provider_option.second == "1" || provider_option.second == "0")) {
+      } else if (provider_option.first == "EnableOnSubgraphs" &&
+                 (provider_option.second == "0" || provider_option.second == "1")) {
       } else {
         ORT_THROW(
             "[ERROR] [CoreML] wrong key type entered. Choose from the following runtime key options "
-            "that are available for CoreML. ['COREML_FLAG_CREATE_MLPROGRAM'] \n");
+            "that are available for CoreML. "
+            "['MLComputeUnits', 'ModelFormat', 'AllowStaticInputShapes', 'EnableOnSubgraphs'] \n");
       }
     }
     // COREML_FLAG_CREATE_MLPROGRAM
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, coreml_flags));
+    session_options.AppendExecutionProvider("CoreML", provider_options);
 #else
     ORT_THROW("CoreML is not supported in this build\n");
 #endif
