@@ -120,6 +120,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const char* ep_type, const 
                 auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
                 try {
                     function_state->backend_manager->Compute(context);
+                    std::cout << "In OpenVinoEP::Compile()'s ComputeFunc\n";
                 } catch (const std::exception& ex) {
                     return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, ex.what());
                 }

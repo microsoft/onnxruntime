@@ -11,6 +11,7 @@ list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime)
 
 add_definitions(-DONNX_NAMESPACE=onnx)
 add_definitions(-DONNX_ML)
+add_definitions(-DOPENVINO_CONFIG_CPU)
 file(GLOB openvino_src "./*.cc" "./ov_versions/*.cc" "./backends/*.cc" "../utils/status.cc")
 add_library(OpenVINOEp SHARED ${openvino_src})
 target_include_directories(OpenVINOEp PUBLIC "../../include/onnxruntime"

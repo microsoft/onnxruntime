@@ -84,7 +84,7 @@ void RunResnet18v1_7(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) 
     // https://github.com/onnx/models/blob/main/validated/vision/classification/resnet/model/resnet18-v1-7.tar.gz
     OrtSession* session = nullptr;
 #ifdef _WIN32
-    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"/home/leca/models/resnet18-v1-7/resnet18-v1-7.onnx", so, &session));
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, L"C:/share/models/resnet18-v1-7/resnet18-v1-7.onnx", so, &session));
 #else
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/models/resnet18-v1-7/resnet18-v1-7.onnx", so, &session));
 #endif

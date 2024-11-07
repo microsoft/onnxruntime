@@ -22,8 +22,9 @@ namespace onnxruntime {
         }
 #else
         char* val = getenv(var_name.c_str());
-        return val == NULL ? std::string() : std::string(val);
+        return val == nullptr ? std::string() : std::string(val);
 #endif
+        return std::string();
     }
 
     OrtStatus* ForEachNodeDef(const OrtGraphApi* graph_api, const OrtGraphViewer* graph, const OrtNode* node,
