@@ -93,13 +93,23 @@ export class ProgramManager {
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     TRACE_FUNC_BEGIN(programInfo.name);
     const device = this.backend.device;
-    const extensions: string[] = [];
-    if (device.features.has('shader-f16')) {
-      extensions.push('enable f16;');
-    }
+    const enableDirectives: string[] = [];
+
+    // Enable WGSL extensions based on available WebGPU features
+    const extensionsInfo: Array<{ feature: GPUFeatureName; extension: string }> = [
+      { feature: 'shader-f16', extension: 'f16' },
+      { feature: 'subgroups' as GPUFeatureName, extension: 'subgroups' },
+      { feature: 'subgroups-f16' as GPUFeatureName, extension: 'subgroups_f16' },
+    ];
+    extensionsInfo.forEach((info) => {
+      if (device.features.has(info.feature)) {
+        enableDirectives.push(`enable ${info.extension};`);
+      }
+    });
+
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize, this.backend.device.limits);
     const userCode = programInfo.getShaderSource(shaderHelper);
-    const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
+    const code = `${enableDirectives.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({ code, label: programInfo.name });
     LOG_DEBUG('verbose', () => `[WebGPU] ${programInfo.name} shader code: ${code}`);
 
