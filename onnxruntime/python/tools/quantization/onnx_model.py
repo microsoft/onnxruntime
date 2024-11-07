@@ -296,6 +296,26 @@ class ONNXModel:
 
         return suffix
 
+    def get_largest_initializer_name_suffix(self, initializer_name_prefix):
+        """
+        Gets the largest initializer name integer suffix for all initializer names that begin
+        with `initializer_name_prefix`. This can be used to create unique initializer names.
+
+        Example: for initializer names 'my_weight_0' and 'my_weight_3', this method returns 3 if
+                 `initializer_name_prefix` is 'my_weight_'.
+        """
+        suffix = -1
+
+        for initializer in self.model.graph.initializer:
+            if initializer.name.startswith(initializer_name_prefix):
+                try:
+                    index = int(initializer.name[len(initializer_name_prefix) :])
+                    suffix = max(index, suffix)
+                except ValueError:
+                    continue
+
+        return suffix
+
     def find_nodes_by_initializer(self, graph, initializer):
         """
         Find all nodes with given initializer as an input.

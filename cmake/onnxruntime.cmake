@@ -122,8 +122,8 @@ else()
   else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
   endif()
-  if (onnxruntime_USE_CUDA)
-    set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  if(NOT APPLE)
+    target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
   endif()
 endif()
 
@@ -139,17 +139,17 @@ target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
   if (APPLE)
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
+    target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
   elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
   endif()
 else()
-  set(ONNXRUNTIME_SO_LINK_FLAG " -DEF:${SYMBOL_FILE}")
+  target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
 endif()
 
-if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
+
+if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         MACOSX_RPATH TRUE
@@ -159,10 +159,8 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
-  endif()
 endif()
+
 
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
@@ -248,7 +246,9 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
+if(WIN32)
+  target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT APPLE AND NOT WIN32)
   if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
