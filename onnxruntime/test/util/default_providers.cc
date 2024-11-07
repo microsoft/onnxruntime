@@ -310,6 +310,17 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> XnnPackExecutionProviderWithOptions(const ProviderOptions& options,
+                                                                        const SessionOptions* session_options) {
+#ifdef USE_XNNPACK
+  return XnnpackProviderFactoryCreator::Create(options, session_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(session_options);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
 #ifdef USE_WEBGPU
   ConfigOptions config_options{};

@@ -11,7 +11,10 @@
 #include "core/graph/constants.h"
 #include "core/graph/model_load_utils.h"
 #include "core/session/inference_session.h"
+#include "core/session/environment.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_env.h"
 
 #include "test/framework/TestAllocatorManager.h"
 #include "test/providers/run_options_config_keys.h"
@@ -404,9 +407,10 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
             break;
           }
         }
-      }
-    }
-  }
+      } 
+    } 
+    LOGS_DEFAULT(INFO) << provider_type << " : kernel's output verfication passed" ;
+  } // end if (verify_output_)
 }
 
 bool SetEpsForAllNodes(Graph& graph,
@@ -720,8 +724,13 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kQnnExecutionProvider)
           execution_provider = DefaultQnnExecutionProvider();
-        else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
-          execution_provider = DefaultXnnpackExecutionProvider();
+        else if (provider_type == onnxruntime::kXnnpackExecutionProvider) {
+            const onnxruntime::Environment& ort_env = GetEnvironment();
+            onnxruntime::concurrency::ThreadPool* tp = ort_env.GetIntraOpThreadPool();
+            int intra_thread_num = onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(tp) - 1;
+            onnxruntime::ProviderOptions options = {{"intra_op_num_threads", std::to_string(intra_thread_num)}};
+            execution_provider = XnnPackExecutionProviderWithOptions(options);
+        }
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
