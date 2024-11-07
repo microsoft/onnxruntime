@@ -153,6 +153,8 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   ORT_ENFORCE(mean_tensor);
   const onnx::TensorProto* var_tensor = graph_utils::GetConstantInitializer(graph, batch_norm_node.InputDefs()[4]->Name());
   ORT_ENFORCE(var_tensor);
+  const onnx::TensorProto* matmul_a_tensor = graph_utils::GetConstantInitializer(graph, matmul_node.InputDefs()[0]->Name());
+  ORT_ENFORCE(matmul_a_tensor);
   const onnx::TensorProto* matmul_b_tensor = graph_utils::GetConstantInitializer(graph, matmul_node.InputDefs()[1]->Name());
   ORT_ENFORCE(matmul_b_tensor);
 
@@ -165,6 +167,8 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       bias_tensor->dims_size() != 1 ||
       mean_tensor->dims_size() != 1 ||
       var_tensor->dims_size() != 1 ||
+      matmul_a_tensor->dims_size() != 2 ||
+      matmul_b_tensor->dims_size() != 2 ||
       scale_tensor->dims(0) != matmul_b_tensor->dims(1) ||
       bias_tensor->dims(0) != matmul_b_tensor->dims(1) ||
       mean_tensor->dims(0) != matmul_b_tensor->dims(1) ||
