@@ -213,8 +213,7 @@ stages:
           onnxruntimeubi8packagestest_torch \
           bash -c ' \
             set -ex; \
-            apt-get update; \
-            DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
+            dnf install -y python3-opencv; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
