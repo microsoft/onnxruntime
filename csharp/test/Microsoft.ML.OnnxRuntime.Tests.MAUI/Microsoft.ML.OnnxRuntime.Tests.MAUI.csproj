@@ -1,0 +1,125 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
+    </PropertyGroup>
+
+    <Import Project="../Microsoft.ML.OnnxRuntime.Tests.Common/NativeLibraryInclude.props" />
+
+    <!-- General app properties -->
+    <PropertyGroup>
+        <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
+        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
+
+        <!-- Note for MacCatalyst:
+        The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
+        When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
+        The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
+        either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
+        <!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
+
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Microsoft.ML.OnnxRuntime.Tests.MAUI</RootNamespace>
+        <UseMaui>true</UseMaui>
+        <SingleProject>true</SingleProject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <!-- some of the helper packages don't have strong named assemblies. -->
+        <NoWarn>8002</NoWarn>
+
+        <!-- These are copied from the sample. TBD what we really need. -->
+        <DefineConstants Condition="'$(CI)' != 'true'">$(DefineConstants);INCLUDE_FAILING_TESTS</DefineConstants>
+        <DefineConstants Condition="'$(TestingMode)' == 'NonInteractiveVisual'">$(DefineConstants);MODE_NON_INTERACTIVE_VISUAL</DefineConstants>
+        <DefineConstants Condition="'$(TestingMode)' == 'XHarness'">$(DefineConstants);MODE_XHARNESS</DefineConstants>
+
+        <!-- Display name -->
+        <ApplicationTitle>Microsoft.ML.OnnxRuntime.Tests.MAUI</ApplicationTitle>
+
+        <!-- App Identifier. MUST be short or you get a misleading error about not being able to deploy the app -->
+        <ApplicationId>ORT.CSharp.Tests.MAUI</ApplicationId>
+
+        <!-- Versions -->
+        <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+        <ApplicationVersion>1</ApplicationVersion>
+
+        <SupportedOSPlatformVersion Condition="'$(IsIOSTarget)' == 'true'">15.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="'$(IsMacCatalystTarget)' == 'true'">13.1</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="'$(IsAndroidTarget)' == 'true'">30.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="'$(IsWindowsTarget)' == 'true'">10.0.17763.0</SupportedOSPlatformVersion>
+        <TargetPlatformMinVersion Condition="'$(IsWindowsTarget)' == 'true'">10.0.17763.0</TargetPlatformMinVersion>
+
+        <SignAssembly>true</SignAssembly>
+        <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- App Icon -->
+        <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+
+        <!-- Splash Screen -->
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+
+        <!-- Images -->
+        <MauiImage Include="Resources\Images\*" />
+        <MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
+
+        <!-- Custom Fonts -->
+        <MauiFont Include="Resources\Fonts\*" />
+
+        <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+        <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced
+    Microsoft.ML.OnnxRuntime.Tests.Common project -->
+    <ItemGroup>
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
+            <Link>InferenceTest.cs</Link>
+        </Compile>
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
+            <Link>OrtIoBindingAllocationTest.cs</Link>
+        </Compile>
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
+            <Link>TensorTests.cs</Link>
+        </Compile>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference
+            Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+            name="Microsoft.ML.OnnxRuntime" />
+        <ProjectReference
+            Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
+            name="Microsoft.ML.OnnxRuntime.Tests.Common" />
+        <ProjectReference
+            Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj"
+            name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="DeviceRunners.VisualRunners.Maui" Version="0.1.0-preview.2" />
+        <PackageReference Include="DeviceRunners.VisualRunners.Xunit" Version="0.1.0-preview.2" />
+        <PackageReference Include="DeviceRunners.XHarness.Maui" Version="0.1.0-preview.2" />
+        <PackageReference Include="DeviceRunners.XHarness.Xunit" Version="0.1.0-preview.2" />
+        <PackageReference Include="Microsoft.DotNet.XHarness.TestRunners.Xunit" Version="9.0.0-prerelease.24374.1" />
+        <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
+        <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+        <PackageReference Include="xunit" Version="2.9.0" />
+        <PackageReference Include="xunit.runner.utility" Version="2.9.0" />
+    </ItemGroup>
+
+    <ItemGroup Condition="$(IsIOSTarget)=='true' OR $(IsMacCatalystTarget)=='true'">
+        <!-- need the dummy ORT Extensions package to resolve the RegisterCustomOps symbol. -->
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions.Dummy" Version="0.12.0" />
+    </ItemGroup>
+
+    <Target Name="RemoveVisualStudioTestRunner" BeforeTargets="_ComputeAppxPackagePayload">
+        <ItemGroup>
+            <_VisualStudioTestRunnerFiles
+                Include="@(PackagingOutputs)"
+                Condition="$([System.String]::Copy('%(PackagingOutputs.FullPath)').Contains('xunit.runner.visualstudio'))" />
+            <PackagingOutputs Remove="@(_VisualStudioTestRunnerFiles)" />
+        </ItemGroup>
+    </Target>
+</Project>

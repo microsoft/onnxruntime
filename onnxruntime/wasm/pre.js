@@ -15,6 +15,9 @@
  * @param {Uint8Array} externalDataFilesData
  */
 Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
+  if (externalDataFilePath.startsWith('./')) {
+    externalDataFilePath = externalDataFilePath.substring(2);
+  }
   const files = Module.MountedFiles || (Module.MountedFiles = new Map());
   files.set(externalDataFilePath, externalDataFileData);
 };

@@ -99,6 +99,7 @@ Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr a
 }
 
 Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                  bool /*save_prepacked_initializers*/,
                                   /*out*/ bool& is_packed,
                                   /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
@@ -199,7 +200,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
                                   mask_index,
                                   nullptr,  // past
-                                  nullptr,  // relative_position_bias
+                                  nullptr,  // attention_bias
                                   nullptr,  // parameters
                                   device_prop.maxThreadsPerBlock));
 

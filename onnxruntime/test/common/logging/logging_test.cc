@@ -240,18 +240,30 @@ TEST_F(LoggingTestsFixture, TestVLog) {
 #endif
 }
 
+#ifdef _WIN32
+class CTestSink : public WOStreamSink {
+ public:
+  CTestSink(std::wostringstream& stream) : WOStreamSink(stream, /*flush*/ true) {
+  }
+};
+#else
 class CTestSink : public OStreamSink {
  public:
   CTestSink(std::ostringstream& stream) : OStreamSink(stream, /*flush*/ true) {
   }
 };
+#endif
 
 TEST_F(LoggingTestsFixture, TestTruncation) {
   const std::string logger_id{"TestTruncation"};
   const Severity min_log_level = Severity::kVERBOSE;
   constexpr bool filter_user_data = false;
 
+#ifdef _WIN32
+  std::wostringstream out;
+#else
   std::ostringstream out;
+#endif
   auto* sink_ptr = new CTestSink{out};
 
   LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
@@ -261,8 +273,11 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
 
   // attempt to print string longer than hard-coded 2K buffer limit
   LOGF(*logger, ERROR, "%s", std::string(4096, 'a').c_str());
-
+#ifdef _WIN32
+  EXPECT_THAT(out.str(), HasSubstr(L"[...truncated...]"));
+#else
   EXPECT_THAT(out.str(), HasSubstr("[...truncated...]"));
+#endif
 }
 
 TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStatement) {

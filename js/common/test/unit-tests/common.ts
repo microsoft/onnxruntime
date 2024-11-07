@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import assert from 'assert/strict';
-import {Tensor} from 'onnxruntime-common';
+import { Tensor } from 'onnxruntime-common';
 
 /**
  * A list of numerical types that are compatible with JavaScript 'number' value.
@@ -26,10 +26,7 @@ export const NUMBER_COMPATIBLE_NUMERICAL_TYPES = [
 /**
  * Big integer types
  */
-export const BIGINT_TYPES = [
-  ['int64', BigInt64Array, true] as const,
-  ['uint64', BigUint64Array, true] as const,
-];
+export const BIGINT_TYPES = [['int64', BigInt64Array, true] as const, ['uint64', BigUint64Array, true] as const];
 
 /**
  * float16 type, data represented by Uint16Array
@@ -46,7 +43,7 @@ export const ALL_NUMERICAL_TYPES = [...NUMBER_COMPATIBLE_NUMERICAL_TYPES, ...BIG
 /**
  * a helper function to assert that a value is an array of a certain type
  */
-export const assertIsArrayOf = (value: unknown, type: 'string'|'number'|'boolean'): void => {
+export const assertIsArrayOf = (value: unknown, type: 'string' | 'number' | 'boolean'): void => {
   assert(Array.isArray(value), 'array should be an array');
   for (let i = 0; i < value.length; i++) {
     assert.equal(typeof value[i], type, `array should be an array of ${type}s`);
@@ -58,4 +55,4 @@ export const assertIsArrayOf = (value: unknown, type: 'string'|'number'|'boolean
  *
  * This allows to write test code to pass invalid parameters to Tensor constructor and check the behavior.
  */
-export const TensorAny = Tensor as unknown as {new (...args: unknown[]): Tensor};
+export const TensorAny = Tensor as unknown as { new (...args: unknown[]): Tensor };

@@ -24,6 +24,7 @@ class QAttention : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  bool& /*out*/ is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
@@ -58,6 +59,7 @@ QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionC
 
 template <typename T>
 Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
+                              bool /*save_prepacked_initializers*/,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   if (1 != input_idx) {
@@ -160,7 +162,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
-                                                 nullptr,  // relative_position_bias
+                                                 nullptr,  // attention_bias
                                                  nullptr   // parameters
                                                  ));
 

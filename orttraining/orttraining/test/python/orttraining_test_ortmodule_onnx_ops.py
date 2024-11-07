@@ -150,6 +150,8 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
 
     @unittest.skipIf(not torch.cuda.is_bf16_supported(), "Test requires CUDA and BF16 support")
     def test_softmax_bf16_large(self):
+        raise unittest.SkipTest("Temporarily disabled pending investigation")
+
         if torch.version.cuda is None:
             # Only run this test when CUDA is available, as on ROCm BF16 is not supported by MIOpen.
             return

@@ -36,6 +36,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultRocmExecutionProvider();
   else if (provider_type == onnxruntime::kDmlExecutionProvider)
     execution_provider = DefaultDmlExecutionProvider();
+  else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+    execution_provider = DefaultWebGpuExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;
@@ -51,6 +53,11 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   SetTestFunctionCalled();
 
   std::unique_ptr<IExecutionProvider> target_execution_provider = GetExecutionProvider(target_provider_type);
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (target_execution_provider == nullptr) {
+    return;
+  }
+#endif
   ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type
                                                     << " is not supported.";
 

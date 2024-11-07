@@ -7,7 +7,7 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.20.0"
+__version__ = "1.21.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -23,6 +23,7 @@ try:
     from onnxruntime.capi._pybind_state import ExecutionMode  # noqa: F401
     from onnxruntime.capi._pybind_state import ExecutionOrder  # noqa: F401
     from onnxruntime.capi._pybind_state import GraphOptimizationLevel  # noqa: F401
+    from onnxruntime.capi._pybind_state import LoraAdapter  # noqa: F401
     from onnxruntime.capi._pybind_state import ModelMetadata  # noqa: F401
     from onnxruntime.capi._pybind_state import NodeArg  # noqa: F401
     from onnxruntime.capi._pybind_state import OrtAllocatorType  # noqa: F401
@@ -56,6 +57,7 @@ from onnxruntime.capi import onnxruntime_validation
 if import_capi_exception:
     raise import_capi_exception
 
+from onnxruntime.capi.onnxruntime_inference_collection import AdapterFormat  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import OrtDevice  # noqa: F401

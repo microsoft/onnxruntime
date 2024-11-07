@@ -6,14 +6,15 @@
 #include <limits>
 #include <memory>
 #include <unordered_map>
-#include <vector>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "core/framework/node_unit.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/providers/common.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 #include "xnnpack.h"
 
@@ -77,6 +78,20 @@ struct XnnpackOperatorDeleter {
 
 bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
+using ComputeTypeSet = std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>;
+#ifdef XNNPACK_FP16_SUPPORTED
+bool IsComputeTypeSupported(int32_t compute_type,
+                            const ComputeTypeSet& compute_type_set = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT8});
+#else
+bool IsComputeTypeSupported(int32_t compute_type,
+                            const ComputeTypeSet& compute_type_set = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT8});
+#endif
+
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation,
@@ -99,5 +114,6 @@ auto xnn_u8s8_quantize(float val, float scale, T zero_point) {
   auto zp = static_cast<float>(zero_point);
   return static_cast<T>(lrintf(fminf(fmaxf(val / scale + zp, typed_min), typed_max)));
 }
+
 }  // namespace xnnpack
 }  // namespace onnxruntime

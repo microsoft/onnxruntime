@@ -14,7 +14,7 @@ from .operators.lstm import LSTMQuant
 from .operators.matmul import MatMulInteger, QDQMatMul, QLinearMatMul
 from .operators.maxpool import QDQMaxPool, QMaxPool
 from .operators.norm import QDQNormalization
-from .operators.pad import QPad
+from .operators.pad import QDQPad, QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
@@ -76,9 +76,12 @@ QDQRegistry = {
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
     "AveragePool": QDQDirect8BitOp,
+    "Slice": QDQDirect8BitOp,
+    "Pad": QDQPad,
     "MatMul": QDQMatMul,
     "Split": QDQSplit,
     "Gather": QDQGather,
+    "GatherElements": QDQGather,
     "Where": QDQWhere,
     "InstanceNormalization": QDQNormalization,
     "LayerNormalization": QDQNormalization,

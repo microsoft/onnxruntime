@@ -33,7 +33,6 @@ const char* RocmErrString<hipError_t>(hipError_t x) {
 template <>
 const char* RocmErrString<rocblas_status>(rocblas_status e) {
   ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
-
   switch (e) {
     CASE_ENUM_TO_STR(rocblas_status_success);
     CASE_ENUM_TO_STR(rocblas_status_invalid_handle);
@@ -50,6 +49,24 @@ const char* RocmErrString<rocblas_status>(rocblas_status e) {
     CASE_ENUM_TO_STR(rocblas_status_continue);
     default:
       return "(look for rocblas_status in rocblas-types.h)";
+  }
+}
+
+template <>
+const char* RocmErrString<hipblasStatus_t>(hipblasStatus_t e) {
+  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  switch (e) {
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_SUCCESS);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_INITIALIZED);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_ALLOC_FAILED);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_INVALID_VALUE);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_ARCH_MISMATCH);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_MAPPING_ERROR);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_EXECUTION_FAILED);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_INTERNAL_ERROR);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_SUPPORTED);
+    default:
+      return "(look for HIPBLAS_STATUS_xxx in hipblas_api.h)";
   }
 }
 
@@ -76,7 +93,7 @@ const char* RocmErrString<hipfftResult>(hipfftResult e) {
     CASE_ENUM_TO_STR(HIPFFT_SETUP_FAILED);
     CASE_ENUM_TO_STR(HIPFFT_INVALID_SIZE);
     default:
-      return "Unknown cufft error status";
+      return "Unknown hipfft error status";
   }
 }
 
@@ -135,6 +152,8 @@ std::conditional_t<THRW, void, Status> RocmCall(
 
 template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg, const char* file, const int line);
 template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg, const char* file, const int line);
+template Status RocmCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg, const char* file, const int line);
+template void RocmCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg, const char* file, const int line);
 template Status RocmCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg, const char* file, const int line);
 template void RocmCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg, const char* file, const int line);
 template Status RocmCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg, const char* file, const int line);
@@ -149,11 +168,6 @@ template void RocmCall<rsmi_status_t, true>(rsmi_status_t retCode, const char* e
 #ifdef ORT_USE_NCCL
 template Status RocmCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg, const char* file, const int line);
 template void RocmCall<ncclResult_t, true>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg, const char* file, const int line);
-#endif
-
-#ifdef USE_HIPBLASLT
-template Status RocmCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg, const char* file, const int line);
-template void RocmCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg, const char* file, const int line);
 #endif
 
 }  // namespace onnxruntime

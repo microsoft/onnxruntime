@@ -1,13 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="NUnit" Version="3.13.2" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="Xamarin.UITest" Version="4.4.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="Xamarin.UITest" Version="3.2.1" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\Microsoft.ML.OnnxRuntime.Tests.Devices\TestResultData.cs">

@@ -74,7 +74,7 @@ namespace Dml
         bool enableGraphCapture,
         bool enableSyncSpinning,
         bool disableMemoryArena) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = executionContext->GetCommandListTypeForQueue();
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -106,7 +106,26 @@ namespace Dml
         // Release the cached command list references before closing the context
         m_capturedGraphs.clear();
 
-        m_context->Close();
+        // Close the allocator before clearing the command queue to stop it from
+        // appending resources to it in an attempt to keep them alive.
+        if (m_allocator)
+        {
+            m_allocator->Close();
+        }
+
+        // Destroy the allocators. We are closing the execution provider, so from now on the
+        // only thing it will be used for is doing copies via the DataTransfer, which doesn't
+        // require allocating any memory.
+        // TODO: Move the copy functions over to ExecutionContext so that we are able to cleanly
+        // destroy ExecutionProviderImpl, and instead have the DataTransfer keep the context alive.
+        m_allocator = nullptr;
+        m_cpuInputAllocator = nullptr;
+
+        // Wait for all pending commands to be done executing and empty the command queue. This will
+        // Force all kernels and resources in flight to get destroyed and, from this point forward,
+        // ExecutionProviderImpl will only be used to execute transfer between resources that are
+        // already existing via the DataTransfer;
+        m_context->WaitForSignalAndClearQueue();
     }
 
     void ExecutionProviderImpl::WaitForOutstandingWork()
@@ -239,7 +258,9 @@ namespace Dml
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
             m_context->SetAllocator(m_allocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+            OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator);
+            memoryInfo.mem_type = ::OrtMemType::OrtMemTypeCPUInput;
+            m_cpuInputAllocator = std::make_shared<onnxruntime::CPUAllocator>(memoryInfo);
         }
 
         return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
@@ -674,7 +695,7 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto cpuOnDmlOperators = std::array<const char*, 8>{
+        auto cpuOnDmlOperators = std::array<const char*, 9>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
@@ -682,7 +703,8 @@ namespace Dml
             "SequenceErase",
             "SequenceInsert",
             "OptionalGetElement",
-            "OptionalHasElement"
+            "OptionalHasElement",
+            "If",
         };
 
         for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
@@ -991,7 +1013,6 @@ namespace Dml
             srcDatas.push_back(srcAllocInfo->GetResource());
         }
 
-        const uint64_t srcOffset = 0;
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer

@@ -5,7 +5,7 @@
 
 const documentUrl = document.currentScript.src;
 
-it('Browser E2E testing - WebAssembly backend', async function() {
+it('Browser E2E testing - WebAssembly backend', async function () {
   // preload .wasm file binary
   const wasmUrl = new URL('./node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', documentUrl).href;
   const response = await fetch(wasmUrl);
@@ -18,5 +18,5 @@ it('Browser E2E testing - WebAssembly backend', async function() {
   const binary = await response.arrayBuffer();
   ort.env.wasm.wasmBinary = binary;
 
-  await testFunction(ort, {executionProviders: ['wasm']});
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

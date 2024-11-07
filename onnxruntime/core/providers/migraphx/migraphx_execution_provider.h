@@ -5,7 +5,7 @@
 
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_inc.h"
 
@@ -26,6 +26,7 @@ static const char kSaveCompiledModel[] = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL";
 static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILE_PATH";
 static const char kLoadCompiledModel[] = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL";
 static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILE_PATH";
+static const char kExhaustiveTune[] = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE";
 
 };  // namespace migraphx_env_vars
 
@@ -39,7 +40,7 @@ struct MIGraphXFuncState {
   migraphx::onnx_options options;
   migraphx::target t{};
   std::unordered_map<std::string, std::size_t> input_name_indexes;
-  OrtMutex* mgx_mu_ptr = nullptr;
+  std::mutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -50,6 +51,7 @@ struct MIGraphXFuncState {
   bool load_compiled_mode = false;
   std::string load_compiled_path;
   bool dump_model_ops = false;
+  bool exhaustive_tune = false;
 };
 
 // Logical device representation.
@@ -99,8 +101,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::string load_compiled_path_;
   bool dump_model_ops_ = false;
   migraphx::target t_;
-  OrtMutex mgx_mu_;
+  std::mutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;

@@ -246,6 +246,12 @@ static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disab
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
     "session.optimized_model_external_initializers_file_name";
 
+// Use this config when save prepacked constant initializers to onnx external data file.
+// Default is not save prepacked initializers to onnx data file.
+// Sample usage: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  "1")
+static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
+    "session.save_prepacked_constant_initializers";
+
 // Use this config to control the minimum size of the initializer when externalizing it during serialization
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
@@ -269,6 +275,9 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
 
+// Share EP related resources across EPs
+static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
@@ -279,3 +288,10 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
+// Meant to be used with SetEpDynamicOptions
+// Specify the type of workload for this session.
+// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
+// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
+static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";

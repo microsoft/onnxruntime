@@ -1,18 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {SessionHandler} from './backend';
-import {Graph} from './graph';
-import {Logger, Profiler} from './instrument';
-import {Operator} from './operators';
-import {Tensor} from './tensor';
+import { SessionHandler } from './backend';
+import { Graph } from './graph';
+import { Logger, Profiler } from './instrument';
+import { Operator } from './operators';
+import { Tensor } from './tensor';
 
 class KernelOp {
-  constructor(public op: Operator, public node: Graph.Node) {}
+  constructor(
+    public op: Operator,
+    public node: Graph.Node,
+  ) {}
 }
 
 export class ExecutionPlan {
-  constructor(private graph: Graph, ops: Operator[], private profiler: Readonly<Profiler>) {
+  constructor(
+    private graph: Graph,
+    ops: Operator[],
+    private profiler: Readonly<Profiler>,
+  ) {
     this.initialize(ops);
   }
 
@@ -32,8 +39,8 @@ export class ExecutionPlan {
         let resolved = true;
         for (const input of op.node.inputs) {
           if (
-              !this._values[input]                                   // not an initialized input
-              && this.graph.getInputIndices().indexOf(input) === -1  // not model input
+            !this._values[input] && // not an initialized input
+            this.graph.getInputIndices().indexOf(input) === -1 // not model input
           ) {
             resolved = false;
             break;
@@ -47,7 +54,7 @@ export class ExecutionPlan {
   }
 
   reset() {
-    this._values = this.graph.getValues().map(i => i.tensor);
+    this._values = this.graph.getValues().map((i) => i.tensor);
   }
 
   async execute(sessionHandler: SessionHandler, modelInputs: Tensor[]): Promise<Tensor[]> {
@@ -61,8 +68,11 @@ export class ExecutionPlan {
       // populate inputs value
       const graphInputs = this.graph.getInputIndices();
       if (modelInputs.length !== graphInputs.length) {
-        throw new Error(`number of input tensors don't match the number of inputs to the model: actual: ${
-            modelInputs.length} expected: ${graphInputs.length}`);
+        throw new Error(
+          `number of input tensors don't match the number of inputs to the model: actual: ${
+            modelInputs.length
+          } expected: ${graphInputs.length}`,
+        );
       }
 
       modelInputs.forEach((input, i) => {
@@ -83,7 +93,7 @@ export class ExecutionPlan {
         const thisOp = this._ops[thisOpIndex];
 
         // check input
-        const inputList = thisOp.node.inputs.map(i => this._values[i]);
+        const inputList = thisOp.node.inputs.map((i) => this._values[i]);
         if (inputList.indexOf(undefined) !== -1) {
           throw new Error(`unresolved input detected: op: ${thisOp.node}`);
         }
@@ -91,12 +101,15 @@ export class ExecutionPlan {
         // run
         const inputTensors = inputList as Tensor[];
         Logger.verbose(
-            'ExecPlan',
-            `Running op:${thisOp.node.name} (${
-                inputTensors.map((t, i) => `'${thisOp.node.inputs[i]}': ${t.type}[${t.dims.join(',')}]`).join(', ')})`);
+          'ExecPlan',
+          `Running op:${thisOp.node.name} (${inputTensors
+            .map((t, i) => `'${thisOp.node.inputs[i]}': ${t.type}[${t.dims.join(',')}]`)
+            .join(', ')})`,
+        );
 
-        const outputList = await this.profiler.event(
-            'node', thisOp.node.name, async () => thisOp.op.impl(inferenceHandler, inputTensors, thisOp.op.context));
+        const outputList = await this.profiler.event('node', thisOp.node.name, async () =>
+          thisOp.op.impl(inferenceHandler, inputTensors, thisOp.op.context),
+        );
 
         // check output
         if (outputList.length !== thisOp.node.outputs.length) {
@@ -154,7 +167,7 @@ export class ExecutionPlan {
     });
   }
 
-  _values: Array<Tensor|undefined>;
+  _values: Array<Tensor | undefined>;
   _ops: KernelOp[];
   _starter: number[];
 }

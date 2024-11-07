@@ -43,7 +43,6 @@ stages:
       buildDirectory: '$(Build.BinariesDirectory)'
       BuildCommand: ${{ parameters.BuildCommand }}
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-      DotNetExe: 'dotnet.exe'
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
@@ -76,7 +75,7 @@ stages:
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '18.x'
+          versionSpec: '20.x'
 
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'
@@ -86,7 +85,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: '3.8'
+          versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
 
@@ -96,6 +95,13 @@ stages:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
+
+      # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
+      - task: UseDotNet@2
+        inputs:
+          version: 8.x
+        env:
+          PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
 
       - task: PowerShell@2
         displayName: 'Install ONNX'
@@ -202,7 +208,14 @@ stages:
             filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
-        # Esrp signing
+
+        # Esrp signing. Requires older .net SDK currently (ESRP v5.1.1)
+        - task: UseDotNet@2
+          inputs:
+            version: 6.x
+          env:
+            PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
+
         - template: ../../templates/win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'

@@ -30,6 +30,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
@@ -101,6 +102,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
 
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
+                             bool /*save_prepacked_initializers*/,
                              /*out*/ bool& is_packed,
                              /*out*/ PrePackedWeights* prepacked_weights) {
   /* The PrePack() massages the weights to speed up Compute(), there is an option to
@@ -198,7 +200,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
@@ -208,7 +210,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &parameters));
 
   if (parameters.do_rotary) {
@@ -338,7 +340,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                         output, nullptr /* present_key */, nullptr /* present_value */,
                         batch_size, sequence_length, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        relative_position_bias, context);
+                        attention_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

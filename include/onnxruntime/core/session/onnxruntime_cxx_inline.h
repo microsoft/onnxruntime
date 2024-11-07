@@ -51,7 +51,7 @@ inline void ThrowOnError(const Status& st) {
   }
 }
 
-inline Status::Status(OrtStatus* status) noexcept : Base<OrtStatus>{status} {
+inline Status::Status(OrtStatus* status) noexcept : detail::Base<OrtStatus>{status} {
 }
 
 inline Status::Status(const std::exception& e) noexcept {
@@ -557,6 +557,20 @@ inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
 }
 
+inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
+                                                  OrtAllocator* allocator) {
+  OrtLoraAdapter* p;
+  ThrowOnError(GetApi().CreateLoraAdapter(adapter_path.c_str(), allocator, &p));
+  return LoraAdapter{p};
+}
+
+inline LoraAdapter LoraAdapter::CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
+                                                           OrtAllocator* allocator) {
+  OrtLoraAdapter* p;
+  ThrowOnError(GetApi().CreateLoraAdapterFromArray(bytes, num_bytes, allocator, &p));
+  return LoraAdapter{p};
+}
+
 inline RunOptions::RunOptions() {
   ThrowOnError(GetApi().CreateRunOptions(&p_));
 }
@@ -606,6 +620,11 @@ inline RunOptions& RunOptions::SetTerminate() {
 
 inline RunOptions& RunOptions::UnsetTerminate() {
   ThrowOnError(GetApi().RunOptionsUnsetTerminate(p_));
+  return *this;
+}
+
+inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) {
+  ThrowOnError(GetApi().RunOptionsAddActiveLoraAdapter(p_, adapter));
   return *this;
 }
 
@@ -1072,6 +1091,11 @@ inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* al
   char* out = nullptr;
   ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline void SessionImpl<T>::SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len) {
+  ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys, values, kv_len));
 }
 
 }  // namespace detail
@@ -1884,7 +1908,7 @@ inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::
 
 inline KernelInfo::KernelInfo(OrtKernelInfo* info) : detail::KernelInfoImpl<OrtKernelInfo>{info} {}
 
-inline Op::Op(OrtOp* p) : Base<OrtOp>(p) {}
+inline Op::Op(OrtOp* p) : detail::Base<OrtOp>(p) {}
 
 inline Op Op::Create(const OrtKernelInfo* info, const char* op_name, const char* domain, int version,
                      const char** type_constraint_names,
@@ -2044,6 +2068,9 @@ inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_n
   int64_t i = {};
   size_t out = {};
   // first call to get the bytes needed
+  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
+  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
+  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
   auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, &i, sizeof(i), &out);
   if (status) {
     size_t num_i = out / sizeof(int64_t);
@@ -2051,6 +2078,9 @@ inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_n
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, ints.data(), out, &out));
     return ints;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {i};
   }
 }
@@ -2068,6 +2098,9 @@ inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* at
   float f = {};
   size_t out = {};
   // first call to get the bytes needed
+  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
+  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
+  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
   auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, &f, sizeof(f), &out);
   if (status) {
     size_t num_f = out / sizeof(float);
@@ -2075,6 +2108,9 @@ inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* at
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, floats.data(), out, &out));
     return floats;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {f};
   }
 }
@@ -2099,6 +2135,9 @@ inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* 
   char c = {};
   size_t out = {};
   // first call to get the bytes needed
+  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
+  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
+  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
   auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRINGS, &c, sizeof(char), &out);
   if (status) {
     std::vector<char> chars(out, '\0');
@@ -2115,6 +2154,9 @@ inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* 
     }
     return strings;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {std::string{c}};
   }
 }

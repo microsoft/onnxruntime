@@ -5,7 +5,9 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import os
 import struct
+import tempfile
 import unittest
 
 import numpy as np
@@ -34,7 +36,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.bias = np.array([0.0, 1.0], dtype=np.float32)
         self.default_act_qtype = onnx.TensorProto.UINT8
         self.default_wgt_qtype = onnx.TensorProto.UINT8
-        self.default_wgt_qtype_per_channel = onnx.TensorProto.INT8
+        self.default_wgt_qtype_per_channel = onnx.TensorProto.UINT8
         self.default_bias_qtype = onnx.TensorProto.INT32
 
         self.default_zp_scales = {
@@ -47,7 +49,8 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.default_zp_scales_per_channel = {
             "INP": (0, np.float32(0.0235294122248888)),
             "SIG_OUT": (0, np.float32(0.003911871928721666)),
-            "WGT": ([0, 0], [np.float32(0.015748031437397003), np.float32(0.011811023578047752)]),
+            # per-channel weights are always symmetric (ie. zp = (qmin + qmax) / 2)
+            "WGT": ([127, 127], [np.float32(0.015748031437397003), np.float32(0.011811023578047752)]),
             "BIAS": ([0, 0], [np.float32(0.00006160428165458143), np.float32(0.00004620321124093607)]),
             "OUT": (0, np.float32(0.005075461231172085)),
         }
@@ -418,12 +421,17 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
                 self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
                 for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
-                    wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_range)
+                    wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(
+                        wgt_zp.data_type,
+                        symmetric=True,  # per-channel is always symmetric
+                        reduce_range=reduce_range,
+                    )
                     expected_zp, expected_scale = compute_scale_zp(
                         np.array(rmin_vals[index], dtype=np.float32),
                         np.array(rmax_vals[index], dtype=np.float32),
                         wgt_qmin,
                         wgt_qmax,
+                        symmetric=True,  # per-channel is always symmetric
                     )
                     self.assertEqual(zp, expected_zp)
                     self.assertEqual(scale, np.float32(expected_scale))
@@ -1148,6 +1156,48 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         qnn_config = get_qnn_qdq_config("add_ext_data.onnx", DummyDataReader(self.activations))
         self.assertEqual(set(qnn_config.op_types_to_quantize), {"Add"})
+        self.assertTrue(qnn_config.use_external_data_format)
+
+    def test_get_qnn_qdq_config_ext_data_separate_dir(self):
+        """
+        Test that get_qnn_qdq_config() can validate per-channel quantization overrides for a model with external data
+        that is in a separate directory not in the cwd.
+        """
+
+        # Create model with a weight large enough (> 1024 bytes) to be stored externally.
+        large_weight = onnx.numpy_helper.from_array(np.random.random((1, 2, 32, 32)).astype(np.float32), "weight")
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Conv", ["input", "weight"], ["output"])],
+            "conv_ext_data",
+            [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, (1, 2, 64, 64))],
+            [onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, None)],
+            initializer=[large_weight],
+        )
+        model = onnx.helper.make_model(
+            graph,
+            opset_imports=[onnx.helper.make_opsetid("", 21)],
+        )
+
+        # Make a separate directory in which to save model and its external data.
+        model_dir_path = tempfile.mkdtemp(prefix="model_ext_data")
+        model_name = "conv_ext_data.onnx"
+        model_path = os.path.join(model_dir_path, model_name)
+
+        onnx.save_model(
+            model,
+            str(model_path),
+            save_as_external_data=True,
+        )
+
+        # Use tensor quantization overrides to quantize Conv's weight input to 4 bits on axis 0.
+        init_overrides = {"weight": [{"quant_type": QuantType.QInt4, "axis": 0, "symmetric": True}]}
+
+        # get_qnn_qdq_config() should be able to validate the per-channel axis without having to load
+        # the external weight data.
+        qnn_config = get_qnn_qdq_config(
+            str(model_path), DummyDataReader([]), init_overrides=init_overrides  # Dummy data reader does nothing
+        )
+        self.assertEqual(set(qnn_config.op_types_to_quantize), {"Conv"})
         self.assertTrue(qnn_config.use_external_data_format)
 
 

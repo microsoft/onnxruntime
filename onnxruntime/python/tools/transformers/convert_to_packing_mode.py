@@ -184,9 +184,9 @@ class PackingAttention(PackingAttentionBase):
 
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
         for attention in self.attention_nodes:
-            relative_pos_bias = (
-                attention.input[AttentionInputIDs.RELATIVE_POSITION_BIAS]
-                if len(attention.input) > AttentionInputIDs.RELATIVE_POSITION_BIAS
+            attention_bias = (
+                attention.input[AttentionInputIDs.ATTENTION_BIAS]
+                if len(attention.input) > AttentionInputIDs.ATTENTION_BIAS
                 else ""
             )
             packed_attention = helper.make_node(
@@ -197,7 +197,7 @@ class PackingAttention(PackingAttentionBase):
                     attention.input[AttentionInputIDs.BIAS],
                     token_offset,
                     cumulative_sequence_length,
-                    relative_pos_bias,
+                    attention_bias,
                 ],
                 outputs=[attention.output[AttentionOutputIDs.OUTPUT]],
                 name=self.model.create_node_name(Operators.PACKEDATTENTION),
@@ -261,9 +261,9 @@ class PackingMultiHeadAttention(PackingAttentionBase):
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
         gated_relative_pos_bias_count = 0
         for mha in self.attention_nodes:
-            relative_pos_bias = (
-                mha.input[MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS]
-                if len(mha.input) > MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS
+            attention_bias = (
+                mha.input[MultiHeadAttentionInputIDs.ATTENTION_BIAS]
+                if len(mha.input) > MultiHeadAttentionInputIDs.ATTENTION_BIAS
                 else ""
             )
             packed_mha = helper.make_node(
@@ -275,7 +275,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
                     mha.input[MultiHeadAttentionInputIDs.BIAS],
                     token_offset,
                     cumulative_sequence_length,
-                    relative_pos_bias,
+                    attention_bias,
                 ],
                 outputs=[mha.output[MultiHeadAttentionOutputIDs.OUTPUT]],
                 name=self.model.create_node_name(Operators.PACKED_MULTI_HEAD_ATTENTION),
@@ -293,8 +293,8 @@ class PackingMultiHeadAttention(PackingAttentionBase):
             self.node_name_to_graph_name[packed_mha.name] = self.this_graph_name
 
             # Append token_offset input to GatedRelativePositionBias
-            if relative_pos_bias:
-                rel_pos_bias_node = self.model.get_parent(mha, MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS)
+            if attention_bias:
+                rel_pos_bias_node = self.model.get_parent(mha, MultiHeadAttentionInputIDs.ATTENTION_BIAS)
                 if (
                     rel_pos_bias_node
                     and rel_pos_bias_node.op_type == "GatedRelativePositionBias"

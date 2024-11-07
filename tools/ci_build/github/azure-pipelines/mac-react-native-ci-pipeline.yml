@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -63,3 +64,4 @@ stages:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
     PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    enable_code_sign: false

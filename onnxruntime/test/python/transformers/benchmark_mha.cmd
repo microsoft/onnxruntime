@@ -5,6 +5,14 @@ python benchmark_mha.py --use_gpu
 python benchmark_mha.py --use_gpu --use_cuda_graph
 python benchmark_mha.py --use_gpu --torch
 
+echo "Benchmark performance on GPU without attention bias"
+python benchmark_mha.py --use_gpu -b 16
+
+echo "Benchmark performance on GPU with attention bias"
+python benchmark_mha.py --use_gpu -b 16 -r 1000 --has_attn_bias
+python benchmark_mha.py --use_gpu -b 16 -r 1000 --has_attn_bias --broadcast_attn_bias_dim_0
+python benchmark_mha.py --use_gpu -b 16 -r 1000 --has_attn_bias --broadcast_attn_bias_dim_0 --broadcast_attn_bias_dim_1
+
 type benchmark_mha_gpu_*.csv > mha_gpu_benchmark_results.csv
 
 echo "Benchmark performance on CPU with number of threads:"

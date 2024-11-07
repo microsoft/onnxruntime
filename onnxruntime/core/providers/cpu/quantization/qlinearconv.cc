@@ -25,6 +25,7 @@ class QLinearConv : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
@@ -360,6 +361,7 @@ REGISTER_QLINEARCONV_INT8_KERNEL(kMSDomain, 1);
 
 template <typename ActType>
 Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     bool /*save_prepacked_initializers*/,
                                      /*out*/ bool& is_packed,
                                      /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
@@ -380,8 +382,8 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
   const int64_t M = shape[0];
   const int64_t C = shape[1];
 
-  // Verify that the total number of output channels is a multiple of the group count.
-  if (M % conv_attrs_.group != 0) {
+  // Verify that conv_attrs_.group is not 0 and the total number of output channels is a multiple of the group count.
+  if (conv_attrs_.group == 0 || M % conv_attrs_.group != 0) {
     return Status::OK();
   }
 

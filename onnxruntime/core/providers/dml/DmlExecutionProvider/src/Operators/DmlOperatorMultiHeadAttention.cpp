@@ -18,7 +18,7 @@ public:
             valueIndex,
             biasIndex,
             maskIndex,
-            relativePositionBiasIndex,
+            attentionBiasIndex,
             pastKeyIndex,
             pastValueIndex,
             inputCount,
@@ -34,7 +34,7 @@ public:
             dmlStackedQueryKeyValueIndex,
             dmlBiasIndex,
             dmlMaskIndex,
-            dmlRelativePositionBiasIndex,
+            dmlAttentionBiasIndex,
             dmlPastKeyIndex,
             dmlPastValueIndex,
             dmlInputCount,
@@ -55,7 +55,7 @@ public:
         const bool hasValue = kernelCreationContext.IsInputValid(valueIndex) && !keyValueIsPast;
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
-        const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
+        const bool hasAttentionBias = kernelCreationContext.IsInputValid(attentionBiasIndex);
         const bool hasPastKey = keyValueIsPast || (kernelCreationContext.IsInputValid(pastKeyIndex) && kernelCreationContext.GetInputTensorShape(pastKeyIndex)[2] != 0);
         const bool hasPastValue = keyValueIsPast || (kernelCreationContext.IsInputValid(pastValueIndex) && kernelCreationContext.GetInputTensorShape(pastValueIndex)[2] != 0);
         const bool hasPresentKeyOutput = kernelCreationContext.IsOutputValid(outputPresentKeyIndex);
@@ -73,7 +73,7 @@ public:
             stackedQkv ? std::optional<uint32_t>(queryIndex) : std::nullopt,
             biasIndex,
             hasMask ? std::optional<uint32_t>(maskIndex) : std::nullopt,
-            relativePositionBiasIndex,
+            attentionBiasIndex,
             hasPastKey ? std::optional<uint32_t>(keyValueIsPast ? keyIndex : pastKeyIndex) : std::nullopt,
             hasPastValue ? std::optional<uint32_t>(keyValueIsPast ? valueIndex : pastValueIndex) : std::nullopt,
         };
@@ -243,15 +243,16 @@ public:
             }
         }
 
-        if (hasRelativePositionBias)
+        if (hasAttentionBias)
         {
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlRelativePositionBiasIndex].GetDimensionCount() == 4);
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlAttentionBiasIndex].GetDimensionCount() == 4);
 
-            auto relativePositionBiasSizes = m_inputTensorDescs[dmlRelativePositionBiasIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[0] == batchSize);
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[1] == numHeads);
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[2] == sequenceLength);
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[3] == totalSequenceLength);
+            auto attentionBiasSizes = m_inputTensorDescs[dmlAttentionBiasIndex].GetSizes();
+            // TODO: support broadcast of attention bias on the first and second dimensions.
+            ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[1] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[2] == sequenceLength);
+            ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[3] == totalSequenceLength);
         }
 
         if (hasPastKey)
@@ -283,7 +284,7 @@ public:
         mhaDesc.StackedQueryKeyValueTensor = stackedQkv ? &inputDescs[dmlStackedQueryKeyValueIndex] : nullptr;
         mhaDesc.BiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
         mhaDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
-        mhaDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+        mhaDesc.RelativePositionBiasTensor = hasAttentionBias ? &inputDescs[dmlAttentionBiasIndex] : nullptr;
         mhaDesc.PastKeyTensor = hasPastKey ? &inputDescs[dmlPastKeyIndex] : nullptr;
         mhaDesc.PastValueTensor = hasPastValue ? &inputDescs[dmlPastValueIndex] : nullptr;
         mhaDesc.OutputTensor = &outputDescs[outputIndex];

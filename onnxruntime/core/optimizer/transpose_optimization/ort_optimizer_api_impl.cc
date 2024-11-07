@@ -33,6 +33,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
   explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg) {}
   std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
+  std::optional<size_t> ShapeRank() const override;
   api::DataType DType() const override;
 
   void SetShape(const std::vector<int64_t>* shape) override;
@@ -77,6 +78,10 @@ class ApiNode final : public api::NodeRef {
 
   onnxruntime::Node& Node() {
     return node_;
+  }
+
+  std::string_view Name() const override {
+    return node_.Name();
   }
 
   std::string_view OpType() const override {
@@ -133,7 +138,7 @@ class ApiGraph final : public api::GraphRef {
   std::unique_ptr<api::NodeRef> GetNodeProducingOutput(std::string_view name) const override;
   void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) override;
   void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
-  std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
+  std::unique_ptr<api::NodeRef> AddNode(std::string_view name, std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs = 1, std::string_view domain = "") override;
 
   std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
@@ -182,6 +187,15 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   result.reserve(dims.size());
   result.assign(dims.begin(), dims.end());
   return result;
+}
+
+std::optional<size_t> ApiValueInfo::ShapeRank() const {
+  const auto* shape_proto = GetNodeArgShape(&node_arg_);
+  if (shape_proto == nullptr) {
+    return std::nullopt;
+  }
+
+  return static_cast<size_t>(shape_proto->dim_size());
 }
 
 api::DataType ApiValueInfo::DType() const {
@@ -611,11 +625,12 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   node_arg->SetShape(new_shape);
 }
 
-static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type,
+static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_name, std::string_view op_type,
                               const std::vector<std::string_view>& inputs, size_t num_outputs,
                               std::string_view domain, int since_version, std::string_view node_ep) {
   const std::string op_type_str(op_type);
-  std::string name = graph.GenerateNodeName(op_type_str);
+  const std::string op_name_str(op_name);
+  std::string name = graph.GenerateNodeName(op_name_str);
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
 
@@ -721,11 +736,11 @@ static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view do
   return *since_version;
 }
 
-std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
+std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view name, std::string_view op_type,
                                                 const std::vector<std::string_view>& inputs, size_t num_outputs,
                                                 std::string_view domain) {
   int since_version = GetSinceVersionForNewOp(op_type, domain, graph_.DomainToVersionMap());
-  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs,
+  Node& node = CreateNodeHelper(graph_, name, op_type, inputs, num_outputs,
                                 domain, since_version, new_node_ep_ != nullptr ? new_node_ep_ : "");
 
   return std::make_unique<ApiNode>(node, graph_);
@@ -734,7 +749,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
                                                  std::string_view domain, std::optional<int> since_version) {
   const int new_node_since_version = since_version.has_value() ? *since_version : source_node.SinceVersion();
-  Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
+  Node& node = CreateNodeHelper(graph_, source_node.Name(), op_type, source_node.Inputs(),
                                 source_node.Outputs().size(), domain, new_node_since_version,
                                 source_node.GetExecutionProviderType());
 

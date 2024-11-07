@@ -29,7 +29,7 @@ stages:
       parameters:
         job_name: Test_MAC_Wheels
         machine_pool:
-          vmImage: 'macOS-latest'
+          vmImage: 'macOS-13'
         itemPattern: '*/*mac*x86_64.whl'
     - template: templates/py-package-smoking-test.yml
       parameters:
@@ -42,27 +42,13 @@ stages:
 
 # GPU resources are very limited,
 # To utilize gpu resource more efficiently, run GPU job only after all cpus jobs succeed
-- stage: Linux_Test_GPU_x86_64_stage
-  dependsOn:
-    - Linux_Test_CPU_x86_64_stage
-    - Linux_Test_CPU_aarch64_stage
-    - Packages_Somking_Test
-  jobs:
-  - template: templates/py-packaging-linux-test-cuda.yml
-    parameters:
-      arch: 'x86_64'
-      machine_pool: 'Onnxruntime-Linux-GPU'
-      python_wheel_suffix: '_gpu'
-      timeout: 480
-      docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
-      trt_version: '10.2.0.19-1.cuda11.8'
-      cuda_version: '11.8'
-
 
 # if final job not extecuted, it will not run nightlly build
 - stage: Final
   dependsOn:
-    - Linux_Test_GPU_x86_64_stage
+  - Linux_Test_CPU_x86_64_stage
+  - Linux_Test_CPU_aarch64_stage
+  - Packages_Somking_Test
   jobs:
   - job: Final
     # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).

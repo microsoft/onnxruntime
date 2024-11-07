@@ -33,6 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private readonly DisposableListTest<IDisposable> _dispList = new DisposableListTest<IDisposable>();
 
         private bool _disposed = false;
+        private OrtEnv _env = OrtEnv.Instance();
 
         public OrtIoBindingAllocationTests()
         {

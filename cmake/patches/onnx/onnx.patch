@@ -469,3 +469,561 @@ index 2c63c910..b0e4c32d 100644
  };
 
  struct DataPropagationContextImpl : public DataPropagationContext {
+diff --git a/onnx/defs/math/defs.cc b/onnx/defs/math/defs.cc
+index ef379d8f..b7dfe3c8 100644
+--- a/onnx/defs/math/defs.cc
++++ b/onnx/defs/math/defs.cc
+@@ -2568,17 +2568,17 @@ ONNX_OPERATOR_SET_SCHEMA(
+           }
+         }));
+ 
+-void einsumRankInference(ONNX_NAMESPACE::InferenceContext& ctx, std::string equation) {
+-  const size_t numInputs = ctx.getNumInputs();
+-  if (numInputs < 1 || !hasNInputShapes(ctx, static_cast<int>(numInputs))) {
++void einsumShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, std::string const& equation) {
++  // Only accept letters for indices
++  auto is_letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
++
++  const size_t num_inputs = ctx.getNumInputs();
++  if (num_inputs < 1 || !hasNInputShapes(ctx, static_cast<int>(num_inputs))) {
+     return;
+   }
+-
+-  auto* output_shape = getOutputShape(ctx, 0);
++  ONNX_NAMESPACE::TensorShapeProto output_shape;
+   std::string left_equation;
+ 
+-  equation.erase(std::remove(equation.begin(), equation.end(), ' '),
+-                 equation.end()); // Remove space char
+   auto mid_index = equation.find("->");
+   if (mid_index != std::string::npos) {
+     // Separate right and left hand sides of the equation
+@@ -2595,73 +2595,130 @@ void einsumRankInference(ONNX_NAMESPACE::InferenceContext& ctx, std::string equa
+ 
+   // Parse the left-hand side
+   std::stringstream str(left_equation);
++  std::map<char, size_t> label_maps;
++  std::set<char> repeated_labels;
++  ONNX_NAMESPACE::TensorShapeProto dims_value, ellipsis_dims_value;
++  size_t num_labels = 0;
++  bool ellipsis_flag = true;
++
+   while (!str.eof()) {
+     std::getline(str, term, ',');
+     auto ellipsis_index = term.find("...");
+-    if (numInputs <= num_operands) {
++    if (num_inputs <= num_operands) {
+       fail_shape_inference("Number of input tensors does not match the operands in the equation.");
+     }
+-    size_t rank = ctx.getInputType(num_operands)->tensor_type().shape().dim_size();
++    const auto& shape = ctx.getInputType(num_operands)->tensor_type().shape();
++    size_t rank = shape.dim_size();
++    size_t ellipsis_dims = 0;
++
++    size_t term_size = 0; // number of legal indices for the current term
++    size_t num_illegal_char = 0; // number of illegal char before the current 'index' in the current term
++
++    for (size_t index = 0; index < term.size(); ++index) {
++      if (is_letter(term[index])) {
++        term_size += 1;
++      }
++    }
++
++    for (size_t index = 0; index < term.size(); ++index) {
++      if (index == ellipsis_index) {
++        // find ellipsis and record the dims represented by ellipsis
++        ellipsis_dims = rank - term_size;
++        if (ellipsis_flag) {
++          ellipsis_flag = false;
++          for (size_t i = 0; i < ellipsis_dims; i++) {
++            *ellipsis_dims_value.add_dim() = shape.dim(index + i - num_illegal_char);
++          }
++        } else {
++          for (size_t i = 0; i < ellipsis_dims; i++) {
++            const auto shape_dim = shape.dim(index + i - num_illegal_char);
++            const auto current_dim = ellipsis_dims_value.mutable_dim(i);
++            if (shape_dim.has_dim_value() && current_dim->has_dim_value() &&
++                shape_dim.dim_value() > current_dim->dim_value() && current_dim->dim_value() == 1) {
++              current_dim->set_dim_value(shape_dim.dim_value());
++            }
++          }
++        }
++        index += 2; // skip the rest of dots
++        num_illegal_char += 3;
++        continue;
++
++      } else if (!is_letter(term[index])) {
++        num_illegal_char += 1;
++        continue;
++      }
++
++      const auto inserted = label_maps.insert({term[index], num_labels}).second;
++      if (inserted) {
++        *dims_value.add_dim() = shape.dim(index + ellipsis_dims - num_illegal_char);
++        ++num_labels;
++      } else {
++        repeated_labels.insert(term[index]);
++      }
++    }
++
+     if (ellipsis_index != std::string::npos) {
+       // If there is an ellipsis, the number of dimensions it represents
+       // must be total dim - letter dimensions
+       if (num_ellipsis == 0) {
+-        if (rank + 3 < term.size()) {
++        if (rank < term_size) {
+           fail_shape_inference("Ellipsis represents incompatible dimensions.");
+         }
+-        num_ellipsis_indices = rank - term.size() + 3;
++        num_ellipsis_indices = rank - term_size;
+       } else { // ellipsis has been seen before. Check that if dimensions
+                // are compatible
+-        if (num_ellipsis_indices != rank - term.size() + 3) {
++        if (num_ellipsis_indices != rank - term_size) {
+           fail_shape_inference("Ellipsis represents incompatible dimensions.");
+         }
+       }
+       num_ellipsis++;
+     } else {
+-      if (rank != term.size()) {
++      if (rank != term_size) {
+         fail_shape_inference("Rank of input ", num_operands, " does not match the equation indices.");
+       }
+     }
+     num_operands++;
+   }
+ 
+-  if (numInputs != num_operands) {
++  if (num_inputs != num_operands) {
+     fail_shape_inference("Number of input tensors does not match the operands in the equation.");
+   }
+ 
+-  const size_t number_of_letters = 26;
+-  size_t num_letter_occurrences[number_of_letters] = {0};
+   // Parse the provided right-hand side
+   if (mid_index != std::string::npos) {
+     std::string right_equation = equation.substr(mid_index + 2);
+     auto right_ellipsis_index = right_equation.find("...");
+-    if (right_ellipsis_index != std::string::npos) { // Right-hand side contains ellipsis
+-      for (size_t i = 0; i < num_ellipsis_indices; ++i) {
+-        output_shape->add_dim();
++
++    for (size_t index = 0; index < right_equation.size(); ++index) {
++      // If there's an ellipsis, add its corresponding dimensions
++      if (index == right_ellipsis_index) {
++        for (size_t i = 0; i < num_ellipsis_indices; i++) {
++          *output_shape.add_dim() = ellipsis_dims_value.dim(i);
++        }
++        index += 2; // skip the rest of dots
++        continue;
+       }
+-    }
+-    for (char c : right_equation) { // Add a dimension per each character
+-                                    // in right hand equation
+-      if (c != '.') {
+-        output_shape->add_dim();
++
++      if (is_letter(right_equation[index])) {
++        *output_shape.add_dim() = dims_value.dim(label_maps[right_equation[index]]);
+       }
+     }
+   } else { // Infer the dimension for right-hand side
+-    // If there's an ellipsis, add it's corresponding dimensions
++    // If there's an ellipsis, add its corresponding dimensions
+     for (size_t i = 0; i < num_ellipsis_indices; i++) {
+-      output_shape->add_dim();
++      *output_shape.add_dim() = ellipsis_dims_value.dim(i);
+     }
+-    for (size_t i = 0; i < left_equation.size(); i++) { // Count chars that appear exactly once on left hand side
+-      if ((left_equation.at(i) != ',') && (left_equation.at(i) != '.')) {
+-        num_letter_occurrences[left_equation.at(i) - 'a']++;
+-      }
+-    }
+-    for (size_t index = 0; index < number_of_letters; index++) {
+-      if (num_letter_occurrences[index] == 1) {
+-        output_shape->add_dim();
++    // If no explicit output was given, generate an implicit output by ordering all the
++    // labels in alphabetic order (by ASCII value consistent with numpy, so Z < a).
++    // Exclude any labels that occurred more than once, as these cancel out.
++    for (auto i : label_maps) {
++      if (repeated_labels.count(i.first) == 0) {
++        *output_shape.add_dim() = dims_value.dim(i.second);
+       }
+     }
+   }
++
++  updateOutputShape(ctx, 0, output_shape);
+ }
+ 
+ static const char* Einsum_ver12_doc = R"DOC(
+@@ -2711,7 +2768,10 @@ ONNX_OPERATOR_SET_SCHEMA(
+           if (equation.compare("") == 0) {
+             return;
+           }
+-          einsumRankInference(ctx, equation);
++
++          equation.erase(std::remove(equation.begin(), equation.end(), ' '),
++                         equation.end()); // Remove space char
++          einsumShapeInference(ctx, equation);
+         }));
+ 
+ const char* reduction_doc_sce =
+diff --git a/onnx/test/shape_inference_test.py b/onnx/test/shape_inference_test.py
+index 75280f6c..5543fda0 100644
+--- a/onnx/test/shape_inference_test.py
++++ b/onnx/test/shape_inference_test.py
+@@ -7026,7 +7026,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [make_node("Einsum", ["x"], ["y"], equation="ij->ji")],
+             [],
+         )
+-        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (None, None))])  # type: ignore
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (4, 3))])  # type: ignore
+ 
+     def test_einsum_dot(self) -> None:
+         graph = self._make_graph(
+@@ -7050,7 +7050,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [make_node("Einsum", ["x", "y"], ["z"], equation="ij,ab->ijab")],
+             [],
+         )
+-        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (None, None, None, None))])  # type: ignore
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 5, 7, 9))])  # type: ignore
+ 
+     def test_einsum_sum_along_dim(self) -> None:
+         graph = self._make_graph(
+@@ -7058,7 +7058,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [make_node("Einsum", ["x"], ["y"], equation="i j->i ")],
+             [],
+         )
+-        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (None,))])  # type: ignore
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3,))])  # type: ignore
+ 
+     def test_einsum_ellipsis(self) -> None:
+         graph = self._make_graph(
+@@ -7066,26 +7066,36 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [make_node("Einsum", ["x"], ["y"], equation="... ii ->... i")],
+             [],
+         )
+-        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (None, None))])  # type: ignore
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3, 4))])  # type: ignore
+ 
+     def test_einsum_ellipsis_2(self) -> None:
+         graph = self._make_graph(
+-            [("x", TensorProto.FLOAT, (2, 2, 2)), ("y", TensorProto.FLOAT, (2, 2, 2))],
++            [("x", TensorProto.FLOAT, (2, 3, 4)), ("y", TensorProto.FLOAT, (2, 4, 5))],
+             [make_node("Einsum", ["x", "y"], ["z"], equation="...ij,...jk->...ik")],
+             [],
+         )
+         self._assert_inferred(
+-            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (None, None, None))]
++            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (2, 3, 5))]
+         )  # type: ignore
+ 
+     def test_einsum_ellipsis_3(self) -> None:
+         graph = self._make_graph(
+-            [("x", TensorProto.FLOAT, (2, 2, 2)), ("y", TensorProto.FLOAT, (2, 2, 2))],
++            [("x", TensorProto.FLOAT, (2, 3, 4)), ("y", TensorProto.FLOAT, (2, 4, 5))],
+             [make_node("Einsum", ["x", "y"], ["z"], equation="...ij,...jk")],
+             [],
+         )
+         self._assert_inferred(
+-            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (None, None, None))]
++            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (2, 3, 5))]
++        )  # type: ignore
++
++    def test_einsum_ellipsis_broadcast(self) -> None:
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (1, 3, 4)), ("y", TensorProto.FLOAT, (32, 4, 5))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="...ij,...jk->...ik")],
++            [],
++        )
++        self._assert_inferred(
++            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (32, 3, 5))]
+         )  # type: ignore
+ 
+     def test_einsum_contraction(self) -> None:
+@@ -7099,11 +7109,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+         )
+         self._assert_inferred(
+             graph,
+-            [
+-                make_tensor_value_info(
+-                    "z", TensorProto.FLOAT, (None, None, None, None, None)
+-                )
+-            ],
++            [make_tensor_value_info("z", TensorProto.FLOAT, (5, 6, 7, 9, 10))],
+         )  # type: ignore
+ 
+     def test_einsum_contraction_2(self) -> None:
+@@ -7113,7 +7119,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [],
+         )
+         self._assert_inferred(
+-            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (None, None))]
++            graph, [make_tensor_value_info("z", TensorProto.FLOAT, (4, 5))]
+         )  # type: ignore
+ 
+     def test_einsum_batch_matmul(self) -> None:
+@@ -7122,7 +7128,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [make_node("Einsum", ["x", "y"], ["z"], equation="bij , b jk-> bik")],
+             [],
+         )
+-        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (None, None, None))])  # type: ignore
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (5, 2, 4))])  # type: ignore
+ 
+     def test_einsum_left_hand_eqn(self) -> None:
+         graph = self._make_graph(
+@@ -7130,7 +7136,7 @@ class TestShapeInference(TestShapeInferenceHelper):
+             [make_node("Einsum", ["x", "y"], ["z"], equation="ij,kl")],
+             [],
+         )
+-        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (None, None, None, None))])  # type: ignore
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (2, 3, 3, 4))])  # type: ignore
+ 
+     def test_einsum_incorrect_num_inputs(self) -> None:
+         graph = self._make_graph(
+@@ -7144,6 +7150,244 @@ class TestShapeInference(TestShapeInferenceHelper):
+         )
+         self.assertRaises(onnx.shape_inference.InferenceError, self._inferred, graph)
+ 
++    def test_einsum_view_A1(self) -> None:  # returns a view of A1
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3,))],
++            [make_node("Einsum", ["x"], ["y"], equation="i")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_sum_A1(self) -> None:  # sums the values of A1
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3,))],
++            [make_node("Einsum", ["x"], ["y"], equation="i->")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, ())])  # type: ignore
++
++    def test_einsum_element_wise_multiplication_A1_B1(
++        self,
++    ) -> None:  # element-wise multiplication of A1 and B1
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3,)), ("y", TensorProto.FLOAT, (3,))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="i,i->i")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_inner_product_A1_B1(self) -> None:  # inner product of A1 and B1
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3,)), ("y", TensorProto.FLOAT, (3,))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="i,i->")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, ())])  # type: ignore
++
++    def test_einsum_outer_product_A1_B1(self) -> None:  # outer product of A1 and B1
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3,)), ("y", TensorProto.FLOAT, (3,))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="i,j->ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_view_A2(self) -> None:  # returns a view of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ij->ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_view_A2_2(self) -> None:  # returns a view of A2, another case
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_transpose_A2(self) -> None:  # view transpose of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ji")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_transpose_A2_to_ij(self) -> None:  # view transpose of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ji->ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_diag_A2(self) -> None:  # view main diagonal of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ii->i")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_trace_A2(self) -> None:  # sums main diagonal of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ii->")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, ())])  # type: ignore
++
++    def test_einsum_sum_A2(self) -> None:  # sums the values of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ij->")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, ())])  # type: ignore
++
++    def test_einsum_sum_columns_A2(
++        self,
++    ) -> None:  # sum down the columns of A2 (across rows)
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ij->j")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_sum_rows_A2(self) -> None:  # sum horizontally along the rows of A2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x"], ["y"], equation="ij->i")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("y", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_element_wise_multiplication_A2_B2(
++        self,
++    ) -> None:  # element-wise multiplication of A2 and B2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,ij->ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_element_wise_multiplication_A2_B2_transpose(
++        self,
++    ) -> None:  # element-wise multiplication of A2 and B2.T
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,ji->ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_matrix_multiplication_A2_B2(
++        self,
++    ) -> None:  # matrix multiplication of A2 and B2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,jk")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_matrix_multiplication_A2_B2_to_ik(
++        self,
++    ) -> None:  # matrix multiplication of A2 and B2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,jk->ik")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_matrix_multiplication_A3_B3(
++        self,
++    ) -> None:  # matrix multiplication of A3 and B3 (a stack of 2D matrices)
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (2, 3, 3)), ("y", TensorProto.FLOAT, (2, 3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="bij,bjk->bik")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (2, 3, 3))])  # type: ignore
++
++    def test_einsum_matrix_multiplication_A3_B3_transpose(
++        self,
++    ) -> None:  # matrix multiplication of A3 and B3 (a stack of 2D matrices)
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (2, 3, 3)), ("y", TensorProto.FLOAT, (2, 3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="bij,bkj->bik")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (2, 3, 3))])  # type: ignore
++
++    def test_einsum_inner_product_A2_B2(self) -> None:  # inner product of A2 and B2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,kj->ik")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_row_multiplication_A2_B2(
++        self,
++    ) -> None:  # each row of A2 multiplied by B2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,kj->ikj")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3, 3))])  # type: ignore
++
++    def test_einsum_value_multiplication_A2_B2(
++        self,
++    ) -> None:  # each value of A2 multiplied by B2
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,kl->ijkl")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3, 3, 3))])  # type: ignore
++
++    def test_einsum_scalar_times_array(self) -> None:  # Scalar times array
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, ()), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation=",ij->ij")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3, 3))])  # type: ignore
++
++    def test_einsum_matrix_vector_A2_B1(self) -> None:  # Matrix and vector.
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3,))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ij,j->i")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_diag_multiplication_A2_B2(
++        self,
++    ) -> None:  # diagonals multiplied by each other
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ii,ii->i")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, (3,))])  # type: ignore
++
++    def test_einsum_diag_dot_product_A2_B2(self) -> None:  # dot product of diagonals
++        graph = self._make_graph(
++            [("x", TensorProto.FLOAT, (3, 3)), ("y", TensorProto.FLOAT, (3, 3))],
++            [make_node("Einsum", ["x", "y"], ["z"], equation="ii,ii->")],
++            [],
++        )
++        self._assert_inferred(graph, [make_tensor_value_info("z", TensorProto.FLOAT, ())])  # type: ignore
++
+     def test_negative_log_likehood_shape_is_NCdd(self) -> None:
+         N, C = 3, 4
+         graph = self._make_graph(
+

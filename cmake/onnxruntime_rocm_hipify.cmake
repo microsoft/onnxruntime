@@ -5,6 +5,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # GLOB pattern of file to be excluded
 set(contrib_ops_excluded_files
+  "bert/cudnn_fmha/*"
   "bert/cutlass_fmha/*"
   "bert/fastertransformer_decoder_attention/*"
   "bert/flash_attention/*"
@@ -156,10 +157,6 @@ set(provider_excluded_files
   "cuda_execution_provider_info.h"
   "cuda_execution_provider.cc"
   "cuda_execution_provider.h"
-  "cuda_memory_check.cc"
-  "cuda_memory_check.h"
-  "cuda_fence.cc"
-  "cuda_fence.h"
   "cuda_kernel.h"
   "cuda_pch.cc"
   "cuda_pch.h"

@@ -14,6 +14,7 @@
 //
 
 import fs from 'fs';
+import { bootstrap as globalAgentBootstrap } from 'global-agent';
 import https from 'https';
 import jszip from 'jszip';
 import path from 'path';
@@ -34,8 +35,12 @@ Usage:
 
 const argv = process.argv.slice(2);
 
-if (argv.indexOf('--help') !== -1 || argv.indexOf('-h') !== -1 || argv.indexOf('help') !== -1 ||
-    argv.indexOf('h') !== -1) {
+if (
+  argv.indexOf('--help') !== -1 ||
+  argv.indexOf('-h') !== -1 ||
+  argv.indexOf('help') !== -1 ||
+  argv.indexOf('h') !== -1
+) {
   console.log(HELP_MESSAGE);
   process.exit();
 }
@@ -48,8 +53,8 @@ const buildId = arg0isInteger ? argv[0] : (argv[1] ?? '');
 const folderName = config === 'release' ? 'Release_wasm' : 'Debug_wasm';
 
 function downloadJson(url: string, onSuccess: (data: any) => void) {
-  https.get(url, res => {
-    const {statusCode} = res;
+  https.get(url, (res) => {
+    const { statusCode } = res;
     const contentType = res.headers['content-type'];
 
     if (statusCode !== 200) {
@@ -70,8 +75,8 @@ function downloadJson(url: string, onSuccess: (data: any) => void) {
 }
 
 function downloadZip(url: string, onSuccess: (data: Buffer) => void) {
-  https.get(url, res => {
-    const {statusCode} = res;
+  https.get(url, (res) => {
+    const { statusCode } = res;
     const contentType = res.headers['content-type'];
 
     if (statusCode !== 200) {
@@ -92,59 +97,70 @@ function downloadZip(url: string, onSuccess: (data: Buffer) => void) {
 }
 
 function extractFile(zip: jszip, folder: string, file: string, artifactName: string) {
-  zip.file(`${artifactName}/${file}`)!.nodeStream()
-      .pipe(fs.createWriteStream(path.join(folder, file)))
-      .on('finish', () => {
-        console.log('# file downloaded and extracted: ' + file);
-      });
+  zip
+    .file(`${artifactName}/${file}`)!
+    .nodeStream()
+    .pipe(fs.createWriteStream(path.join(folder, file)))
+    .on('finish', () => {
+      console.log('# file downloaded and extracted: ' + file);
+    });
 }
 
-console.log(`=== Start to pull ${config} WebAssembly artifacts from CI for ${
-    buildId ? `build "${buildId}"` : 'latest "main" branch'} ===`);
+console.log(
+  `=== Start to pull ${config} WebAssembly artifacts from CI for ${
+    buildId ? `build "${buildId}"` : 'latest "main" branch'
+  } ===`,
+);
 
-const filter = buildId ? `&buildIds=${buildId}` :
-                         '&definitions=161' +
-        '&resultFilter=succeeded%2CpartiallySucceeded' +
-        '&$top=1' +
-        '&repositoryId=Microsoft/onnxruntime' +
-        '&repositoryType=GitHub' +
-        '&branchName=refs/heads/main';
+// Bootstrap global-agent to honor the proxy settings in
+// environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
+// See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+globalAgentBootstrap();
+
+const filter = buildId
+  ? `&buildIds=${buildId}`
+  : '&definitions=161' +
+    '&resultFilter=succeeded%2CpartiallySucceeded' +
+    '&$top=1' +
+    '&repositoryId=Microsoft/onnxruntime' +
+    '&repositoryType=GitHub' +
+    '&branchName=refs/heads/main';
 
 // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/builds/list
 downloadJson(
-    `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds?api-version=6.1-preview.6${filter}`, data => {
-      const buildId = data.value[0].id;
+  `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds?api-version=6.1-preview.6${filter}`,
+  (data) => {
+    const buildId = data.value[0].id;
 
-      console.log(`=== Found latest build on main branch: ${buildId} ===`);
+    console.log(`=== Found latest build on main branch: ${buildId} ===`);
 
-      // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/artifacts/get%20artifact
-      downloadJson(
-          `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds/${
-              buildId}/artifacts?api-version=6.1-preview.5`,
-          data => {
-            let zipLink;
-            for (const v of data.value) {
-              if (v.name === folderName) {
-                zipLink = v.resource.downloadUrl;
-              }
-            }
+    // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/artifacts/get%20artifact
+    downloadJson(
+      `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds/${buildId}/artifacts?api-version=6.1-preview.5`,
+      (data) => {
+        let zipLink;
+        for (const v of data.value) {
+          if (v.name === folderName) {
+            zipLink = v.resource.downloadUrl;
+          }
+        }
 
-            console.log('=== Ready to download zip files ===');
+        console.log('=== Ready to download zip files ===');
 
-            const WASM_FOLDER = path.join(__dirname, '../dist');
-            if (!fs.existsSync(WASM_FOLDER)) {
-              fs.mkdirSync(WASM_FOLDER);
-            }
-            downloadZip(zipLink, buffer => {
-              void jszip.loadAsync(buffer).then(zip => {
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.wasm', folderName);
+        const WASM_FOLDER = path.join(__dirname, '../dist');
+        if (!fs.existsSync(WASM_FOLDER)) {
+          fs.mkdirSync(WASM_FOLDER);
+        }
+        downloadZip(zipLink, (buffer) => {
+          void jszip.loadAsync(buffer).then((zip) => {
+            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
+            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
 
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.mjs', folderName);
-              });
-            });
+            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.mjs', folderName);
+            extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.mjs', folderName);
           });
-    });
+        });
+      },
+    );
+  },
+);

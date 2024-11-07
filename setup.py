@@ -49,7 +49,6 @@ def parse_arg_remove_string(argv, arg_name_equal):
 # Any combination of the following arguments can be applied
 
 if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
-    package_name = "ort-nightly"
     nightly_build = True
 
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
@@ -59,6 +58,7 @@ rocm_version = None
 is_migraphx = False
 is_rocm = False
 is_openvino = False
+is_qnn = False
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -87,10 +87,11 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
+    is_qnn = True
     package_name = "onnxruntime-qnn"
 
 if is_rocm or is_migraphx:
-    package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
+    package_name = "onnxruntime-rocm"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -208,7 +209,26 @@ try:
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
+                    "libcudnn_adv_infer.so.8",
+                    "libcudnn_adv_train.so.8",
+                    "libcudnn_cnn_infer.so.8",
+                    "libcudnn_cnn_train.so.8",
+                    "libcudnn_ops_infer.so.8",
+                    "libcudnn_ops_train.so.8",
+                    "libcudnn_adv.so.9",
+                    "libcudnn_cnn.so.9",
+                    "libcudnn_engines_precompiled.so.9",
+                    "libcudnn_engines_runtime_compiled.so.9",
+                    "libcudnn_graph.so.9",
+                    "libcudnn_heuristic.so.9",
+                    "libcudnn_ops.so.9",
+                    "libnvJitLink.so.12",
+                    "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
+                    "libnvrtc.so.12",
+                    "libnvrtc-builtins.so.11",
+                    "libnvrtc-builtins.so.12",
                 ]
+
                 rocm_dependencies = [
                     "libamd_comgr.so.2",
                     "libamdhip64.so.5",
@@ -223,6 +243,7 @@ try:
                     "libMIOpen.so.1",
                     "libnuma.so.1",
                     "librccl.so.1",
+                    "libhipblas.so.2",
                     "librocblas.so.3",
                     "librocblas.so.4",
                     "librocfft.so.0",
@@ -259,7 +280,7 @@ try:
                 pass
 
             _bdist_wheel.run(self)
-            if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+            if is_manylinux and not disable_auditwheel_repair and not is_openvino and not is_qnn:
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
@@ -306,7 +327,7 @@ elif platform.system() == "Windows":
 dl_libs = []
 libs = []
 
-if platform.system() == "Linux":
+if platform.system() == "Linux" or platform.system() == "AIX":
     libs = [
         "onnxruntime_pybind11_state.so",
         "libdnnl.so.2",
@@ -329,6 +350,16 @@ if platform.system() == "Linux":
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
+    # QNN
+    qnn_deps = [
+        "libQnnCpu.so",
+        "libQnnHtp.so",
+        "libQnnSaver.so",
+        "libQnnSystem.so",
+        "libHtpPrepare.so",
+        "onnxruntime_qnn_ctx_gen",
+    ]
+    dl_libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -336,7 +367,7 @@ elif platform.system() == "Darwin":
         "onnxruntime_pybind11_state.so",
         "libdnnl.2.dylib",
         "mimalloc.so",
-        "libonnxruntime.dylib*",
+        "libonnxruntime*.dylib",
     ]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.dylib"])
@@ -475,8 +506,9 @@ packages = [
     "onnxruntime.transformers.models.llama",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.phi2",
-    "onnxruntime.transformers.models.t5",
+    "onnxruntime.transformers.models.sam2",
     "onnxruntime.transformers.models.stable_diffusion",
+    "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.whisper",
 ]
 

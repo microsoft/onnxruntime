@@ -308,8 +308,10 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
     return true;
   }
 
-  // We already checked the shape has no dynamic dimension
   for (const auto& dim : shape_proto->dim()) {
+    if (!dim.has_dim_value()) {
+      return false;  // Do not support dynamic shapes.
+    }
     shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
   }
 
@@ -335,7 +337,18 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
 
   switch (onnx_data_type) {
     // QNN use -offset for some reason
-    case ONNX_NAMESPACE::TensorProto_DataType_INT4:  // INT4 zero-points are unpacked as 8-bit values for QNN
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4: {  // INT4 zero-points are unpacked as 8-bit values for QNN
+      auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
+      std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
+                     [](int8_t masked_zp) -> int32_t {
+                       // We currently unpack int4 as int8 but with the top 4-bits masked off due to QNN bug.
+                       // Need to undo the masking so that the zero-point value is correct.
+                       // (Not really a problem yet because QNN only supports symmetric INT4 quantization with zp == 0).
+                       int8_t zp = Int4x2::SignExtendLower4Bits(std::byte(masked_zp));
+                       return -static_cast<int32_t>(zp);
+                     });
+      break;
+    }
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
       std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
