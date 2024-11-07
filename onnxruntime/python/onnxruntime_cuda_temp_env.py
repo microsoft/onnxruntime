@@ -21,7 +21,7 @@ def get_nvidia_dll_paths() -> str:
 
     # Collect all directories under site-packages/nvidia that contain .dll files (for Windows)
     dll_paths = []
-    for root, files in os.walk(nvidia_path):
+    for root, _, files in os.walk(nvidia_path):
         if any(file.endswith(".dll") for file in files):
             dll_paths.append(root)
     return os.pathsep.join(dll_paths)
@@ -36,7 +36,7 @@ def get_nvidia_so_paths() -> str:
     so_paths = []
     # Regular expression to match `.so` optionally followed by `.` and digits
     pattern = re.compile(r"\.so(\.\d+)?$")
-    for root, files in os.walk(nvidia_path):
+    for root, _, files in os.walk(nvidia_path):
         for file in files:
             if pattern.search(file):
                 so_paths.append(root)
