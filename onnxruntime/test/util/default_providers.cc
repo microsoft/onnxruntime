@@ -259,8 +259,9 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlpr
   if (use_mlprogram) {
     coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
   }
-
-  return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
+  auto option = ProviderOptions();
+  option["coreml_flags"] = std::to_string(coreml_flags);
+  return CoreMLProviderFactoryCreator::Create(option)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;

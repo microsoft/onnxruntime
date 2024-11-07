@@ -24,6 +24,7 @@
 #include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"
+#include "strings_helper.h"
 
 namespace onnxruntime {
 namespace perftest {
@@ -172,39 +173,6 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   ORT_CATCH(...) {
     return false;
   }
-  return true;
-}
-
-static bool ParseSessionConfigs(const std::string& configs_string,
-                                std::unordered_map<std::string, std::string>& session_configs) {
-  std::istringstream ss(configs_string);
-  std::string token;
-
-  while (ss >> token) {
-    if (token == "") {
-      continue;
-    }
-
-    std::string_view token_sv(token);
-
-    auto pos = token_sv.find("|");
-    if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length()) {
-      // Error: must use a '|' to separate the key and value for session configuration entries.
-      return false;
-    }
-
-    std::string key(token_sv.substr(0, pos));
-    std::string value(token_sv.substr(pos + 1));
-
-    auto it = session_configs.find(key);
-    if (it != session_configs.end()) {
-      // Error: specified duplicate session configuration entry: {key}
-      return false;
-    }
-
-    session_configs.insert(std::make_pair(std::move(key), std::move(value)));
-  }
-
   return true;
 }
 

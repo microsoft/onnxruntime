@@ -41,6 +41,10 @@ enum COREMLFlags {
   COREML_FLAG_LAST = COREML_FLAG_USE_CPU_AND_GPU,
 };
 
+// MLComputeUnits can be one of the following values:
+// 'MLComputeUnitsCPUAndNeuralEngine|MLComputeUnitsCPUAndGPU|MLComputeUnitsCPUOnly|MLComputeUnitsAll'
+static const char* const kCoremlProviderOption_MLComputeUnits = "MLComputeUnits";
+
 #ifdef __cplusplus
 extern "C" {
 #endif

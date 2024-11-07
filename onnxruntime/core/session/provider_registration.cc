@@ -155,11 +155,25 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "VitisAI") == 0) {
+#ifdef USE_VITISAI
     status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys, provider_options_values, num_keys);
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "CoreML") == 0) {
+#if defined(USE_COREML)
+    std::string coreml_flags;
+    if (options->value.config_options.TryGetConfigEntry("coreml_flags", coreml_flags)) {
+      provider_options["coreml_flags"] = coreml_flags;
+    }
+    options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' ,'CoreML', and 'AZURE'");
   }
 
   return status;

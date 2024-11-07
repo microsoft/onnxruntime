@@ -34,7 +34,8 @@ namespace test {
 static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
 
 static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(uint32_t flags = s_coreml_flags) {
-  return std::make_unique<CoreMLExecutionProvider>(flags);
+  std::unordered_map<std::string, std::string> provider_options = {{"coreml_flags", std::to_string(flags)}};
+  return std::make_unique<CoreMLExecutionProvider>(provider_options);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

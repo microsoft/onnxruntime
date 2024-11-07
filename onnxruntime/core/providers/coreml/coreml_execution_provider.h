@@ -12,9 +12,14 @@ namespace coreml {
 class Model;
 }
 
+struct CoreMLOptions {
+  uint32_t coreml_flags = 0;
+  std::string cache_path;
+};
+
 class CoreMLExecutionProvider : public IExecutionProvider {
  public:
-  CoreMLExecutionProvider(uint32_t coreml_flags);
+  CoreMLExecutionProvider(const CoreMLOptions& options);
   virtual ~CoreMLExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
