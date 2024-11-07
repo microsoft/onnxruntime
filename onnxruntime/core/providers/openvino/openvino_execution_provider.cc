@@ -150,7 +150,7 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       graph_body_viewer,
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
-
+    backend_manager_ = backend_manager;
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
@@ -206,4 +206,23 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 }
 #endif
 
+common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(
+  gsl::span<const char* const> keys, gsl::span<const char* const> values) {
+  for (auto key : keys) {
+    if (strcmp(key, "ep.dynamic.workload_type") == 0) {
+      for (auto val : values) {
+        if (strcmp(val, "Efficient") == 0) {
+          backend_manager_->dynamic_workload_type = "EFFICIENT";
+          LOGS_DEFAULT(VERBOSE) << "[OpenVINO-EP]" << backend_manager_->dynamic_workload_type
+                                << " mode is set for OV inference";
+        } else if (strcmp(val, "Default") == 0) {
+          backend_manager_->dynamic_workload_type = "DEFAULT";
+          LOGS_DEFAULT(VERBOSE) << "[OpenVINO-EP]" << backend_manager_->dynamic_workload_type
+                                << " mode is set for OV inference";
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
 }  // namespace onnxruntime
