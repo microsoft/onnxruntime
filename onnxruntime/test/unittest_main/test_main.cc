@@ -27,8 +27,8 @@
 
 std::unique_ptr<Ort::Env> ort_env;
 
-// ortenv_setup is used by /onnxruntime/test/xctest/xcgtest.mm so can't be file local
-void ortenv_setup() {
+// ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
+extern "C" void ortenv_setup() {
   OrtThreadingOptions tpo;
 
   // allow verbose logging to be enabled by setting this environment variable to a numeric log level
@@ -44,6 +44,10 @@ void ortenv_setup() {
   }
 
   ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
+}
+
+extern "C" void ortenv_teardown() {
+  ort_env.reset();
 }
 
 #ifdef USE_TENSORRT
@@ -101,7 +105,7 @@ int TEST_MAIN(int argc, char** argv) {
   }
 
   // TODO: Fix the C API issue
-  ort_env.reset();  // If we don't do this, it will crash
+  ortenv_teardown();  // If we don't do this, it will crash
 
 #ifndef USE_ONNXRUNTIME_DLL
   // make memory leak checker happy

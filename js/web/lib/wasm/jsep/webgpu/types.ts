@@ -15,7 +15,7 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
-export type GpuArchitecture = 'ampere';
+export type GpuArchitecture = 'ampere' | 'gen-12lp';
 export type GpuVendor = 'amd' | 'intel' | 'nvidia';
 export interface AdapterInfo {
   isArchitecture: (architecture: GpuArchitecture) => boolean;

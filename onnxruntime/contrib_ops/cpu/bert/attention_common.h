@@ -48,6 +48,7 @@ enum AttentionKernelType {
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
   AttentionKernel_CudnnFlashAttention,
+  AttentionKernel_LeanAttention,
   AttentionKernel_Default
 };
 
@@ -65,7 +66,6 @@ struct AttentionParameters {
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
-  int num_splits;
   int rotary_embedding;
   bool is_unidirectional;
   bool past_present_share_buffer;
@@ -208,10 +208,13 @@ enum class AttentionBackend : int {
   CUDNN_FLASH_ATTENTION = 8,  // reserved for cuDNN flash attention.
   MATH = 16,                  // unfused kernel cannot be disabled right now.
 
-  // The following kernels might be deprecated in the future.
+  // The following TRT kernels might be deprecated in the future.
   TRT_FLASH_ATTENTION = 32,
   TRT_CROSS_ATTENTION = 64,
   TRT_CAUSAL_ATTENTION = 128,
+
+  // Experimental kernels
+  LEAN_ATTENTION = 256,
 };
 
 // Environment variable to enable debug information of attention kernel to be printed. Default is 0 (disabled).
@@ -238,6 +241,9 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
+// Environment variable to enable or disable lean attention. Default is 0 (disabled).
+constexpr const char* kEnableLeanAttention = "ORT_ENABLE_LEAN_ATTENTION";
 
 // Minimum sequence length to perfer memory efficient attention when data type is float32
 constexpr const char* kMinSeqLenForEfficientAttentionFp32 = "ORT_MIN_SEQ_LEN_EFFICIENT_ATTENTION_FP32";

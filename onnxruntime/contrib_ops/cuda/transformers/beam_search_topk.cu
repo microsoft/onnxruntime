@@ -60,7 +60,7 @@ struct TopK {
   __device__ __forceinline__ void Init() {
     for (int i = 0; i < max_k; i++) {
       key[i] = -1;
-      value[i] = NumericLimits<T>::Min();
+      value[i] = NumericLimits<T>::Lowest();
     }
   }
 };

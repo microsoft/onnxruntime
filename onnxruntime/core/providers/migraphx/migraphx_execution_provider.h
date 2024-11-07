@@ -5,7 +5,7 @@
 
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_inc.h"
 
@@ -40,7 +40,7 @@ struct MIGraphXFuncState {
   migraphx::onnx_options options;
   migraphx::target t{};
   std::unordered_map<std::string, std::size_t> input_name_indexes;
-  OrtMutex* mgx_mu_ptr = nullptr;
+  std::mutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -101,7 +101,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::string load_compiled_path_;
   bool dump_model_ops_ = false;
   migraphx::target t_;
-  OrtMutex mgx_mu_;
+  std::mutex mgx_mu_;
   hipStream_t stream_ = nullptr;
   bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_;

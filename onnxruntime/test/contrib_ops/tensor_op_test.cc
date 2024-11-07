@@ -121,7 +121,15 @@ void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normaliz
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kCudaExecutionProvider, kTensorrtExecutionProvider});
+  } else if (DefaultDmlExecutionProvider() == nullptr) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider});
+  }
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
+#endif
 }
 
 void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_variance) {
@@ -188,7 +196,15 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kCudaExecutionProvider, kTensorrtExecutionProvider});
+  } else if (DefaultDmlExecutionProvider() == nullptr) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider});
+  }
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
+#endif
 }
 
 TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
@@ -230,7 +246,9 @@ TEST(UnfoldTensorOpTest, LastDim) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
 #endif
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

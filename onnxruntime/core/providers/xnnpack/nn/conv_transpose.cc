@@ -15,6 +15,7 @@ namespace xnnpack {
 
 // use PrePack to handle the weight layout change as that's not a simple NCHW -> NHWC transpose
 Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool /*save_prepacked_initializers*/,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
@@ -170,12 +171,14 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint(
-                                      "T", DataTypeImpl::GetTensorType<float>()),
+                                      "T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   ConvTranspose);
 
 ONNX_OPERATOR_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint(
-                            "T", DataTypeImpl::GetTensorType<float>()),
+                            "T", {DataTypeImpl::GetTensorType<float>(),
+                                  DataTypeImpl::GetTensorType<MLFloat16>()}),
                         ConvTranspose);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
@@ -186,18 +189,5 @@ ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpack
                                  DataTypeImpl::GetTensorType<int8_t>()}),
                         ConvTranspose);
 
-#ifdef XNNPACK_FP16_SUPPORTED
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, MLFloat16,
-                                        kXnnpackExecutionProvider,
-                                        KernelDefBuilder().TypeConstraint(
-                                            "T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                                        ConvTranspose);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, MLFloat16, kXnnpackExecutionProvider,
-                              KernelDefBuilder().TypeConstraint(
-                                  "T", DataTypeImpl::GetTensorType<MLFloat16>()),
-                              ConvTranspose);
-
-#endif
 }  // namespace xnnpack
 }  // namespace onnxruntime

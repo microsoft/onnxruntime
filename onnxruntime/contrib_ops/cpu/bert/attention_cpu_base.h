@@ -77,7 +77,7 @@ class AttentionCPUBase : public AttentionBase {
       // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
       // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
       PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                  causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+                  causal, batch_size, sequence_length, kv_sequence_length, past_sequence_length, mask_filter_value_);
       DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
     }
 
