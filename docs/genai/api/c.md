@@ -418,6 +418,8 @@ OGA_EXPORT const int32_t* OGA_API_CALL OgaGenerator_GetSequenceData(const OgaGen
 
 An API to set Runtime options, more parameters will be added to this generic API to support Runtime options. An example to use this API for terminating the current session would be to call the SetRuntimeOption with key as "terminate_session" and value as "1": OgaGenerator_SetRuntimeOption(generator, "terminate_session", "1")
 
+More details on the current runtime options can be found [here](https://github.com/microsoft/onnxruntime-genai/blob/main/documents/Runtime_option.md).
+
 #### Parameters
 
 * Input: generator The generator on which the Runtime option needs to be set
