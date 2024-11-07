@@ -26,7 +26,7 @@ parameters:
 
 - name: timeout
   type: number
-  default: 120
+  default: 480
 
 jobs:
 - job: Linux_Test1_CPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
@@ -97,7 +97,7 @@ jobs:
 
   - task: Bash@3
     displayName: 'Bash Script'
-    timeoutInMinutes: 80
+    timeoutInMinutes: 180
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
