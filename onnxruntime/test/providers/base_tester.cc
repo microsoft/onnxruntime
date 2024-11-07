@@ -407,10 +407,10 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
             break;
           }
         }
-      } 
-    } 
-    LOGS_DEFAULT(INFO) << provider_type << " : kernel's output verfication passed" ;
-  } // end if (verify_output_)
+      }
+    }
+    LOGS_DEFAULT(INFO) << provider_type << " : kernel's output verfication passed";
+  }  // end if (verify_output_)
 }
 
 bool SetEpsForAllNodes(Graph& graph,
@@ -725,13 +725,12 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
         else if (provider_type == onnxruntime::kQnnExecutionProvider)
           execution_provider = DefaultQnnExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider) {
-            const onnxruntime::Environment& ort_env = GetEnvironment();
-            onnxruntime::concurrency::ThreadPool* tp = ort_env.GetIntraOpThreadPool();
-            int intra_thread_num = onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(tp) - 1;
-            onnxruntime::ProviderOptions options = {{"intra_op_num_threads", std::to_string(intra_thread_num)}};
-            execution_provider = XnnPackExecutionProviderWithOptions(options);
-        }
-        else if (provider_type == onnxruntime::kDmlExecutionProvider)
+          const onnxruntime::Environment& ort_env = GetEnvironment();
+          onnxruntime::concurrency::ThreadPool* tp = ort_env.GetIntraOpThreadPool();
+          int intra_thread_num = onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(tp) - 1;
+          onnxruntime::ProviderOptions options = {{"intra_op_num_threads", std::to_string(intra_thread_num)}};
+          execution_provider = XnnPackExecutionProviderWithOptions(options);
+        } else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();

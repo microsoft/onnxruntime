@@ -163,7 +163,7 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
                                   info.session_options->config_options.GetConfigOrDefault(
                                       kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
   if (xnn_thread_pool_size == 0) {
-      xnn_thread_pool_size = ort_thread_pool_size;
+    xnn_thread_pool_size = ort_thread_pool_size;
   }
 
   if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size != 1) {
