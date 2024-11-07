@@ -81,8 +81,8 @@ constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_A
 
 inline std::string GetIndicesType(int rank) {
   return rank < 2 ? "u32"
-                  : (rank < 4 ? MakeStringWithClassicLocale("vec", rank, "<u32>")
-                              : MakeStringWithClassicLocale("array<u32, ", rank, ">"));
+                  : (rank <= 4 ? MakeStringWithClassicLocale("vec", rank, "<u32>")
+                               : MakeStringWithClassicLocale("array<u32, ", rank, ">"));
 }
 
 }  // namespace
