@@ -5,18 +5,18 @@ description: 'Learn how to use the new Olive CLI to easily optimize AI Models fo
 keywords: 'onnx, onnx runtime, olive, machine learning, ml, ai, quantization, on-device, real-time, mobile apps, recommendation systems, privacy, performance, cost-efficient, phi-3, small, medium, models, phi-3s-onnx, phi-3m-onnx, phi-3l-onnx, phi-3xl-onnx, phi-3xxl-onnx, phi-3s-onnx-optimized, phi-3m-onnx-optimized, phi-3l-onnx-optimized, phi-3xl-onnx-optimized, phi-3xxl-onnx-optimized, llama-3.2'
 authors:
   [
-    'Devang Patel',
     'Jambay Kinley',
-    'Xiaoyu Zhang',
     'Hitesh Shah',
+    'Xiaoyu Zhang',
+    'Devang Patel',
     'Sam Kemp'
     ]
 authorsLink:
   [
-    'https://www.linkedin.com/in/devangpatel/',
     'https://www.linkedin.com/in/jambayk/',
-    'https://www.linkedin.com/in/xiaoyu-zhang/',
     '',
+    'https://www.linkedin.com/in/xiaoyu-zhang/',
+    'https://www.linkedin.com/in/devangpatel/',
     'https://www.linkedin.com/in/samuel-kemp-a9253724/'
 
    ]
@@ -84,13 +84,13 @@ The command to run automatic optimizer for the Llama-3.2-1B-Instruct model on CP
 </code></pre>
 
 > **Tip:** If want to target:
-> - a Linux CUDA GPU device, then update `--device` to `gpu` and `--provider` to `CUDAExecutionProvider`. 
-> - a Windows GPU device, then update `--device` to `gpu` and `--provider` to `DmlExecutionProvider`.
-> - a Qualcomm NPU device, then update `--device` to `npu` and `--provider` to `QNNExecutionProvider`.
+> - CUDA GPU, then update `--device` to `gpu` and `--provider` to `CUDAExecutionProvider`. 
+> - Windows DirectML, then update `--device` to `gpu` and `--provider` to `DmlExecutionProvider`.
+> - Qualcomm NPU, then update `--device` to `npu` and `--provider` to `QNNExecutionProvider`.
 >
 > Olive will apply the optimizations specific to the device and provider.
 
-With the `auto-opt` command, you can change the input model to one that is available on Hugging Face - for example, [HuggingFaceTB/SmolLM-360M-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct) - or a model that resides on local disk. Olive, will go through the same process of automatically converting (to ONNX), optimizing the graph and quantizing the weights.
+With the `auto-opt` command, you can change the input model to one that is available on Hugging Face - for example, [HuggingFaceTB/SmolLM-360M-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct) - or a model that resides on local disk. It should be noted that the `--trust_remote_code` argument in `olive auto-opt` is only required for custom models in Hugging Face that are required to run code on your machine - for more details, read the [Hugging Face documentation on `trust_remote_code`](https://huggingface.co/docs/transformers/model_doc/auto#transformers.AutoConfig.from_pretrained.trust_remote_code). Olive, will go through the same process of automatically converting (to ONNX), optimizing the graph and quantizing the weights.
 
 ### 🧪 Experimenting with different quantization algorithms
 
