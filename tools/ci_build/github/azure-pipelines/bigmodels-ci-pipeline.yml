@@ -181,6 +181,19 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0_torch
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+        "
+        Repository: onnxruntimeubi8packagestest_torch
+        UseImageCacheContainerRegistry: false
+        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -197,11 +210,9 @@ stages:
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubi8packagestest_torch \
           bash -c ' \
             set -ex; \
-            pip uninstall -y $(pip list --format=freeze | grep opencv); \
-            rm -rf /usr/local/lib/python3.8/dist-packages/cv2/; \
             apt-get update; \
             DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
@@ -239,7 +250,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubi8packagestest_torch \
           bash -c '
             set -x; \
             python3 --version; \
@@ -266,7 +277,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubi8packagestest_torch \
           bash -c '
             set -ex; \
             python3 --version; \
