@@ -2531,10 +2531,36 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     weight_stripped_engine_refit_ = true;
   }
 
-  // Generate file name for dumping ep context model
-  if (dump_ep_context_model_ && ctx_model_path_.empty()) {
-    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
-  }
+  auto create_ep_context_model = [this] (const OrtGraphViewer* graph_body_viewer,
+                                       std::string& engine_cache_path,
+                                       std::string& engine_cache_relative_path_to_context_model_dir,
+                                       const char* ep_context_node_name,
+                                       char* serialized_engine, 
+                                       size_t serialized_engine_size) {
+    // if ep context model name is not given, create a model name based on original model name
+    if (ctx_model_path_.empty()) {
+      ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
+    }
+
+    // "ep_cache_context" node attribute should be a relative path to context model directory
+    if (ep_cache_context_attr_.empty()) {
+      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
+    }
+
+    graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(graph_body_viewer,
+                                                  ep_context_node_name,
+                                                  1, // main_context
+                                                  ep_context_embed_mode_,
+                                                  ep_cache_context_attr_.c_str(),
+                                                  serialized_engine,
+                                                  serialized_engine_size,
+                                                  extra_attr_keys_.data(),
+                                                  extra_attr_values_.data(),
+                                                  extra_attr_keys_.size(),
+                                                  &ep_ctx_graph_);
+
+  };
 
   if (!has_dynamic_shape) {
     std::string timing_cache_path = "";
@@ -2668,26 +2694,10 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
             //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
           }
         }
-        // dump EP context node model
+
+        // create and dump ep context model
         if (dump_ep_context_model_) {
-          // "ep_cache_context" node attribute should be a relative path to context model directory
-          if (ep_cache_context_attr_.empty()) {
-            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-          }
-
-          graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(graph_body_viewer,
-                                                        node_name,
-                                                        1, // main_context
-                                                        ep_context_embed_mode_,
-                                                        ep_cache_context_attr_.c_str(),
-                                                        reinterpret_cast<char*>(serialized_engine->data()),
-                                                        serialized_engine->size(),
-                                                        extra_attr_keys_.data(),
-                                                        extra_attr_values_.data(),
-                                                        extra_attr_keys_.size(),
-                                                        &ep_ctx_graph_);
-
+          create_ep_context_model(graph_body_viewer, engine_cache_path, engine_cache_relative_path_to_context_model_dir, node_name, reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
           graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
           graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
         }
@@ -2768,27 +2778,10 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   input_shape_ranges_[node_name] = input_implicit_shape_ranges;
   profiles_.emplace(node_name, std::move(trt_profiles));
 
-  // For dynamic shape input model, firstly TRT EP creates a model proto which includes inputs, outputs and empty engine.
-  // TRT EP will serialize the model at inference time due to engine can be updated and the updated engine should be included in the model.
-  // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
-  if (dump_ep_context_model_ && has_dynamic_shape) {
-    // "ep_cache_context" node attribute should be a relative path to context model directory
-    if (ep_cache_context_attr_.empty()) {
-      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-    }
-
-    graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(graph_body_viewer,
-                                                  node_name,
-                                                  1, // main_context
-                                                  ep_context_embed_mode_,
-                                                  ep_cache_context_attr_.c_str(),
-                                                  nullptr,
-                                                  0,
-                                                  extra_attr_keys_.data(),
-                                                  extra_attr_values_.data(),
-                                                  extra_attr_keys_.size(),
-                                                  &ep_ctx_graph_);
+  // Create ep context model if the model has dynamic shape,
+  // dump the model is embed mode is 0, otherwise update and dump the model at runtime.
+  if (has_dynamic_shape && dump_ep_context_model_) {
+    create_ep_context_model(graph_body_viewer, engine_cache_path, engine_cache_relative_path_to_context_model_dir, node_name, nullptr, 0);
     if (ep_context_embed_mode_ == 0) {
       graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
       graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
@@ -3482,7 +3475,8 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
            this_->input_info_[context->node_name],
            this_->output_info_[context->node_name],
            this_->context_memory_sharing_enable_,
-           &this_->max_ctx_mem_size_};
+           &this_->max_ctx_mem_size_,
+           &this_->tensorrt_mu_};
     *state = p.release();
     return 0;
   };
