@@ -5859,6 +5859,22 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloat16Test) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
 }
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatLargeTensorTest) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/matmul_integer_to_float_large_tensor.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kDmlExecutionProvider);
+  }
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MatMulIntegerToFloatFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 0);
+}
 #endif  // USE_DML
 
 #endif
