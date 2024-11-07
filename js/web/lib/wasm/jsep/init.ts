@@ -11,7 +11,13 @@ import { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
 import { TensorView } from './tensor-view';
 import { ShapeUtil } from './util';
-import { AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo } from './webgpu/types';
+import {
+  AdapterInfo,
+  ComputeContext,
+  ComputeContextInputsOutputsMapping,
+  DeviceInfo,
+  ProgramInfo,
+} from './webgpu/types';
 import { WebNNBackend } from './backend-webnn';
 
 /* eslint-disable no-bitwise */
@@ -70,6 +76,7 @@ class TensorViewImpl implements TensorView {
 
 class ComputeContextImpl implements ComputeContext {
   readonly adapterInfo: AdapterInfo;
+  readonly deviceInfo: DeviceInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -87,6 +94,7 @@ class ComputeContextImpl implements ComputeContext {
     contextDataOffset: number,
   ) {
     this.adapterInfo = backend.adapterInfo;
+    this.deviceInfo = backend.deviceInfo;
 
     // extract context data
     const ptrSize = module.PTR_SIZE;
@@ -110,18 +118,6 @@ class ComputeContextImpl implements ComputeContext {
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
     this.inputs = inputs;
-  }
-
-  getMaxComputeWorkgroupSizes(): [number, number, number] {
-    return [
-      this.backend.device.limits.maxComputeWorkgroupSizeX,
-      this.backend.device.limits.maxComputeWorkgroupSizeY,
-      this.backend.device.limits.maxComputeWorkgroupSizeZ,
-    ];
-  }
-
-  getMaxComputeWorkgroupStoragesize(): number {
-    return this.backend.device.limits.maxComputeWorkgroupStorageSize;
   }
 
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
