@@ -14,7 +14,7 @@ namespace skip_layer_norm_helper {
 namespace {
 
 template <typename T>
-Status CheckSkip(const T* input, const T* skip, int hidden_size_check, size_t input_dims_size_check) {
+Status CheckSkip(const T* input, const T* skip, size_t input_dims_size_check) {
   const auto& input_dims_check = input->Shape().GetDims();
   const auto& skip_dims_check = skip->Shape().GetDims();
   size_t skip_dims_size_check = skip_dims_check.size();
@@ -107,7 +107,7 @@ Status CheckInputs(const T* input,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size_check);
   }
 
-  auto status = CheckSkip<T>(input, skip, hidden_size_check, input_dims_size_check);
+  auto status = CheckSkip<T>(input, skip, input_dims_size_check);
   if (status != Status::OK()) {
     return status;
   }
@@ -146,7 +146,7 @@ Status CheckPotentiallyPrepackedInputs(const T* input,
   }
 
   if (nullptr != skip) {
-    auto status = CheckSkip<T>(input, skip, hidden_size_check, input_dims_size_check);
+    auto status = CheckSkip<T>(input, skip, input_dims_size_check);
     if (status != Status::OK()) {
       return status;
     }
