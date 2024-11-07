@@ -221,7 +221,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_)
+      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -381,7 +381,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_value_ && has_present_value_) && past_present_share_buffer_) {
+  if ((feed_past_value_ && has_present_value_) || past_present_share_buffer_) {
     shader.MainFunctionBody() << "    if (w + local_id.y < past_sequence_length) {\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_value" : "past_value") << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
                               << "    } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
@@ -452,7 +452,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   program.SetDispatchGroupSize((parameters.v_head_size_ + tile_size - 1) / tile_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
-      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_)
+      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_, parameters.past_present_share_buffer_)
       .SetWorkgroupSize(tile_size, tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(total_sequence_length)},
