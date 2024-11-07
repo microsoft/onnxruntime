@@ -52,7 +52,7 @@ jobs:
         buildVersionToDownload: specific
         project: onnxruntime
         definition: 11
-        pipelineId: 1549643
+        pipelineId: 1551025
         targetPath: '$(Pipeline.Workspace)/drop-linux-cpu-${{ parameters.arch }}'
 
     - task: DownloadPipelineArtifact@2
@@ -62,7 +62,7 @@ jobs:
         buildVersionToDownload: specific
         project: onnxruntime
         definition: 11
-        pipelineId: 1549643
+        pipelineId: 1551025
         targetPath: '$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}'
 
     - bash: |
