@@ -7,7 +7,7 @@ mkdir -p /build/dist
 
 EXTRA_ARG=""
 ENABLE_CACHE=false
-# Put 3.10 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this 
+# Put 3.10 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 22.04 machine to run the tests.
 PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp313-cp313/bin/python3.13" "/opt/python/cp313-cp313t/bin/python3.13t" "/opt/python/cp310-cp310/bin/python3.10")
 while getopts "d:p:x:c:e" parameter_Option
@@ -89,9 +89,9 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   rm -rf /build/"$BUILD_CONFIG"
-  ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt  
+  ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
   ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
-
+  alias python3='${PYTHON_EXE}'
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 

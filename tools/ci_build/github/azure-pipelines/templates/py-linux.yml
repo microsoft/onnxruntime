@@ -30,6 +30,10 @@ parameters:
   type: string
   default: ''
 
+- name: python_exe_path
+  type: string
+  default: ''
+
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}_${{parameters.ep}}
   timeoutInMinutes: 240
@@ -49,7 +53,12 @@ jobs:
         value: -x ${{ parameters.extra_build_arg }}
       ${{ if eq(parameters.extra_build_arg, '') }}:
         value: ''
-  steps:
+    - name: python_exe_path
+      ${{ if ne(parameters.python_exe_path, '') }}:
+        value: -p ${{ parameters.python_exe_path }}
+      ${{ if eq(parameters.python_exe_path, '') }}:
+        value: ''
+
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
@@ -82,7 +91,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path)
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"

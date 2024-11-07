@@ -9,7 +9,10 @@ i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>]"
+p) PYTHON_EXES=${OPTARG};;
+esac
+done
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>]"
    exit 1;;
 esac
 done
@@ -33,7 +36,7 @@ docker run --rm \
     -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
     -e DEFAULT_TRAINING_PACKAGE_DEVICE \
     $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $PYTHON_EXES $DOCKER_SCRIPT_OPTIONS
 
 sudo rm -rf "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/onnxruntime" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/pybind11" \
     "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/models" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/_deps" \
