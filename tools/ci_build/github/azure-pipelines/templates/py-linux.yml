@@ -58,7 +58,8 @@ jobs:
         value: '-p ${{ parameters.python_exe_path }}'
       ${{ if eq(parameters.python_exe_path, '') }}:
         value: ''
-  - steps:
+
+  steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
