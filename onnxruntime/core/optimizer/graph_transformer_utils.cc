@@ -339,7 +339,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                  p_buffered_tensors));
       }
 
-      transformers.emplace_back(std::make_unique<CastGraphIOToFp16Transformer>(dml_ep));
+      // transformers.emplace_back(std::make_unique<CastGraphIOToFp16Transformer>(dml_ep));
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
