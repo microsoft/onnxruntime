@@ -112,6 +112,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
             // Whilst the ONNX spec doesn't specify a layout for Resize, we treat it as layout sensitive by default
             // as EPs tend to only support one layout.
             "Resize",
+            "SimplifiedLayerNormalization",
         };
 
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());

@@ -121,7 +121,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
 }
 static const OpVersionsAndSelector::OpVersionsMap GetInstanceAndLayerNormalizationOpVersionsMap() {
   return {{"InstanceNormalization", {}},
-          {"LayerNormalization", {}}};
+          {"LayerNormalization", {}},
+          {"SimplifiedLayerNormalization", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
   return {{"BatchNormalization", {}}};
