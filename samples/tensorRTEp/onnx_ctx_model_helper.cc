@@ -127,8 +127,9 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
   if (embed_mode) {
     // Get engine from byte stream.
     const char* context_binary_cstr = nullptr;
-    graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str(), &context_binary_cstr);
-    std::string context_binary(context_binary_cstr);
+    size_t size;
+    graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str(), &context_binary_cstr, &szie);
+    std::string context_binary(context_binary_cstr, size);
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
                                                                                                 static_cast<size_t>(context_binary.length())));
 //    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Read engine as binary data from \"ep_cache_context\" attribute of ep context node and deserialized it";

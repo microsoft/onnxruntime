@@ -105,7 +105,11 @@ ORT_API_STATUS_IMPL(OrtNode_GetAttributeIthFloat, const OrtNode* node, const cha
 
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key, int i, _Outptr_ const char** out);
 
+ORT_API_STATUS_IMPL(OrtNode_GetAttributeIthStrWithSize, const OrtNode* node, const char* key, int i, _Outptr_ const char** out, _Outptr_ size_t* size);
+
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeStr, const OrtNode* node, const char* key, _Outptr_ const char** out);
+
+ORT_API_STATUS_IMPL(OrtNode_GetAttributeStrWithSize, const OrtNode* node, const char* key, _Outptr_ const char** out, _Outptr_ size_t* size);
 
 ORT_API_STATUS_IMPL(OrtNode_GetAttributeInt, const OrtNode* node, const char* key, _Out_ int64_t* out);
 
