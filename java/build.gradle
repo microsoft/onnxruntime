@@ -22,7 +22,7 @@ if (releaseVersionSuffix != "") {
 	releaseVersionSuffix = releaseVersionSuffix.replaceAll(".","")
 }
 println "Removed dot from ReleaseVersionSuffix: ${releaseVersionSuffix}"
-version = releaseVersionSuffix ? "${version}-${releaseVersionSuffix}" : version
+version = releaseVersionSuffix ? "${version}${releaseVersionSuffix}" : version
 println "Version: ${version}"
 
 // cmake runs will inform us of the build directory of the current run
