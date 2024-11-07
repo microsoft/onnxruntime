@@ -113,8 +113,9 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_THREADPOOL* ThreadPool
     );
 
-    Q4BitGemmPackQuantBData_Fn* Q4BitGemmPackQuantBData = nullptr;
-
+    Q4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+    Q4BitGemmPackQuantBData_Fn* HQ4BitGemmPackQuantBData = nullptr;
+\
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
         size_t K,

@@ -51,7 +51,7 @@ Q4BitGemmPackQuantBDataSize(
 }
 
 void
-Q4BitGemmPackQuantBData(
+SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -61,15 +61,6 @@ Q4BitGemmPackQuantBData(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    if (ComputeType == HQNBIT_CompFp16) {
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-        HQ4BitGemmPackQuantBData_CompFp16(N, K, BlkLen, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
-#else
-        MLAS_THROW_EX(std::runtime_error, "unsupported target compute type");
-#endif
-        return;
-    }
-
     constexpr size_t BlkBitWidth = 4;
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
@@ -187,7 +178,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
     d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
-    d.Q4BitGemmPackQuantBData = sqnbitgemm_neon::Q4BitGemmPackQuantBData;
+    d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
 
     d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
     d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
@@ -201,8 +192,12 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = []() {
     d.SQNBIT_QuantizeARow_CompInt8 = sqnbitgemm_neon::SQNBIT_QuantizeARow_CompInt8;
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
-    d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
+
+        d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
+        d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+    }
 
     // TODO(fajin)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {

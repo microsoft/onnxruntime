@@ -341,7 +341,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
     d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
-    d.Q4BitGemmPackQuantBData = Q4BitGemmPackQuantBData;
+    d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512vnni;
 
     d.Q4BitGemmPerGemmWorkspaceSize = Q4BitGemmPerGemmWorkspaceSize;
