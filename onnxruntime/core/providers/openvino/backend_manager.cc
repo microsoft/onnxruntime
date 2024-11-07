@@ -35,7 +35,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
                           std::to_string(global_context_.OpenVINO_Version.at(1));
   if (ep_ctx_handle_.CheckForOVEPCtxNode(subgraph, openvino_sdk_version_)) {
-    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph) != Status::OK())
+    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph, global_context_.ep_context_embed_mode) != Status::OK())
       ORT_THROW("Import blob from model failed");
   }
 
