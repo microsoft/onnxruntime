@@ -3,7 +3,6 @@
 
 import { InferenceSession } from './inference-session.js';
 import { OnnxValue } from './onnx-value.js';
-import { TrainingSession } from './training-session.js';
 
 /**
  * @ignore
@@ -43,33 +42,6 @@ export interface InferenceSessionHandler extends SessionHandler {
 }
 
 /**
- * Represent a handler instance of a training inference session.
- *
- * @ignore
- */
-export interface TrainingSessionHandler extends SessionHandler {
-  readonly evalInputNames: readonly string[];
-  readonly evalOutputNames: readonly string[];
-
-  lazyResetGrad(): Promise<void>;
-  runTrainStep(
-    feeds: SessionHandler.FeedsType,
-    fetches: SessionHandler.FetchesType,
-    options: InferenceSession.RunOptions,
-  ): Promise<SessionHandler.ReturnType>;
-  runOptimizerStep(options: InferenceSession.RunOptions): Promise<void>;
-  runEvalStep(
-    feeds: SessionHandler.FeedsType,
-    fetches: SessionHandler.FetchesType,
-    options: InferenceSession.RunOptions,
-  ): Promise<SessionHandler.ReturnType>;
-
-  getParametersSize(trainableOnly: boolean): Promise<number>;
-  loadParametersBuffer(buffer: Uint8Array, trainableOnly: boolean): Promise<void>;
-  getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
-}
-
-/**
  * Represent a backend that provides implementation of model inferencing.
  *
  * @ignore
@@ -84,14 +56,6 @@ export interface Backend {
     uriOrBuffer: string | Uint8Array,
     options?: InferenceSession.SessionOptions,
   ): Promise<InferenceSessionHandler>;
-
-  createTrainingSessionHandler?(
-    checkpointStateUriOrBuffer: TrainingSession.UriOrBuffer,
-    trainModelUriOrBuffer: TrainingSession.UriOrBuffer,
-    evalModelUriOrBuffer: TrainingSession.UriOrBuffer,
-    optimizerModelUriOrBuffer: TrainingSession.UriOrBuffer,
-    options: InferenceSession.SessionOptions,
-  ): Promise<TrainingSessionHandler>;
 }
 
 export { registerBackend } from './backend-impl.js';
