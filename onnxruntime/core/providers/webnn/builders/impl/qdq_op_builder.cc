@@ -84,7 +84,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                              reshape_scale_options);
 
     if (has_zero_point) {
-      // Insert ones before and after the axis dimension for broadcasting of zero_point tensor.
+      // Reshape the zero_point tensor too.
       emscripten::val reshape_zero_point_options = emscripten::val::object();
       reshape_zero_point_options.set("label", node.Name() + "_reshape_zero_point");
       zero_point = model_builder.GetBuilder().call<emscripten::val>("reshape",
