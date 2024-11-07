@@ -28,7 +28,7 @@ parameters:
 
 - name: ep
   type: string
-  default: ''
+  default: 'cpu'
 
 - name: python_exe_path
   type: string

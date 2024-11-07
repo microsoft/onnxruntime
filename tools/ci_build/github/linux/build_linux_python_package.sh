@@ -15,7 +15,7 @@ do case "${parameter_Option}"
 in
 #GPU|CPU|NPU.
 d) BUILD_DEVICE=${OPTARG};;
-p) PYTHON_EXES=${OPTARG};;
+p) PYTHON_EXES=("${OPTARG}");;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 e) ENABLE_CACHE=true;;
