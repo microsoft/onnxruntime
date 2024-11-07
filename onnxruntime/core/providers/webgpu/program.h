@@ -198,27 +198,37 @@ int NumberOfComponents(ProgramVariableDataType type);
 
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
 
+enum OverrideShapeType {
+  None = 0,
+  Packed = 1,
+  Reshaped = 2,
+};
+
 struct ProgramInput {
   ProgramInput(const Tensor* tensor);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency,
+               const TensorShape& packed_shape, int component);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& reshape_to);
 
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
-  bool use_override_shape;
+  OverrideShapeType use_override_shape = OverrideShapeType::None;
   TensorShape override_shape;
 };
 
 struct ProgramOutput {
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency,
+                const TensorShape& packed_shape, int component);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& reshape_to);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
-  bool use_override_shape;
+  OverrideShapeType use_override_shape = OverrideShapeType::None;
   TensorShape override_shape;
 };
 

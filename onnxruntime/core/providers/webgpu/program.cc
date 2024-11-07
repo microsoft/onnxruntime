@@ -216,25 +216,37 @@ TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
 }
 }  // namespace
 
-ProgramInput::ProgramInput(const Tensor* tensor) : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
+ProgramInput::ProgramInput(const Tensor* tensor)
+    : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {
+}
 
 ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{component > 1},
       override_shape{} {
-  if (use_override_shape) {
+  if (component > 1) {
+    use_override_shape = OverrideShapeType::Packed;
     override_shape = GetReducedShape(tensor->Shape(), component);
   }
 }
 
-ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency,
+                           const TensorShape& packed_shape, int component)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{true},
-      override_shape{override_shape} {}
+      use_override_shape{OverrideShapeType::Packed},
+      override_shape{packed_shape} {
+}
+
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency,
+                           const TensorShape& reshaped_shape)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType())},
+      use_override_shape{OverrideShapeType::Reshaped},
+      override_shape{reshaped_shape} {}
 
 ProgramOutput::ProgramOutput(Tensor* tensor)
     : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
@@ -243,19 +255,30 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{component > 1},
       override_shape{} {
-  if (use_override_shape) {
+  if (component > 1) {
+    use_override_shape = OverrideShapeType::Packed;
     override_shape = GetReducedShape(tensor->Shape(), component);
   }
 }
 
-ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency,
+                             const TensorShape& packed_shape, int component)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{true},
-      override_shape{override_shape} {}
+      use_override_shape{OverrideShapeType::Packed},
+      override_shape{packed_shape} {
+}
+
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency,
+                             const TensorShape& reshape_to)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType())},
+      use_override_shape{OverrideShapeType::Reshaped},
+      override_shape{reshape_to} {
+}
 
 ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
     : name_{name},

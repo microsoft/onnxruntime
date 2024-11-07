@@ -165,13 +165,17 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
 
 // Validate if the number of components and override shape match the original shape
 Status ValidateVariableShape(const TensorShape& origin_shape,
-                             bool use_override_shape,
+                             OverrideShapeType use_override_shape,
                              const TensorShape& override_shape,
                              int num_components) {
-  if (use_override_shape) {
+  if (use_override_shape == OverrideShapeType::Packed) {
     // if override shape specified, assert override_size == ceil( origin_size / 4 )
     ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
-                      "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
+                      "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape,
+                      " with component number ", num_components);
+  } else if (use_override_shape == OverrideShapeType::Reshaped) {
+    ORT_RETURN_IF_NOT(origin_shape.Size() == override_shape.Size(),
+                      "Tensor original shape ", origin_shape, " cannot be reshaped to ", override_shape);
   }
 
   return Status::OK();
