@@ -453,7 +453,6 @@ else()
                 bool HasP10 = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
                 return 0;
               }
-              }
               #endif"
               HAS_P10_RUNTIME
             )
