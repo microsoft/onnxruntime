@@ -9,6 +9,7 @@ Test MultiHeadAttention operator for CUDA and CPU.
 
 import concurrent.futures
 import itertools
+import os
 import unittest
 from typing import Dict, List, Optional
 
@@ -400,6 +401,49 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                             yield config
 
 
+def lean_attention_test_cases(provider: str, comprehensive: bool):
+    if provider == "CUDAExecutionProvider" and get_compute_capability() < 80:
+        return
+        yield
+
+    batch_sizes = [1, 2, 3] if comprehensive else [1, 2]
+    sequence_lengths = [2, 15, 16, 255, 256, 512, 1024, 2048, 4096, 8192] if comprehensive else [2, 255, 512]
+    heads = [1, 4, 16] if comprehensive else [1, 4]
+    head_sizes = [64, 128]
+    device, dtype, formats = get_provider_support_info(provider, True)
+    mask_formats = [AttentionMaskFormat.Mask_None]
+
+    sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
+    for batch_size in batch_sizes:
+        for total_seq_len in sequence_lengths:
+            for num_heads in heads:
+                for head_size in head_sizes:
+                    for format in formats:
+                        for causal in get_causal_support(format):
+                            for is_prompt in [False]:
+                                for mask_format in mask_formats:
+                                    sequence_length = total_seq_len if is_prompt else 1
+                                    config = MultiHeadAttentionConfig(
+                                        batch_size=batch_size,
+                                        sequence_length=sequence_length,
+                                        num_heads=num_heads,
+                                        head_size=head_size,
+                                        causal=causal,
+                                        past_sequence_length=total_seq_len - sequence_length,
+                                        kv_sequence_length=sequence_length,
+                                        max_cache_sequence_length=None,
+                                        provider=provider,
+                                        device=device,
+                                        dtype=dtype,
+                                        use_kv_cache=True,
+                                        has_past_input=True,
+                                        share_past_present_buffer=False,
+                                        input_format=format,
+                                        mask_format=mask_format,
+                                    )
+                                    yield config
+
+
 def no_kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
     if provider == "CUDAExecutionProvider" and get_compute_capability() < 60:
         return
@@ -787,6 +831,12 @@ class TestMultiHeadAttention(unittest.TestCase):
         for config in mha_test_cases("CUDAExecutionProvider", comprehensive_mode):
             parity_check_mha(config, rtol=5e-3, atol=5e-3)
 
+    def run_lean_attention(self):
+        os.environ["ORT_ENABLE_LEAN_ATTENTION"] = "1"
+        for config in lean_attention_test_cases("CUDAExecutionProvider", comprehensive_mode):
+            parity_check_mha(config, rtol=5e-3, atol=5e-3 if config.total_sequence_length <= 512 else 5e-2)
+        os.environ.pop("ORT_ENABLE_LEAN_ATTENTION", None)
+
     def run_mha_cpu(self):
         for config in mha_test_cases("CPUExecutionProvider", comprehensive_mode):
             parity_check_mha(config, rtol=5e-3, atol=5e-3)
@@ -842,6 +892,7 @@ class TestMultiHeadAttention(unittest.TestCase):
         # Run tests sequentially to avoid out of memory issue.
         self.run_mha_cpu()
         self.run_mha_cuda()
+        self.run_lean_attention()
         self.run_mha_cuda_multi_threading_default()
         self.run_mha_cuda_multi_threading_cudnn()
         self.run_mha_cuda_multi_threading_efficient()

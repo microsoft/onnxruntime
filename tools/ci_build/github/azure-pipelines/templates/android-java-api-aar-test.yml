@@ -14,6 +14,11 @@ parameters:
   type: string
   default: 'onnxruntime-android'
 
+- name: ReleaseVersionSuffix
+  displayName: Release Version Suffix
+  type: string
+  default: ''
+
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
   workspace:
@@ -57,7 +62,7 @@ jobs:
       cp -av $(Build.SourcesDirectory)/java/src/test/android ./
       cd ./android
       mkdir -p app/libs
-      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
+      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/onnxruntime-android.aar
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)
@@ -72,8 +77,8 @@ jobs:
       pip install requests
       python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
         --test_platform espresso \
-        --app_apk_path "debug/app-debug.apk" \
-        --test_apk_path "androidTest/debug/app-debug-androidTest.apk" \
+        --app_path "debug/app-debug.apk" \
+        --test_path "androidTest/debug/app-debug-androidTest.apk" \
         --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0"
     displayName: Run E2E tests using Browserstack
     workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk

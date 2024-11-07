@@ -452,9 +452,9 @@ TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   return trt_logger;
 }
 
-std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
-  static OrtMutex singleton;
-  return std::unique_lock<OrtMutex>(singleton);
+std::unique_lock<std::mutex> TensorrtExecutionProvider::GetApiLock() const {
+  static std::mutex singleton;
+  return std::unique_lock<std::mutex>(singleton);
 }
 
 /*
@@ -1236,7 +1236,7 @@ void TensorrtExecutionProvider::ReleasePerThreadContext() const {
   ORT_ENFORCE(cached_context);
 
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
     context_state_.active_contexts.erase(cached_context);
     context_state_.retired_context_pool.push_back(cached_context);
   }
@@ -1258,7 +1258,7 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
   // get context and update cache
   std::shared_ptr<PerThreadContext> context;
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
@@ -1768,7 +1768,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   // clean up thread local context caches
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
     for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
       const auto cache = cache_weak.lock();
       if (!cache) continue;
@@ -2938,14 +2938,28 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Check platform availability for low precision
   if (fp16_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     if (!trt_builder->platformHasFastFp16()) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       fp16_enable_ = false;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
     }
   }
 
   if (int8_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     if (!trt_builder->platformHasFastInt8()) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       int8_enable_ = false;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
     }
@@ -3161,12 +3175,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                  "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
         }
       } else {
-        // Set INT8 per tensor dynamic range
-        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
+        // Set INT8 per tensor dynamic range
+        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
           trt_config->setInt8Calibrator(nullptr);
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -3416,7 +3430,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // The whole compute_function should be considered the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
     // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<std::mutex> lock(*(trt_state->tensorrt_mu_ptr));
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
@@ -3573,13 +3587,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
-
-      // Set INT8 Per Tensor Dynamic range
-      if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
+      // Set INT8 Per Tensor Dynamic range
+      if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
         trt_config->setInt8Calibrator(nullptr);
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -4086,7 +4099,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
     // The whole compute_function should be considered the critical section.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<std::mutex> lock(*(trt_state->tensorrt_mu_ptr));
 
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];

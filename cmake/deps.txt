@@ -27,7 +27,6 @@ flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip
 fp16;https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip;b985f6985a05a1c03ff1bb71190f66d8f98a1494
 fxdiv;https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip;a5658f4036402dbca7cebee32be57fb8149811e1
 google_benchmark;https://github.com/google/benchmark/archive/refs/tags/v1.8.5.zip;cd47d3d272faf353600c8cc2fdec2b52d6f69177
-google_nsync;https://github.com/google/nsync/archive/refs/tags/1.26.0.zip;5e7c00ef6bf5b787386fc040067903ec774e2752
 googletest;https://github.com/google/googletest/archive/refs/tags/v1.15.0.zip;9d2d0af8d77ac726ea55d44a8fa727ec98311349
 #xnnpack 2024.09.04
 googlexnnpack;https://github.com/google/XNNPACK/archive/309b75c9e56e0a674bf78d59872ce131f814dfb6.zip;39FA5259EAEACE0547284B63D5CEDC4F05553F5A
@@ -37,8 +36,8 @@ microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.230629.1.z
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.16.1.zip;2eb9198bb352757d5ff13977cbe0634898e0837c
-# Use the latest commit of 10.4-GA-ORT-DDS
-onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/9f98e2ebe7507fe0774d06a44bbf4b0e82cc9ce7.zip;1d92137f424513bce20033ab4fb31cc0be8d1185
+# Use the latest commit of 10.6-GA-ORT-DDS
+onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/bc0d2e35909b8456abe32f3b30a49bb0c125e8b7.zip;f233ae871ad82c023da62e5dd620639f00bc2d15
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
 protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win64.zip;b4521f7ada5b260380f94c4bd7f1b7684c76969a
 protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win32.zip;3688010318192c46ce73213cdfb6b3e5656da874

@@ -95,6 +95,7 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node,
+                              const qnn::ModelSettings& model_settings,
                               const logging::Logger& logger,
                               const QnnGraph_Config_t** graph_configs) {
   LOGS(logger, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
@@ -115,7 +116,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       model_input_index_map_,
                                                       model_output_index_map_,
                                                       initializer_inputs_,
-                                                      qnn_backend_manager_->GetQnnBackendType());
+                                                      qnn_backend_manager_->GetQnnBackendType(),
+                                                      model_settings);
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
   if (!rt) {
@@ -245,7 +247,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
   {
     // Acquire mutex before calling graphExecute and profiling APIs to support calling session.Run()
     // from multiple threads.
-    std::lock_guard<OrtMutex> lock(graph_exec_mutex_);
+    std::lock_guard<std::mutex> lock(graph_exec_mutex_);
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),
@@ -319,29 +321,50 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
   std::vector<QnnTensorWrapper> output_tensor_wrappers;
 
   std::string graph_name;
-  if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
+  Qnn_Tensor_t* input_tensors = nullptr;
+  Qnn_Tensor_t* output_tensors = nullptr;
+  uint32_t graph_input_num = 0;
+  uint32_t graph_output_num = 0;
+  if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV3.graphName);
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphOutputs;
+
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphOutputs;
+  } else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV2.graphName);
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphOutputs;
+
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphOutputs;
+  } else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
     graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV1.graphName);
-    auto graph_input_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphInputs;
-    auto graph_output_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphOutputs;
-    ORT_RETURN_IF(nullptr == qnn_sys_ctx_graph_info.graphInfoV1.graphInputs, "Graph from cached context doesn't have any inputs.");
-    ORT_RETURN_IF(nullptr == qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs, "Graph from cached context doesn't have any outputs.");
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphOutputs;
 
-    // Copy graph input
-    Qnn_Tensor_t* input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
-    for (size_t i = 0; i < graph_input_num; ++i) {
-      QnnTensorWrapper tensorwrapper;
-      ORT_RETURN_IF_ERROR(tensorwrapper.Init(input_tensors[i]));
-      input_tensor_wrappers.push_back(std::move(tensorwrapper));
-    }
-
-    // Copy graph output
-    Qnn_Tensor_t* output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
-    for (size_t i = 0; i < graph_output_num; ++i) {
-      QnnTensorWrapper tensorwrapper;
-      ORT_RETURN_IF_ERROR(tensorwrapper.Init(output_tensors[i]));
-      output_tensor_wrappers.push_back(std::move(tensorwrapper));
-    }
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context graph info version.");
   }
+  ORT_RETURN_IF(nullptr == input_tensors, "Graph from cached context doesn't have any inputs.");
+  ORT_RETURN_IF(nullptr == output_tensors, "Graph from cached context doesn't have any outputs.");
+
+  // Copy graph input
+  for (size_t i = 0; i < graph_input_num; ++i) {
+    QnnTensorWrapper tensorwrapper;
+    ORT_RETURN_IF_ERROR(tensorwrapper.Init(input_tensors[i]));
+    input_tensor_wrappers.push_back(std::move(tensorwrapper));
+  }
+  // Copy graph output
+  for (size_t i = 0; i < graph_output_num; ++i) {
+    QnnTensorWrapper tensorwrapper;
+    ORT_RETURN_IF_ERROR(tensorwrapper.Init(output_tensors[i]));
+    output_tensor_wrappers.push_back(std::move(tensorwrapper));
+  }
+
   Qnn_GraphHandle_t graph;
   auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
   auto rt = qnn_interface.graphRetrieve(context, graph_name.c_str(), &graph);
