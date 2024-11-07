@@ -152,9 +152,9 @@ struct ConvAttributes {
     return status;
   }
 
-  Status ValidateInputShape(const Tensor* input, const Tensor* weight, const Tensor* bias=nullptr) const {
+  Status ValidateInputShape(const Tensor* input, const Tensor* weight, const Tensor* bias = nullptr) const {
     if (bias == nullptr)
-        return ValidateInputShape(input->Shape(), weight->Shape());
+      return ValidateInputShape(input->Shape(), weight->Shape());
     return ValidateInputShape(input->Shape(), weight->Shape(), bias->Shape());
   }
 
