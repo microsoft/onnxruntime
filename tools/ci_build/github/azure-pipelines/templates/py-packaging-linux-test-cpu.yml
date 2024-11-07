@@ -55,7 +55,7 @@ jobs:
     - bash: |
         set -e -x
         mv "$(Pipeline.Workspace)/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-        mv "$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
+        mv "$(Pipeline.Workspace)/onnxruntime${{ parameters.python_wheel_suffix }}-${{parameters.ep}}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
   # The private ADO project
@@ -70,7 +70,7 @@ jobs:
         set -e -x
         ls $(Pipeline.Workspace)/build
         mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-        mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
+        mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}-${{parameters.ep}}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
 
