@@ -10,8 +10,6 @@ d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
-esac
-done
 *) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>]"
    exit 1;;
 esac
