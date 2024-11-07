@@ -88,9 +88,6 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  python3 --version
-  sudo cp "${PYTHON_EXE}" /usr/bin/python3
-  python3 --version
   rm -rf /build/"$BUILD_CONFIG"
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
   ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
