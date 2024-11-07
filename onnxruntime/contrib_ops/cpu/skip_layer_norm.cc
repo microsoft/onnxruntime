@@ -204,13 +204,15 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   size_t input_dims_size = input_dims.size();
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
-                                                                                        skip,
-                                                                                        gamma,
-                                                                                        beta,
-                                                                                        bias,
-                                                                                        hidden_size,
-                                                                                        input_dims_size));
+  ORT_RETURN_IF_ERROR(skip_layer_norm_helper::CheckPotentiallyPrepackedInputs<Tensor>(input,
+                                                                                      skip,
+                                                                                      gamma,
+                                                                                      beta,
+                                                                                      bias,
+                                                                                      hidden_size,
+                                                                                      input_dims_size,
+                                                                                      bool(prepacked_skip_fp32_data_),
+                                                                                      bool(prepacked_gamma_fp32_data_)));
 
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
