@@ -11,7 +11,7 @@ import { computeConv3DInfo, createConv3DNaiveProgramInfo } from './3rd-party/con
 import { createMatmulProgramInfo } from './3rd-party/matmul_packed_webgpu';
 import { createGroupedConvProgramInfo, createGroupedConvVectorizeProgramInfo } from './conv-grouped';
 import { InternalActivationAttributes, parseInternalActivationAttributes } from './fuse-utils';
-import { createNaiveMatmulProgramInfo } from './matmul';
+import { createNaiveMatmulProgramInfo } from './matmul-shaders';
 import { createTransposeProgramInfo } from './transpose';
 
 export const calculateOutputShape = (

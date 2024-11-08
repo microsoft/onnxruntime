@@ -25,7 +25,6 @@ import { ShapeUtil } from '../../../util';
 import { ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../../types';
 import {
   createTensorShapeVariables,
-  getBroadcastDims,
   IndicesHelper,
   inputVariable,
   internalVariable,
@@ -40,6 +39,7 @@ import {
   getActivationSnippet,
   InternalActivationAttributes,
 } from '../fuse-utils';
+import { convertOutputBatchIndicesToInputBatchIndices } from '../matmul-shaders';
 
 import { typeSnippet } from './activation_util';
 
@@ -373,42 +373,11 @@ const matMulReadWriteFnSource = (
   hasBias: boolean,
   applyActivation: string,
   variables: IndicesHelper[],
-  batchShapes: Array<readonly number[]>,
   isChannelsLast = false,
 ): string => {
-  const [batchAShape, batchBShape, batchShape] = batchShapes;
   const [batchVariable, aVariable, bVariable, outputVariable] = variables;
-  const broadCastADims = getBroadcastDims(batchAShape, batchShape);
-  const broadCastBDims = getBroadcastDims(batchBShape, batchShape);
   const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
-  const getAIndices = () => {
-    const aRank = aVariable.rank;
-    const batchRank = batchVariable.rank;
-    let resStr = `var aIndices: ${aVariable.type.indices};`;
-    for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-      resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-    }
-    broadCastADims.forEach((i) => {
-      resStr += `\naIndices[${i}] = 0;`;
-    });
-    resStr += `\naIndices[${aRank - 2}] = u32(row);
-                   aIndices[${aRank - 1}] = u32(colIn);`;
-    return resStr;
-  };
-  const getBIndices = () => {
-    const bRank = bVariable.rank;
-    const batchRank = batchVariable.rank;
-    let resStr = `var bIndices: ${bVariable.type.indices};`;
-    for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-      resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-    }
-    broadCastBDims.forEach((i) => {
-      resStr += `\nbIndices[${i}] = 0;`;
-    });
-    resStr += `\nbIndices[${bRank - 2}] = u32(row);
-                   bIndices[${bRank - 1}] = u32(colIn);`;
-    return resStr;
-  };
+
   const source = `
     fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
       component,
@@ -418,7 +387,16 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
       {
-        ${getAIndices()}
+        var aIndices: ${aVariable.type.indices};
+        ${convertOutputBatchIndicesToInputBatchIndices(
+          'aIndices',
+          aVariable,
+          aVariable.rank - 2,
+          batchVariable.rank,
+          'batchIndices',
+        )}
+        ${aVariable.indicesSet('aIndices', aVariable.rank - 2, 'u32(row)')}
+        ${aVariable.indicesSet('aIndices', aVariable.rank - 1, 'u32(colIn)')}
         value = ${aVariable.getByIndices('aIndices')};
       }
       return value;
@@ -432,7 +410,16 @@ const matMulReadWriteFnSource = (
       let col = colIn * ${component};
       if(row < uniforms.dim_inner && col < uniforms.dim_b_outer)
       {
-        ${getBIndices()}
+        var bIndices: ${bVariable.type.indices};
+        ${convertOutputBatchIndicesToInputBatchIndices(
+          'bIndices',
+          bVariable,
+          bVariable.rank - 2,
+          batchVariable.rank,
+          'batchIndices',
+        )}
+        ${bVariable.indicesSet('bIndices', bVariable.rank - 2, 'u32(row)')}
+        ${bVariable.indicesSet('bIndices', bVariable.rank - 1, 'u32(colIn)')}
         value = ${bVariable.getByIndices('bIndices')};
       }
       return value;
@@ -532,7 +519,6 @@ export const createMatmulProgramInfo = (
       hasBias,
       applyActivation,
       [batchDims, A, B, output],
-      [outerDimsA, outerDimsB, outerDims],
       isChannelsLast,
     );
     return `
