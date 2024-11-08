@@ -99,7 +99,7 @@ void ComputeJob(
 void ComputeJob(
     const MLFloat16* input_data,
     const MLFloat16* skip_data,
-    const IAllocatorUniquePtr<float>& prepacked_skip_fp32_data,
+    const float* prepacked_skip_fp32_data,
     const float* gamma_float_ptr,
     const float* beta_float_ptr,
     const float* bias_float_ptr,
@@ -132,7 +132,7 @@ void ComputeJob(
   }
 
   const float* input_float_ptr = input_float_uptr.get();
-  const float* skip_float_ptr = prepacked_skip_fp32_data ? prepacked_skip_fp32_data.get() : skip_float_uptr.get();
+  const float* skip_float_ptr = prepacked_skip_fp32_data ? prepacked_skip_fp32_data : skip_float_uptr.get();
   for (size_t h = 0; h < num_elems; h++) {
     float val = input_float_ptr[h] + skip_float_ptr[h];
 
@@ -268,7 +268,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       [&](ptrdiff_t task_idx) {
         if constexpr (std::is_same_v<T, MLFloat16>) {
           ComputeJob(input_data, skip_data,
-                     prepacked_skip_fp32_data_,
+                     prepacked_skip_fp32_data_.get(),
                      prepacked_gamma_fp32_data_ ? prepacked_gamma_fp32_data_.get() : gamma_fp32.get(),
                      prepacked_beta_fp32_data_ ? prepacked_beta_fp32_data_.get() : beta_fp32.get(),
                      prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
