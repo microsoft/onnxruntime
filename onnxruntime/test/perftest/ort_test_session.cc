@@ -383,11 +383,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     for (const auto& provider_option : provider_options) {
       if (provider_option.first == kCoremlProviderOption_MLComputeUnits &&
           available_options.find(provider_option.second) != available_options.end()) {
-      } else if (provider_option.first == "ModelFormat" &&
+      } else if (provider_option.first == kCoremlProviderOption_MLModelFormat &&
                  (provider_option.second == "MLProgram" || provider_option.second == "NeuralNetwork")) {
-      } else if (provider_option.first == "AllowStaticInputShapes" &&
+      } else if (provider_option.first == kCoremlProviderOption_MLAllowStaticInputShapes &&
                  (provider_option.second == "1" || provider_option.second == "0")) {
-      } else if (provider_option.first == "EnableOnSubgraphs" &&
+      } else if (provider_option.first == kCoremlProviderOption_MLEnableOnSubgraphs &&
                  (provider_option.second == "0" || provider_option.second == "1")) {
       } else {
         ORT_THROW(

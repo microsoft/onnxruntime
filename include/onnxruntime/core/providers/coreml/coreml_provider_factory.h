@@ -44,6 +44,10 @@ enum COREMLFlags {
 // MLComputeUnits can be one of the following values:
 // 'MLComputeUnitsCPUAndNeuralEngine|MLComputeUnitsCPUAndGPU|MLComputeUnitsCPUOnly|MLComputeUnitsAll'
 static const char* const kCoremlProviderOption_MLComputeUnits = "MLComputeUnits";
+static const char* const kCoremlProviderOption_MLModelFormat = "MLModelFormat";
+static const char* const kCoremlProviderOption_MLAllowStaticInputShapes = "MLAllowStaticInputShapes";
+static const char* const kCoremlProviderOption_MLEnableOnSubgraphs = "MLEnableOnSubgraphs";
+static const char* const kCoremlProviderOption_MLModelCacheDir = "MLModelCacheDir";
 
 #ifdef __cplusplus
 extern "C" {

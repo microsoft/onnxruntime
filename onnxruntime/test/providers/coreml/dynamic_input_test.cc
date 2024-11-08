@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/providers/coreml/coreml_execution_provider.h"
+#include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"  // for COREMLFlags
 #include "test/common/random_generator.h"
 #include "test/providers/model_tester.h"
@@ -21,7 +22,7 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MatMul) {
   auto test = [&](const size_t M) {
     SCOPED_TRACE(MakeString("M=", M));
     std::unordered_map<std::string, std::string> options;
-    auto coreml_ep = std::make_unique<CoreMLExecutionProvider>(options);
+    auto coreml_ep = CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
 
     const auto ep_verification_params = EPVerificationParams{
         ExpectedEPNodeAssignment::All,
@@ -55,7 +56,8 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
   auto test = [&](const size_t batch_size) {
     SCOPED_TRACE(MakeString("batch_size=", batch_size));
     std::unordered_map<std::string, std::string> options;
-    auto coreml_ep = std::make_unique<CoreMLExecutionProvider>(options);
+    auto coreml_ep = CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
+    ;
 
     const auto ep_verification_params = EPVerificationParams{
         ExpectedEPNodeAssignment::All,
@@ -95,14 +97,15 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
   tester
       .Config(ModelTester::ExpectResult::kExpectFailure,
               "the runtime shape ({0,2}) has zero elements. This is not supported by the CoreML EP.")
-      .ConfigEp(std::make_unique<CoreMLExecutionProvider>(options))
+      .ConfigEp(CoreMLProviderFactoryCreator::Create(options)->CreateProvider())
       .RunWithConfig();
 }
 
 TEST(CoreMLExecutionProviderDynamicInputShapeTest, OnlyAllowStaticInputShapes) {
   constexpr auto model_path = ORT_TSTR("testdata/matmul_with_dynamic_input_shape.onnx");
-  std::unordered_map<std::string, std::string> options = {{"coreml_flags", std::to_string(COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES)}};
-  auto coreml_ep = std::make_unique<CoreMLExecutionProvider>(options);
+  std::unordered_map<std::string, std::string> options = {{kCoremlProviderOption_MLAllowStaticInputShapes, "1"}};
+  auto coreml_ep = CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
+  ;
 
   TestModelLoad(model_path, std::move(coreml_ep),
                 // expect no supported nodes because we disable dynamic input shape support

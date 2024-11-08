@@ -13,30 +13,30 @@ namespace onnxruntime {
 namespace {
 CoreMLOptions ParseProviderOption(const ProviderOptions& options) {
   CoreMLOptions coreml_options;
-  const std::unordered_map<std::string, COREMLFlags> available_device_options = {
+  const std::unordered_map<std::string, COREMLFlags> available_computeunits_options = {
       {"MLComputeUnitsCPUAndNeuralEngine", COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE},
       {"MLComputeUnitsCPUAndGPU", COREML_FLAG_USE_CPU_AND_GPU},
       {"MLComputeUnitsCPUOnly", COREML_FLAG_USE_CPU_ONLY},
       {"MLComputeUnitsAll", COREML_FLAG_USE_NONE},
   };
-  const std::unordered_map<std::string, COREMLFlags> available_format_options = {
+  const std::unordered_map<std::string, COREMLFlags> available_modelformat_options = {
       {"MLProgram", COREML_FLAG_CREATE_MLPROGRAM},
       {"NeuralNetwork", COREML_FLAG_USE_NONE},
   };
-  if (options.count("ComputeUnits")) {
-    coreml_options.coreml_flags |= available_device_options.at(options.at("ComputeUnits"));
+  if (options.count(kCoremlProviderOption_MLComputeUnits)) {
+    coreml_options.coreml_flags |= available_computeunits_options.at(options.at(kCoremlProviderOption_MLComputeUnits));
   }
-  if (options.count("ModelFormat")) {
-    coreml_options.coreml_flags |= available_format_options.at(options.at("ModelFormat"));
+  if (options.count(kCoremlProviderOption_MLModelFormat)) {
+    coreml_options.coreml_flags |= available_modelformat_options.at(options.at(kCoremlProviderOption_MLModelFormat));
   }
-  if (options.count("AllowStaticInputShapes")) {
+  if (options.count(kCoremlProviderOption_MLAllowStaticInputShapes)) {
     coreml_options.coreml_flags |= COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
   }
-  if (options.count("EnableOnSubgraphs")) {
+  if (options.count(kCoremlProviderOption_MLEnableOnSubgraphs)) {
     coreml_options.coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
   }
-  if (options.count("ModelCacheDir")) {
-    coreml_options.cache_path = options.at("ModelCacheDir");
+  if (options.count(kCoremlProviderOption_MLModelCacheDir)) {
+    coreml_options.cache_path = options.at(kCoremlProviderOption_MLModelCacheDir);
   }
 
   return coreml_options;
