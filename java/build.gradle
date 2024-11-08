@@ -18,9 +18,8 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def releaseVersionSuffix = "${System.getenv('ReleaseVersionSuffix')}"
 println "Original Version: ${version}"
 println "Original ReleaseVersionSuffix: ${releaseVersionSuffix}"
-if (releaseVersionSuffix != "" && releaseVersionSuffix != null) {
+if (releaseVersionSuffix != null && releaseVersionSuffix != "" && releaseVersionSuffix != "null") {
 	println "NOT NULL"
-	println "Type of ReleaseVersionSuffix: ${ReleaseVersionSuffix.getClass()}"
 	def middleSuffix = releaseVersionSuffix.replace(".", "")
 	println "MiddleSuffix: ${middleSuffix}"
 	releaseVersionSuffix = releaseVersionSuffix.replace(".", "")
