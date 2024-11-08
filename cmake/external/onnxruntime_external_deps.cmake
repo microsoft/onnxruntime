@@ -659,6 +659,9 @@ if (onnxruntime_USE_WEBGPU)
     # We are currently always using the D3D12 backend.
     set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
   endif()
+  if (onnxruntime_CROSS_COMPILING)
+    set(DAWN_CROSSCOMPILING_WIN ON CACHE BOOL "" FORCE)
+  endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
