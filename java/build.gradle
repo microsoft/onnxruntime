@@ -16,18 +16,12 @@ allprojects {
 project.group = "com.microsoft.onnxruntime"
 version = rootProject.file('../VERSION_NUMBER').text.trim()
 def releaseVersionSuffix = "${System.getenv('ReleaseVersionSuffix')}"
-println "Original Version: ${version}"
-println "Original ReleaseVersionSuffix: ${releaseVersionSuffix}"
 if (releaseVersionSuffix != null && releaseVersionSuffix != "" && releaseVersionSuffix != "null") {
-	println "NOT NULL"
-	def middleSuffix = releaseVersionSuffix.replace(".", "")
-	println "MiddleSuffix: ${middleSuffix}"
+	println "ReleaseVersionSuffix is not null: ${releaseVersionSuffix}"
 	releaseVersionSuffix = releaseVersionSuffix.replace(".", "")
-	println "Replaced dot from ReleaseVersionSuffix: ${releaseVersionSuffix}"
 	version = "${version}${releaseVersionSuffix}"
-	println "Combined Version: ${version}"
+	println "Appended ReleaseVersionSuffix to version: ${version}"
 }
-println "Final Version: ${version}"
 
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
