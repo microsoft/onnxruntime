@@ -391,7 +391,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
 }
 
-#if !defined(USE_DML)
+#if !defined(USE_DML) && (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64))
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
 TEST(MatMulNBits, Float16_Accuracy0) {
@@ -469,7 +469,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
-#endif
+#endif  // !defined(USE_DML) && (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64))
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 
