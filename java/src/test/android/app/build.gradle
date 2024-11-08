@@ -29,7 +29,7 @@ android {
 		targetCompatibility JavaVersion.VERSION_17
 	}
 	kotlinOptions {
-		jvmTarget = '1.17'
+		jvmTarget = '17'
 	}
 	namespace 'ai.onnxruntime.example.javavalidator'
 }
