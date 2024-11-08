@@ -15,10 +15,10 @@ def releaseVersionSuffix = System.properties['releaseVersionSuffix'] ?: ""
 def qnnVersion = System.properties['qnnVersion']
 
 // Since Android requires higher numbers indicating more recent versions
-// This function assumes ORT version number will be in the format of A.B.C[-rc/beta/alpha.D] such as 1.20.0 or 1.20.0-rc.1
+// This function assumes ORT version number will be in the format of A.B.C[-rc/beta/alpha.D] such as 1.20.1 or 1.20.1-rc.1
 // We generate version code A[0{0,1}]B[0{0,1}]C[0{0,1}]{1,2,3,4}D[01-99]
-// for example '1.20.0' -> 12000400, '1.20.0-rc.1 ' -> 12000301
-// '1.20.0-beta.1' -> 12000201, '1.20.0-alpha.1' -> 12000101
+// for example '1.20.1' -> 12000400, '1.20.1-rc.1 ' -> 12000301
+// '1.20.1-beta.1' -> 12000201, '1.20.1-alpha.1' -> 12000101
 def getVersionCode(String version) {
 	String[] versionAndRelSufx = version.split('-')
 	String[] codes = versionAndRelSufx[0].split('\\.')
