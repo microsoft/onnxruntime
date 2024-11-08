@@ -15,8 +15,8 @@ allprojects {
 
 project.group = "com.microsoft.onnxruntime"
 version = rootProject.file('../VERSION_NUMBER').text.trim()
-def releaseVersionSuffix = System.getenv['ReleaseVersionSuffix'] ?: ""
-def KYLE_ENV = System.getenv('KYLE_ENV')
+def releaseVersionSuffix = System.env['ReleaseVersionSuffix'] ?: ""
+def KYLE_ENV = System.env('KYLE_ENV')
 println "KYLE_ENV: ${KYLE_ENV}"
 println "Original Version: ${version}"
 println "Original ReleaseVersionSuffix: ${releaseVersionSuffix}"
