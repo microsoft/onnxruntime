@@ -26,6 +26,8 @@ Abstract:
 #include "qnbitgemm.h"
 #include "qnbitgemm_kernel_neon.h"
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+
 namespace sqnbitgemm_neon
 {
 MLAS_FORCEINLINE void
@@ -896,3 +898,5 @@ HQ4BitGemmKernel_CompFp16(
     }
 }
 }  // namespace sqnbitgemm_neon
+
+#endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
