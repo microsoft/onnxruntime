@@ -41,7 +41,11 @@ export const createConvTranspose2DProgramInfo = (
   const hasBias = inputs.length > 2;
   const outputShape = attributes.outputShape;
   const isChannelsLast = attributes.format === 'NHWC';
-  const components = isChannelsLast && attributes.group === 1 ? getMaxComponents(outputShape[3]) : 1;
+  const group = attributes.group;
+  const wShape = inputs[1].dims;
+  const inputChannelsPerGroup = wShape[2] / group;
+  const outputChannelsPerGroup = wShape[3];
+  const components = isChannelsLast ? getMaxComponents(outputChannelsPerGroup) : 1;
   const outputSize = ShapeUtil.size(outputShape) / components;
   const dispatch = [Math.ceil(outputSize / 64), 1, 1];
   LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
@@ -64,11 +68,6 @@ export const createConvTranspose2DProgramInfo = (
     effectiveFilterDims[0] - 1 - Math.floor((attributes.pads[0] + attributes.pads[2]) / 2),
     effectiveFilterDims[1] - 1 - Math.floor((attributes.pads[1] + attributes.pads[3]) / 2),
   ];
-
-  const group = attributes.group;
-  const wShape = inputs[1].dims;
-  const inputChannelsPerGroup = wShape[2] / group;
-  const outputChannelsPerGroup = wShape[3];
 
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
