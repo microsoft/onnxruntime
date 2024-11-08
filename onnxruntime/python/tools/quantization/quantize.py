@@ -231,6 +231,7 @@ def get_qdq_config(
     activation_symmetric: bool = False,
     weight_symmetric: bool | None = None,
     per_channel: bool = False,
+    reduce_range: bool = False,
     keep_removable_activations: bool = False,
     min_real_range: float | None = None,
     tensor_quant_overrides: dict[str, list[dict[str, Any]]] | None = None,
@@ -245,7 +246,7 @@ def get_qdq_config(
         calibration_data_reader: Calibration data reader.
         calibrate_methode: The calibration method. Defaults to MinMax.
         activation_type: The default activation quantization type. Defaults to QUInt8.
-        weight_type: The default weight quantization type. Defaults to QUInt8.
+        weight_type: The default weight quantization type. Defaults to QInt8.
         activation_symmetric: True if activations should be quantized symmetrically (i.e, rmax == -rmin) by default.
             Defaults to false. For int8 and int16, this results in zero-point values of 0. For uint8 and uint16,
             the zero-point values are 127 and 32,767, respectively.
@@ -254,6 +255,8 @@ def get_qdq_config(
         per_channel: Global option that determines if a fixed set of operator types should be quantized per-channel.
             Defaults to false. Alternatively, use the tensor-level `tensor_quant_overrides` to select individual operators
             and their quantization axes.
+        reduce_range: quantize weights with 1 less bit of precision (e.g., 7 bits for QInt8). Defaults to false.
+            May improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode.
         keep_removable_activations: Defaults to false. If true, "removable" activations (e.g., Clip or Relu) will not
                         be removed, and will be explicitly represented in the QDQ model. If false, these activations
                         are automatically removed if activations are asymmetrically quantized. Keeping these activations
@@ -373,6 +376,7 @@ def get_qdq_config(
         op_types_to_quantize=list(op_types.difference(op_types_to_exclude)),
         nodes_to_exclude=final_nodes_to_exclude,
         per_channel=per_channel,
+        reduce_range=reduce_range,
         use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
         extra_options=final_extra_options,
     )
