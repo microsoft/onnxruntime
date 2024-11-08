@@ -150,7 +150,7 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       graph_body_viewer,
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
-
+    backend_manager_ = backend_manager;
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
@@ -198,4 +198,37 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 }
 #endif
 
+common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(
+    gsl::span<const char* const> keys, gsl::span<const char* const> values) {
+  std::string workload_type = "";
+  // Ensure the number of keys and values match
+  if (keys.size() != values.size()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Mismatched keys and values sizes.");
+  }
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    std::string key = keys[i];
+    std::string value = values[i];
+
+    if (key == "ep.dynamic.workload_type") {
+      if (value == "Efficient") {
+        workload_type = "EFFICIENT";
+      } else if (value == "Default") {
+        workload_type = "DEFAULT";
+      } else {
+        LOGS_DEFAULT(WARNING) << "Unknown workload_type - ignoring " << key << "/" << value;
+        LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
+      }
+      if (workload_type != "") {
+        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        ov::CompiledModel& ov_compiled_model = backend_manager_->GetOVCompiledModel();
+        ov_compiled_model.set_property(ov::workload_type(workload_type));
+      }
+    } else {
+      // Handle unknown options
+      LOGS_DEFAULT(WARNING) << "Unknown key/value pair - ignoring " << key << "/" << value;
+    }
+  }
+  return Status::OK();
+}
 }  // namespace onnxruntime

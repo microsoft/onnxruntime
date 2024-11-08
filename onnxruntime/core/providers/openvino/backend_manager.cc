@@ -25,6 +25,11 @@ GlobalContext& BackendManager::GetGlobalContext() {
   return global_context_;
 }
 
+ov::CompiledModel& BackendManager::GetOVCompiledModel() {
+  ov::CompiledModel& ov_ptr = concrete_backend_->GetOVCompiledModel();
+  return (ov_ptr);
+}
+
 BackendManager::BackendManager(const GlobalContext& global_context,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
