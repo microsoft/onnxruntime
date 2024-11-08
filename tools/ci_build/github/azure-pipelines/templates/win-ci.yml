@@ -204,7 +204,6 @@ stages:
           workingDirectory: '$(Build.BinariesDirectory)'
         env:
           ReleaseVersionSuffix: "$(ReleaseVersionSuffix)"
-          KYLE_ENV: "HELLO"
 
       - task: VSBuild@1
         displayName: 'Build'
