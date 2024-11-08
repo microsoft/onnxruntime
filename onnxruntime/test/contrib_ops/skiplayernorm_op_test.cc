@@ -232,7 +232,7 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormPrePack) {
   test.AddInput<MLFloat16>("x", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
   test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
   test.AddInput<MLFloat16>("gamma", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
-  test.AddInput<MLFloat16>("bias", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
   test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({
                                                                   1.f,
                                                                   1.f,
