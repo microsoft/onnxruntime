@@ -44,7 +44,7 @@ COPY ${TRT_BINS_DIR}/TensorRT-${TAR_TRT_VERSION}.Linux.x86_64-gnu.cuda-${TAR_CUD
 RUN tar -xzvf /TensorRT-${TAR_TRT_VERSION}.tar.gz
 
 RUN cd /TensorRT-${TAR_TRT_VERSION}/python &&\
-    python3 -m pip install tensorrt*cp38*.whl
+    python3 -m pip install tensorrt*cp310*.whl
 
 RUN cp -r /TensorRT-${TAR_TRT_VERSION}/lib/* /usr/lib/x86_64-linux-gnu/
 RUN cp /TensorRT-${TAR_TRT_VERSION}/include/* /usr/local/include/
