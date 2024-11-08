@@ -3,13 +3,13 @@
 #include <filesystem>
 #include <utility>
 #include <string>
-
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "openvino/core/version.hpp"
 #ifdef USE_OVEP_NPU_MEMORY
 #include "core/providers/openvino/ov_allocator.h"
@@ -211,7 +211,7 @@ gsl::span<const char* const> values) {
     std::string key = keys[i];
     std::string value = values[i];
 
-    if (key == "ep.dynamic.workload_type") {
+    if (key == kOrtEpDynamicOptionsWorkloadType) {
       if (value == "Efficient") {
         workload_type = "EFFICIENT";
       } else if (value == "Default") {
