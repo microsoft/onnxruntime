@@ -5,7 +5,7 @@
 FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11_dotnet:20241020.1
 
 ARG TRT_VERSION
-RUN  rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm && dnf install -y msopenjdk-11
+RUN  rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm && dnf install -y msopenjdk-17
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
@@ -31,10 +31,10 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-ENV PATH /usr/lib/jvm/msopenjdk-11/bin:$PATH
+ENV PATH /usr/lib/jvm/msopenjdk-17/bin:$PATH
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
-ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 ENV CUDAHOSTCXX /opt/rh/gcc-toolset-11/root/usr/bin/g++
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts

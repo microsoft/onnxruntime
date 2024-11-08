@@ -13,4 +13,4 @@ if [ ! -f /etc/yum.repos.d/microsoft-prod.repo ]; then
 fi
 # Install Java
 # Install automatic documentation generation dependencies
-$PACKAGE_MANAGER install -y msopenjdk-11 graphviz
+$PACKAGE_MANAGER install -y msopenjdk-17 graphviz

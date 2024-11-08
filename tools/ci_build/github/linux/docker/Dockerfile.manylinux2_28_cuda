@@ -32,7 +32,7 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 #Add our own dependencies
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
