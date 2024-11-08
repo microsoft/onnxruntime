@@ -358,29 +358,32 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
     inputs,
   );
 
-      // STEP.1: transpose weight
-      const transposedWeight =
-      (context.kernelCustomData.wT as TensorView | undefined) ??
-      context.compute(createTransposeProgramInfo(inputs[1], [2, 3, 0, 1]), {
-        inputs: [1],
-        outputs: [attributes.wIsConst ? -2 : -1],
-      })[0];
-    if (attributes.wIsConst && !context.kernelCustomData.wT) {
-      context.kernelCustomData.wT = transposedWeight;
-    }
+  // STEP.1: transpose weight
+  const transposedWeight =
+    (context.kernelCustomData.wT as TensorView | undefined) ??
+    context.compute(createTransposeProgramInfo(inputs[1], [2, 3, 0, 1]), {
+      inputs: [1],
+      outputs: [attributes.wIsConst ? -2 : -1],
+    })[0];
+  if (attributes.wIsConst && !context.kernelCustomData.wT) {
+    context.kernelCustomData.wT = transposedWeight;
+  }
 
-    // STEP.2: prepare reshaped inputs
-    const convTransposeInputs = [inputs[0], transposedWeight];
-    if (inputs.length === 3) {
-      convTransposeInputs.push(inputs[2]);
-    }
-    context.compute(createConvTranspose2DProgramInfo(convTransposeInputs, adjustedAttributes, (outputShape) =>
-    isChannelLast
-      ? [outputShape[0], outputShape[2], outputShape[3]]
-      : [outputShape[0], outputShape[1], outputShape[3]],
-  ), {
+  // STEP.2: prepare reshaped inputs
+  const convTransposeInputs = [inputs[0], transposedWeight];
+  if (inputs.length === 3) {
+    convTransposeInputs.push(inputs[2]);
+  }
+  context.compute(
+    createConvTranspose2DProgramInfo(convTransposeInputs, adjustedAttributes, (outputShape) =>
+      isChannelLast
+        ? [outputShape[0], outputShape[2], outputShape[3]]
+        : [outputShape[0], outputShape[1], outputShape[3]],
+    ),
+    {
       inputs: convTransposeInputs,
-    });
+    },
+  );
 };
 
 export const convTranspose = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
