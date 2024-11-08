@@ -299,7 +299,7 @@ stages:
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
       with_cache: true
       cmake_build_type: Release
-      python_exe_path: '/opt/python/cp312-cp312/bin/python3.12'
+      python_exe_path: '/opt/python/cp310-cp310/bin/python3.10'
 
 - stage: arm64_test
   dependsOn: ['arm64_build']
@@ -320,7 +320,7 @@ stages:
       cmake_build_type: Release
       ep: 'XNNPack'
       extra_build_arg: '--use_xnnpack'
-      python_exe_path: '/opt/python/cp312-cp312/bin/python3.12'
+      python_exe_path: '/opt/python/cp310-cp310/bin/python3.10'
 
 - stage: arm64_test_xnnpack
   dependsOn: ['arm64_build_xnnpack']
