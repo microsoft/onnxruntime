@@ -215,6 +215,7 @@ stages:
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
+            python3 -m pip install opencv-python; \
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements/cuda11/requirements.txt; \
