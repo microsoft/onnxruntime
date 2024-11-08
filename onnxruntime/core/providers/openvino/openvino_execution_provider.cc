@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 #include <filesystem>
 #include <utility>
+#include <string>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
@@ -198,8 +199,8 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 }
 #endif
 
-common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(
-    gsl::span<const char* const> keys, gsl::span<const char* const> values) {
+common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+gsl::span<const char* const> values) {
   std::string workload_type = "";
   // Ensure the number of keys and values match
   if (keys.size() != values.size()) {
