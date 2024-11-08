@@ -17,6 +17,8 @@ RUN dnf install -y bash wget &&\
 RUN pip3 install --upgrade pip
 RUN pip3 install setuptools>=68.2.2
 
+RUN dnf install -y python3-opencv
+
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
