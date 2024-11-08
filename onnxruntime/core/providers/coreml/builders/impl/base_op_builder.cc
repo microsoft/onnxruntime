@@ -106,7 +106,7 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
     return true;
   }
 
-  // only support MLProgram for FP16
+  // only MLProgram support FP16
   if (!input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     return false;
   }

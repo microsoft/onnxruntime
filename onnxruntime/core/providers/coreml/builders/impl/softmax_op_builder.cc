@@ -38,46 +38,40 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
 
 #if defined(COREML_ENABLE_MLPROGRAM)
+  // CoreML's softmax match onnx's softmax behavior since opset 13.
+  // For opset < 13, we need to reshape to 2D and set axis to -1 to simulate onnx softmax behavior.
+  // [B,D,...](onnx softmax opset 12, axis=1)->[B,D*...](CoreML softmax, axis=-1)->[B,D,...](reshape back)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     const int32_t elem_type = static_cast<int32_t>(input_dtype);
 
     std::string_view layer_input_name_x = node.InputDefs()[0]->Name();
-    std::vector<int64_t> shape1(2, 1);
-    if (node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1) {
+    const bool need_reshape = node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1;
+    std::vector<int64_t> target_shape;
+    if (need_reshape) {
       // reshape to 2D to simulate onnx softmax behavior
       auto reshape1 = model_builder.CreateOperation(node, "reshape", "pre");
-      for (size_t i = 0, shape1_i = 0; i < data_shape.size(); i++) {
-        if (static_cast<int64_t>(i) == axis_nonnegative) {
-          shape1_i++;
-        }
-        shape1[shape1_i] *= data_shape[i];
-      }
-      if (axis_nonnegative == 0) {
-        shape1[0] = shape1[1];
-        shape1.pop_back();
-      }
-      axis_nonnegative = -1;
+      TensorShape input_shape(data_shape);
+      target_shape.push_back(input_shape.SizeToDimension(axis_nonnegative));
+      target_shape.push_back(input_shape.SizeFromDimension(axis_nonnegative));
+      axis_nonnegative = 1;
       AddOperationInput(*reshape1, "x", layer_input_name_x);
-      AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", shape1));
+      AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", target_shape));
       layer_input_name_x = model_builder.GetUniqueName(node, "ln_reshape1_");
-      AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, shape1);
+      AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, target_shape);
       model_builder.AddOperation(std::move(reshape1));
     }
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "softmax");
     AddOperationInput(*op, "x", layer_input_name_x);
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis_nonnegative));
-    std::string_view ln_output_name;
-    if (node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1) {
-      ln_output_name = model_builder.GetUniqueName(node, "ln_reshape1_");
-      AddIntermediateOperationOutput(*op, ln_output_name, elem_type, shape1);
-    } else {
+    if (!need_reshape) {
       AddOperationOutput(*op, *node.OutputDefs()[0]);
-    }
-    model_builder.AddOperation(std::move(op));
-
-    if (node.SinceVersion() < 13 && axis_nonnegative != static_cast<int64_t>(data_shape.size()) - 1) {
+      model_builder.AddOperation(std::move(op));
+    } else {
+      std::string_view ln_output_name = model_builder.GetUniqueName(node, "ln_reshape1_");
+      AddIntermediateOperationOutput(*op, ln_output_name, elem_type, target_shape);
+      model_builder.AddOperation(std::move(op));
       auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
       AddOperationInput(*reshape2, "x", ln_output_name);
       AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", data_shape));

@@ -80,6 +80,10 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       coreml_op_type = "reduce_mean";
     } else if (op_type == "ReduceMax") {
       coreml_op_type = "reduce_max";
+    } else if (op_type == "ReduceMin") {
+      coreml_op_type = "reduce_min";
+    } else if (op_type == "ReduceProd") {
+      coreml_op_type = "reduce_prod";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ReductionOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -120,7 +124,10 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-
+  if (!input_params.create_mlprogram &&
+      (node.OpType() == "ReduceMax" || node.OpType() == "ReduceMin" || node.OpType() == "ReduceProd")) {
+    return false;
+  }
   NodeAttrHelper helper(node);
 
   // noop_with_empty_axes defaults to false and is only available in newer opsets where 'axes' is an optional input
@@ -140,12 +147,10 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
     empty_axes = axes->int64_data_size() == 0;
   }
   if (empty_axes && noop_with_empty_axes && !input_params.create_mlprogram) {
-    LOGS(logger, VERBOSE) << "CoreML doesn't support noop on empty axes for reduction layers";
+    LOGS(logger, VERBOSE) << "NeuralNetwork doesn't support noop on empty axes for reduction layers";
     return false;
   }
-  if (!input_params.create_mlprogram && node.OpType() == "ReduceMax") {
-    return false;
-  }
+
   return true;
 }
 

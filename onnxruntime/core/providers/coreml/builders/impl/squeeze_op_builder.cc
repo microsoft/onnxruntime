@@ -11,6 +11,7 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/cpu/tensor/unsqueeze.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -27,7 +28,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 };
 
 namespace {
-void GetAxes(ModelBuilder& model_builder, const Node& node, std::vector<int64_t>& axes) {
+void GetAxes(ModelBuilder& model_builder, const Node& node, TensorShapeVector& axes) {
   // Squeeze opset 13 use input as axes
   if (node.SinceVersion() > 12) {
     // If axes is not provided, return an empty axes as default to squeeze all
@@ -41,7 +42,8 @@ void GetAxes(ModelBuilder& model_builder, const Node& node, std::vector<int64_t>
     }
   } else {
     NodeAttrHelper helper(node);
-    axes = helper.Get("axes", std::vector<int64_t>());
+    auto axes_attr = helper.Get("axes", std::vector<int64_t>());
+    axes.assign(axes_attr.begin(), axes_attr.end());
   }
 }
 }  // namespace
@@ -58,7 +60,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
   const auto& input_defs(node.InputDefs());
   auto* coreml_squeeze = layer->mutable_squeeze();
-  std::vector<int64_t> axes;
+  TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
   std::vector<int64_t> input_shape;
   GetShape(*input_defs[0], input_shape, logger);
@@ -72,24 +74,12 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     if (coreml_op_type == "squeeze") {
       if (!axes.empty()) {
-        AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", axes));
+        // coreml squeeze op does support negative axes
+        AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
       }
     } else {
-      for (auto& axis : axes) {
-        axis = HandleNegativeAxis(axis, input_shape.size() + axes.size());
-      }
-      std::vector<int64_t> new_shape(axes.size() + input_shape.size(), 1);
-      std::sort(axes.begin(), axes.end());
-      // For example: Given an input tensor (data) of shape [3, 4, 5],
-      // then Unsqueeze(data, axes=[0, 4]) outputs a tensor (expanded) containing same data as data but with shape [1, 3, 4, 5, 1].
-      for (size_t i = 0, ori_i = 0, axes_i = 0; i < new_shape.size(); i++) {
-        if ((axes_i >= axes.size() || static_cast<int64_t>(i) != axes[axes_i]) && input_shape.size() >= ori_i) {
-          new_shape[i] = input_shape[ori_i++];
-        } else {
-          axes_i++;
-        }
-      }
-      AddOperationInput(*op, "shape", model_builder.AddConstant(op->type(), "shape", new_shape));
+      TensorShapeVector output_shape = UnsqueezeBase::ComputeOutputShape(TensorShape(input_shape), axes);
+      AddOperationInput(*op, "shape", model_builder.AddConstant(op->type(), "shape", AsSpan(output_shape)));
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
@@ -118,7 +108,7 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   if (node.SinceVersion() > 12 && input_defs.size() > 1) {
     const auto& axes_name = input_defs[1]->Name();
     if (!input_params.graph_viewer.GetConstantInitializer(axes_name)) {
-      LOGS(logger, VERBOSE) << "Input axes of Squeeze must be known";
+      LOGS(logger, VERBOSE) << "Input axes must be known";
       return false;
     }
   }
@@ -127,19 +117,19 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     if (!input_params.create_mlprogram) {
       return false;
     }
-    int64_t rank = -1;
+
+    int64_t num_of_new_dims = 0;
     if (node.SinceVersion() > 12) {
-      const auto& axes_tensor = *input_params.graph_viewer.GetConstantInitializer(input_defs[1]->Name());
-      Initializer unpacked_tensor(axes_tensor);
-      rank = unpacked_tensor.size();
+      num_of_new_dims = node.InputDefs()[1]->Shape()->dim(0).dim_value();
     } else {
       NodeAttrHelper helper(node);
       auto axes = helper.Get("axes", std::vector<int64_t>());
-      rank = static_cast<int64_t>(axes.size());
+      num_of_new_dims = static_cast<int64_t>(axes.size());
     }
+
     std::vector<int64_t> input_shape;
-    if (!GetShape(*input_defs[0], input_shape, logger) || input_shape.size() + rank > 5) {
-      LOGS(logger, VERBOSE) << "Unsqueeze with rank > 5 is not supported";
+    if (!GetShape(*input_defs[0], input_shape, logger) || input_shape.size() + num_of_new_dims > 5) {
+      LOGS(logger, VERBOSE) << "Unsqueeze with num_of_new_dims > 5 is not supported";
       return false;
     }
   }

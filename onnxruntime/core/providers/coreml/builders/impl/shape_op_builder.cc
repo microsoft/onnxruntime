@@ -74,9 +74,6 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 bool ShapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& logger) const {
   const auto* tensor_shape = node.InputDefs()[0]->Shape();
-  if (tensor_shape == nullptr) {
-    return false;
-  }
 
   NodeAttrHelper node_attr_helper{node};
   if (!input_params.create_mlprogram) {
@@ -96,6 +93,10 @@ bool ShapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     int64_t start = HandleNegativeAxis(node_attr_helper.Get("start", 0), tensor_shape->dim_size());
     size = size - start;
     if (size == 0) {
+      LOGS(logger, VERBOSE) << "Shape does not support slicing when size is 0";
+      return false;
+    } else if (size != tensor_shape->dim_size() && tensor_shape == nullptr) {
+      LOGS(logger, VERBOSE) << "Shape does not support slicing when tensor_shape is not available";
       return false;
     }
   }

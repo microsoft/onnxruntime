@@ -45,7 +45,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   // Reduction ops
   CreateReductionOpBuilder("ReduceMean", op_registrations);
+  CreateReductionOpBuilder("ReduceMin", op_registrations);
   CreateReductionOpBuilder("ReduceMax", op_registrations);
+  CreateReductionOpBuilder("ReduceProd", op_registrations);
   CreateReductionOpBuilder("ReduceSum", op_registrations);
 
   // Normalization ops

@@ -56,6 +56,44 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 }
 }  // namespace
 
+// Add variadic inputs to the model builder
+// in onnx spec, some node allows variadic inputs, such as max(x, y, z, ...)
+// while in coreml, maximum op only allows two inputs maximum(x, y)
+// the conversion is doing the following:
+// max(x, y, z, ...) -> max(max(x, y), z, ...)
+#if defined(COREML_ENABLE_MLPROGRAM)
+static void AddVariadicInputsToMB(std::unique_ptr<CoreML::Specification::MILSpec::Operation>* op, ModelBuilder& model_builder, const Node& node,
+                                  const logging::Logger& logger) {
+  using namespace CoreML::Specification::MILSpec;
+  const auto& input_defs(node.InputDefs());
+  std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
+  auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t elem_type = static_cast<int32_t>(input_dtype);
+  std::vector<int64_t> x0_shape, x1_shape;
+  GetShape(*input_defs[0], x0_shape, logger);
+  GetShape(*input_defs[1], x1_shape, logger);
+  if (x0_shape.size() < x1_shape.size()) {
+    std::swap(x0_shape, x1_shape);
+  }
+  std::fill(x0_shape.begin(), x0_shape.end(), -1);
+  std::unique_ptr<Operation> op_prev = std::move(*op);
+  for (size_t i = 2; i < input_defs.size(); i++) {
+    AddIntermediateOperationOutput(*op_prev, layer_input_name_x, elem_type, x0_shape);
+    std::unique_ptr<Operation> op_cur = model_builder.CreateOperation(node, op_prev->type());
+    AddOperationInput(*op_cur, "x", layer_input_name_x);
+    AddOperationInput(*op_cur, "y", input_defs[i]->Name());
+    model_builder.AddOperation(std::move(op_prev));
+    op_prev = std::move(op_cur);
+    layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
+    GetShape(*input_defs[i], x1_shape, logger);
+    if (x0_shape.size() < x1_shape.size()) {
+      x0_shape.resize(x1_shape.size(), -1);
+    }
+  }
+  *op = std::move(op_prev);
+}
+#endif
+
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
@@ -90,30 +128,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     AddOperationInput(*op, "x", input_defs[0]->Name());
     AddOperationInput(*op, "y", input_defs[1]->Name());
     if (input_defs.size() > 2) {
-      std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
-      auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
-      const int32_t elem_type = static_cast<int32_t>(input_dtype);
-      std::vector<int64_t> x0_shape, x1_shape;
-      GetShape(*input_defs[0], x0_shape, logger);
-      GetShape(*input_defs[1], x1_shape, logger);
-      for (size_t i = 0; i < x0_shape.size(); i++) {
-        x0_shape[i] = std::max(x0_shape[i], x1_shape[i]);
-      }
-      std::unique_ptr<Operation> op_prev = std::move(op);
-      for (size_t i = 2; i < input_defs.size(); i++) {
-        AddIntermediateOperationOutput(*op_prev, layer_input_name_x, elem_type, x0_shape);
-        std::unique_ptr<Operation> op_cur = model_builder.CreateOperation(node, coreml_op_type);
-        AddOperationInput(*op_cur, "x", layer_input_name_x);
-        AddOperationInput(*op_cur, "y", input_defs[i]->Name());
-        model_builder.AddOperation(std::move(op_prev));
-        op_prev = std::move(op_cur);
-        layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
-        GetShape(*input_defs[i], x1_shape, logger);
-        for (size_t i = 0; i < x0_shape.size(); i++) {
-          x0_shape[i] = std::max(x0_shape[i], x1_shape[i]);
-        }
-      }
-      op = std::move(op_prev);
+      // "max" node may have variadic inputs
+      AddVariadicInputsToMB(&op, model_builder, node, logger);
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
