@@ -91,7 +91,7 @@ stages:
             -e BUILD_REASON=$(Build.Reason) \
             -e BUILD_BRANCH=$(Build.SourceBranch) \
             onnxruntimecpubuild \
-              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
+              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
                 --build_dir /build/1a \
                 ${BINARY_SIZE_THRESHOLD_ARGS} \
                 "/onnxruntime_src/${{ parameters.BuildConfigFile }}"
@@ -147,7 +147,7 @@ stages:
               -e BUILD_REASON=$(Build.Reason) \
               -e BUILD_BRANCH=$(Build.SourceBranch) \
               onnxruntimecpubuild \
-                /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
+                /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
                   --build_dir /build/1b \
                   --with_debug_info \
                   "/onnxruntime_src/${{ parameters.BuildConfigFile }}"
