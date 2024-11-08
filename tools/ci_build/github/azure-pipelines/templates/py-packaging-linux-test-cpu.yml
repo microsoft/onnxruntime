@@ -50,7 +50,7 @@ jobs:
       artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
 
     - download: current   # pipeline resource identifier.
-      artifact: 'onnxruntime-${{ parameters.ep }}'
+      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}-${{ parameters.ep }}'
 
     - bash: |
         set -e -x
@@ -61,10 +61,10 @@ jobs:
   # The private ADO project
   - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
     - download: build   # pipeline resource identifier.
-      artifact: 'drop-linux-cpu-${{ parameters.arch }}'
+      artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
 
     - download: build   # pipeline resource identifier.
-      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
+      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}-${{ parameters.ep }}'
 
     - bash: |
         set -e -x
