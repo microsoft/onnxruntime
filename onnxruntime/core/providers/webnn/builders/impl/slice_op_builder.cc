@@ -160,7 +160,7 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       if (std::any_of(reinterpret_cast<int32_t*>(unpacked_tensor.data()),
                       reinterpret_cast<int32_t*>(unpacked_tensor.data()) + unpacked_tensor.size() / sizeof(int32_t),
                       [](int32_t i) { return i < 1; })) {
-        LOGS(logger, VERBOSE) << "WebNN slice doesn's support steps less than 1";
+        LOGS(logger, VERBOSE) << "WebNN slice doesn't support steps less than 1";
         return false;
       }
     }
