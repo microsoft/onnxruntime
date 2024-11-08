@@ -477,52 +477,52 @@ namespace {
 // Legacy test function.
 // This has too many parameters of the same type that must be specified in the correct order.
 // Consider using the overload with a TestOptions parameter.
-void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
-             bool has_zeropoint, bool use_float16, bool has_g_idx = false,
-             bool zp_is_4bit = true, float fp16_abs_error = 0.02f, bool has_bias = false) {
-  TestOptions opts{};
-  opts.M = M;
-  opts.N = N;
-  opts.K = K;
-  opts.block_size = block_size;
-  opts.accuracy_level = accuracy_level;
-  opts.has_zero_point = has_zeropoint;
-  opts.zp_is_4bit = zp_is_4bit;
-  opts.has_g_idx = has_g_idx;
-  opts.has_bias = has_bias;
+// void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
+//              bool has_zeropoint, bool use_float16, bool has_g_idx = false,
+//              bool zp_is_4bit = true, float fp16_abs_error = 0.02f, bool has_bias = false) {
+//   TestOptions opts{};
+//   opts.M = M;
+//   opts.N = N;
+//   opts.K = K;
+//   opts.block_size = block_size;
+//   opts.accuracy_level = accuracy_level;
+//   opts.has_zero_point = has_zeropoint;
+//   opts.zp_is_4bit = zp_is_4bit;
+//   opts.has_g_idx = has_g_idx;
+//   opts.has_bias = has_bias;
 
-  if (use_float16) {
-    opts.output_abs_error = fp16_abs_error;
-  }
+//   if (use_float16) {
+//     opts.output_abs_error = fp16_abs_error;
+//   }
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (use_float16) {
-#ifdef USE_CUDA
-    if (DefaultCudaExecutionProvider() != nullptr) {
-      execution_providers.push_back(DefaultCudaExecutionProvider());
-    }
-#endif
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
-#ifdef USE_DML
-    if (DefaultDmlExecutionProvider() != nullptr) {
-      execution_providers.push_back(DefaultDmlExecutionProvider());
-    }
-#endif
-#ifdef USE_WEBGPU
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
-#endif
+//   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+//   if (use_float16) {
+// #ifdef USE_CUDA
+//     if (DefaultCudaExecutionProvider() != nullptr) {
+//       execution_providers.push_back(DefaultCudaExecutionProvider());
+//     }
+// #endif
+// #ifdef USE_ROCM
+//     execution_providers.push_back(DefaultRocmExecutionProvider());
+// #endif
+// #ifdef USE_DML
+//     if (DefaultDmlExecutionProvider() != nullptr) {
+//       execution_providers.push_back(DefaultDmlExecutionProvider());
+//     }
+// #endif
+// #ifdef USE_WEBGPU
+//     execution_providers.push_back(DefaultWebGpuExecutionProvider());
+// #endif
 
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
-  } else {
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
+//     RunTest<MLFloat16>(opts, std::move(execution_providers));
+//   } else {
+// #ifdef USE_ROCM
+//     execution_providers.push_back(DefaultRocmExecutionProvider());
+// #endif
 
-    RunTest<float>(opts, std::move(execution_providers));
-  }
-}
+//     RunTest<float>(opts, std::move(execution_providers));
+//   }
+// }
 }  // namespace
 
 // TEST(MatMulNBits, Float16Cuda) {
