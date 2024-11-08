@@ -142,8 +142,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           "run-time option you are trying to use.\n");
     }
     for (const auto& provider_option : provider_options) {
-      option_keys.push_back(provider_option->first.c_str());
-      option_values.push_back(provider_option->first.c_str());
+      option_keys.push_back(provider_option.first.c_str());
+      option_values.push_back(provider_option.second.c_str());
     }
 
     Ort::Status status(api.UpdateCUDAProviderOptions(cuda_options,
@@ -220,6 +220,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           "run-time option you are trying to use.\n");
     }
     for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
       if (key == "backend_path" || key == "profiling_file_path") {
         if (value.empty()) {
           ORT_THROW("Please provide the valid file path.");
@@ -417,6 +419,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           "run-time option you are trying to use.\n");
     }
     for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
       if (key == "device_filter") {
         std::set<std::string> ov_supported_device_types = {"gpu", "npu"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
