@@ -258,8 +258,8 @@ MlasQNBitGemmPackQuantBData(
                 packed_quant_b,
                 ThreadPool
             );
-        } else if (ComputeType == SQNBIT_CompInt8 && Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
-            Dispatch->SQ4BitGemmPackQuantBData(
+        } else if (ComputeType == HQNBIT_CompFp16 && Dispatch->HQ4BitGemmPackQuantBData != nullptr) {
+            Dispatch->HQ4BitGemmPackQuantBData(
                 N,
                 K,
                 BlkLen,
@@ -268,8 +268,8 @@ MlasQNBitGemmPackQuantBData(
                 static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
                 ThreadPool
             );
-        } else if (ComputeType == HQNBIT_CompFp16 && Dispatch->HQ4BitGemmPackQuantBData != nullptr) {
-            Dispatch->HQ4BitGemmPackQuantBData(
+        } else if (Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
+            Dispatch->SQ4BitGemmPackQuantBData(
                 N,
                 K,
                 BlkLen,
