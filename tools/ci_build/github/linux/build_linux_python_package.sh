@@ -91,11 +91,10 @@ do
   rm -rf /build/"$BUILD_CONFIG"
   # that's a workaround for the issue that there's no python3 in the docker image
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
-  cp "${PYTHON_EXE}" /tmp/python3
+  python3_dir=$(dirname "$PYTHON_EXE")
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
-  PATH=/tmp:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
+  PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
-  rm /tmp/python3
 done
 
 if [ "$ENABLE_CACHE" = true ] ; then
