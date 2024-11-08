@@ -22,6 +22,9 @@
   onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
     onnxruntime_common dawn::dawncpp_headers dawn::dawn_headers onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
-  target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_native dawn::dawn_proc)
+  if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+    target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_native)
+  endif()
+  target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_proc)
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")

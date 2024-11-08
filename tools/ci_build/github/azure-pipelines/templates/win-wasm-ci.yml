@@ -76,12 +76,12 @@ jobs:
     displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.8'
+      versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
   - template: download-deps.yml
 
   - task: PythonScript@0

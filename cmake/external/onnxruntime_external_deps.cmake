@@ -86,27 +86,6 @@ if (onnxruntime_BUILD_BENCHMARKS)
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
 
-if (NOT WIN32)
-  FetchContent_Declare(
-    google_nsync
-    URL ${DEP_URL_google_nsync}
-    URL_HASH SHA1=${DEP_SHA1_google_nsync}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/nsync/nsync_1.26.0.patch
-    FIND_PACKAGE_ARGS NAMES nsync unofficial-nsync
-  )
-  #nsync tests failed on Mac Build
-  set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-  onnxruntime_fetchcontent_makeavailable(google_nsync)
-
-  if (google_nsync_SOURCE_DIR)
-    add_library(nsync::nsync_cpp ALIAS nsync_cpp)
-    target_include_directories(nsync_cpp PUBLIC ${google_nsync_SOURCE_DIR}/public)
-  endif()
-  if(TARGET unofficial::nsync::nsync_cpp AND NOT TARGET nsync::nsync_cpp)
-    message(STATUS "Aliasing unofficial::nsync::nsync_cpp to nsync::nsync_cpp")
-    add_library(nsync::nsync_cpp ALIAS unofficial::nsync::nsync_cpp)
-  endif()
-endif()
 
 if(onnxruntime_USE_MIMALLOC)
   FetchContent_Declare(
@@ -677,11 +656,16 @@ if (onnxruntime_USE_WEBGPU)
 
     # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
     set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+    # We are currently always using the D3D12 backend.
+    set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
   endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native dawn::dawn_proc)
+  if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
 endif()
 
 set(onnxruntime_LINK_DIRS)

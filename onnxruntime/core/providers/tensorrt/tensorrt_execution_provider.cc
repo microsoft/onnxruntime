@@ -452,9 +452,9 @@ TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   return trt_logger;
 }
 
-std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
-  static OrtMutex singleton;
-  return std::unique_lock<OrtMutex>(singleton);
+std::unique_lock<std::mutex> TensorrtExecutionProvider::GetApiLock() const {
+  static std::mutex singleton;
+  return std::unique_lock<std::mutex>(singleton);
 }
 
 /*
@@ -1236,7 +1236,7 @@ void TensorrtExecutionProvider::ReleasePerThreadContext() const {
   ORT_ENFORCE(cached_context);
 
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
     context_state_.active_contexts.erase(cached_context);
     context_state_.retired_context_pool.push_back(cached_context);
   }
@@ -1258,7 +1258,7 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
   // get context and update cache
   std::shared_ptr<PerThreadContext> context;
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
@@ -1768,7 +1768,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   // clean up thread local context caches
   {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
     for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
       const auto cache = cache_weak.lock();
       if (!cache) continue;
@@ -3430,7 +3430,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // The whole compute_function should be considered the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
     // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<std::mutex> lock(*(trt_state->tensorrt_mu_ptr));
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
@@ -4099,7 +4099,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
     // The whole compute_function should be considered the critical section.
     // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+    std::lock_guard<std::mutex> lock(*(trt_state->tensorrt_mu_ptr));
 
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
