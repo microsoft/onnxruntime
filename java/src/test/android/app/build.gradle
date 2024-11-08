@@ -18,7 +18,7 @@ android {
 
 		testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-		 // Add BuildConfig field for qnnVersion
+		// Add BuildConfig field for qnnVersion
 		if (qnnVersion != null) {
 			buildConfigField "boolean", "IS_QNN_BUILD", "true"
 		}
