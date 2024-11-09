@@ -27,10 +27,10 @@ inline void SpinPause() {
 #elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM))
   YieldProcessor();
 
-#elif defined(__aarch64__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 8)
+// yield is supported from ARMv6k onwards.
+#elif defined(__aarch64__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 7)
   asm volatile("yield" ::: "memory");
 #endif
-
 }
 
 }  // namespace concurrency
