@@ -182,12 +182,11 @@ stages:
         BuildId: ${{ parameters.BuildId }}
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2204_gpu_opencv
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: "
         --build-arg BUILD_UID=$( id -u )
-        --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
         "
         Repository: onnxruntimeubuntupackagestest_cuda11
         UseImageCacheContainerRegistry: false
@@ -211,8 +210,6 @@ stages:
           onnxruntimeubuntupackagestest_cuda11 \
           bash -c ' \
             set -ex; \
-            apt-get update; \
-            DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
