@@ -82,18 +82,18 @@ MlasIsQNBitGemmAvailable(
 
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp32: {
-            return Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&
-                   Dispatch->SQ4BitBlkDequantBForSgemm_CompFp32 != nullptr;
+            return Dispatch->SQ4BitGemmM1Kernel_CompFp32 &&
+                   Dispatch->SQ4BitBlkDequantBForSgemm_CompFp32;
         }
         case HQNBitGemmVariant_BitWidth4_CompFp16: {
-            return Dispatch->HQ4BitGemmPackQuantBData != nullptr &&
-                   Dispatch->HQ4BitGemmKernel_CompFp16 != nullptr &&
-                   Dispatch->HQ4BitBlkDequantBForHgemm_CompFp16 != nullptr;
+            return Dispatch->HQ4BitGemmPackQuantBData &&
+                   Dispatch->HQ4BitGemmKernel_CompFp16 &&
+                   Dispatch->HQ4BitBlkDequantBForHgemm_CompFp16;
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
-              (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->SQNBIT_QuantizeARow_CompInt8 != nullptr) ||
-              (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
+              (Dispatch->SQ4BitGemmKernel_CompInt8 && Dispatch->SQNBIT_QuantizeARow_CompInt8) ||
+              (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 && Dispatch->QuantizeARowComputeBlkSum_CompInt8);
         }
         default: {
             return false;
@@ -579,7 +579,7 @@ void SQ4BitGemm_CompInt8(
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 != nullptr) {
+        if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8) {
             size_t RowsRemaining = RangeCountM;
             while (RowsRemaining > 0) {
                 const auto RowsHandled = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
