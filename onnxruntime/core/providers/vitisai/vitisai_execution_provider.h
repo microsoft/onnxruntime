@@ -50,7 +50,6 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   ProviderOptions info_;
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::shared_ptr<KernelRegistry> registry_;
-  std::set<std::string> vitisai_optypes_;
   // EP context related.
   bool ep_ctx_enabled_ = false;
   bool ep_ctx_embed_mode_ = true;
