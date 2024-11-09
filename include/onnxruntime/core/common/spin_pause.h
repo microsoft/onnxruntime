@@ -11,7 +11,7 @@
 #include <xmmintrin.h>
 #endif
 
-#if defined(_WIN32) && defined(_MSC_VER) defined(_M_ARM)
+#if defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM))
 extern "C" void YieldProcessor();
 #endif
 
@@ -24,19 +24,13 @@ inline void SpinPause() {
 #if defined(_M_AMD64) || defined(__x86_64__)
   _mm_pause();
 
-#elif defined(_M_ARM64) || defined(_M_ARM) || defined(__arm__) || defined(__aarch64__)
-
-#if defined(_WIN32) && defined(_MSC_VER) && defined(_M_ARM)
+#elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM))
   YieldProcessor();
-#elif defined(__aarch64__)
+
+#elif defined(__aarch64__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 8)
   asm volatile("yield" ::: "memory");
-#else
-  asm volatile("nop" ::: "memory")
 #endif
 
-#elif defined(__powerpc__) || defined(__POWERPC__)
-  asm volatile("" ::: "memory");
-#endif
 }
 
 }  // namespace concurrency
