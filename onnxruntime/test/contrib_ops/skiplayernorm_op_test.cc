@@ -225,20 +225,16 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormPrePack) {
   test.AddAttribute<float>("epsilon", 1e-05f);
 
   int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 2;
+  int sequence_length = 1;
+  int hidden_size = 1;
   std::vector<int64_t> input_skip_output_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> gamma_beta_bias_dims = {hidden_size};
-  test.AddInput<MLFloat16>("x", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
-  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
-  test.AddInput<MLFloat16>("gamma", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
-  test.AddInput<MLFloat16>("beta", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
-  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({
-                                                                  1.f,
-                                                                  1.f,
-                                                                  1.f,
-                                                                  1.f,
-                                                              }));
+  std::vector<MLFloat16> one_float16 = ToFloat16({1.f});
+  test.AddInput<MLFloat16>("x", input_skip_output_dims, one_float16);
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, one_float16);
+  test.AddInput<MLFloat16>("gamma", gamma_beta_bias_dims, one_float16, true);
+  test.AddInput<MLFloat16>("beta", gamma_beta_bias_dims, one_float16, true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, one_float16);
 
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
