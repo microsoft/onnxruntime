@@ -486,9 +486,17 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasNeonFp16CastTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonFp16PrepackTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonFp16DequantBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonFp16HQ4BitGemmKernelTest>::RegisterShortExecute();
+    if (GetMlasPlatform().QNBitGemmDispatch) {
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmPackQuantBData) {
+        count += MlasDirectShortExecuteTests<MlasNeonFp16PrepackTest>::RegisterShortExecute();
+      }
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForHgemm_CompFp16) {
+        count += MlasDirectShortExecuteTests<MlasNeonFp16DequantBTest>::RegisterShortExecute();
+      }
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16) {
+        count += MlasDirectShortExecuteTests<MlasNeonFp16HQ4BitGemmKernelTest>::RegisterShortExecute();
+      }
+    }
   }
   return count;
 });
