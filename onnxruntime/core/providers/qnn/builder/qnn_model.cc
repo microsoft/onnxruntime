@@ -4,15 +4,17 @@
 #include "qnn_model.h"
 
 #include <iostream>
+#include <gsl/gsl>
 #include "QnnOpDef.h"
 
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -185,7 +187,53 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   return Status::OK();
 }
 
-Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::Logger& logger) {
+static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                            const RpcMemApi* rpcmem_api,
+                                            Qnn_ContextHandle_t qnn_context_handle,
+                                            const OrtMemoryInfo& ort_value_memory_info,
+                                            void* ort_value_data, uint32_t ort_value_data_size,
+                                            Qnn_Tensor_t& qnn_tensor,
+                                            std::vector<Qnn_MemHandle_t>& registered_qnn_mem_handles) {
+  // either set qnn_tensor memHandle or clientBuf
+  const bool uses_shared_memory = ort_value_memory_info == RpcMemAllocator::MemoryInfo();
+
+  if (!uses_shared_memory) {
+    SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
+  } else {
+    ORT_RETURN_IF(rpcmem_api == nullptr, "RPCMEM API must be available when using shared memory.");
+
+    // get RpcMem file descriptor from shared memory
+    const auto shared_memory_fd = rpcmem_api->to_fd(ort_value_data);
+    ORT_RETURN_IF(shared_memory_fd == -1, "rpcmem_to_fd() returned invalid file descriptor.");
+
+    // set up QNN memory descriptor
+    // note: we only support a single tensor per shared memory buffer (QNN_MEM_TYPE_ION) now
+    Qnn_MemDescriptor_t qnn_mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
+    qnn_mem_descriptor.memShape = {GetQnnTensorRank(qnn_tensor),
+                                   GetQnnTensorDims(qnn_tensor),
+                                   nullptr};
+    qnn_mem_descriptor.dataType = GetQnnTensorDataType(qnn_tensor);
+    qnn_mem_descriptor.memType = QNN_MEM_TYPE_ION;
+    qnn_mem_descriptor.ionInfo.fd = shared_memory_fd;
+
+    Qnn_MemHandle_t qnn_mem_handle = nullptr;
+    const auto register_status = qnn_interface.memRegister(qnn_context_handle, &qnn_mem_descriptor, 1,
+                                                           &qnn_mem_handle);
+    // TODO show error message
+    ORT_RETURN_IF(register_status != QNN_SUCCESS, "qnnInterface.memRegister() failed with error code ", register_status);
+
+    registered_qnn_mem_handles.push_back(qnn_mem_handle);
+
+    SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
+    SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
+  }
+
+  return Status::OK();
+}
+
+Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const RpcMemApi* rpcmem_api,
+                              const logging::Logger& logger) {
   LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   const size_t num_inputs = context.GetInputCount();
   const size_t num_outputs = context.GetOutputCount();
@@ -193,7 +241,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
   ORT_RETURN_IF_NOT(qnn_output_infos_.size() == num_outputs, "Inconsistent output sizes");
 
   using namespace qnn::utils;
-  auto TensorDataSize = [&](auto ort_tensor) -> size_t {
+  auto TensorDataSize = [](auto ort_tensor) -> size_t {
     auto tensor_type_and_shape = ort_tensor.GetTensorTypeAndShapeInfo();
     size_t length = tensor_type_and_shape.GetElementCount();
     ONNXTensorElementDataType element_type = tensor_type_and_shape.GetElementType();
@@ -201,53 +249,84 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::
     return element_size * length;
   };
 
-  std::vector<Qnn_Tensor_t> qnn_inputs;
-  qnn_inputs.reserve(qnn_input_infos_.size());
-
-  for (const auto& qnn_input_info : qnn_input_infos_) {
-    LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
-                          << " index = " << qnn_input_info.ort_index;
-    auto ort_input_tensor = context.GetInput(qnn_input_info.ort_index);
-    auto ort_tensor_size = TensorDataSize(ort_input_tensor);
-    LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
-                          << "Ort tensor size: " << ort_tensor_size;
-    ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
-                      "ORT Tensor data size does not match QNN tensor data size.");
-
-    qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
-    SetQnnTensorClientBuf(qnn_inputs.back(),
-                          const_cast<void*>(ort_input_tensor.GetTensorData<void>()), qnn_input_info.tensor_byte_size);
-  }
-
-  std::vector<Qnn_Tensor_t> qnn_outputs;
-  qnn_outputs.reserve(qnn_output_infos_.size());
-
-  for (auto& qnn_output_info : qnn_output_infos_) {
-    const std::string& model_output_name = qnn_output_info.tensor_wrapper->GetName();
-    LOGS(logger, VERBOSE) << "model_output = " << model_output_name << " index = " << qnn_output_info.ort_index;
-    const auto& ort_output_info = GetOutputInfo(model_output_name);
-    const std::vector<int64_t>& output_shape = ort_output_info->shape_;
-    auto ort_output_tensor = context.GetOutput(qnn_output_info.ort_index, output_shape.data(), output_shape.size());
-    auto ort_tensor_size = TensorDataSize(ort_output_tensor);
-    LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
-                          << "Ort tensor size: " << ort_tensor_size;
-    ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
-                      "ORT Tensor data size does not match QNN tensor data size");
-
-    qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
-    SetQnnTensorClientBuf(qnn_outputs.back(),
-                          const_cast<void*>(ort_output_tensor.GetTensorData<void>()), qnn_output_info.tensor_byte_size);
-  }
-
-  LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
-  auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
 
   {
-    // Acquire mutex before calling graphExecute and profiling APIs to support calling session.Run()
-    // from multiple threads.
+    // Acquire mutex before calling QNN APIs to support calling session.Run() from multiple threads.
     std::lock_guard<std::mutex> lock(graph_exec_mutex_);
+
+    const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
+
+    std::vector<Qnn_MemHandle_t> registered_qnn_mem_handles{};
+    registered_qnn_mem_handles.reserve(qnn_input_infos_.size() + qnn_output_infos_.size());
+
+    const auto registered_qnn_mem_handle_cleanup =
+        gsl::finally([&registered_qnn_mem_handles, &qnn_interface, &logger] {
+          if (!registered_qnn_mem_handles.empty()) {
+            auto deregister_status = qnn_interface.memDeRegister(registered_qnn_mem_handles.data(),
+                                                                 static_cast<uint32_t>(registered_qnn_mem_handles.size()));
+            if (deregister_status != QNN_SUCCESS) {
+              LOGS(logger, ERROR) << "qnnInterface.memDeRegister() failed with error code " << deregister_status;
+            }
+          }
+        });
+
+    const Qnn_ContextHandle_t qnn_context_handle = qnn_backend_manager_->GetQnnContext();
+
+    std::vector<Qnn_Tensor_t> qnn_inputs;
+    qnn_inputs.reserve(qnn_input_infos_.size());
+
+    for (const auto& qnn_input_info : qnn_input_infos_) {
+      LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
+                            << " index = " << qnn_input_info.ort_index;
+      auto ort_input_tensor = context.GetInput(qnn_input_info.ort_index);
+      auto ort_tensor_size = TensorDataSize(ort_input_tensor);
+      LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
+                            << " Ort tensor size: " << ort_tensor_size;
+      ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
+                        "ORT Tensor data size does not match QNN tensor data size.");
+
+      qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
+
+      ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
+          qnn_interface,
+          rpcmem_api,
+          qnn_context_handle,
+          *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
+          const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
+          qnn_inputs.back(),
+          registered_qnn_mem_handles));
+    }
+
+    std::vector<Qnn_Tensor_t> qnn_outputs;
+    qnn_outputs.reserve(qnn_output_infos_.size());
+
+    for (auto& qnn_output_info : qnn_output_infos_) {
+      const std::string& model_output_name = qnn_output_info.tensor_wrapper->GetName();
+      LOGS(logger, VERBOSE) << "model_output = " << model_output_name << " index = " << qnn_output_info.ort_index;
+      const auto& ort_output_info = GetOutputInfo(model_output_name);
+      const std::vector<int64_t>& output_shape = ort_output_info->shape_;
+      auto ort_output_tensor = context.GetOutput(qnn_output_info.ort_index, output_shape.data(), output_shape.size());
+      auto ort_tensor_size = TensorDataSize(ort_output_tensor);
+      LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
+                            << " Ort tensor size: " << ort_tensor_size;
+      ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
+                        "ORT Tensor data size does not match QNN tensor data size");
+
+      qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
+
+      ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
+          qnn_interface,
+          rpcmem_api,
+          qnn_context_handle,
+          *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
+          const_cast<void*>(ort_output_tensor.GetTensorRawData()), qnn_output_info.tensor_byte_size,
+          qnn_outputs.back(),
+          registered_qnn_mem_handles));
+    }
+
+    LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
+    auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),

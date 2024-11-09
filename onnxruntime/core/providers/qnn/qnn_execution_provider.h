@@ -7,13 +7,15 @@
 #include "core/framework/session_options.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/graph/model.h"
-#include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
+#include "core/providers/qnn/rpcmem_library.h"
 #include "HTP/QnnHtpGraph.h"
+#include <memory>
 #include <vector>
 #include <set>
+#include <string>
 #include <unordered_map>
 #ifdef _WIN32
 #include "core/platform/windows/logging/etw_sink.h"
@@ -113,6 +115,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -131,6 +135,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
+
+  bool IsRpcMemAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -154,6 +160,10 @@ class QNNExecutionProvider : public IExecutionProvider {
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};
+
+  // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
+  // It is shared with RpcMemAllocator which is returned by CreatePreferredAllocators().
+  std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 
   class PerThreadContext final {
    public:

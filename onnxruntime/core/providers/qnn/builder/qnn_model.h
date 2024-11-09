@@ -3,15 +3,16 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
 
 #include "core/common/status.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
-#include <mutex>
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
+#include "core/providers/qnn/rpcmem_library.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
@@ -43,7 +44,9 @@ class QnnModel {
 
   Status SetupQnnInputOutput(const logging::Logger& logger);
 
-  Status ExecuteGraph(const Ort::KernelContext& context, const logging::Logger& logger);
+  Status ExecuteGraph(const Ort::KernelContext& context,
+                      const RpcMemApi* rpcmem_api,
+                      const logging::Logger& logger);
 
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {
     auto it = outputs_info_.find(name);

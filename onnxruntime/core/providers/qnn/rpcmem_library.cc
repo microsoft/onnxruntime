@@ -18,15 +18,15 @@ const PathChar* GetRpcMemSharedLibraryPath() {
 #endif
 }
 
-SharedLibraryHandle LoadSharedLibrary(const PathString& path, bool global_symbols) {
+DynamicLibraryHandle LoadDynamicLibrary(const PathString& path, bool global_symbols) {
   // Custom deleter to unload the shared library. Avoid throwing from it because it may run in dtor.
-  const auto unload_shared_library = [](void* shared_library_handle) {
-    if (shared_library_handle == nullptr) {
+  const auto unload_library = [](void* library_handle) {
+    if (library_handle == nullptr) {
       return;
     }
 
     const auto& env = Env::Default();
-    const auto unload_status = env.UnloadDynamicLibrary(shared_library_handle);
+    const auto unload_status = env.UnloadDynamicLibrary(library_handle);
 
     if (!unload_status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to unload shared library. Error: " << unload_status.ErrorMessage();
@@ -34,25 +34,21 @@ SharedLibraryHandle LoadSharedLibrary(const PathString& path, bool global_symbol
   };
 
   const auto& env = Env::Default();
-  void* shared_library_handle = nullptr;
-  ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(path, global_symbols, &shared_library_handle));
+  void* library_handle = nullptr;
+  ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(path, global_symbols, &library_handle));
 
-  return SharedLibraryHandle{shared_library_handle, unload_shared_library};
+  return DynamicLibraryHandle{library_handle, unload_library};
 }
 
-RpcMemApi CreateApi(void* shared_library_handle) {
+RpcMemApi CreateApi(void* library_handle) {
   RpcMemApi api{};
 
   const auto& env = Env::Default();
-  void* symbol = nullptr;
-  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(shared_library_handle, "rpcmem_alloc", &symbol));
-  api.alloc = static_cast<rpcmem::AllocFnPtr>(symbol);
+  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "rpcmem_alloc", (void**)&api.alloc));
 
-  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(shared_library_handle, "rpcmem_free", &symbol));
-  api.free = static_cast<rpcmem::FreeFnPtr>(symbol);
+  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "rpcmem_free", (void**)&api.free));
 
-  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(shared_library_handle, "rpcmem_to_fd", &symbol));
-  api.to_fd = static_cast<rpcmem::ToFdFnPtr>(symbol);
+  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "rpcmem_to_fd", (void**)&api.to_fd));
 
   return api;
 }
@@ -60,8 +56,8 @@ RpcMemApi CreateApi(void* shared_library_handle) {
 }  // namespace
 
 RpcMemLibrary::RpcMemLibrary()
-    : shared_library_(LoadSharedLibrary(GetRpcMemSharedLibraryPath(), /* global_symbols */ false)),
-      api_{CreateApi(shared_library_.get())} {
+    : library_handle_(LoadDynamicLibrary(GetRpcMemSharedLibraryPath(), /* global_symbols */ false)),
+      api_{CreateApi(library_handle_.get())} {
 }
 
 }  // namespace onnxruntime::qnn

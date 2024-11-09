@@ -52,6 +52,7 @@ constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr const char* OpenVINO_RT = "OpenVINO_RT";
 constexpr const char* OpenVINO_RT_NPU = "OpenVINO_RT_NPU";
+constexpr const char* QNN_HTP_SHARED = "QnnHtpShared";
 constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
 constexpr const char* WEBNN_TENSOR = "WebNN_Tensor";
 

@@ -5,15 +5,21 @@
 
 #include <limits>
 
+#include "core/common/common.h"
 #include "core/providers/qnn/rpcmem_library.h"
 
 namespace onnxruntime::qnn {
 
-RpcMemAllocator::RpcMemAllocator(const RpcMemApi& rpc_mem_api)
-    : IAllocator{OrtMemoryInfo{"TODO name the allocator", OrtAllocatorType::OrtDeviceAllocator,
-                               OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device id */ 0},
-                               0, OrtMemTypeCPUOutput}},
-      rpc_mem_api_{rpc_mem_api} {
+OrtMemoryInfo RpcMemAllocator::MemoryInfo() {
+  return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
+                       OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device_id */ 0},
+                       /* id */ 0, OrtMemTypeDefault};
+}
+
+RpcMemAllocator::RpcMemAllocator(std::shared_ptr<RpcMemLibrary> rpc_mem_lib)
+    : IAllocator{MemoryInfo()},
+      rpc_mem_lib_{std::move(rpc_mem_lib)} {
+  ORT_ENFORCE(rpc_mem_lib_ != nullptr, "rpc_mem_lib_ must not be nullptr");
 }
 
 void* RpcMemAllocator::Alloc(size_t size) {
@@ -23,12 +29,12 @@ void* RpcMemAllocator::Alloc(size_t size) {
     return nullptr;
   }
 
-  return rpc_mem_api_.alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
-                            static_cast<int>(size));
+  return rpc_mem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
+                                   static_cast<int>(size));
 }
 
 void RpcMemAllocator::Free(void* p) {
-  rpc_mem_api_.free(p);
+  rpc_mem_lib_->Api().free(p);
 }
 
 }  // namespace onnxruntime::qnn

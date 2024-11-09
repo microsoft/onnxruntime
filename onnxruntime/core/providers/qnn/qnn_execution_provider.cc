@@ -5,24 +5,27 @@
 
 #include <filesystem>
 #include <unordered_set>
+
 #include "core/framework/compute_capability.h"
-#include "core/graph/graph_viewer.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/run_options.h"
+#include "core/graph/graph_viewer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/partitioning_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
-#include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
-#include "core/framework/run_options.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn/rpcmem_library.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -384,6 +387,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(WARNING) << "Fallback to CPU EP is disabled, but user configured QNN EP to offload graph I/O "
                           << "quantization/dequantization to another EP. Session creation will fail if the CPU EP "
                           << "handles the graph I/O quantization/dequantization.";
+  }
+
+  static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
+  if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map)) {
+    // Initialize rpcmem_library_.
+    // This is necessary for RpcMemAllocator to function and also indicates that it is available.
+    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
@@ -814,10 +824,11 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
     ORT_UNUSED_PARAMETER(state);
   };
 
-  compute_info.compute_func = [&logger](FunctionState state, const OrtApi*, OrtKernelContext* context) {
+  compute_info.compute_func = [this, &logger](FunctionState state, const OrtApi*, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
+    const qnn::RpcMemApi* rpcmem_api = rpcmem_library_ ? &rpcmem_library_->Api() : nullptr;
     qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-    Status result = model->ExecuteGraph(ctx, logger);
+    Status result = model->ExecuteGraph(ctx, rpcmem_api, logger);
     return result;
   };
 
@@ -1152,4 +1163,25 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
 
   return Status::OK();
 }
+
+std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> allocators{};
+
+  if (IsRpcMemAllocatorAvailable()) {
+    LOGS_DEFAULT(INFO) << "Creating RpcMemAllocator.";
+
+    AllocatorFactory rpcmem_allocator_factory = [this](OrtDevice::DeviceId) {
+      return std::make_unique<qnn::RpcMemAllocator>(rpcmem_library_);
+    };
+
+    AllocatorCreationInfo rpcmem_allocator_creation_info{rpcmem_allocator_factory,
+                                                         /* device_id */ 0,
+                                                         /* use_arena */ false};
+
+    allocators.emplace_back(CreateAllocator(rpcmem_allocator_creation_info));
+  }
+
+  return allocators;
+}
+
 }  // namespace onnxruntime
