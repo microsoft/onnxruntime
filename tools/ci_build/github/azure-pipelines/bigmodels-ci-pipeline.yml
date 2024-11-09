@@ -180,6 +180,18 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+        "
+        Repository: onnxruntimeubuntupackagestest_cuda11
+        UseImageCacheContainerRegistry: false
+        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -196,11 +208,9 @@ stages:
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
-          nvcr.io/nvidia/pytorch:24.10-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c ' \
             set -ex; \
-            pip uninstall -y $(pip list --format=freeze | grep opencv); \
-            rm -rf /usr/local/lib/python3.10/dist-packages/cv2/; \
             apt-get update; \
             DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
@@ -208,6 +218,7 @@ stages:
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements/cuda11/requirements.txt; \
+            python3 -m pip install numpy==1.22.2
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
@@ -238,7 +249,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:24.10-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
             set -x; \
             python3 --version; \
@@ -265,7 +276,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:24.10-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
             set -ex; \
             python3 --version; \
