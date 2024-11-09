@@ -40,8 +40,6 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", stringmap.value(), " failed");
     } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {
       out->checksum_ = stringmap.value();
-    } else if (stringmap.key() == "prepacked" && !stringmap.value().empty()) {
-      out->prepacked_ = stringmap.value() == "1";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error!");
     }
