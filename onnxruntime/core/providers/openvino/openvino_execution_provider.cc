@@ -200,7 +200,7 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 #endif
 
 common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
-gsl::span<const char* const> values) {
+                                                              gsl::span<const char* const> values) {
   std::string workload_type = "";
   // Ensure the number of keys and values match
   if (keys.size() != values.size()) {
