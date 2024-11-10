@@ -11,6 +11,8 @@ fi
 if [ ! -f /etc/yum.repos.d/microsoft-prod.repo ]; then
   rpm -Uvh https://packages.microsoft.com/config/centos/$os_major_version/packages-microsoft-prod.rpm
 fi
+
+
 # Install Java
 # Install automatic documentation generation dependencies
-$PACKAGE_MANAGER install -y msopenjdk-17 graphviz
+$PACKAGE_MANAGER graphviz

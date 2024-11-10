@@ -2,10 +2,10 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11_dotnet:20241020.1
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11_dotnet:20241109.5
 
 ARG TRT_VERSION
-RUN  rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm && dnf install -y msopenjdk-17
+RUN  rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
