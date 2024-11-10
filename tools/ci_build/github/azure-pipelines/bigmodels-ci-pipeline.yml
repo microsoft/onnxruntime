@@ -254,9 +254,8 @@ stages:
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
             image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
             pushd test; \
-            python3 -m pip install numpy==1.22.2; \
             python3 -m pip install -r requirements.txt; \
-            echo check demo_txt2image.py generate image; \s
+            echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
             if [ $? -ne 0 ]; then echo "Hit an unexpected image"; exit 1; fi; \
             popd ; \
