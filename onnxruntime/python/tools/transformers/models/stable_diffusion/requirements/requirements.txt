@@ -12,7 +12,6 @@ psutil
 sympy
 nvtx==0.2.5
 cuda-python==11.7.0
-cupy-cuda118==11.0.0
 torchvision==0.15.2
 tensorrt==8.5.1.7
 mediapipe
