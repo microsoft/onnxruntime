@@ -5,7 +5,6 @@
 FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11_dotnet:20241111.1
 
 ARG TRT_VERSION
-RUN  rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
