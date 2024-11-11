@@ -41,33 +41,18 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const uint32_t size = helper.Get("size", 1);
 
   // Prepare WebNN constants for alpha, beta, bias attributes.
-  emscripten::val alpha_constant = emscripten::val::undefined();
-  emscripten::val beta_constant = emscripten::val::undefined();
-  emscripten::val bias_constant = emscripten::val::undefined();
-  emscripten::val pow1_constant = emscripten::val::undefined();
-  // WebNN only support float32 and float16 input data type for LRN.
-  if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-    alpha_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, alpha);
-    beta_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, beta);
-    bias_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, bias);
-    pow1_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, 2);
-  } else {
-    alpha_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, alpha);
-    beta_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, beta);
-    bias_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, bias);
-    pow1_constant = model_builder.CreateScalarConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 2);
-  }
+  emscripten::val alpha_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, alpha);
+  emscripten::val beta_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, beta);
+  emscripten::val bias_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, bias);
+  emscripten::val pow1_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, 2);
 
-  // WebNN doesn't provide a dedicated LRN op, decompose it with {pad, averagePool2d, transpose, add, mul, pow, div}.
-  // This can be generically emulated as follows:
-  // if (preferred_layout == NCHW) transposed = transpose(pow(input, 2), permutation=[0, 2, 3, 1]);
-  // leading_padding = floor((size -1) / 2); trailing_padding = ceil((size -1) / 2);
-  // beginningPadding = [0, 0, 0, leading_padding]; endingPadding = [0, 0, 0, trailing_padding];
-  // padded = pad(transposed, beginningPadding, endingPadding);
-  // windowDimensions = [1, size];
-  // regionAverages = averagePool2d(padded, {windowDimensions});
-  // if (preferred_layout == NCHW) transposed = transpose(regionAverages, permutation=[0, 3, 1, 2])
-  // output = input / pow(add(mul(regionAverages, alpha), bias), beta);
+  /**
+      WebNN doesn't support LRN. So decompose it into a series of ops:
+      X --> Pow --> (Transpose)--> Pad --> AveragePool--> (Transpose) --> Mul --> Add --> Pow --> Div
+             ^           ^                      ^               ^          ^       ^       ^       ^
+             |           |                      |               |          |       |       |       |
+            Y:2      (0,2,3,1)           Kernel:(1,size)     (0,3,1,2)   B:alpha  B:bias B:beta  A:input
+      */
   //
   // pow(input, 2)
   emscripten::val label_options = emscripten::val::object();
@@ -75,7 +60,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val pow1_output = wnn_builder.call<emscripten::val>("pow", input, pow1_constant, label_options);
 
   // transpose(pow1_output, permutation=[0, 2, 3, 1])
-  // Move dimension 1 to dimension 3 (rightmost).
+  // LRN is one of NHWC layout sentive ops. When preferred layout is NCHW, move dimension 1 to dimension 3 (rightmost).
   if (model_builder.GetPreferredLayout() == DataLayout::NCHW) {
     std::vector<uint32_t> perm{0, 2, 3, 1};
     emscripten::val transpose_options = emscripten::val::object();

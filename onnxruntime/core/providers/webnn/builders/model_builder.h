@@ -42,7 +42,7 @@ class ModelBuilder {
       const int32_t& data_type, const std::vector<uint32_t>& shape = {});
 
   template <typename T>
-  const emscripten::val& CreateScalarConstant(const int32_t& data_type, T value);
+  const emscripten::val& CreateOrGetScalarConstant(const int32_t& data_type, T value);
 
   // Use the buffers to persist WebNN allocated data like transposed weight.
   // It ensures the validity during inference session.
@@ -122,63 +122,62 @@ class ModelBuilder {
 // - TensorProto_DataType_UINT32  <-> uint32_t
 // - TensorProto_DataType_UINT64  <-> uint64_t
 template <typename T>
-const emscripten::val& ModelBuilder::CreateScalarConstant(const int32_t& data_type, T value) {
-  std::string name = "webnn_scalar_constant_" + std::to_string(data_type) + std::to_string(value);
+const emscripten::val& ModelBuilder::CreateOrGetScalarConstant(const int32_t& data_type, T value) {
+  std::string name = "webnn_scalar_constant_" + std::to_string(data_type) + "_" + std::to_string(value);
   emscripten::val desc = emscripten::val::object();
-  const std::vector<uint32_t> shape{1};
-  desc.set("shape", emscripten::val::array(shape));
+  desc.set("shape", emscripten::val::array());
   emscripten::val scalar_buffer = emscripten::val::undefined();
   uint16_t value_uint16 = 0;
   uint8_t value_uint8 = 0;
   if (!SetWebnnDataType(desc, data_type)) {
     ORT_THROW("Unsupported data type: " + std::to_string(data_type));
   }
-  auto num_elements = Product(shape);
+
   // If the operand does not exist, create it.
   if (wnn_operands_.find(name) == wnn_operands_.end()) {
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_INT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
-        scalar_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Uint8Array").new_(1);
         value_uint8 = ConvertInt8toUint8(value, data_type);
         scalar_buffer.call<void>("fill", emscripten::val(value_uint8));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-        scalar_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Uint8Array").new_(1);
         scalar_buffer.call<void>("fill", emscripten::val(value ? 1 : 0));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        scalar_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Uint8Array").new_(1);
         scalar_buffer.call<void>("fill", emscripten::val(value));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-        scalar_buffer = emscripten::val::global("Int8Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Int8Array").new_(1);
         scalar_buffer.call<void>("fill", emscripten::val(value));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-        scalar_buffer = emscripten::val::global("Uint16Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Uint16Array").new_(1);
         value_uint16 = ConvertFloat32toUint16(value);
         scalar_buffer.call<void>("fill", emscripten::val(value_uint16));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        scalar_buffer = emscripten::val::global("Float32Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Float32Array").new_(1);
         scalar_buffer.call<void>("fill", emscripten::val(value));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        scalar_buffer = emscripten::val::global("Int32Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Int32Array").new_(1);
         scalar_buffer.call<void>("fill", emscripten::val(value));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-        scalar_buffer = emscripten::val::global("Uint32Array").new_(num_elements);
+        scalar_buffer = emscripten::val::global("Uint32Array").new_(1);
         scalar_buffer.call<void>("fill", emscripten::val(value));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        scalar_buffer = emscripten::val::global("BigInt64Array").new_(num_elements);
-        scalar_buffer.call<void>("fill", std::to_string(value));
+        scalar_buffer = emscripten::val::global("BigInt64Array").new_(1);
+        scalar_buffer.call<void>("fill", emscripten::val::global("BigInt")(value));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-        scalar_buffer = emscripten::val::global("BigUint64Array").new_(num_elements);
-        scalar_buffer.call<void>("fill", std::to_string(value));
+        scalar_buffer = emscripten::val::global("BigUint64Array").new_(1);
+        scalar_buffer.call<void>("fill", emscripten::val::global("BigInt")(value));
         break;
       default:
         break;
