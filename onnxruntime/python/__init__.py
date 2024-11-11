@@ -3,6 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from .onnxruntime_cuda_temp_env import load_nvidia_libs
+if (
+    __package__ == "onnxruntime-gpu"
+    # incase we rename the package name in the future
+    or __package__ == "onnxruntime-cuda"
+):
+    from .onnxruntime_cuda_temp_env import load_nvidia_libs
 
-load_nvidia_libs()
+    load_nvidia_libs()
