@@ -181,7 +181,6 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       bias_tensor->dims_size() != 1 ||
       mean_tensor->dims_size() != 1 ||
       var_tensor->dims_size() != 1 ||
-      // matmul_a_tensor->dims_size() != 2 ||
       matmul_b_tensor->dims_size() != 2 ||
       scale_tensor->dims(0) != matmul_b_tensor->dims(1) ||
       bias_tensor->dims(0) != matmul_b_tensor->dims(1) ||
