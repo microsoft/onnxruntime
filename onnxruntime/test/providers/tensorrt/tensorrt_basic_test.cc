@@ -648,27 +648,28 @@ TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value_x));
 
-   // prepare outputs
-   std::vector<std::string> output_names;
-   output_names.push_back("Plus214_Output_0");
-   std::vector<OrtValue> fetches;
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Plus214_Output_0");
+  std::vector<OrtValue> fetches;
 
-   OrtTensorRTProviderOptionsV2 params;
-   params.trt_engine_cache_enable = 1;
-   params.trt_op_types_to_exclude = "MaxPool";
-   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
-   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-   auto status = session_object.Load(model_name);
-   ASSERT_TRUE(status.IsOK());
-   status = session_object.Initialize();
-   ASSERT_TRUE(status.IsOK());
-   status = session_object.Run(run_options, feeds, output_names, &fetches);
-   ASSERT_TRUE(status.IsOK());
+  RemoveCachesByType("./", ".engine");
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_engine_cache_enable = 1;
+  params.trt_op_types_to_exclude = "MaxPool";
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
 
-   std::vector<fs::path> engine_files;
-   engine_files = GetCachesByType("./", ".engine");
-   // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
-   ASSERT_EQ(engine_files.size(), 3);
+  std::vector<fs::path> engine_files;
+  engine_files = GetCachesByType("./", ".engine");
+  // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
+  ASSERT_EQ(engine_files.size(), 3);
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
