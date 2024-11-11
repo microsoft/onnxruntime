@@ -248,7 +248,6 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
 
 template <typename T>
 Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
-                        bool /*save_prepacked_initializers*/,
                         /*out*/ bool& is_packed,
                         /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/) {
   is_packed = false;
@@ -257,7 +256,7 @@ Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, Allocat
 
 template <>
 Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
-                            AllocatorPtr alloc, bool /*save_prepacked_initializers*/, /*out*/ bool& is_packed,
+                            AllocatorPtr alloc, /*out*/ bool& is_packed,
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 

@@ -173,7 +173,6 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
 #endif
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
-                              bool /*save_prepacked_initializers*/,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;

@@ -52,7 +52,6 @@ REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
 // First input (in this case X) is in case NHWC == true also in NHWC format, the other inputs in NCHW
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                              bool /*save_prepacked_initializers*/,
                               bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack

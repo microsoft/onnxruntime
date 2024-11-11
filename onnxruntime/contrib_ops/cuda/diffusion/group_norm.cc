@@ -95,7 +95,6 @@ GroupNorm::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
 }
 
 Status GroupNorm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /*alloc*/,
-                          bool /*save_prepacked_initializers*/,
                           bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
 
