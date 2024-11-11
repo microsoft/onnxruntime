@@ -3,32 +3,6 @@ import os
 import platform
 
 
-class CudaTemporaryEnv:
-    def __init__(self):
-        nvidia_lib_paths = get_nvidia_lib_paths()
-        self.loaded_libs = []
-        if platform.system() == "Windows":
-            for path in nvidia_lib_paths:
-                self.loaded_libs.append(os.add_dll_directory(path))
-        elif platform.system() == "Linux":
-            for path in nvidia_lib_paths:
-                self.loaded_libs.append(ctypes.CDLL(path))
-        else:
-            pass
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if platform.system() == "Windows":
-            for loaded_lib in self.loaded_libs:
-                loaded_lib.close()
-        elif platform.system() == "Linux":
-            for loaded_lib in self.loaded_libs:
-                handle = loaded_lib._handle
-                # Load system dynamic linking library, ctypes.CDLL(None), to access dlclose
-                ctypes.CDLL(None).dlclose(handle)
-        else:
-            pass
-
-
 def get_nvidia_lib_paths():
     import site
 
