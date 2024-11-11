@@ -21,46 +21,54 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 
 OS_VERSION=$(lsb_release -r -s)
 
-PACKAGE_LIST="autotools-dev \
-	automake \
-	build-essential \
-	git apt-transport-https apt-utils \
-	ca-certificates \
-	pkg-config \
-	wget \
-	zlib1g \
-	zlib1g-dev \
-	libssl-dev \
-	curl libcurl4-openssl-dev \
-	autoconf \
-	sudo \
-	gfortran \
-	python3-dev \
-	language-pack-en \
-	liblttng-ust-dev \
-	libcurl4 \
-	libkrb5-3 \
-	libtinfo-dev \
-	libtinfo5 \
-	libtool \
-	openssh-server \
-	aria2 \
-	bzip2 \
-	unzip \
-	zip \
-	rsync libunwind8 libpng-dev libexpat1-dev \
-	python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest python3-distutils \
-	openjdk-11-jdk \
-	graphviz"
-
-
+PACKAGE_LIST=(
+    "aria2"
+    "autoconf"
+    "automake"
+    "autotools-dev"
+    "build-essential"
+    "bzip2"
+    "ca-certificates"
+    "curl libcurl4-openssl-dev"
+    "gfortran"
+    "git apt-transport-https apt-utils"
+    "graphviz"
+    "language-pack-en"
+    "libcurl4"
+    "libexpat1-dev"
+    "libkrb5-3"
+    "liblttng-ust-dev"
+    "libpng-dev"
+    "libssl-dev"
+    "libtinfo-dev"
+    "libtinfo5"
+    "libtool"
+    "libunwind8"
+    "openjdk-11-jdk"
+    "openssh-server"
+    "pkg-config"
+    "python3-dev"
+    "python3-distutils"
+    "python3-numpy"
+    "python3-pip"
+    "python3-pytest"
+    "python3-setuptools"
+    "python3-wheel"
+    "rsync"
+    "sudo"
+    "unzip"
+    "wget"
+    "zip"
+    "zlib1g"
+    "zlib1g-dev"
+)
 if [ "$DEVICE_TYPE" = "Normal" ]; then
-    PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
+    PACKAGE_LIST+=("libedit-dev" "libxml2-dev" "python3-packaging")
 fi
 
-PACKAGE_LIST="$PACKAGE_LIST libicu-dev"
+PACKAGE_LIST+=("libicu-dev")
 
-apt-get install -y --no-install-recommends "$PACKAGE_LIST"
+apt-get install -y --no-install-recommends "${PACKAGE_LIST[@]}"
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
@@ -76,14 +84,14 @@ if [ "$OS_VERSION" = "20.04" ]; then
         add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
         apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+                python"${PYTHON_VER}" \
+                python"${PYTHON_VER}-"dev
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python"${PYTHON_VER}" 1
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+        update-alternatives --set python3 /usr/bin/python"${PYTHON_VER}"
         #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
         #put at /usr/local/. Then there will be two pips.
-        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+        /usr/bin/python"${PYTHON_VER}" -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
 elif [ "$OS_VERSION" = "22.04" ] ; then
   # The defaul version of python is 3.10
