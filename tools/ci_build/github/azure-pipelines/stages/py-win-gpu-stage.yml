@@ -197,6 +197,15 @@ stages:
             ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
+#        install onnxruntime-gpu from the ArtifactsStagingDirectory
+
+        - script: |
+            python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+            Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install "onnxruntime-gpu[cuda_dlls]" --upgrade --no-index --find-links $_.fullname}
+            echo "onnxruntime-gpu installed"
+            python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+          displayName: 'Install onnxruntime-gpu from the ArtifactsStagingDirectory with optional [cuda_dlls]'
+          workingDirectory: '$(Build.BinariesDirectory)'
 
         - template: ../templates/jobs/download_win_gpu_library.yml
           parameters:
