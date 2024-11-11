@@ -41,6 +41,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const uint32_t size = helper.Get("size", 1);
 
   // Prepare WebNN constants for alpha, beta, bias attributes.
+  // Assume T is float, because input_data_type has been limited to float32 and float16 in 'hasSupportedInitsImpl'.
   emscripten::val alpha_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, alpha);
   emscripten::val beta_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, beta);
   emscripten::val bias_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, bias);
@@ -60,7 +61,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val pow1_output = wnn_builder.call<emscripten::val>("pow", input, pow1_constant, label_options);
 
   // transpose(pow1_output, permutation=[0, 2, 3, 1])
-  // LRN is one of NHWC layout sentive ops. When preferred layout is NCHW, move dimension 1 to dimension 3 (rightmost).
+  // LRN is one of NHWC layout sensitive ops. When preferred layout is NCHW, move dimension 1 to dimension 3 (rightmost).
   if (model_builder.GetPreferredLayout() == DataLayout::NCHW) {
     std::vector<uint32_t> perm{0, 2, 3, 1};
     emscripten::val transpose_options = emscripten::val::object();
@@ -70,7 +71,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         wnn_builder.call<emscripten::val>("transpose", pow1_output, transpose_options);
   }
 
-  // pad(pow1_output, beginning_padding = {0, 0, 0, leading_padding}, ending_padding{0, 0, 0, trailing_padding})
+  // pad(pow1_output, beginning_padding = {0, 0, 0, leading_padding}, ending_padding = {0, 0, 0, trailing_padding})
   // Adding a Pad before averagePool2d and calling AveragePool with pads as 0's.
   const uint32_t leading_padding = floor((size - 1) / 2);
   const uint32_t trailing_padding = ceil((size - 1) / 2);
@@ -82,8 +83,8 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       wnn_builder.call<emscripten::val>("pad", pow1_output, emscripten::val::array(beginning_padding),
                                         emscripten::val::array(ending_padding), pad_options);
 
-  // averagePool2d(pad_output, pool_potions)
-  const std::vector<uint32_t> kernel_shape{1, size};
+  // averagePool2d(pad_output, pool_options)
+  const std::vector<uint32_t> kernel_shape = {1, size};
   emscripten::val pool_options = emscripten::val::object();
   pool_options.set("label", node_name + "_averagePool2d");
   pool_options.set("windowDimensions", emscripten::val::array(kernel_shape));
@@ -100,12 +101,12 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         wnn_builder.call<emscripten::val>("transpose", pool_output, transpose_options);
   }
 
-  // mul(pool_output, alpha_contant)
+  // mul(pool_output, alpha_constant)
   label_options.set("label", node_name + "_mul");
   emscripten::val mul_output =
       wnn_builder.call<emscripten::val>("mul", pool_output, alpha_constant, label_options);
 
-  // add(mul_output, bias_contant)
+  // add(mul_output, bias_constant)
   label_options.set("label", node_name + "_add");
   emscripten::val add_output = wnn_builder.call<emscripten::val>("add", mul_output, bias_constant, label_options);
 

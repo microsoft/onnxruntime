@@ -106,7 +106,7 @@ class ModelBuilder {
 // Create a scalar constant MLOperand of the specified value and data type.
 // Workaround for builer.constant(type, value) method since it has not been implemented now.
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-type-value
-// BTW, the spec is discussing if the builer.constant(type, value) should be dropped at
+// BTW, the spec is discussing if the builder.constant(type, value) should be dropped at
 // https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
 //
 // This function enforces a mapping between the data_type and the value types:
@@ -139,7 +139,7 @@ const emscripten::val& ModelBuilder::CreateOrGetScalarConstant(const int32_t& da
       case ONNX_NAMESPACE::TensorProto_DataType_INT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
         scalar_buffer = emscripten::val::global("Uint8Array").new_(1);
-        value_uint8 = ConvertInt8toUint8(value, data_type);
+        value_uint8 = PackInt8ToUint8AsNibble(value, data_type);
         scalar_buffer.call<void>("fill", emscripten::val(value_uint8));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
@@ -156,7 +156,7 @@ const emscripten::val& ModelBuilder::CreateOrGetScalarConstant(const int32_t& da
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
         scalar_buffer = emscripten::val::global("Uint16Array").new_(1);
-        value_uint16 = ConvertFloat32toUint16(value);
+        value_uint16 = PackFloat32ToUint16AsFloat16(value);
         scalar_buffer.call<void>("fill", emscripten::val(value_uint16));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:

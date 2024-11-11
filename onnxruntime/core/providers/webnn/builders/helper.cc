@@ -270,7 +270,8 @@ bool IsMLTensorSupported() {
   return is_supported;
 }
 
-uint8_t ConvertInt8toUint8(int8_t value, const int32_t& data_type) {
+// Convert int8 to uint4/int4 (stored as uint8)
+uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type) {
   uint8_t result = 0;
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     if (value < 0 || value > 15) {
@@ -287,7 +288,8 @@ uint8_t ConvertInt8toUint8(int8_t value, const int32_t& data_type) {
   return result;
 }
 
-uint16_t ConvertFloat32toUint16(float value) {
+// Convert float32 to float16 (stored as uint16)
+uint16_t PackFloat32ToUint16AsFloat16(float value) {
   uint32_t float32_bits;
 
   // Safely copy the float bits into an integer
@@ -298,33 +300,36 @@ uint16_t ConvertFloat32toUint16(float value) {
   uint32_t exponent = (float32_bits >> 23) & 0xFF;
   uint32_t mantissa = float32_bits & 0x7FFFFF;
 
+  // Shift the sign for float16
+  uint16_t sign_float16 = sign << 15;
+
   // Handle special cases: Infinity and NaN
   if (exponent == 255) {
-    return (sign << 15) | (0x1F << 10) | (mantissa ? 0x200 : 0);
+    return sign_float16 | (0x1F << 10) | (mantissa ? 0x200 : 0);
   }
   // Handle zero and subnormal numbers in float32
   if (exponent == 0) {
-    return (sign << 15) | (mantissa >> 13);
+    return sign_float16 | (mantissa >> 13);
   }
 
   // Adjust the exponent for float16 (subtract bias difference: 127 - 15 = 112)
-  int new_exponent = exponent - 112;
+  int exponent_float16 = exponent - 112;
 
   // Handle exponent overflow (larger than float16 can represent)
-  if (new_exponent >= 0x1F) {
-    return (sign << 15) | (0x1F << 10);
+  if (exponent_float16 >= 0x1F) {
+    return sign_float16 | (0x1F << 10);
   }
   // Handle exponent underflow (smaller than float16 can represent)
-  if (new_exponent <= 0) {
-    mantissa = (mantissa | 0x800000) >> (1 - new_exponent);
-    return (sign << 15) | (mantissa >> 13);
+  if (exponent_float16 <= 0) {
+    mantissa = (mantissa | 0x800000) >> (1 - exponent_float16);
+    return sign_float16 | (mantissa >> 13);
   }
 
   // Adjust the mantissa by shifting it to fit float16 format (round to nearest even)
-  mantissa = (mantissa + 0x1000) >> 13;
+  uint16_t mantissa_float16 = (mantissa + 0x1000) >> 13;
 
   // Combine sign, exponent, and mantissa into the final float16 representation
-  return (sign << 15) | (new_exponent << 10) | mantissa;
+  return sign_float16 | (exponent_float16 << 10) | mantissa_float16;
 }
 
 }  // namespace webnn
