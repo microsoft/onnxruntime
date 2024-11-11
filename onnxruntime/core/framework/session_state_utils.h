@@ -12,7 +12,6 @@
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/framework/session_options.h"
-#include "core/framework/session_state.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/platform/path_lib.h"
 
@@ -51,8 +50,7 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
-    SessionState::PrePackInitializers::PrePackedTensorNamesReadFromFile& pre_packed_initializers_name_set);
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
 
 common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,
