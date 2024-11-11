@@ -18,6 +18,10 @@ done
 mkdir -p "${HOME}/.onnx"
 DOCKER_SCRIPT_OPTIONS="-d ${DEVICE} -c ${BUILD_CONFIG}"
 
+if [ "${PYTHON_EXES}" != "" ] ; then
+    DOCKER_SCRIPT_OPTIONS+=" -p ${PYTHON_EXES}"
+fi
+
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=" -x ${BUILD_EXTR_PAR}"
 fi
@@ -34,7 +38,7 @@ docker run --rm \
     -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
     -e DEFAULT_TRAINING_PACKAGE_DEVICE \
     $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh -c $BUILD_CONFIG -p $PYTHON_EXES $DOCKER_SCRIPT_OPTIONS
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
 
 sudo rm -rf "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/onnxruntime" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/pybind11" \
     "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/models" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/_deps" \
