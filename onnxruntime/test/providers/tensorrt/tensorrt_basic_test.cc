@@ -613,6 +613,26 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
 }
 
 TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
+  /* The mnist.onnx looks like this:
+   *        Conv
+   *         |
+   *        Add
+   *         .
+   *         .
+   *         |
+   *      MaxPool
+   *         |
+   *         .
+   *         .
+   *      MaxPool
+   *         |
+   *      Reshape
+   *         |
+   *      MatMul
+   *         .
+   *         .
+   *
+   */
   PathString model_name = ORT_TSTR("testdata/mnist.onnx");
   SessionOptions so;
   so.session_logid = "TensorrtExecutionProviderExcludeOpsTest";
@@ -634,7 +654,8 @@ TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
    std::vector<OrtValue> fetches;
 
    OrtTensorRTProviderOptionsV2 params;
-   //params.trt_engine_cache_enable = 1;
+   params.trt_engine_cache_enable = 1;
+   params.trt_op_types_to_exclude = "MaxPool";
    std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
    auto status = session_object.Load(model_name);
@@ -646,7 +667,8 @@ TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
 
    std::vector<fs::path> engine_files;
    engine_files = GetCachesByType("./", ".engine");
-   ASSERT_EQ(engine_files.size(), 1);
+   // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
+   ASSERT_EQ(engine_files.size(), 3);
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
