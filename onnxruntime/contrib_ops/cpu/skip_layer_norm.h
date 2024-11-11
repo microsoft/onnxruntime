@@ -16,7 +16,7 @@ class SkipLayerNorm final : public OpKernel {
   SkipLayerNorm(const OpKernelInfo& op_kernel_info);
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool save_prepacked_initializers,
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
  private:
