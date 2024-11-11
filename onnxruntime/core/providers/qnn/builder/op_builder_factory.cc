@@ -66,7 +66,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("GridSample", *this);
 
     CreateSimpleOpBuilder("LpNormalization", *this);
-    CreateSimpleOpBuilder("SimplifiedLayerNormalization", *this);
   }
 
   {
@@ -153,6 +152,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateLayerNormOpBuilder("LayerNormalization", *this);
+    CreateLayerNormOpBuilder("SimplifiedLayerNormalization", *this);
   }
 
   {
