@@ -5,6 +5,7 @@ do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
+*) echo "Usage: $0 -p PYTHON_VER -d DEVICE_TYPE";;
 esac
 done
 
@@ -53,21 +54,21 @@ PACKAGE_LIST="autotools-dev \
 	graphviz"
 
 
-if [ $DEVICE_TYPE = "Normal" ]; then
+if [ "$DEVICE_TYPE" = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
 fi
 
 PACKAGE_LIST="$PACKAGE_LIST libicu-dev"
 
-apt-get install -y --no-install-recommends $PACKAGE_LIST
+apt-get install -y --no-install-recommends "$PACKAGE_LIST"
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 if [ "$OS_VERSION" = "20.04" ]; then
   # The defaul version of python is 3.8
-    major=$(echo $PYTHON_VER | cut -d. -f1)
-    minor=$(echo $PYTHON_VER | cut -d. -f2)
+    major=$(echo "$PYTHON_VER" | cut -d. -f1)
+    minor=$(echo "$PYTHON_VER" | cut -d. -f2)
     if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 8 ]; then
       PYTHON_VER="3.8"
     fi
@@ -86,8 +87,8 @@ if [ "$OS_VERSION" = "20.04" ]; then
     fi
 elif [ "$OS_VERSION" = "22.04" ] ; then
   # The defaul version of python is 3.10
-    major=$(echo $PYTHON_VER | cut -d. -f1)
-    minor=$(echo $PYTHON_VER | cut -d. -f2)
+    major=$(echo "$PYTHON_VER" | cut -d. -f1)
+    minor=$(echo "$PYTHON_VER" | cut -d. -f2)
     if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 10 ]; then
       PYTHON_VER="3.10"
     fi
@@ -95,11 +96,11 @@ elif [ "$OS_VERSION" = "22.04" ] ; then
         add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
         apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+                python"${PYTHON_VER}" \
+                python"${PYTHON_VER}"-dev
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python"${PYTHON_VER}" 1
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+        update-alternatives --set python3 /usr/bin/python"${PYTHON_VER}"
     fi
 else
     exit 1
