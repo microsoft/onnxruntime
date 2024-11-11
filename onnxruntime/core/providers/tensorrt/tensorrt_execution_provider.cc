@@ -2489,12 +2489,12 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::set<std::string> exclude_set = GetExcludedNodeSet(op_types_to_exclude_);
 
   /*
-   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.6.
+   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.7.
    * TRT EP automatically excludes DDS ops from running on TRT unless the user explicitly specifies that those ops should be included.
    *
    * Note: "~op_type" means to include the op type.
    */
-  if (trt_version_ >= 100000 && trt_version_ < 100700) {
+  if (trt_version_ >= 100000 && trt_version_ < 100800) {
     if (exclude_set.find("~NonMaxSuppression") == exclude_set.end()) exclude_set.insert("NonMaxSuppression");
     if (exclude_set.find("~NonZero") == exclude_set.end()) exclude_set.insert("NonZero");
     if (exclude_set.find("~RoiAlign") == exclude_set.end()) exclude_set.insert("RoiAlign");
