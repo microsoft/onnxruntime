@@ -4,13 +4,14 @@ import platform
 
 
 class CudaTemporaryEnv:
-    def __init__(self, cuda_lib_paths):
+    def __init__(self):
+        nvidia_lib_paths = get_nvidia_lib_paths()
         self.loaded_libs = []
         if platform.system() == "Windows":
-            for path in cuda_lib_paths:
+            for path in nvidia_lib_paths:
                 self.loaded_libs.append(os.add_dll_directory(path))
         elif platform.system() == "Linux":
-            for path in cuda_lib_paths:
+            for path in nvidia_lib_paths:
                 self.loaded_libs.append(ctypes.CDLL(path))
         else:
             pass
@@ -50,4 +51,16 @@ def get_nvidia_lib_paths():
                     lib_paths.append(root)
     else:
         pass
-    return CudaTemporaryEnv(lib_paths)
+    return lib_paths
+
+
+def load_nvidia_libs():
+    cuda_lib_paths = get_nvidia_lib_paths()
+    if platform.system() == "Windows":
+        for path in cuda_lib_paths:
+            os.add_dll_directory(path)
+    elif platform.system() == "Linux":
+        for path in cuda_lib_paths:
+            _ = ctypes.CDLL(path)
+    else:
+        pass
