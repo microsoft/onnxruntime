@@ -30,7 +30,7 @@ class BackendManager {
   GlobalContext& GetGlobalContext();
   Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph,
                                        const logging::Logger& logger);
-  std::string dynamic_workload_type = "DEFAULT";
+  ov::CompiledModel& GetOVCompiledModel();
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(

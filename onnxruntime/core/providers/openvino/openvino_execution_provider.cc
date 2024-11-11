@@ -2,13 +2,14 @@
 // Licensed under the MIT License
 #include <filesystem>
 #include <utility>
-
+#include <string>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "openvino/core/version.hpp"
 #ifdef USE_OVEP_NPU_MEMORY
 #include "core/providers/openvino/ov_allocator.h"
@@ -206,21 +207,35 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 }
 #endif
 
-common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(
-  gsl::span<const char* const> keys, gsl::span<const char* const> values) {
-  for (auto key : keys) {
-    if (strcmp(key, "ep.dynamic.workload_type") == 0) {
-      for (auto val : values) {
-        if (strcmp(val, "Efficient") == 0) {
-          backend_manager_->dynamic_workload_type = "EFFICIENT";
-          LOGS_DEFAULT(VERBOSE) << "[OpenVINO-EP]" << backend_manager_->dynamic_workload_type
-                                << " mode is set for OV inference";
-        } else if (strcmp(val, "Default") == 0) {
-          backend_manager_->dynamic_workload_type = "DEFAULT";
-          LOGS_DEFAULT(VERBOSE) << "[OpenVINO-EP]" << backend_manager_->dynamic_workload_type
-                                << " mode is set for OV inference";
-        }
+common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                              gsl::span<const char* const> values) {
+  std::string workload_type = "";
+  // Ensure the number of keys and values match
+  if (keys.size() != values.size()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Mismatched keys and values sizes.");
+  }
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    std::string key = keys[i];
+    std::string value = values[i];
+
+    if (key == kOrtEpDynamicOptionsWorkloadType) {
+      if (value == "Efficient") {
+        workload_type = "EFFICIENT";
+      } else if (value == "Default") {
+        workload_type = "DEFAULT";
+      } else {
+        LOGS_DEFAULT(WARNING) << "Unknown workload_type - ignoring " << key << "/" << value;
+        LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
       }
+      if (workload_type != "") {
+        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        ov::CompiledModel& ov_compiled_model = backend_manager_->GetOVCompiledModel();
+        ov_compiled_model.set_property(ov::workload_type(workload_type));
+      }
+    } else {
+      // Handle unknown options
+      LOGS_DEFAULT(WARNING) << "Unknown key/value pair - ignoring " << key << "/" << value;
     }
   }
   return Status::OK();
