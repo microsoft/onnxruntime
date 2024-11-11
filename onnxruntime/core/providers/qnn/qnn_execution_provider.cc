@@ -392,7 +392,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
   if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map)) {
     // Initialize rpcmem_library_.
-    // This is necessary for RpcMemAllocator to function and also indicates that it is available.
+    // This is necessary for RpcMemAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 

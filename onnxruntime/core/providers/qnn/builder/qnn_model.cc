@@ -189,6 +189,7 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
 
 static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                             const RpcMemApi* rpcmem_api,
+                                            const logging::Logger& logger,
                                             Qnn_ContextHandle_t qnn_context_handle,
                                             const OrtMemoryInfo& ort_value_memory_info,
                                             void* ort_value_data, uint32_t ort_value_data_size,
@@ -198,6 +199,7 @@ static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_in
   const bool uses_shared_memory = ort_value_memory_info == RpcMemAllocator::MemoryInfo();
 
   if (!uses_shared_memory) {
+    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_RAW);
     SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
   } else {
@@ -225,6 +227,7 @@ static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_in
 
     registered_qnn_mem_handles.push_back(qnn_mem_handle);
 
+    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
     SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
   }
@@ -291,6 +294,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const RpcMemApi
       ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
           qnn_interface,
           rpcmem_api,
+          logger,
           qnn_context_handle,
           *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
           const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
@@ -318,6 +322,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const RpcMemApi
       ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
           qnn_interface,
           rpcmem_api,
+          logger,
           qnn_context_handle,
           *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
           const_cast<void*>(ort_output_tensor.GetTensorRawData()), qnn_output_info.tensor_byte_size,
