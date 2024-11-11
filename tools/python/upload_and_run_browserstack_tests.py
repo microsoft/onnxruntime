@@ -29,13 +29,16 @@ def upload_apk_parse_json(post_url, apk_path, id, token):
     return response_to_json(response)
 
 
-def browserstack_build_request(devices, app_url, test_suite_url, test_platform, id, token):
+def browserstack_build_request(devices, app_url, test_suite_url, test_platform, id, token, project, build_tag):
     headers = {}
 
     json_data = {
         "devices": devices,
         "app": app_url,
         "testSuite": test_suite_url,
+        "project": project,
+        "buildTag": build_tag,
+        "deviceLogs": True,
     }
 
     build_response = requests.post(
@@ -108,6 +111,13 @@ if __name__ == "__main__":
         required=True,
     )
 
+    parser.add_argument(
+        "--project",
+        type=str,
+        help="Identifier to logically group multiple builds together",
+        default="ONNXRuntime tests",
+    )
+    parser.add_argument("--build_tag", type=str, help="Identifier to tag the build with a unique name", default="")
     args = parser.parse_args()
 
     try:
@@ -142,6 +152,8 @@ if __name__ == "__main__":
         args.test_platform,
         browserstack_id,
         browserstack_token,
+        args.project,
+        args.build_tag,
     )
 
     # Get build status until the tests are no longer running
