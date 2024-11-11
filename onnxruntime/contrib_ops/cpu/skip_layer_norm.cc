@@ -186,6 +186,7 @@ void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, I
 template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
+      prepacked_skip_fp32_size_(0),
       prepacked_skip_fp32_data_(nullptr),
       prepacked_gamma_fp32_data_(nullptr),
       prepacked_beta_fp32_data_(nullptr),
@@ -232,7 +233,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   // For inferencing, we support one more optional output which is the sum of the input and skip tensors
   T* skip_input_bias_add_output_data = skip_input_bias_add_output == nullptr ? nullptr : skip_input_bias_add_output->MutableData<T>();
 
-  const int64_t& skip_size = skip->Shape().Size();
+  const int64_t skip_size = skip ? skip->Shape().Size() : prepacked_skip_fp32_size_;
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
@@ -293,6 +294,7 @@ Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx
 
   is_packed = false;
   if (input_idx == 1) {  // skip
+    prepacked_skip_fp32_size_ = tensor.Shape().Size();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_skip_fp32_data_, is_packed);
   } else if (input_idx == 2) {  // gamma
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_gamma_fp32_data_, is_packed);
