@@ -32,8 +32,8 @@ else \
     echo "TRT_VERSION is x${TRT_VERSION} skipping Tensor RT Installation" ; \
 fi
 
-ENV PATH /usr/local/cuda/bin:$PATH
-ENV CUDA_MODULE_LOADING "LAZY"
+ENV PATH=/usr/local/cuda/bin:$PATH
+ENV CUDA_MODULE_LOADING="LAZY"
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && rm -rf /tmp/scripts

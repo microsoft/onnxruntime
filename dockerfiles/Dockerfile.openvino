@@ -11,7 +11,7 @@ FROM openvino/ubuntu22_runtime:${OPENVINO_VERSION} AS builder
 
 ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 ARG DEVICE=CPU
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
@@ -41,7 +41,7 @@ RUN tar cvf GPL_sources.tar.gz /sources
 # Deploy stage
 FROM openvino/ubuntu22_runtime:${OPENVINO_VERSION}
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 USER root
 COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
 COPY --from=builder /GPL_sources.tar.gz ./
@@ -50,7 +50,7 @@ ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 RUN usermod -a -G video,users ${BUILD_USER}
-ENV WORKDIR_PATH /home/${BUILD_USER}
+ENV WORKDIR_PATH=/home/${BUILD_USER}
 WORKDIR ${WORKDIR_PATH}
 
 USER ${BUILD_USER}

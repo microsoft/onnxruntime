@@ -10,7 +10,7 @@ ARG TRT_VERSION=10.6.0.26-1+cuda11.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
+ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}:${LD_LIBRARY_PATH}

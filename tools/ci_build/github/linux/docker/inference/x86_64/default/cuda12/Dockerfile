@@ -35,11 +35,11 @@ fi
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-ENV CUDAHOSTCXX /opt/rh/gcc-toolset-12/root/usr/bin/g++
+ENV CUDAHOSTCXX=/opt/rh/gcc-toolset-12/root/usr/bin/g++
 ADD scripts /tmp/scripts
 RUN sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/ubi.repo && \
 	rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm && dnf install -y msopenjdk-11 && cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
-ENV PATH /usr/lib/jvm/msopenjdk-11/bin:$PATH
+ENV PATH=/usr/lib/jvm/msopenjdk-11/bin:$PATH
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

@@ -31,11 +31,11 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-ENV PATH /usr/lib/jvm/msopenjdk-11/bin:$PATH
+ENV PATH=/usr/lib/jvm/msopenjdk-11/bin:$PATH
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
-ENV CUDAHOSTCXX /opt/rh/gcc-toolset-11/root/usr/bin/g++
+ENV CUDAHOSTCXX=/opt/rh/gcc-toolset-11/root/usr/bin/g++
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
 
