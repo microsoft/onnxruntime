@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <stdio.h>
+#include <cstdint>
+#include <functional>
+#include <future>
+
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -89,7 +94,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  if (has_present_key_) {
+  if (has_present_key_ && !fa_variant_) {
     shader.AddOutput("present_key", ShaderUsage::UseUniform);
   }
 
@@ -132,7 +137,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "    tileK[idx] = key[kOffset + local_id.y * uniforms.K + w + local_id.x];\n";
   }
 
-  if (has_present_key_) {
+  if (has_present_key_ && !fa_variant_) {
     shader.MainFunctionBody() << "    present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];\n";
   }
 
@@ -159,9 +164,75 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
+   // This shader works only for a limited case of current_seq_len = 1, that is the generation phase of an LLM.
+   // Expectations are
+   //    qkv have same number of heads and hidden dimension (head size).
+   //    qkv are in BSNH format.
+   //            B - batch size but shader only supports batch_size 1.
+   //            S - current sequence length but shader supports only S = 1.
+   //            N - number of heads.
+   //            H - head size or hidden dimension for each qkv head.
+   //  KV cache is stored as BN(total_sequence_length)H
+   //  Attention bias is in BN(total_sequence_length)
+   //
+   //  Expectation is that present_key, and present_value contain past key and values since
+   //  we are out of storage buffers a shader can have and both past/present cant be passed.
+
+   shader.AddInput("k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddInput("past_k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddInput("past_v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddOutput("present_key", ShaderUsage::UseUniform);
+   shader.AddOutput("present_value", ShaderUsage::UseUniform);
+
+   shader.MainFunctionBody() << "let head_index = local_id.x;\n"
+                             << "let k_index = workgroup_id.x;\n"
+                             << "if (k_index < uniforms.past_sequence_length) {\n"
+                             << "  let present_offset = head_index * uniforms.total_sequence_length * uniforms.qkv_hidden_size + k_index * uniforms.qkv_hidden_size;\n"
+                             << "  let past_offset = head_index * uniforms.past_sequence_length * uniforms.qkv_hidden_size + k_index * uniforms.qkv_hidden_size;\n"
+                             << "  for (var i=0u; i<uniforms.qkv_hidden_size; i++) {\n"
+                             << "    present_key[present_offset + i] = past_k[past_offset + i];\n"
+                             <<  "    present_value[present_offset + i] = past_v[past_offset + i];\n"
+                             << "  }\n"
+                             << "}\n"
+                             << "else if (k_index == uniforms.past_sequence_length) {\n"
+                             << "  let present_offset = head_index * uniforms.total_sequence_length * uniforms.qkv_hidden_size + k_index * uniforms.qkv_hidden_size;\n"
+                             << "  let k_offset = head_index * uniforms.qkv_hidden_size;\n"
+                             << "  for (var i=0u; i<uniforms.qkv_hidden_size; i++) {\n"
+                             << "    present_key[present_offset + i] = k[k_offset + i];\n"
+                             << "    present_value[present_offset + i] = v[k_offset + i];\n"
+                             << "  }\n"
+                             << "}\n";
+
+   return Status::OK();
+}
+
+Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParameters& parameters,
+                             const Tensor* K, const Tensor* past_key, Tensor* present_key,
+                             const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                             int past_sequence_length, int total_sequence_length) {
+
+  CopyKVCacheProgram program{"CopyKVCache"};
+  program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank},
+                     {past_key, ProgramTensorMetadataDependency::TypeAndRank},
+                     {V, ProgramTensorMetadataDependency::TypeAndRank},
+                     {past_value, ProgramTensorMetadataDependency::TypeAndRank}});
+  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank},
+                      {present_value, ProgramTensorMetadataDependency::Rank}});
+
+  program.SetDispatchGroupSize(total_sequence_length)
+      .SetWorkgroupSize(parameters.num_heads)
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.head_size)},
+                            {static_cast<uint32_t>(past_sequence_length)},
+                            {static_cast<uint32_t>(total_sequence_length)}});
+
+  return context.RunProgram(program);
+}
+
 Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int output_count, const Tensor* Q,
                              const Tensor* K, const Tensor* past_key, const Tensor* attention_bias, Tensor* probs, Tensor* present_key,
-                             AttentionParameters& parameters, int past_sequence_length, int total_sequence_length) {
+                             AttentionParameters& parameters, int past_sequence_length, int total_sequence_length, bool fa_variant = false) {
   const float alpha = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size))
                                                : parameters.scale;
 
@@ -172,7 +243,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components};
+                              components, fa_variant};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -182,7 +253,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
     program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
   }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::Rank}});
-  if (has_present_key) {
+  if (has_present_key && !fa_variant) {
     program.AddOutput({present_key, ProgramTensorMetadataDependency::Rank, components});
   }
 
@@ -191,7 +262,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                                (parameters.sequence_length + tile_size - 1) / tile_size,
                                parameters.batch_size * parameters.num_heads)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size))
+      .CacheHint(std::to_string(tile_size)+std::to_string(fa_variant))
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -274,7 +345,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.AddOutput("output", ShaderUsage::UseUniform);
-  if (has_present_value_) {
+  if (has_present_value_ && !fa_variant_) {
     shader.AddOutput("present_value", ShaderUsage::UseUniform);
   }
 
@@ -315,7 +386,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "    tileK[idx] = v[offsetB + (w + local_id.y) * uniforms.N];\n";
   }
 
-  if (has_present_value_) {
+  if (has_present_value_ && !fa_variant_) {
     shader.MainFunctionBody() << "    present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];\n";
   }
 
@@ -347,19 +418,20 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                                Tensor* present_value,
                                AttentionParameters& parameters,
                                int past_sequence_length,
-                               int total_sequence_length) {
+                               int total_sequence_length,
+                               bool fa_variant) {
   const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0;
   const bool has_present_value = output_count > 1 && past_value != nullptr;
   constexpr int tile_size = 12;
 
-  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size};
+  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, fa_variant};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
                      {V, ProgramTensorMetadataDependency::TypeAndRank}});
   if (feed_past_value) {
     program.AddInput({past_value, ProgramTensorMetadataDependency::TypeAndRank});
   }
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank}});
-  if (has_present_value) {
+  if (has_present_value && !fa_variant) {
     program.AddOutput({present_value, ProgramTensorMetadataDependency::TypeAndRank});
   }
 
@@ -382,7 +454,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+                      AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, bool fa_variant = false) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length : 0;
   const int total_sequence_length = past_sequence_length + parameters.kv_sequence_length;
@@ -392,15 +464,199 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   const TensorShape probs_shape(probs_dims);
   Tensor probs = context.CreateGPUTensor(Q->DataType(), probs_shape);
   ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, output_count, Q, K, past_key, attention_bias, &probs, present_key,
-                                            parameters, past_sequence_length, total_sequence_length));
+                                            parameters, past_sequence_length, total_sequence_length, fa_variant));
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
                                             parameters.batch_size * parameters.num_heads * parameters.sequence_length, total_sequence_length));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
-                                              parameters, past_sequence_length, total_sequence_length));
+                                              parameters, past_sequence_length, total_sequence_length, fa_variant));
 
   return Status::OK();
+}
+
+Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  // This shader works only for a limited case of current_seq_len = 1, that is the generation phase of an LLM.
+  // Expectations are
+  //    qkv have same number of heads and hidden dimension (head size).
+  //    qkv are in BSNH format.
+  //            B - batch size but shader only supports batch_size 1.
+  //            S - current sequence length but shader supports only S = 1.
+  //            N - number of heads.
+  //            H - head size or hidden dimension for each qkv head.
+  //  KV cache is stored as BN(total_sequence_length)H
+  //  Attention bias is in BN(total_sequence_length)
+  //
+  //  Expectation is that present_key, and present_value contain past key and values since
+  //  we are out of storage buffers a shader can have and both past/present cant be passed.
+  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("k", ShaderUsage::UseUniform);
+  shader.AddInput("v", ShaderUsage::UseUniform);
+  if (has_attention_bias_) {
+    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+  }
+  shader.AddOutput("present_key", ShaderUsage::UseUniform);
+  shader.AddOutput("present_value", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform);
+
+  uint32_t qkv_hidden_size_in_components = qkv_hidden_size_ / components_;
+  shader.AdditionalImplementation() << "var<workgroup> x: array<q_element_t, " << tile_size_ << ">;\n"
+                                    << "var<workgroup> q_shm: array<q_value_t, " << qkv_hidden_size_in_components << ">;\n"
+                                    << "var<workgroup> subgroup_scratch: array<q_element_t, TILE_SIZE>;\n"
+                                    << "var<workgroup> local_max_x: q_element_t;\n"
+                                    << "var<workgroup> prev_max_x: q_element_t;\n"
+                                    << "var<workgroup> denom_x: q_element_t;\n"
+                                    << "var<workgroup> denom_ratio: q_element_t;\n"
+                                    << "var<workgroup> attention_scale: q_element_t;\n";
+
+  // First fill the shared memory with the q values
+  shader.MainFunctionBody() << "let qkv_hidden_size_in_components:u32 = " << qkv_hidden_size_in_components << ";\n"
+                            << "let n_qkv_hidden_size_in_components:u32 = " << qkv_num_heads_ * qkv_hidden_size_in_components << ";\n"
+                            << "let total_sequence_length:u32 = uniforms.past_sequence_length +1;\n"
+                            << "let tile_size:u32 = TILE_SIZE;\n"
+                            << "var current_head:u32 = workgroup_id.x;\n"
+                            << "var q_index:u32 = local_id.x;\n"
+                            << "var head_offset:u32 = current_head*qkv_hidden_size_in_components;\n"
+                            << "attention_scale = q_element_t(uniforms.attention_scale);\n"
+                            << "let key_offset = uniforms.past_sequence_length * n_qkv_hidden_size_in_components + current_head * qkv_hidden_size_in_components;\n"
+                            << "let value_offset = uniforms.past_sequence_length * "<< qkv_num_heads_ * qkv_hidden_size_
+                            << "                    + current_head * " << qkv_hidden_size_ << " ;\n"
+                            << "while (q_index < qkv_hidden_size_in_components) {\n"
+                            << "  q_shm[q_index] = q[head_offset + q_index];\n"
+                            << "  output[head_offset + q_index] = 0;\n"
+                            << "  present_key[key_offset + q_index] = k[q_index];\n"
+                            << "  present_value[value_offset + q_index] = v[q_index];\n";
+
+  if (components_ == 4) {
+    shader.MainFunctionBody() << "  present_value[value_offset + q_index + 1] = v[q_index+1];\n"
+                              << "  present_value[value_offset + q_index + 2] = v[q_index+2];\n"
+                              << "  present_value[value_offset + q_index + 3] = v[q_index+3];\n";
+  }
+  if (components_ == 2) {
+    shader.MainFunctionBody() << "  present_value[value_offset + q_index + 1] = v[q_index+1];\n";
+  }
+
+  shader.MainFunctionBody() << "  q_index += tile_size;\n"
+                            << "}\n"
+                            << "if (local_id.x == 0) {\n"
+                            << "  prev_max_x = q_element_t(-65504h);\n"
+                            << "}\n"
+                            << "workgroupBarrier();\n";
+
+  // Go through all the tiles
+  shader.MainFunctionBody() << "for (var seq_begin = 0u; seq_begin <= uniforms.past_sequence_length; seq_begin += tile_size) {\n";
+
+  // Compute QKt, assumption is that K is stored as transposed.
+  shader.MainFunctionBody() << "  var k_index:u32 = seq_begin + local_id.x;\n"
+                            << "  if (sg_id == 0) {\n"
+                            << "    subgroup_scratch[u32(local_id.x/sg_size)] = q_element_t(-65504h);\n"
+                            << "  }\n"
+                            << "  var x_value_single:q_element_t = 0;"
+                            << "  if (k_index < total_sequence_length) {\n"
+                            << "    var x_value: q_value_t = q_value_t(0);\n"
+                            << "    let key_offset = k_index * n_qkv_hidden_size_in_components + current_head * qkv_hidden_size_in_components;\n"
+                            << "    for (var i = 0u; i < qkv_hidden_size_in_components; i++) {\n"
+                            << "      x_value += q_shm[i] * present_key[i+key_offset];\n"
+                            << "    }\n"
+                            << "    x_value_single = " << (components_ == 4 ? "x_value.x + x_value.y + x_value.z + x_value.w" : (components_ == 2 ? "x_value.x + x_value.y" : "x_value")) << ";\n"
+                            << "    x_value_single = x_value_single * attention_scale;\n";
+  if (has_attention_bias_) {
+    shader.MainFunctionBody() << "  let attention_bias_index = k_index + current_head * (uniforms.past_sequence_length+1);\n"
+                              << "  x_value_single = x_value_single + attention_bias[attention_bias_index];\n";
+  }
+  shader.MainFunctionBody() << "    var sub_group_max_value = subgroupMax(x_value_single);\n"
+                            << "    if (sg_id == 0) {\n"
+                            << "        subgroup_scratch[u32(local_id.x/sg_size)] = sub_group_max_value;\n"
+                            << "    }\n"
+                            << "  }\n";
+
+  // Update phase to merge with previous tile results.
+  shader.MainFunctionBody() << "  workgroupBarrier();\n"
+                            << "  if (local_id.x == 0) {\n"
+                            << "    local_max_x = prev_max_x;\n"
+                            << "    for(var i = 0u; i < u32(TILE_SIZE/sg_size); i++) {\n"
+                            << "        local_max_x = max(local_max_x, subgroup_scratch[i]);\n"
+                            << "    }\n"
+                            << "  }\n"
+                            << "  workgroupBarrier();\n"
+                            << "  if (k_index < total_sequence_length) {\n"
+                            << "    x_value_single = exp(x_value_single - local_max_x);\n"
+                            << "  }\n"
+                            << "  if (sg_id == 0) {\n"
+                            << "    subgroup_scratch[u32(local_id.x/sg_size)] = 0;\n"
+                            << "  }\n"
+                            << "  workgroupBarrier();\n"
+                            << "  var sub_group_sum_value = subgroupAdd(x_value_single);\n"
+                            << "  if (sg_id == 0) {\n"
+                            << "      subgroup_scratch[u32(local_id.x/sg_size)] = sub_group_sum_value;\n"
+                            << "  }\n"
+                            << "  workgroupBarrier();\n"
+                            << "  if (local_id.x == 0) {\n"
+                            << "    var sum_x:q_element_t = 0;\n"
+                            << "    for(var i = 0u; i < u32(TILE_SIZE/sg_size); i++) {\n"
+                            << "      sum_x = sum_x + subgroup_scratch[i];\n"
+                            << "    }\n"
+                            << "    var new_denom_x_first_term:q_element_t = denom_x * exp(prev_max_x - local_max_x);\n"
+                            << "    denom_x = new_denom_x_first_term + sum_x;\n"
+                            << "    denom_ratio = new_denom_x_first_term / denom_x;\n"
+                            << "    prev_max_x = local_max_x;\n"
+                            << "  }\n"
+                            << "  workgroupBarrier();\n"
+                            << "  x[local_id.x] = x_value_single / denom_x;\n";
+
+  // Update O, we are going to switch to parallalism in v_hidden_size dimension, each thread is going to be
+  // responsible for a single hidden dimension of v.
+  shader.MainFunctionBody() << "  workgroupBarrier();\n"
+                            << "  let v_start = seq_begin *" << qkv_hidden_size_ << " + current_head * total_sequence_length *" << qkv_hidden_size_ << ";\n"
+                            << "  for (var i = local_id.x; i < " << qkv_hidden_size_ << "; i+=tile_size) {\n"
+                            << "    var sum:q_element_t = 0.0;\n"
+                            << "    for (var t = 0u; t < tile_size ; t++) {\n"
+                            << "      if (seq_begin + t < total_sequence_length) {\n"
+                            << "        var v_index:u32 = v_start + t * " << qkv_hidden_size_ << " + i;\n"
+                            << "        sum += (x[t] * present_value[v_index]);\n"
+                            << "      }\n"
+                            << "    }\n"
+                            << "    output[i] = output[i] * denom_ratio + sum;\n"
+                            << "  }\n";
+
+  shader.MainFunctionBody() << "}\n";
+
+  return Status::OK();
+}
+
+Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
+                      Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
+                      AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+  ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
+  return ApplyAttention(Q, K, V, attention_bias, past_key, past_value, output, present_key,
+                          present_value, parameters, context, true);
+  // constexpr int flash_attention_tile_length = 64;
+  // const float attention_scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size))
+  //                                              : parameters.scale;
+  // const bool has_attention_bias = attention_bias != nullptr;
+  // const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
+  // FlashAttentionProgram program{"FlashAttentionProgram", has_attention_bias, flash_attention_tile_length,
+  //                               parameters.v_hidden_size, parameters.head_size, components};
+
+  // program.AddInputs({{Q, ProgramTensorMetadataDependency::Type, components},
+  //                   {K, ProgramTensorMetadataDependency::Type, components},
+  //                   {V, ProgramTensorMetadataDependency::Type}});
+  // if (has_attention_bias) {
+  //   program.AddInput({attention_bias, ProgramTensorMetadataDependency::Type});
+  // }
+
+  // program.AddOutput({present_key, ProgramTensorMetadataDependency::Type, components});
+  // program.AddOutput({present_value, ProgramTensorMetadataDependency::Type});
+  // program.AddOutput({output, ProgramTensorMetadataDependency::Type});
+
+  // program.SetDispatchGroupSize(parameters.num_heads)
+  //     .SetWorkgroupSize(flash_attention_tile_length)
+  //     .CacheHint(std::to_string(has_attention_bias)+std::to_string(flash_attention_tile_length))
+  //     .AddUniformVariables({{static_cast<float>(attention_scale)},
+  //                           {static_cast<uint32_t>(parameters.past_sequence_length)}})
+  //     .SetOverridableConstants({{static_cast<uint32_t>(flash_attention_tile_length)}});
+
+  // return context.RunProgram(program);
 }
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
@@ -456,6 +712,13 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   TensorShape present_shape(present_dims);
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
+
+  if (parameters.sequence_length == 1 && bias == nullptr && parameters.kv_sequence_length == 1 &&
+     present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
+     present_value->SizeInBytes() > 0) {
+     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
+                           present_value, parameters, context);
+  }
 
   TensorShapeVector q_new_dims({parameters.batch_size, parameters.num_heads,
                                 parameters.sequence_length, parameters.head_size});
