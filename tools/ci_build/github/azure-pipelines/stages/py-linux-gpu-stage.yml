@@ -107,13 +107,6 @@ stages:
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'Move files'
 
-      - script: |
-          python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
-          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/dist/onnxruntime_gpu*cp*.whl | foreach {pip --disable-pip-version-check install "onnxruntime-gpu[cuda_dlls]" --upgrade --no-index --find-links $_.fullname}
-          echo "onnxruntime-gpu installed"
-          python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
-        displayName: 'Install onnxruntime-gpu from the ArtifactsStagingDirectory with optional [cuda_dlls]'
-        workingDirectory: '$(Build.BinariesDirectory)'
 
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
