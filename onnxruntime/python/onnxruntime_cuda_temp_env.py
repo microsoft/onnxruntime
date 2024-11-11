@@ -54,8 +54,10 @@ def setup_temp_env_for_ort_cuda():
     elif platform.system() == "Linux":
         nvidia_so_paths = get_nvidia_so_paths()
         if nvidia_so_paths:
-            return TemporaryEnv({"LD_LIBRARY_PATH": nvidia_so_paths + os.pathsep + os.environ.get("LD_LIBRARY_PATH",defualt="")})
+            return TemporaryEnv(
+                {"LD_LIBRARY_PATH": nvidia_so_paths + os.pathsep + os.environ.get("LD_LIBRARY_PATH", defualt="")}
+            )
         else:
-            return TemporaryEnv({"LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH",defualt="")})
+            return TemporaryEnv({"LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", defualt="")})
     else:
         return None
