@@ -189,7 +189,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     return Status::OK();
   }
 
-  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) || true) {
     return Status::OK();
   }
 
@@ -245,7 +245,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     return Status::OK();
   }
 
-  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) || true) {
     return Status::OK();
   }
   if (input_idx == InputIndex::B) {
