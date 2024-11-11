@@ -2062,11 +2062,9 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    SessionState::PrePackInitializers pre_packed_initializers;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
-                                             pre_packed_initializers,
                                              !saving_model,
                                              saving_ort_format));
 
@@ -2102,47 +2100,11 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           Graph::OffsetAlignmentInfo align_info;
           align_info.align_offset = true;
-          bool save_prepacked_constant_initializers =
-              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
-          Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
-          if (save_prepacked_constant_initializers) {
-            LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
-                                            << "Use this option only when run model inference on PC with CPU."
-                                            << "Make sure to save and load model in same device as prepack is device specific."
-                                            << "Note: this feature in only work with ONNX model format."
-                                            << "Process of use this option is like below:"
-                                            << "1. Optimize model with external data file with save_prepacked_constant_initializers on:"
-                                            << "       sample: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  ' 1 ')"
-                                            << "   With save_prepacked_constant_initializers option, prepacked initializer will be serialized into data file."
-                                            << "2. Load optimized model and external data file in same device, no prepack is need."
-                                            << "3. Run inference with optimized model.";
-
-            if (fbs::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)) {
-              ORT_RETURN_IF_ERROR_SESSIONID_(
-                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "Unable to serialize prepacked external constant initializer for ORT format model."
-                                  "Please use ONNX format model with save_prepacked_constant_initializers."));
-            }
-
-            // convert pre_packed_initializers to tensorproto format and save to external data file
-            for (const auto& name_item_pair : pre_packed_initializers.pre_packed_initializers_to_save) {
-              auto initializer_name = name_item_pair.first;
-
-              for (const auto& kernel_name_initializer_item_pair : name_item_pair.second) {
-                auto kernel_name = kernel_name_initializer_item_pair.first;
-                auto prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer_name, kernel_name);
-
-                pre_packed_initializers_tensor_proto[initializer_name][kernel_name] = utils::TensorToTensorProto(kernel_name_initializer_item_pair.second, prepacked_initializer_name);
-              }
-            }
-          }
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
                                                                              optimized_model_external_initializers_min_size_in_bytes,
-                                                                             align_info,
-                                                                             save_prepacked_constant_initializers,
-                                                                             pre_packed_initializers_tensor_proto));
+                                                                             align_info));
         }
       }
     }
