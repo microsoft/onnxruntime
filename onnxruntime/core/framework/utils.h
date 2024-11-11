@@ -234,8 +234,6 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
-std::string GetPrepackedInitializerName(const std::string& initializer_name, const std::string& node_name);
-
 #ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif
