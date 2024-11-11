@@ -22,6 +22,8 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 OS_VERSION=$(lsb_release -r -s)
 
 PACKAGE_LIST=(
+    "apt-transport-https"
+    "apt-utils"
     "aria2"
     "autoconf"
     "automake"
@@ -29,12 +31,13 @@ PACKAGE_LIST=(
     "build-essential"
     "bzip2"
     "ca-certificates"
-    "curl libcurl4-openssl-dev"
+    "curl"
     "gfortran"
-    "git apt-transport-https apt-utils"
+    "git"
     "graphviz"
     "language-pack-en"
     "libcurl4"
+    "libcurl4-openssl-dev"
     "libexpat1-dev"
     "libkrb5-3"
     "liblttng-ust-dev"
