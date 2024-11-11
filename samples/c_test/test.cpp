@@ -13,9 +13,9 @@ inline void THROW_ON_ERROR(OrtStatus* status) {
 
 void TestCompileBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
 #ifdef _WIN32
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/yifanl/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
 #else
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
 #endif
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "outTreeEp", env, keys.data(), values.data(), keys.size()));
@@ -23,9 +23,9 @@ void TestCompileBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so)
 
 void TestKernelBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
 #ifdef _WIN32
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/yifanl/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
 #else
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
 #endif
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "kernelEp", env, keys.data(), values.data(), keys.size()));
@@ -33,9 +33,9 @@ void TestKernelBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) 
 
 void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
 #ifdef _WIN32
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
 #else
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
 #endif
     std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
@@ -43,9 +43,9 @@ void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
 
 void TestTensorRTAndCudaEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
 #ifdef _WIN32
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
 #else
-    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
 #endif
     std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
@@ -119,7 +119,7 @@ void RunRelu(const OrtApi* g_ort, OrtEnv* p_env, OrtSessionOptions* so) {
 #ifdef _WIN32
     THROW_ON_ERROR(g_ort->CreateSession(p_env, L"C:/share/models/relu/Relu.onnx", so, &session));
 #else
-    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/yifanl/onnxruntime/samples/c_test/Relu.onnx", so, &session));
 #endif
 
     OrtMemoryInfo* memory_info = nullptr;
