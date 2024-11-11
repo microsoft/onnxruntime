@@ -305,6 +305,10 @@ function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
   if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
     throw new Error('Flag "wasm.simd"/"wasm-enable-simd" must be a boolean value');
   }
+  const relaxedSimd = (wasm.relaxedSimd = parseBooleanArg(wasm.relaxedSimd));
+  if (typeof relaxedSimd !== 'undefined' && typeof relaxedSimd !== 'boolean') {
+    throw new Error('Flag "wasm.relaxedSimd" must be a boolean value');
+  }
   const proxy = (wasm.proxy = parseBooleanArg(wasm.proxy ?? args['wasm-enable-proxy']));
   if (typeof proxy !== 'undefined' && typeof proxy !== 'boolean') {
     throw new Error('Flag "wasm.proxy"/"wasm-enable-proxy" must be a boolean value');
