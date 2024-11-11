@@ -164,72 +164,6 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
-   // This shader works only for a limited case of current_seq_len = 1, that is the generation phase of an LLM.
-   // Expectations are
-   //    qkv have same number of heads and hidden dimension (head size).
-   //    qkv are in BSNH format.
-   //            B - batch size but shader only supports batch_size 1.
-   //            S - current sequence length but shader supports only S = 1.
-   //            N - number of heads.
-   //            H - head size or hidden dimension for each qkv head.
-   //  KV cache is stored as BN(total_sequence_length)H
-   //  Attention bias is in BN(total_sequence_length)
-   //
-   //  Expectation is that present_key, and present_value contain past key and values since
-   //  we are out of storage buffers a shader can have and both past/present cant be passed.
-
-   shader.AddInput("k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   shader.AddInput("past_k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   shader.AddInput("past_v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   shader.AddOutput("present_key", ShaderUsage::UseUniform);
-   shader.AddOutput("present_value", ShaderUsage::UseUniform);
-
-   shader.MainFunctionBody() << "let head_index = local_id.x;\n"
-                             << "let k_index = workgroup_id.x;\n"
-                             << "if (k_index < uniforms.past_sequence_length) {\n"
-                             << "  let present_offset = head_index * uniforms.total_sequence_length * uniforms.qkv_hidden_size + k_index * uniforms.qkv_hidden_size;\n"
-                             << "  let past_offset = head_index * uniforms.past_sequence_length * uniforms.qkv_hidden_size + k_index * uniforms.qkv_hidden_size;\n"
-                             << "  for (var i=0u; i<uniforms.qkv_hidden_size; i++) {\n"
-                             << "    present_key[present_offset + i] = past_k[past_offset + i];\n"
-                             <<  "    present_value[present_offset + i] = past_v[past_offset + i];\n"
-                             << "  }\n"
-                             << "}\n"
-                             << "else if (k_index == uniforms.past_sequence_length) {\n"
-                             << "  let present_offset = head_index * uniforms.total_sequence_length * uniforms.qkv_hidden_size + k_index * uniforms.qkv_hidden_size;\n"
-                             << "  let k_offset = head_index * uniforms.qkv_hidden_size;\n"
-                             << "  for (var i=0u; i<uniforms.qkv_hidden_size; i++) {\n"
-                             << "    present_key[present_offset + i] = k[k_offset + i];\n"
-                             << "    present_value[present_offset + i] = v[k_offset + i];\n"
-                             << "  }\n"
-                             << "}\n";
-
-   return Status::OK();
-}
-
-Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParameters& parameters,
-                             const Tensor* K, const Tensor* past_key, Tensor* present_key,
-                             const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                             int past_sequence_length, int total_sequence_length) {
-
-  CopyKVCacheProgram program{"CopyKVCache"};
-  program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank},
-                     {past_key, ProgramTensorMetadataDependency::TypeAndRank},
-                     {V, ProgramTensorMetadataDependency::TypeAndRank},
-                     {past_value, ProgramTensorMetadataDependency::TypeAndRank}});
-  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank},
-                      {present_value, ProgramTensorMetadataDependency::Rank}});
-
-  program.SetDispatchGroupSize(total_sequence_length)
-      .SetWorkgroupSize(parameters.num_heads)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.head_size)},
-                            {static_cast<uint32_t>(past_sequence_length)},
-                            {static_cast<uint32_t>(total_sequence_length)}});
-
-  return context.RunProgram(program);
-}
-
 Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int output_count, const Tensor* Q,
                              const Tensor* K, const Tensor* past_key, const Tensor* attention_bias, Tensor* probs, Tensor* present_key,
                              AttentionParameters& parameters, int past_sequence_length, int total_sequence_length, bool fa_variant = false) {
@@ -475,6 +409,71 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   return Status::OK();
 }
 
+Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
+   // Expectations are
+   //    qkv have same number of heads and hidden dimension (head size).
+   //    qkv are in BSNH format.
+   //            B - batch size but shader only supports batch_size 1.
+   //            S - current sequence length but shader supports only S = 1.
+   //            N - number of heads.
+   //            H - head size or hidden dimension for each qkv head.
+   //  KV cache is stored as BN(total_sequence_length)H
+   //  Attention bias is in BN(total_sequence_length)
+   shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddInput("value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddInput("past_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+   shader.AddOutput("present_key", ShaderUsage::UseUniform);
+   shader.AddOutput("present_value", ShaderUsage::UseUniform);
+
+  shader.MainFunctionBody() << "let headIdx = workgroup_id.z;\n"
+                << "let kIdx = workgroup_id.x;\n"
+                << "let presentKeyOffset = headIdx * num_workgroups.x * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n"
+                << "if (kIdx < uniforms.past_sequence_length) {\n"
+                << "  let pastKeyOffset = headIdx * uniforms.past_sequence_length * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n"
+                << "  for (var w: u32 = 0u; w < uniforms.vectorized_head_size; w ++) {\n"
+                << "    present_key[presentKeyOffset+w] = past_key[pastKeyOffset+w];\n"
+                << "    present_value[presentKeyOffset+w] = past_value[pastKeyOffset+w];\n"
+                << "  }\n"
+                << "}\n"
+                << "else if (kIdx >= uniforms.past_sequence_length) {\n"
+                << "  let nkIdx = kIdx - uniforms.past_sequence_length;\n"
+                << "  // Assumes kv have BSNH layout. num_workgroups.z is the num_head as per the dispatch requirement.\n"
+                << "  let nOffset = nkIdx * uniforms.vectorized_head_size * num_workgroups.z + headIdx*uniforms.vectorized_head_size;\n"
+                << "  // Assumes kv have BNSH layout.\n"
+                << "  // let nOffset = headIdx * uniforms.kv_sequence_length * uniforms.vectorized_head_size + nkIdx * uniforms.vectorized_head_size;\n"
+                << "  for (var w: u32 = 0u; w < uniforms.vectorized_head_size; w ++) {\n"
+                << "    present_key[presentKeyOffset+w] = key[nOffset+w];\n"
+                << "    present_value[presentKeyOffset+w] = value[nOffset+w];\n"
+                << "  }\n"
+                << "}\n";
+
+   return Status::OK();
+}
+
+Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParameters& parameters,
+                             const Tensor* K, const Tensor* past_key, Tensor* present_key,
+                             const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                             int past_sequence_length, int total_sequence_length) {
+
+  const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
+  CopyKVCacheProgram program{"CopyKVCache", components};
+  program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
+                     {V, ProgramTensorMetadataDependency::TypeAndRank, components},
+                     {past_key, ProgramTensorMetadataDependency::TypeAndRank, components},
+                     {past_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
+                      {present_value, ProgramTensorMetadataDependency::Rank, components}});
+
+  program.SetDispatchGroupSize(total_sequence_length, 1, parameters.num_heads)
+      .SetWorkgroupSize(1)
+      .AddUniformVariables({{static_cast<uint32_t>(past_sequence_length)},
+                            {static_cast<uint32_t>(parameters.kv_sequence_length)},
+                            {static_cast<uint32_t>(parameters.head_size/ components)},});
+
+  return context.RunProgram(program);
+}
+
 Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // This shader works only for a limited case of current_seq_len = 1, that is the generation phase of an LLM.
   // Expectations are
@@ -630,33 +629,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
   return ApplyAttention(Q, K, V, attention_bias, past_key, past_value, output, present_key,
                           present_value, parameters, context, true);
-  // constexpr int flash_attention_tile_length = 64;
-  // const float attention_scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size))
-  //                                              : parameters.scale;
-  // const bool has_attention_bias = attention_bias != nullptr;
-  // const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
-  // FlashAttentionProgram program{"FlashAttentionProgram", has_attention_bias, flash_attention_tile_length,
-  //                               parameters.v_hidden_size, parameters.head_size, components};
-
-  // program.AddInputs({{Q, ProgramTensorMetadataDependency::Type, components},
-  //                   {K, ProgramTensorMetadataDependency::Type, components},
-  //                   {V, ProgramTensorMetadataDependency::Type}});
-  // if (has_attention_bias) {
-  //   program.AddInput({attention_bias, ProgramTensorMetadataDependency::Type});
-  // }
-
-  // program.AddOutput({present_key, ProgramTensorMetadataDependency::Type, components});
-  // program.AddOutput({present_value, ProgramTensorMetadataDependency::Type});
-  // program.AddOutput({output, ProgramTensorMetadataDependency::Type});
-
-  // program.SetDispatchGroupSize(parameters.num_heads)
-  //     .SetWorkgroupSize(flash_attention_tile_length)
-  //     .CacheHint(std::to_string(has_attention_bias)+std::to_string(flash_attention_tile_length))
-  //     .AddUniformVariables({{static_cast<float>(attention_scale)},
-  //                           {static_cast<uint32_t>(parameters.past_sequence_length)}})
-  //     .SetOverridableConstants({{static_cast<uint32_t>(flash_attention_tile_length)}});
-
-  // return context.RunProgram(program);
 }
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)

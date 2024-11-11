@@ -74,24 +74,6 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
   int work_group_size_;
   int components_;
 };
-
-class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
- public:
-  CopyKVCacheProgram(const std::string& kernel_name)
-      : Program{kernel_name} {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"qkv_hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int work_group_size_;
-  int components_;
-};
-
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
   VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool fa_variant = false)
@@ -115,6 +97,22 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   bool has_present_value_;
   int tile_size_;
   bool fa_variant_;
+};
+
+class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
+ public:
+  CopyKVCacheProgram(const std::string& kernel_name, int components)
+      : Program{kernel_name}, components_(components) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"past_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int components_;
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
