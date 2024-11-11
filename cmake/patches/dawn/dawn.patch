@@ -108,7 +108,7 @@ diff --git a/third_party/CMakeLists.txt b/third_party/CMakeLists.txt
 index bcb91ba106..4e54940c50 100644
 --- a/third_party/CMakeLists.txt
 +++ b/third_party/CMakeLists.txt
-@@ -194,6 +194,36 @@ function(get_all_targets_recursive targets dir)
+@@ -194,6 +194,38 @@ function(get_all_targets_recursive targets dir)
  endfunction()
 
  function(AddSubdirectoryDXC)
@@ -139,21 +139,14 @@ index bcb91ba106..4e54940c50 100644
 +                COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/native-tools --config=${CMAKE_BUILD_TYPE} --target=clang-tblgen
 +            )
 +        endif()
++        set(LLVM_TABLEGEN ${CMAKE_BINARY_DIR}/native-tools/${CMAKE_BUILD_TYPE}/bin/llvm-tblgen.exe CACHE STRING "" FORCE)
++        set(CLANG_TABLEGEN ${CMAKE_BINARY_DIR}/native-tools/${CMAKE_BUILD_TYPE}/bin/clang-tblgen.exe CACHE STRING "" FORCE)
 +    endif()
 +
 +
      # We use a CMake function so that all these (non-cache) variables are scoped
      # only to this function.
      set(HLSL_OPTIONAL_PROJS_IN_DEFAULT OFF)
-@@ -223,6 +253,8 @@ function(AddSubdirectoryDXC)
-     set(LLVM_ENABLE_RTTI ON)
-     set(LLVM_ENABLE_EH ON)
-     set(CLANG_CL OFF)
-+    set(LLVM_TABLEGEN ${CMAKE_BINARY_DIR}/native-tools/${CMAKE_BUILD_TYPE}/bin/llvm-tblgen.exe CACHE STRING "" FORCE)
-+    set(CLANG_TABLEGEN ${CMAKE_BINARY_DIR}/native-tools/${CMAKE_BUILD_TYPE}/bin/clang-tblgen.exe CACHE STRING "" FORCE)
-
-     if (DAWN_ENABLE_ASAN AND DAWN_ENABLE_UBSAN)
-         set(LLVM_USE_SANITIZER "Address;Undefined")
 @@ -345,8 +377,17 @@ function(AddSubdirectoryDXC)
              unset(sdk_dirs)
              message(STATUS "Windows SDK version not found from CMake variable 'CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION', attempted to find from SDK path: ${WIN10_SDK_VERSION}")
