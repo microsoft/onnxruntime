@@ -1,6 +1,6 @@
+import ctypes
 import os
 import platform
-import ctypes
 
 
 class CudaTemporaryEnv:
@@ -22,7 +22,7 @@ class CudaTemporaryEnv:
         elif platform.system() == "Linux":
             for loaded_lib in self.loaded_libs:
                 handle = loaded_lib._handle
-                # Load system’s dynamic linking library, ctypes.CDLL(None), to access dlclose
+                # Load system dynamic linking library, ctypes.CDLL(None), to access dlclose
                 ctypes.CDLL(None).dlclose(handle)
         else:
             pass
@@ -30,6 +30,7 @@ class CudaTemporaryEnv:
 
 def get_nvidia_lib_paths():
     import site
+
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[0]
     nvidia_path = os.path.join(site_packages_path, "nvidia")
@@ -41,6 +42,7 @@ def get_nvidia_lib_paths():
                 lib_paths.append(root)
     elif platform.system() == "Linux":
         import re
+
         pattern = re.compile(r"\.so(\.\d+)?$")
         for root, _, files in os.walk(nvidia_path):
             for file in files:
