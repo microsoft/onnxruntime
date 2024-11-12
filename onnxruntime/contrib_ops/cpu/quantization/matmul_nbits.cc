@@ -32,24 +32,59 @@ constexpr size_t A = 0,
                  bias = 5;
 };
 
-int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
-  const auto accuracy_level = std::clamp(accuracy_level_attr,
-                                         static_cast<int64_t>(CompMostAccurate),
-                                         static_cast<int64_t>(CompLeastAccurate));
+typedef enum {
+  Level1, /*!< input fp32, accumulator fp32 */
+  Level2, /*!< input fp16, accumulator fp16 */
+  Level3, /*!< input bf16, accumulator fp32 */
+  Level4, /*!< input int8, accumulator int32 */
+} ACCURACY_LEVEL;
 
-  // Find a supported accuracy level that is not less accurate than the one given.
-  // CompMostAccurate is always supported with the fallback implementation.
-  // Note: A higher numeric accuracy level value means lower accuracy, so the comparison order is reversed.
-  int64_t effective_accuracy_level = accuracy_level;
-  for (; effective_accuracy_level > CompMostAccurate; --effective_accuracy_level) {
-    const auto compute_type = static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(effective_accuracy_level);
-    if (MlasIsQNBitGemmAvailable(nbits, block_size, compute_type)) {
-      break;
-    }
+// T: A data type.
+template <typename T>
+MLAS_QNBIT_GEMM_COMPUTE_TYPE
+GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr);
+
+template <>
+MLAS_QNBIT_GEMM_COMPUTE_TYPE
+GetComputeType<float>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  // For Fp32, only accuracy level 1 or 4 makes sense.
+  // By converting Fp32 to Fp16, precision becomes worse. And due to the casting,
+  // there is no performance gain.
+  if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
+      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+    return SQNBIT_CompInt8;
   }
 
-  return effective_accuracy_level;
+  return SQNBIT_CompFp32;
 }
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+template <>
+MLAS_QNBIT_GEMM_COMPUTE_TYPE
+GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  // For Fp16, only accuracy level 2 or 4 makes sense.
+  // By converting Fp16 to Fp32, there is not precision increase, and the performance
+  // becomes worse.
+  if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
+      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+    return SQNBIT_CompInt8;
+  }
+
+  // if HQNBIT_CompFp16 is not supported, will fallback to unpacked computation.
+  return HQNBIT_CompFp16;
+}
+#else   // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
+template <>
+MLAS_QNBIT_GEMM_COMPUTE_TYPE
+GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  // non-ARM CPU converts Fp16 to Fp32.
+  if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
+      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+    return SQNBIT_CompInt8;
+  }
+  return SQNBIT_CompFp32;
+}
+#endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
 }  // namespace
 
 bool GetType(const NodeArg& node_arg, int32_t& type) {
@@ -74,10 +109,9 @@ class MatMulNBits final : public OpKernel {
         N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
         block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
-        accuracy_level_{GetAccuracyLevel(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
-        compute_type_{static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_)} {
+        compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
     const auto& node = info.node();
     auto input_defs = node.InputDefs();
     const NodeArg* zero_point_arg =
@@ -109,7 +143,6 @@ class MatMulNBits final : public OpKernel {
   const size_t N_;
   const size_t block_size_;
   const size_t nbits_;
-  const int64_t accuracy_level_;
   const bool has_g_idx_;
   const bool has_bias_;
   const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
@@ -170,7 +203,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr, nullptr);
     is_packed = true;
-  } else if (compute_type_ == CompInt8) {
+  } else if (compute_type_ == SQNBIT_CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       auto sptr = tensor.Data<float>();
@@ -224,7 +257,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
                                  nullptr, has_zp_input_, nullptr, nullptr);
     is_packed = true;
-  } else if (compute_type_ == CompInt8) {
+  } else if (compute_type_ == SQNBIT_CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
@@ -289,7 +322,7 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
     data[i].A = a_data + helper.LeftOffsets()[i];
     data[i].lda = lda;
 #ifdef MLAS_TARGET_AMD64_IX86
-    if (compute_type_ == CompInt8) {
+    if (compute_type_ == SQNBIT_CompInt8) {
       data[i].QuantBDataWorkspace = packed_b_.get();
     }
 #endif
@@ -366,7 +399,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
     data[i].lda = lda;
 #ifdef MLAS_TARGET_AMD64_IX86
-    if (compute_type_ == CompInt8) {
+    if (compute_type_ == SQNBIT_CompInt8) {
       data[i].QuantBDataWorkspace = packed_b_.get();
     }
 #endif

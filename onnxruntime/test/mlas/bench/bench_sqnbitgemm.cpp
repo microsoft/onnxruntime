@@ -126,7 +126,7 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
       {1, 8},                                  // Threads
       {int64_t{false}, int64_t{true}},         // Symmetric
       {int64_t{false}, int64_t{true}},         // HasBias
-      {int64_t{CompFp32}, int64_t{CompInt8}},  // ComputeType
+      {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}},  // ComputeType
   });
 }
 
@@ -145,7 +145,7 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
   const auto Symmetric = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_SYMMETRIC", true);
   const auto HasBias = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_HAS_BIAS", false);
   const auto ComputeType = ParseEnvironmentVariableWithDefault<int32_t>("ORT_SQNBITGEMM_COMPUTE_TYPE",
-                                                                        static_cast<int32_t>(CompFp32));
+                                                                        static_cast<int32_t>(SQNBIT_CompFp32));
 
   RunSQNBitGemmBenchmark<BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
                                       static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),

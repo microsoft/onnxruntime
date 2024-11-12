@@ -27,16 +27,11 @@ Abstract:
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
  */
 typedef enum {
-    CompUndef = 0, /*!< undef */
-    CompFp32,      /*!< input fp32, accumulator fp32 */
-    CompFp16,      /*!< input fp16, accumulator fp16 */
-    CompBf16,      /*!< input bf16, accumulator fp32 */
-    CompInt8,      /*!< input int8, accumulator int32 */
-
-    // special values that should be the first and last actual values
-
-    CompMostAccurate = CompUndef,
-    CompLeastAccurate = CompInt8,
+    SQNBIT_CompFp32,      /*!< input fp32, accumulator fp32 */
+    HQNBIT_CompFp16,      /*!< input fp16, accumulator fp16 */
+    BHQNBIT_CompBf16,     /*!< input bf16, accumulator fp32 */
+    SQNBIT_CompInt8,      /*!< input int8, accumulator int32, input fp32 */
+    HQNBIT_CompInt8,      /*!< input int8, accumulator int32, input fp16 */
 } MLAS_QNBIT_GEMM_COMPUTE_TYPE;
 
 /**

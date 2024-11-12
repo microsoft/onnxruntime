@@ -36,7 +36,7 @@ namespace sqnbitgemm_neon
 // files.
 //
 
-// CompFp32 declarations
+// SQNBIT_CompFp32 declarations
 
 void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -64,7 +64,7 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlockCountK
 );
 
-// CompInt8 declarations
+// SQNBIT_CompInt8 declarations
 
 void
 QuantizeARow_CompInt8(

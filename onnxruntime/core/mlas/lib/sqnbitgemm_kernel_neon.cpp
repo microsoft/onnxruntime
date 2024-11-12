@@ -69,7 +69,7 @@ SQ4BitGemmPackQuantBData(
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    const size_t SubBlkLen = (ComputeType == CompInt8)
+    const size_t SubBlkLen = (ComputeType == SQNBIT_CompInt8)
                                  ? ((BlkLen == 16) ? 16 : 32)
                                  : 16;
 
@@ -137,7 +137,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
     MLAS_UNREFERENCED_PARAMETER(N);
 
     switch (ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
@@ -158,7 +158,7 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
 
     switch (ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             return Q8BlkAlignment();
         }
         default: {

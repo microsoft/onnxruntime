@@ -165,7 +165,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
 
     //
-    // CompFp32 kernel function prototypes.
+    // SQNBIT_CompFp32 kernel function prototypes.
     //
 
     /**
@@ -231,7 +231,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     Q4BitBlkDequantBForSgemm_CompFp32_Fn* Q4BitBlkDequantBForSgemm_CompFp32 = nullptr;
 
     //
-    // CompInt8 kernel function prototypes.
+    // SQNBIT_CompInt8 kernel function prototypes.
     //
 
     /**

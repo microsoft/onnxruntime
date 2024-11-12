@@ -328,7 +328,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (ComputeType == CompInt8) {
+    if (ComputeType == SQNBIT_CompInt8) {
         SubBlkLen = 128;
     }
     PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
