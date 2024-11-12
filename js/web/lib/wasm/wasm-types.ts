@@ -232,6 +232,23 @@ export declare namespace JSEP {
      * @returns
      */
     jsepCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN Constant operand from external data.
+     * @param externalFilePath - specify the external file path.
+     * @param dataOffset - specify the external data offset.
+     * @param dataLength - specify the external data length.
+     * @param builder - specify the MLGraphBuilder used for constructing the Constant.
+     * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @returns the WebNN Constant operand for the specified external data.
+     */
+    jsepRegisterMLConstant(
+      externalFilePath: string,
+      dataOffset: number,
+      dataLength: number,
+      builder: MLGraphBuilder,
+      desc: MLOperandDescriptor,
+    ): MLOperand;
   }
 }
 
