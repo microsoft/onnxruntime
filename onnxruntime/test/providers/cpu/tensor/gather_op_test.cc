@@ -39,6 +39,38 @@ TEST(GatherOpTest, Gather_axis0) {
   run_test(true);
 }
 
+TEST(GatherOpTest, Gather_axis0_MLFloat16) {
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 0LL);
+
+    std::vector<float> input_fp32 = {0.0f, 0.1f, 0.2f, 0.3f,
+                                     1.0f, 1.1f, 1.2f, 1.3f,
+                                     2.0f, 2.1f, 2.2f, 2.3f,
+                                     10.0f, 10.1f, 10.2f, 10.3f,
+                                     11.0f, 11.1f, 11.2f, 11.3f,
+                                     12.0f, 12.1f, 12.2f, 12.3f};
+    std::vector<float> output_fp32 = {10.0f, 10.1f, 10.2f, 10.3f,
+                                      11.0f, 11.1f, 11.2f, 11.3f,
+                                      12.0f, 12.1f, 12.2f, 12.3f};
+
+    std::vector<MLFloat16> input_fp16(input_fp32.size());
+    std::vector<MLFloat16> output_fp16(output_fp32.size());
+
+    ConvertFloatToMLFloat16(input_fp32.data(), input_fp16.data(), input_fp32.size());
+    ConvertFloatToMLFloat16(output_fp32.data(), output_fp16.data(), output_fp32.size());
+
+    test.AddInput<MLFloat16>("data", {2, 3, 4}, input_fp16);
+    test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
+    test.AddOutput<MLFloat16>("output", {1, 3, 4}, output_fp16);
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(GatherOpTest, Gather_negative_axis) {
   // To test for NNAPI EP, we need the indices to be initializers
   auto run_test = [](bool indices_is_initializer) {
