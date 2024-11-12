@@ -88,7 +88,6 @@ struct OrtTensorRTProviderOptionsV2 {
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
   int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
-  //const char* trt_dds_ops = "NonMaxSuppression,NonZero,RoiAlign";                                               
   const char* trt_op_types_to_exclude{"NonMaxSuppression,NonZero,RoiAlign"};  // Exclude specific ops from running on TRT.
                                                                               // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.7.
                                                                               // TRT EP excludes DDS ops from running on TRT by default, user can override default value with empty string to include all ops.
