@@ -23,7 +23,7 @@ Abstract:
 #include <type_traits>
 
 #include "fp16_common.h"
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_neon.h"
 
 namespace sqnbitgemm_neon

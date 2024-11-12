@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm.cpp
+    qnbitgemm.cpp
 
 Abstract:
 
@@ -15,7 +15,7 @@ Abstract:
     as well as some SQNBitGemm-related query functions.
 --*/
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
 #include <cassert>

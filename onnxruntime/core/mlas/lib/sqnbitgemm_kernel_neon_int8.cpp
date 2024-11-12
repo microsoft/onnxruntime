@@ -21,7 +21,7 @@ Abstract:
 
 #include <cassert>
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
 
