@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module implements the float/quantized n-bit integer matrix
-    multiplication hardware agnostic entrypoint, MlasSQNBitGemmBatch,
+    multiplication hardware agnostic entrypoint, MlasQNBitGemmBatch,
     as well as some SQNBitGemm-related query functions.
 --*/
 
@@ -23,7 +23,7 @@ Abstract:
 namespace
 {
 
-enum SQNBitGemmVariant {
+enum QNBitGemmVariant {
     SQNBitGemmVariantInvalid = -1,
 
     // Valid variants
@@ -33,16 +33,16 @@ enum SQNBitGemmVariant {
 
     // End of valid variants
 
-    // Keep this element last and ensure that its value is the number of valid SQNBitGemmVariant values.
+    // Keep this element last and ensure that its value is the number of valid QNBitGemmVariant values.
     // Its value is used as an array size.
     SQNBitGemmVariantCount,
 };
 
-SQNBitGemmVariant
-GetSQNBitGemmVariant(
+QNBitGemmVariant
+GetQNBitGemmVariant(
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     if (BlkBitWidth == 4 &&
@@ -61,10 +61,10 @@ GetSQNBitGemmVariant(
 }  // namespace
 
 bool MLASCALL
-MlasIsSQNBitGemmAvailable(
+MlasIsQNBitGemmAvailable(
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
@@ -72,7 +72,7 @@ MlasIsSQNBitGemmAvailable(
         return false;
     }
 
-    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
+    const auto Variant = GetQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
 
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp32: {
@@ -94,13 +94,13 @@ namespace
 {
 
 size_t
-SQNBitGemmPerGemmWorkspaceSize(
+QNBitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
@@ -116,10 +116,10 @@ SQNBitGemmPerGemmWorkspaceSize(
 }
 
 size_t
-SQNBitGemmPerGemmWorkspaceAlignment(
+QNBitGemmPerGemmWorkspaceAlignment(
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
@@ -135,39 +135,39 @@ SQNBitGemmPerGemmWorkspaceAlignment(
 }
 
 size_t
-SQNBitGemmPerGemmWorkspaceStride(
+QNBitGemmPerGemmWorkspaceStride(
     size_t M,
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Size = SQNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
-    const auto Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
+    const auto Size = QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Alignment = QNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
     return MlasDivRoundup(Size, Alignment) * Alignment;
 }
 
 }  // namespace
 
 size_t MLASCALL
-MlasSQNBitGemmBatchWorkspaceSize(
+MlasQNBitGemmBatchWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const size_t PerGemmWorkspaceStride = QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
     if (PerGemmWorkspaceStride == 0) {
         return 0;
     }
 
-    const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
+    const size_t Alignment = QNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
 
     const size_t WorkspaceSize = BatchN * PerGemmWorkspaceStride;
 
@@ -175,12 +175,12 @@ MlasSQNBitGemmBatchWorkspaceSize(
 }
 
 size_t MLASCALL
-MlasSQNBitGemmPackQuantBDataSize(
+MlasQNBitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
@@ -213,12 +213,12 @@ struct PerGemmQuantAWorkspace {
 };
 
 void MLASCALL
-MlasSQNBitGemmPackQuantBData(
+MlasQNBitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSumWorkspace,
     const void* QuantBScale,
@@ -298,7 +298,7 @@ AddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, size_t
 typedef void(SQNBitGemmFn)(
     size_t BlkLen,
     size_t K,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    const MLAS_QNBIT_GEMM_COMPUTE_TYPE* DataParams,
     void* PerGemmWorkspace,
     size_t RangeStartM,
     size_t RangeCountM,
@@ -310,7 +310,7 @@ void
 SQ4BitGemm_CompFp32(
     const size_t BlkLen,
     const size_t K,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* const DataParams,
+    const MLAS_QNBIT_GEMM_COMPUTE_TYPE* const DataParams,
     void* const PerGemmWorkspace,
     const size_t RangeStartM,
     const size_t RangeCountM,
@@ -429,7 +429,7 @@ void
 SQ4BitGemm_CompInt8(
     const size_t BlkLen,
     const size_t K,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* const DataParams,
+    const MLAS_QNBIT_GEMM_COMPUTE_TYPE* const DataParams,
     void* const PerGemmWorkspace,
     const size_t RangeStartM,
     const size_t RangeCountM,
@@ -560,7 +560,7 @@ typedef void(InitializeWorkspaceFn)(
     size_t K,
     size_t BatchN,
     size_t BlkLen,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    const MLAS_QNBIT_GEMM_COMPUTE_TYPE* DataParams,
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool
@@ -573,7 +573,7 @@ InitializeWorkspace_CompInt8(
     size_t K,
     size_t BatchN,
     size_t BlkLen,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    const MLAS_QNBIT_GEMM_COMPUTE_TYPE* DataParams,
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool
@@ -640,34 +640,34 @@ constexpr auto OperationMap = []() {
 }  // namespace
 
 void MLASCALL
-MlasSQNBitGemmBatch(
+MlasQNBitGemmBatch(
     const size_t M,
     const size_t N,
     const size_t K,
     const size_t BatchN,
     const size_t BlkBitWidth,
     const size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_QNBIT_GEMM_COMPUTE_TYPE* DataParams,
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
+    const auto Variant = GetQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
     assert(Variant != SQNBitGemmVariantInvalid);
 
     //
     // Ensure `Workspace` has correct alignment.
     //
     if (Workspace != nullptr) {
-        const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
+        const size_t Alignment = QNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
         const uintptr_t WorkspaceAddress = reinterpret_cast<uintptr_t>(Workspace);
         Workspace = reinterpret_cast<void*>(
             (WorkspaceAddress + Alignment - 1) & (~(Alignment - 1))
         );
     }
 
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const size_t PerGemmWorkspaceStride = QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
 
     if (const auto InitializeWorkspaceOperation = OperationMap[Variant].InitializeWorkspace;
         InitializeWorkspaceOperation != nullptr) {
@@ -687,9 +687,9 @@ MlasSQNBitGemmBatch(
                 reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
             if (ComputeType == CompInt8 && GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
                 PackedQuantBDataStruct packed_quant_b(const_cast<void*>(Data->QuantBDataWorkspace), N, BlockCountK, BlkLen);
-                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
-                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
-                const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
+                const_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
+                const_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
+                const_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
                 PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
                 ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
             } else {
@@ -758,9 +758,9 @@ MlasSQNBitGemmBatch(
             reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
         if (ComputeType == CompInt8 && GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
             PackedQuantBDataStruct packed_quant_b(const_cast<void*>(Data->QuantBDataWorkspace), N, BlockCountK, BlkLen);
-            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
-            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
-            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
+            const_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
+            const_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
+            const_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
 
             PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
             ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);

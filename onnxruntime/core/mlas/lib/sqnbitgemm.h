@@ -84,39 +84,39 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 // Kernel dispatch structure.
 //
 
-struct MLAS_SQNBIT_GEMM_DISPATCH {
+struct MLAS_QNBIT_GEMM_DISPATCH {
     //
     // Quantized B data packing function prototypes.
     //
 
-    /** Gets size of packed quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBDataSize(). */
-    typedef size_t(SQ4BitGemmPackQuantBDataSize_Fn)(
+    /** Gets size of packed quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
+    typedef size_t(Q4BitGemmPackQuantBDataSize_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
+    Q4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
 
-    /** Packs quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBData(). */
-    typedef void(SQ4BitGemmPackQuantBData_Fn)(
+    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef void(Q4BitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         std::byte* PackedQuantBDataBegin,
         MLAS_THREADPOOL* ThreadPool
     );
 
-    SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+    Q4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
 
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         const float* QuantBScaleBegin,
         bool has_zp_input,
@@ -146,7 +146,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
     SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
@@ -159,7 +159,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      */
     typedef size_t(SQ4BitGemmPerGemmWorkspaceAlignment_Fn)(
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
     SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
@@ -293,7 +293,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      *
      * @return                          The number of rows of A and C that were processed, at most CountM.
      */
-    typedef size_t(SQ4BitGemmKernel_CompInt8_Fn)(
+    typedef size_t(Q4BitGemmKernel_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
         const std::byte* QuantBData,
@@ -308,7 +308,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* Bias
     );
 
-    SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
+    Q4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
