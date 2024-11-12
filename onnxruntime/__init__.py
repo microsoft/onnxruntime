@@ -154,4 +154,4 @@ if (
                             print(f"Failed to load {so_path}: {e}")
 
     else:
-        print(f"Unsupported platform to load nvidia libraries: {platform.system()}")
+        pass
