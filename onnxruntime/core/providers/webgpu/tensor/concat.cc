@@ -38,7 +38,23 @@ WEBGPU_CONCAT_VERSIONED_KERNEL(4, 10)
 WEBGPU_CONCAT_VERSIONED_KERNEL(11, 12)
 WEBGPU_CONCAT_KERNEL(13)
 
-void AppendCalCulateInputIndexFunction(std::ostream& os, size_t input_count) {
+// #define RESHAPE_TO_3D
+#define UNROLL_INPUT_INDEX
+
+#ifdef UNROLL_INPUT_INDEX
+void AppendCalculateInputIndexFunction(std::ostream& os, size_t input_count) {
+  os << "fn calculate_input_index(index: u32) -> u32 {\n";
+  // workaround Android issue with a `for` loop by manually unrolling it.
+  for (size_t i = 0; i < input_count - 1; ++i) {
+    os << "  if (index < " << GetElementAt("uniforms.size_in_concat_axis", i, input_count) << ") {\n"
+       << "    return " << i << ";\n"
+       << "  }\n";
+  }
+  os << "  return " << input_count - 1 << ";\n"
+     << "}\n";
+}
+#else
+void AppendCalculateInputIndexFunction(std::ostream& os, size_t input_count) {
   os << "fn calculate_input_index(index: u32) -> u32 {\n"
      << "  for (var i = 0u; i < " << input_count << "; i = i + 1u) {\n"
      << "    if (index < " << GetElementAt("uniforms.size_in_concat_axis", "i", input_count) << ") {\n"
@@ -48,6 +64,7 @@ void AppendCalCulateInputIndexFunction(std::ostream& os, size_t input_count) {
      << "  return " << input_count << ";\n"
      << "}\n";
 }
+#endif
 
 void AppendAssignOutputDataFunction(std::ostream& os, gsl::span<const ShaderVariableHelper*> inputs,
                                     const ShaderVariableHelper& output) {
@@ -71,19 +88,20 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<const ShaderVariableHelper*> inputs;
   inputs.reserve(input_count);
   for (size_t i = 0; i < input_count; ++i) {
-    inputs.push_back(&shader.AddInput("input_" + std::to_string(i), ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
+    inputs.push_back(&shader.AddInput("input_" + std::to_string(i),
+                                      ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   // add implementation of fn calculate_input_index
-  AppendCalCulateInputIndexFunction(shader.AdditionalImplementation(), input_count);
+  AppendCalculateInputIndexFunction(shader.AdditionalImplementation(), input_count);
   // add implementation of fn assign_output_data
   AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output);
 
-  const auto rank = Inputs()[0].tensor->Shape().NumDimensions();
-
   auto axis = axis_;
 
+#ifdef RESHAPE_TO_3D
+  const auto rank = Inputs()[0].tensor->Shape().NumDimensions();
   if (rank > 3) {
     // if rank > 3 we reshape to 2D if axis is first or last dim, and 3D otherwise.
     // if axis is fist dim it's unchanged (axis_ != 0) check above
@@ -93,15 +111,19 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
       axis = 1;
     }
   }
+#endif
+
   const std::string size_in_concat_axis = GetElementAt("uniforms.size_in_concat_axis", "input_index - 1", input_count);
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  var indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  let indices_axis = " << output.IndicesGet("indices", axis) << ";\n"
-                            << "  let input_index = calculate_input_index(indices_axis);\n"
-                            << "  if (input_index != 0u) {\n"
-                            << "    " << output.IndicesSet("indices", axis, "indices_axis - " + size_in_concat_axis) << ";\n"
-                            << "  }\n"
-                               "  assign_output_data(global_idx, input_index, indices);\n";
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+      << "  var output_location = " << output.OffsetToIndices("global_idx") << ";\n"
+      << "  let axis_dim_value = " << output.IndicesGet("output_location", axis) << ";\n"
+      << "  let input_index = calculate_input_index(axis_dim_value);\n"
+      << "  if (input_index != 0u) {\n"
+      << "    " << output.IndicesSet("output_location", axis, "axis_dim_value - " + size_in_concat_axis) << ";\n"
+      << "  }\n"
+         "  assign_output_data(global_idx, input_index, output_location);\n";
+
   return Status::OK();
 }
 
@@ -119,6 +141,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+#ifdef RESHAPE_TO_3D
   const auto rank = prepare.output_tensor->Shape().NumDimensions();
   const bool reshape_to_3D = rank > 3;
 
@@ -134,6 +157,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
                          shape.SizeFromDimension(prepare.axis + 1)};
     }
   };
+#endif
 
   uint32_t output_size = gsl::narrow_cast<int32_t>(prepare.output_tensor->Shape().Size());
 
@@ -148,12 +172,16 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       continue;
     }
 
+#ifdef RESHAPE_TO_3D
     if (reshape_to_3D) {
       program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank,
                         reshape_to_3D_func(input.tensor->Shape())});
     } else {
       program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
     }
+#else
+    program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
+#endif
 
     auto axis_size = input.tensor->Shape()[prepare.axis];
     sum += static_cast<uint32_t>(axis_size);
@@ -163,16 +191,21 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   size_t non_empty_input_count = sizes_in_concat_axis.size();
 
   if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
-    // TODO: support when input_count + 1 > maxStorageBuffersPerShaderStage, by raising the limit or run the program in multiple passes.
+    // TODO: support when input_count + 1 > maxStorageBuffersPerShaderStage, by raising the limit or
+    // run the program in multiple passes.
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of storage buffer (input=",
                            input_count, ", output=1) exceeds the limit (",
                            context.DeviceLimits().maxStorageBuffersPerShaderStage, ") of the device.");
   }
 
+#ifdef RESHAPE_TO_3D
   ProgramOutput output = reshape_to_3D ? ProgramOutput{prepare.output_tensor,
                                                        ProgramTensorMetadataDependency::None,
                                                        reshape_to_3D_func(prepare.output_tensor->Shape())}
                                        : ProgramOutput{prepare.output_tensor};
+#else
+  ProgramOutput output = ProgramOutput{prepare.output_tensor};
+#endif
 
   program.CacheHint(absl::StrJoin(std::make_tuple(non_empty_input_count, prepare.axis), ","))
       .AddOutput(std::move(output))
