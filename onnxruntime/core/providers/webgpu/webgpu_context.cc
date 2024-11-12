@@ -122,7 +122,9 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
 
       // TODO: Move to where we have the session logger and pass it through
-      device_.SetLoggingCallback(LogWGPUMessage, nullptr);
+      if (ValidationMode() == ValidationMode::Full) {
+        device_.SetLoggingCallback(LogWGPUMessage, nullptr);
+      }
     }
 
     // cache adapter info
@@ -439,7 +441,6 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
       "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
-      "dump_shaders",
       "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
