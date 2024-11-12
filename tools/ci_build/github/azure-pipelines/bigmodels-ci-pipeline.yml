@@ -447,7 +447,7 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu_ffmpeg
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2204_gpu_ffmpeg
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'
