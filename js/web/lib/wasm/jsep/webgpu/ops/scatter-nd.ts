@@ -19,8 +19,8 @@ export interface ScatterNDAttributes extends AttributeWithCacheKey {
   reduction: string;
 }
 
-const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type: 'i32' | 'f32') => {
-  if (reduction !== 'none' && type !== 'i32' && type !== 'f32') {
+const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type: 'i32' | 'u32' | 'f32') => {
+  if (reduction !== 'none' && type !== 'i32' && type !== 'u32' && type !== 'f32') {
     throw new Error(`Input ${type} is not supported with reduction ${reduction}.`);
   }
 
@@ -42,7 +42,7 @@ const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type:
     case 'none':
       return `${ptr}=${v};`;
     case 'add':
-      if (type === 'i32') {
+      if (type === 'i32' || type === 'u32') {
         return `atomicAdd(&${ptr}, bitcast<${type}>(${v}));`;
       } else {
         // atomicAdd only supports uint/int type. For float, we use
@@ -51,7 +51,7 @@ const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type:
               ${floatStart}bitcast<${type}>(oldValue) + (${v})${floatEnd}`;
       }
     case 'max':
-      if (type === 'i32') {
+      if (type === 'i32' || type === 'u32') {
         return `atomicMax(&${ptr}, bitcast<${type}>(${v}));`;
       } else {
         // atomicMax only supports uint/int type. For float, we use
@@ -60,7 +60,7 @@ const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type:
                 ${floatStart}max(bitcast<f32>(oldValue), (${v}))${floatEnd}`;
       }
     case 'min':
-      if (type === 'i32') {
+      if (type === 'i32' || type === 'u32') {
         return `atomicMin(&${ptr}, bitcast<${type}>(${v}));`;
       } else {
         // atomicMin only supports uint/int type. For float, we use
@@ -139,7 +139,12 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
 
   for (var i = 0u; i < uniforms.num_updates_elements; i++) {
     let value = updates[uniforms.num_updates_elements * global_idx + i];
-    ${atomicReductionSnippet(attributes.reduction, 'output[data_offset + i]', 'value', output.type.value as 'i32' | 'f32')}
+    ${atomicReductionSnippet(
+      attributes.reduction,
+      'output[data_offset + i]',
+      'value',
+      output.type.value as 'i32' | 'u32' | 'f32',
+    )}
   }
 
       }`;

@@ -433,5 +433,40 @@
         ]
       }
     ]
+  },
+  {
+    "name": "ScatterND mul uint32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "mul", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "uint32",
+        "inputs": [
+          {
+            "data": [11, 22, 31, 45, 53, 61, 78, 89],
+            "dims": [8],
+            "type": "uint32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [91, 102, 113, 125],
+            "dims": [1, 4],
+            "type": "uint32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [11, 2486, 31, 4590, 4823, 61, 78, 11125],
+            "dims": [8],
+            "type": "uint32"
+          }
+        ]
+      }
+    ]
   }
 ]
