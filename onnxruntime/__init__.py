@@ -118,12 +118,7 @@ if (
                     for regex in pattern_regex.items().values():
                         if regex.match(file):
                             dll_path = os.path.join(root, file)
-                            try:
-                                # Load the DLL
-                                _ = ctypes.CDLL(dll_path)
-                                print(f"Loaded {dll_path}")
-                            except OSError as e:
-                                print(f"Failed to load {dll_path}: {e}")
+                            _ = ctypes.CDLL(dll_path)
     elif platform.system() == "Linux":
         # Define the patterns with optional version number and case-insensitivity
         cuda_libs = (
@@ -146,12 +141,6 @@ if (
                 for regex in pattern_regex.items().values():
                     if regex.match(file):  # Check if the file matches the pattern
                         so_path = os.path.join(root, file)
-                        try:
-                            # Load the shared library
-                            _ = ctypes.CDLL(so_path)
-                            print(f"Loaded {so_path}")
-                        except OSError as e:
-                            print(f"Failed to load {so_path}: {e}")
-
+                        _ = ctypes.CDLL(so_path)
     else:
         pass
