@@ -642,7 +642,7 @@ TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_op_x = {1, 1, 28, 28};
-  std::vector<float> values_op_x(784, 1.0f); // 784=1*1*28*28
+  std::vector<float> values_op_x(784, 1.0f);// 784=1*1*28*28
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
   NameMLValMap feeds;
