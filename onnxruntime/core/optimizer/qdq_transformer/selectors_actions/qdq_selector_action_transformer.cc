@@ -236,7 +236,7 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearConv supports 16-bit.
-  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed,
                                                                                false,
                                                                                false,
