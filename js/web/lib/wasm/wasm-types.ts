@@ -247,7 +247,8 @@ export declare namespace JSEP {
       dataOffset: number,
       dataLength: number,
       builder: MLGraphBuilder,
-      desc: MLOperandDescriptor): MLOperand;
+      desc: MLOperandDescriptor,
+    ): MLOperand;
   }
 }
 
