@@ -77,6 +77,7 @@ if version:
 
 onnxruntime_validation.check_distro_info()
 
+# Load nvidia libraries from site-packages/nvidia if the package is onnxruntime-gpu
 if (
     __package__ == "onnxruntime-gpu"
     # Just in case we rename the package name in the future
