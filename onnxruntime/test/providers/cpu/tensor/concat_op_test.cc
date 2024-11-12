@@ -530,5 +530,50 @@ TEST(ConcatOpTest, Concat5D_3) {
   test.Run();
 }
 
+TEST(ConcatOpTest, Concat5D_3_5in) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{3});
+
+  std::vector<int64_t> dims{1, 1, 3, 1, 3};
+  test.AddInput<float>("input1", dims,
+                       {111.0f, 112.0f, 113.0f,
+                        211.0f, 212.0f, 213.0f,
+                        311.0f, 312.0f, 313.0f});
+  test.AddInput<float>("input2", dims,
+                       {121.0f, 122.0f, 123.0f,
+                        221.0f, 222.0f, 223.0f,
+                        321.0f, 322.0f, 323.0f});
+  test.AddInput<float>("input3", dims,
+                       {131.0f, 132.0f, 133.0f,
+                        231.0f, 232.0f, 233.0f,
+                        331.0f, 332.0f, 333.0f});
+  test.AddInput<float>("input4", dims,
+                       {141.0f, 142.0f, 143.0f,
+                        241.0f, 242.0f, 243.0f,
+                        341.0f, 342.0f, 343.0f});
+  test.AddInput<float>("input5", dims,
+                       {151.0f, 152.0f, 153.0f,
+                        251.0f, 252.0f, 253.0f,
+                        351.0f, 352.0f, 353.0f});
+  test.AddOutput<float>("concat_result", {1, 1, 3, 5, 3},
+                        {111.0f, 112.0f, 113.0f,
+                         121.0f, 122.0f, 123.0f,
+                         131.0f, 132.0f, 133.0f,
+                         141.0f, 142.0f, 143.0f,
+                         151.0f, 152.0f, 153.0f,
+
+                         211.0f, 212.0f, 213.0f,
+                         221.0f, 222.0f, 223.0f,
+                         231.0f, 232.0f, 233.0f,
+                         241.0f, 242.0f, 243.0f,
+                         251.0f, 252.0f, 253.0f,
+
+                         311.0f, 312.0f, 313.0f,
+                         321.0f, 322.0f, 323.0f,
+                         331.0f, 332.0f, 333.0f,
+                         341.0f, 342.0f, 343.0f,
+                         351.0f, 352.0f, 353.0f});
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime
