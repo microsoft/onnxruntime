@@ -227,7 +227,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     if (!shape.empty()) {
       dims.reserve(shape.size());
       for (const auto& dim : shape) {
-        // dim_param free dimensions should have already been excluded by IsInputSupported().
+        // dim_param free dimensions should have already been excluded by IsTensorShapeSupported().
         assert(dim.has_dim_value());
         dims.push_back(SafeInt<int32_t>(dim.dim_value()));
       }
