@@ -87,6 +87,7 @@ if (
     import ctypes
     import os
     import platform
+    import re
     import site
 
     # Get the site-packages path where nvidia packages are installed
@@ -94,39 +95,62 @@ if (
     nvidia_path = os.path.join(site_packages_path, "nvidia")
     # Traverse the directory and subdirectories
     if platform.system() == "Windows":  #
+        # Define the list of DLL patterns
+        cuda_libs = (
+            "cublas.dll",
+            "cudnn.dll",
+            "cudart.dll",
+            "nvrtc.dll",
+            "cufft.dll",
+            "curand.dll",
+            "nvJitLink.dll",
+        )
+        # Convert patterns to regex with case-insensitivity
+        pattern_regex = {pattern: re.compile(rf"^{re.escape(pattern)}$", re.IGNORECASE) for pattern in cuda_libs}
         # Collect all directories under site-packages/nvidia that contain .dll files (for Windows)
         for root, _, files in os.walk(nvidia_path):
             # Add the current directory to the DLL search path
+
             with os.add_dll_directory(root):
                 # Find all .dll files in the current directory
-                dll_files = [f for f in files if f.lower().endswith(".dll")]
-
-                for dll in dll_files:
-                    dll_path = os.path.join(root, dll)
-                    try:
-                        # Load the DLL
-                        _ = ctypes.CDLL(dll_path)
-                        print(f"Loaded {dll_path}")
-                    except OSError as e:
-                        print(f"Failed to load {dll_path}: {e}")
+                for file in files:
+                    for regex in pattern_regex.items().values():
+                        if regex.match(file):
+                            dll_path = os.path.join(root, file)
+                            try:
+                                # Load the DLL
+                                _ = ctypes.CDLL(dll_path)
+                                print(f"Loaded {dll_path}")
+                            except OSError as e:
+                                print(f"Failed to load {dll_path}: {e}")
     elif platform.system() == "Linux":
-        import re
+        # Define the patterns with optional version number and case-insensitivity
+        cuda_libs = (
+            "libcublas.so",
+            "libcudnn.so",
+            "libcudart.so",
+            "libnvrtc.so",
+            "libcufft.so",
+            "libcurand.so",
+            "libnvJitLink.so",
+        )
 
         # Regular expression to match .so files with optional versioning (e.g., .so, .so.1, .so.2.3)
-        so_pattern = re.compile(r"\.so(\.\d+)*$")
+        pattern_regex = {pattern: re.compile(rf"{re.escape(pattern)}(\.\d+)*$", re.IGNORECASE) for pattern in cuda_libs}
 
         # Traverse the directory and subdirectories
         for root, _, files in os.walk(nvidia_path):
             for file in files:
                 # Check if the file matches the .so pattern
-                if so_pattern.search(file):
-                    so_path = os.path.join(root, file)
-                    try:
-                        # Load the shared library
-                        _ = ctypes.CDLL(so_path)
-                        print(f"Loaded {so_path}")
-                    except OSError as e:
-                        print(f"Failed to load {so_path}: {e}")
+                for regex in pattern_regex.items().values():
+                    if regex.match(file):  # Check if the file matches the pattern
+                        so_path = os.path.join(root, file)
+                        try:
+                            # Load the shared library
+                            _ = ctypes.CDLL(so_path)
+                            print(f"Loaded {so_path}")
+                        except OSError as e:
+                            print(f"Failed to load {so_path}: {e}")
 
     else:
         print(f"Unsupported platform to load nvidia libraries: {platform.system()}")
