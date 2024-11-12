@@ -19,7 +19,9 @@ export interface ScatterNDAttributes extends AttributeWithCacheKey {
   reduction: string;
 }
 
-const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type: 'i32' | 'u32' | 'f32') => {
+type RedunctionType = 'i32' | 'u32' | 'f32';
+
+const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type: RedunctionType) => {
   if (reduction !== 'none' && type !== 'i32' && type !== 'u32' && type !== 'f32') {
     throw new Error(`Input ${type} is not supported with reduction ${reduction}.`);
   }
@@ -80,7 +82,7 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   const inputShape = inputs[0].dims;
   const indicesShape = inputs[1].dims;
   const outputShape = inputShape;
-  // TODO: support bool with componenets 4.
+  // TODO: support bool with components 4.
   const components = 1;
   const outputSize = Math.ceil(ShapeUtil.size(indicesShape) / components);
   const lastIndexDimension = indicesShape[indicesShape.length - 1];
@@ -143,7 +145,7 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
       attributes.reduction,
       'output[data_offset + i]',
       'value',
-      output.type.value as 'i32' | 'u32' | 'f32',
+      output.type.value as RedunctionType,
     )}
   }
 
