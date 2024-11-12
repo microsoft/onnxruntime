@@ -137,6 +137,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Xor", op_registrations);
   }
 
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
   {  // LSTM
     CreateLstmOpBuilder("LSTM", op_registrations);
   }

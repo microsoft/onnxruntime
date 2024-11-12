@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <core/common/status.h>
 #include "core/common/inlined_containers.h"
 #include <core/graph/basic_types.h>
@@ -238,6 +239,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
     {"LSTM", "lstm"},
+    {"LRN", "averagePool2d"},
     {"MatMul", "matmul"},
     {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
@@ -344,6 +346,9 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
 bool IsMLTensorSupported();
+
+uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type);
+uint16_t PackFloat32ToUint16AsFloat16(float value);
 
 }  // namespace webnn
 }  // namespace onnxruntime
