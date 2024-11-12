@@ -138,7 +138,7 @@ stages:
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
-            versionSpec: "11"
+            versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
 
@@ -368,7 +368,7 @@ stages:
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - task: JavaToolInstaller@0
             inputs:
-              versionSpec: "11"
+              versionSpec: "17"
               jdkArchitectureOption: ${{ parameters.buildArch }}
               jdkSourceOption: 'PreInstalled'
 
