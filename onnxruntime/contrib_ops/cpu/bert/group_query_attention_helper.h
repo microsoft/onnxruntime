@@ -11,19 +11,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-template <typename T = Tensor>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
-                   const T* cos_cache,
-                   const T* sin_cache,
+Status CheckInputs(const Tensor* query,
+                   const Tensor* key,
+                   const Tensor* value,
+                   const Tensor* past_key,
+                   const Tensor* past_value,
+                   const Tensor* cos_cache,
+                   const Tensor* sin_cache,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const T* seqlens_k,
-                   const T* total_seqlen,
+                   const Tensor* seqlens_k,
+                   const Tensor* total_seqlen,
                    float scale,
                    float softcap) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
@@ -266,19 +265,18 @@ Status CheckInputs(const T* query,
   return Status::OK();
 }
 
-template <typename T = Tensor>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
-                   const T* cos_cache,
-                   const T* sin_cache,
+Status CheckInputs(const Tensor* query,
+                   const Tensor* key,
+                   const Tensor* value,
+                   const Tensor* past_key,
+                   const Tensor* past_value,
+                   const Tensor* cos_cache,
+                   const Tensor* sin_cache,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const T* seqlens_k,
-                   const T* total_seqlen,
+                   const Tensor* seqlens_k,
+                   const Tensor* total_seqlen,
                    float scale,
                    float softcap,
                    int max_threads_per_block) {
