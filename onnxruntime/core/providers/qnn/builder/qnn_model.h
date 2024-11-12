@@ -31,7 +31,7 @@ class QnnModel {
     qnn_backend_type_ = qnn_backend_manager_->GetQnnBackendType();
   }
 
-  ~QnnModel() = default;
+  ~QnnModel();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModel);
 
   Status ComposeGraph(const GraphViewer& graph_viewer,
@@ -144,6 +144,9 @@ class QnnModel {
   std::vector<QnnTensorInfo> qnn_input_infos_;
   std::vector<QnnTensorInfo> qnn_output_infos_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
+
+  // shared memory addr to Qnn_MemHandle_t
+  std::unordered_map<const void*, Qnn_MemHandle_t> qnn_mem_handles_;  // TODO find the right place to save mem handles
 
   // Mutex acquired during graph execution to support multi-threaded inference of a single session.
   std::mutex graph_exec_mutex_;
