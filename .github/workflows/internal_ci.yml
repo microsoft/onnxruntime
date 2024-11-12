@@ -1,0 +1,34 @@
+name : Internal CI
+
+on:
+  pull_request:
+    branches:
+      - '**'  # Triggers on a PR to any Branch
+
+jobs:
+  build:
+
+    runs-on: [self-hosted, Linux, X64]   # Runs on a Lunar lake
+    env:
+      BUILD_SOURCESDIRECTORY: ${{ github.workspace }}
+      BUILD_BINARIESDIRECTORY: ${{ github.workspace }}/build
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.ref }}  # checkout the pr branch
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+       python-version: '3.10'
+
+    - name: Create build directory
+      run: |
+         mkdir -p ${{ env.BUILD_BINARIESDIRECTORY }}
+         chmod -R 777 ${{ env.BUILD_BINARIESDIRECTORY }}
+
+    - name: Running Internal CI   # Trigger Internal CI on the pr branch
+      run: |
+        cd tools/ci_build/github/linux/
+        dir
+        ./run_dockerbuild.sh -o ubuntu22.04 -p 3.10 -d openvino -v 2024.4.0 -x "--config Release --use_openvino CPU --build_wheel --build_shared_lib --parallel "
