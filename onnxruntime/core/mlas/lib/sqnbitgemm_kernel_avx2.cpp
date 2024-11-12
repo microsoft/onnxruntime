@@ -1306,7 +1306,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool has_zp_input,
@@ -1330,8 +1330,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 //
 // Kernel dispatch structure definition.
 //
-const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
-    MLAS_SQNBIT_GEMM_DISPATCH d;
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
+    MLAS_QNBIT_GEMM_DISPATCH d;
 
     d.SQ4BitGemmPackQuantBDataSize = SQ4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
@@ -1349,8 +1349,8 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     return d;
 }();
 
-const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
-    MLAS_SQNBIT_GEMM_DISPATCH d;
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
+    MLAS_QNBIT_GEMM_DISPATCH d;
 
     d.SQ4BitGemmPackQuantBDataSize = SQ4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;

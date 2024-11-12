@@ -84,27 +84,27 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 // Kernel dispatch structure.
 //
 
-struct MLAS_SQNBIT_GEMM_DISPATCH {
+struct MLAS_QNBIT_GEMM_DISPATCH {
     //
     // Quantized B data packing function prototypes.
     //
 
-    /** Gets size of packed quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBDataSize(). */
+    /** Gets size of packed quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
     typedef size_t(SQ4BitGemmPackQuantBDataSize_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
     SQ4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
 
-    /** Packs quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBData(). */
+    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
     typedef void(SQ4BitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         std::byte* PackedQuantBDataBegin,
         MLAS_THREADPOOL* ThreadPool
@@ -116,7 +116,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         const float* QuantBScaleBegin,
         bool has_zp_input,
@@ -146,7 +146,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
     SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
@@ -159,7 +159,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      */
     typedef size_t(SQ4BitGemmPerGemmWorkspaceAlignment_Fn)(
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
     SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;

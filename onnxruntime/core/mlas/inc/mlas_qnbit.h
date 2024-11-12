@@ -37,12 +37,12 @@ typedef enum {
 
     CompMostAccurate = CompUndef,
     CompLeastAccurate = CompInt8,
-} MLAS_SQNBIT_GEMM_COMPUTE_TYPE;
+} MLAS_QNBIT_GEMM_COMPUTE_TYPE;
 
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
  */
-struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
+struct MLAS_QNBIT_GEMM_DATA_PARAMS {
     const float* A = nullptr;                       ///< address of A (float32 matrix)
     size_t lda = 0;                                 ///< leading dimension of A
     const void* QuantBDataWorkspace;                ///< address of quantized B (quantized n-bit int values)
@@ -63,13 +63,13 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  *        A must be a float32 matrix
  *        B must be a quantized and packed n-bit int matrix
  *
- *        Call MlasIsSQNBitGemmAvailable() with the same parameters to determine whether this function may be called.
+ *        Call MlasIsQNBitGemmAvailable() with the same parameters to determine whether this function may be called.
  *
- *        Call MlasSQNBitGemmPackQuantBDataSize() with the same parameters to determine whether
- *          MLAS_SQNBIT_GEMM_DATA_PARAMS::QuantBData in `DataParams` should point to a buffer packed with
- *          MlasSQNBitGemmPackQuantBData().
+ *        Call MlasQNBitGemmPackQuantBDataSize() with the same parameters to determine whether
+ *          MLAS_QNBIT_GEMM_DATA_PARAMS::QuantBData in `DataParams` should point to a buffer packed with
+ *          MlasQNBitGemmPackQuantBData().
  *
- *        Call MlasSQNBitGemmBatchWorkspaceSize() with the same parameters to determine whether `Workspace` should
+ *        Call MlasQNBitGemmBatchWorkspaceSize() with the same parameters to determine whether `Workspace` should
  *          point to an intermediate workspace buffer.
  *
  * @param[in]       M               row size of matrix A and C
@@ -81,20 +81,20 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  * @param[in]       ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  * @param[inout]    DataParams      An array (size BatchN) of parameter blocks
  * @param[in]       Workspace       Address of intermediate workspace buffer.
-                                    If MlasSQNBitGemmBatchWorkspaceSize() returns a non-zero value, this must be a
+                                    If MlasQNBitGemmBatchWorkspaceSize() returns a non-zero value, this must be a
                                     buffer with at least that many bytes. Otherwise, it may be nullptr.
  * @param[in]       ThreadPool      optional thread pool to use
  */
 void MLASCALL
-MlasSQNBitGemmBatch(
+MlasQNBitGemmBatch(
     size_t M,
     size_t N,
     size_t K,
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS* DataParams,
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );
@@ -107,10 +107,10 @@ MlasSQNBitGemmBatch(
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 bool MLASCALL
-MlasIsSQNBitGemmAvailable(
+MlasIsQNBitGemmAvailable(
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**
@@ -126,22 +126,22 @@ MlasIsSQNBitGemmAvailable(
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 size_t MLASCALL
-MlasSQNBitGemmBatchWorkspaceSize(
+MlasQNBitGemmBatchWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**
  * @brief Gets the size in bytes of the packed quantized B data.
- * If non-zero, the quantized B data must first be packed by calling MlasSQNBitGemmPackQuantBData() with a buffer of
- * this size, and then that packed quantized B data buffer must be passed to MlasSQNBitGemmBatch().
- * If zero, MlasSQNBitGemmPackQuantBData() must not be called and the quantized B data must be directly passed to
- * MlasSQNBitGemmBatch().
+ * If non-zero, the quantized B data must first be packed by calling MlasQNBitGemmPackQuantBData() with a buffer of
+ * this size, and then that packed quantized B data buffer must be passed to MlasQNBitGemmBatch().
+ * If zero, MlasQNBitGemmPackQuantBData() must not be called and the quantized B data must be directly passed to
+ * MlasQNBitGemmBatch().
  *
  * @param[in]   N               column size of matrix B and C
  * @param[in]   K               column size of matrix A and row size of matrix B
@@ -150,12 +150,12 @@ MlasSQNBitGemmBatchWorkspaceSize(
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 size_t MLASCALL
-MlasSQNBitGemmPackQuantBDataSize(
+MlasQNBitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**
@@ -186,12 +186,12 @@ MlasSQNBitGemmPackQuantBDataSize(
  * @param[in]   ThreadPool          thread pool to use (no parallel if nullptr)
  */
 void MLASCALL
-MlasSQNBitGemmPackQuantBData(
+MlasQNBitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSum,
     const void* QuantBScale,

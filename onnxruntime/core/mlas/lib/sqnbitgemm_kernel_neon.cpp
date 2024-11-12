@@ -38,7 +38,7 @@ SQ4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
@@ -55,7 +55,7 @@ SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
@@ -131,7 +131,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -152,7 +152,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
 size_t
 SQ4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
@@ -175,8 +175,8 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 // Kernel dispatch structure definition.
 //
 
-const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
-    MLAS_SQNBIT_GEMM_DISPATCH d;
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
+    MLAS_QNBIT_GEMM_DISPATCH d;
 
     d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
