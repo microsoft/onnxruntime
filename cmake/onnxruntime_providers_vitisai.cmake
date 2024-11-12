@@ -12,6 +12,7 @@
   file(GLOB onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include/vaip/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
