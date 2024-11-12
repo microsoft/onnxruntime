@@ -29,6 +29,11 @@ Use the android's [build instructions](https://onnxruntime.ai/docs/build/android
 
 Please note that you may need to set the `--android_abi=x86_64` (the default option is `arm64-v8a`). This is because android instrumentation test is run on an android emulator which requires an abi of `x86_64`.
 
+#### QNN Builds
+We use two AndroidManifest.xml files to manage different runtime requirements for QNN support. In the [build configuration](app/build.gradle), we specify which manifest file to use based on the qnnVersion.
+In the [QNN manifest](app/src/main/AndroidManifestQnn.xml), we include the <uses-native-library> declaration for libcdsprpc.so, which is required for devices using QNN and Qualcomm DSP capabilities.
+For QNN builds, it is also necessary to set the `ADSP_LIBRARY_PATH` environment variable to the [native library directory](https://developer.android.com/reference/android/content/pm/ApplicationInfo#nativeLibraryDir) depending on the device. This ensures that any native libraries downloaded as dependencies such as QNN libraries are found by the application. This is conditionally added by using the BuildConfig field IS_QNN_BUILD set in the build.gradle file.
+
 #### Build Output
 
 The build will generate two apks which is required to run the test application in `$YOUR_BUILD_DIR/java/androidtest/android/app/build/outputs/apk`:

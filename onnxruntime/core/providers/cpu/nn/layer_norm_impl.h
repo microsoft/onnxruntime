@@ -15,7 +15,7 @@ class LayerNormImpl : public OpKernel {
   LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified = false, bool contrib_op = false);
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool save_prepacked_initializers,
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
   // This method was created so that it can be called directly from `test/onnx/microbenchmark/layer_normalization.cc`.
