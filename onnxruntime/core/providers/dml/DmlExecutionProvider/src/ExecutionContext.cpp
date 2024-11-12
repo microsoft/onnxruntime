@@ -11,10 +11,13 @@ namespace Dml
         ID3D12Device* d3d12Device,
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* queue,
-        bool cpuSyncSpinningEnabled)
+        bool cpuSyncSpinningEnabled,
+        bool keepOpen
+        )
         : m_queue(std::make_shared<CommandQueue>(queue, cpuSyncSpinningEnabled))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
         , m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
+        , m_keepOpen(keepOpen)
     {
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
@@ -33,6 +36,8 @@ namespace Dml
         D3D12_RESOURCE_STATES srcState,
         uint64_t byteCount)
     {
+        assert(!m_closed);
+
         SetCommandRecorder(&m_dmlRecorder);
 
         std::vector<D3D12_RESOURCE_BARRIER> barriers;
@@ -79,6 +84,8 @@ namespace Dml
         _Out_ uint64_t* completionValue
         )
     {
+        assert(!m_closed);
+
         SetCommandRecorder(&m_dmlRecorder);
         m_dmlRecorder.ExecuteCommandList(commandList, fence, completionValue);
     }
@@ -88,6 +95,7 @@ namespace Dml
         const DML_BINDING_DESC& persistentResourceBinding,
         const DML_BINDING_DESC& inputArrayBinding)
     {
+        assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
         m_dmlRecorder.InitializeOperator(op, persistentResourceBinding, inputArrayBinding);
@@ -99,6 +107,7 @@ namespace Dml
         gsl::span<const DML_BINDING_DESC> inputBindings,
         gsl::span<const DML_BINDING_DESC> outputBindings)
     {
+        assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
         m_dmlRecorder.ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings);
@@ -106,6 +115,7 @@ namespace Dml
 
     void ExecutionContext::AddUAVBarrier()
     {
+        assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
         m_dmlRecorder.AddUAVBarrier();
@@ -113,6 +123,7 @@ namespace Dml
 
     void ExecutionContext::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
     {
+        assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
         m_dmlRecorder.ResourceBarrier(barriers);
@@ -120,6 +131,7 @@ namespace Dml
 
     void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
     {
+        assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
         // Ensure the descriptor heap is reset to D3D as something external may change it before recording
@@ -130,6 +142,8 @@ namespace Dml
 
     void ExecutionContext::SetCommandRecorder(ICommandRecorder* newRecorder)
     {
+        assert(!m_closed);
+
         // If changing which recorder is the current one, we need to flush the old one first. This is to ensure correct
         // ordering of operations on the command queue.
         if (m_currentRecorder != newRecorder)
@@ -146,6 +160,8 @@ namespace Dml
 
     void ExecutionContext::Flush()
     {
+        assert(!m_closed);
+
         if (!m_currentRecorder || !m_currentRecorder->HasUnsubmittedWork())
         {
             // Nothing to flush
@@ -164,21 +180,34 @@ namespace Dml
 
     void ExecutionContext::QueueReference(IUnknown* object)
     {
+        assert(!m_closed);
         // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
         // value is the one to signal completion.
         bool waitForUnsubmittedWork = (m_currentRecorder != nullptr);
         m_queue->QueueReference(object, waitForUnsubmittedWork);
     }
 
-    void ExecutionContext::WaitForSignalAndClearQueue()
+    void ExecutionContext::Close()
     {
+        assert(!m_closed);
+
         // Discard unflushed work and clear queued references.  This prevents the circular reference:
         // Kernel --> ProviderImpl -->  Context --> QueuedRefs --> Kernel
-        m_queue->WaitForSignalAndClearQueue();
+        m_queue->Close();
+
+        // Keep the execution context open when requested, e.g. when used through the python API where there's a single context
+        // and single command queue
+        if (!m_keepOpen)
+        {
+            m_currentRecorder = nullptr;
+            m_closed = true;
+        }
     }
 
     GpuEvent ExecutionContext::GetCurrentCompletionEvent()
     {
+        assert(!m_closed);
+
         GpuEvent event = m_queue->GetCurrentCompletionEvent();
 
         // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
@@ -194,11 +223,13 @@ namespace Dml
 
     void ExecutionContext::ReleaseCompletedReferences()
     {
+        assert(!m_closed);
         m_queue->ReleaseCompletedReferences();
     }
 
     D3D12_COMMAND_LIST_TYPE ExecutionContext::GetCommandListTypeForQueue() const
     {
+        assert(!m_closed);
         return m_queue->GetType();
     }
 
