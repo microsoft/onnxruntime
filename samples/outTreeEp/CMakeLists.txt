@@ -9,4 +9,4 @@ add_library(outTreeEp SHARED out_tree_ep.cc)
 target_include_directories(outTreeEp PUBLIC "../../include/onnxruntime")
 
 # looks we need this in Win as in Windows you cannot build shared library with undefined symbol
-#target_link_libraries(outTreeEp PUBLIC "/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so")
+target_link_libraries(outTreeEp PUBLIC "/home/yifanl/onnxruntime/build/Linux/Debug/libonnxruntime.so")
