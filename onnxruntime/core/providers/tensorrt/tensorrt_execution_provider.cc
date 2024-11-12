@@ -2488,27 +2488,12 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   std::set<std::string> exclude_set = GetExcludedNodeSet(op_types_to_exclude_);
 
-  /*
-   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.7.
-   * TRT EP automatically excludes DDS ops from running on TRT unless the user explicitly specifies that those ops should be included.
-   *
-   * Note: "~op_type" means to include the op type.
-   */
-  if (trt_version_ >= 100000 && trt_version_ < 100800) {
-    if (exclude_set.find("~NonMaxSuppression") == exclude_set.end()) exclude_set.insert("NonMaxSuppression");
-    if (exclude_set.find("~NonZero") == exclude_set.end()) exclude_set.insert("NonZero");
-    if (exclude_set.find("~RoiAlign") == exclude_set.end()) exclude_set.insert("RoiAlign");
-  }
-
   // Print excluded nodes, if any.
   std::set<std::string>::iterator it;
   for (it = exclude_set.begin(); it != exclude_set.end(); ++it) {
     std::string op = *it;
-    if (op.find("~") == 0) continue;
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude " << op << " from running on TRT, if any.";
-    if (op == "NonMaxSuppression" || op == "NonZero" || op == "RoiAlign") {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Add \"~" << op << "\" in trt_op_types_to_exclude if " << op << " should be included in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this op for TRT.";
-    }
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude \"" << op << "\" from running on TRT, if any.";
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Remove \"" << op << "\" from trt_op_types_to_exclude or specify trt_op_types_to_exclude with empty string to include the op in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this op for TRT.";
   }
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
