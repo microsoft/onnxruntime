@@ -5,15 +5,16 @@ pipelines:
     retail:
       source:
         credscan:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         policheck:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         eslint:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         psscriptanalyzer:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
         armory:
-          lastModifiedDate: 2024-10-24
+          lastModifiedDate: 2024-10-25
+    usedNonDefaultBranch: true
   1299:
     retail:
       source:
@@ -25,6 +26,8 @@ pipelines:
           lastModifiedDate: 2024-10-25
         armory:
           lastModifiedDate: 2024-10-25
+        policheck:
+          lastModifiedDate: 2024-10-29
       binary:
         credscan:
           lastModifiedDate: 2024-10-25
@@ -32,3 +35,43 @@ pipelines:
           lastModifiedDate: 2024-10-25
         spotbugs:
           lastModifiedDate: 2024-10-25
+  1625:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2024-11-05
+        policheck:
+          lastModifiedDate: 2024-11-05
+        eslint:
+          lastModifiedDate: 2024-11-05
+        psscriptanalyzer:
+          lastModifiedDate: 2024-11-05
+        armory:
+          lastModifiedDate: 2024-11-05
+      binary:
+        credscan:
+          lastModifiedDate: 2024-11-13
+        binskim:
+          lastModifiedDate: 2024-11-13
+        spotbugs:
+          lastModifiedDate: 2024-11-13
+  1626:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2024-11-13
+        policheck:
+          lastModifiedDate: 2024-11-13
+        eslint:
+          lastModifiedDate: 2024-11-13
+        psscriptanalyzer:
+          lastModifiedDate: 2024-11-13
+        armory:
+          lastModifiedDate: 2024-11-13
+      binary:
+        credscan:
+          lastModifiedDate: 2024-11-13
+        binskim:
+          lastModifiedDate: 2024-11-13
+        spotbugs:
+          lastModifiedDate: 2024-11-13
