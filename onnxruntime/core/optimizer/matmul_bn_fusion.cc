@@ -107,6 +107,22 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
     return false;
   }
 
+  // Checks the first input of MatMul has 2 dimensions.
+  // The test for the second input is done in method Apply as it accesses the constant.
+  if (node.InputDefs()[0] == nullptr) {
+    // This should never happen but just in case.
+    return false;
+  }
+  auto shape_a = node.InputDefs()[0]->Shape();
+  if (shape_a == nullptr) {
+    // We cannot shape the rank. It is better to avoid fusing.
+    return false;
+  }
+  if (shape_a->dim_size() != 2) {
+    // Gemm only supports 2D tensors.
+    return false;
+  }
+
   // First output from BN is required. Others are optional. If any optional outputs exist we can't fuse.
   const auto& output_defs = batch_norm_node->OutputDefs();
   if (output_defs.size() > 1) {
@@ -165,6 +181,7 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       bias_tensor->dims_size() != 1 ||
       mean_tensor->dims_size() != 1 ||
       var_tensor->dims_size() != 1 ||
+      matmul_b_tensor->dims_size() != 2 ||
       scale_tensor->dims(0) != matmul_b_tensor->dims(1) ||
       bias_tensor->dims(0) != matmul_b_tensor->dims(1) ||
       mean_tensor->dims(0) != matmul_b_tensor->dims(1) ||
