@@ -147,9 +147,9 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
-                                 "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                                 "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
-                                 "    }\n";
+                                                                                                                       "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
+                                                                                                                       "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
+                                                                                                                       "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n"
                                  "      tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
@@ -483,7 +483,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                       WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
-const int total_sequence_length = seqlen_k == nullptr ? (past_sequence_length + parameters.kv_sequence_length_) : parameters.seqlen_present_kv_cache_;
+  const int total_sequence_length = seqlen_k == nullptr ? (past_sequence_length + parameters.kv_sequence_length_) : parameters.seqlen_present_kv_cache_;
 
   const TensorShapeVector probs_dims({parameters.batch_size_, parameters.num_heads_,
                                       parameters.sequence_length_, total_sequence_length});
