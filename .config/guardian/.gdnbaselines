@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "helpUri": "https://eng.ms/docs/microsoft-security/security/azure-security/cloudai-security-fundamentals-engineering/security-integration/guardian-wiki/microsoft-guardian/general/baselines"
+  },
+  "version": "1.0.0",
+  "baselines": {
+    "default": {
+      "name": "default",
+      "createdDate": "2024-11-13 00:40:35Z",
+      "lastUpdatedDate": "2024-11-13 00:40:35Z"
+    }
+  },
+  "results": {
+    "48f03e2797fc40ecea50f878a0268947c7e13db1b2fa51aa3981246844fc4c68": {
+      "signature": "48f03e2797fc40ecea50f878a0268947c7e13db1b2fa51aa3981246844fc4c68",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20241113003616898.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2024-11-13 00:40:35Z",
+      "expirationDate": "2025-05-02 01:29:47Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2024-11-13 01:29:47Z"
+    }
+  }
+}
