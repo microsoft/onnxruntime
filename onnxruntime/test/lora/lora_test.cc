@@ -200,11 +200,13 @@ TEST(LoraAdapterTest, Load) {
 }
 
 #ifdef USE_CUDA
-TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
+TEST(LoraAdapterTest, VerifyDeviceCopy) {
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
-  auto cuda_allocator = DefaultCudaExecutionProvider()->CreatePreferredAllocators()[0];
-  auto cuda_transfer = DefaultCudaExecutionProvider()->GetDataTransfer();
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  auto cuda_allocator = cuda_ep->CreatePreferredAllocators()[0];
+
+  auto gpu_transfer = cuda_ep->GetDataTransfer();
 
   auto test_params = GenerateTestParameters<float>()();
   lora::LoraAdapter adapter(std::move(cuda_allocator));
@@ -220,43 +222,9 @@ TEST(LoraAdapterTest, VerifyCudaDeviceCopy) {
     ASSERT_EQ(tensor_cpu.Shape().Size(), tensor_device.Shape().Size());
 
     Tensor copy(tensor_cpu.DataType(), tensor_cpu.Shape(), cpu_allocator);
-    ASSERT_TRUE(cuda_transfer->CanCopy(tensor_device.Location().device,
-                                       copy.Location().device));
-    ASSERT_STATUS_OK(cuda_transfer->CopyTensor(tensor_device, copy));
-
-    auto expected_span = tensor_cpu.DataAsSpan<float>();
-    auto copy_span = copy.DataAsSpan<float>();
-
-    ASSERT_EQ(expected_span, copy_span);
-  }
-}
-#endif
-
-#ifdef USE_DML
-TEST(LoraAdapterTest, VerifyDmlDeviceCopy) {
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
-
-  auto dml_allocator = DefaultDmlExecutionProvider()->CreatePreferredAllocators()[0];
-  auto dml_transfer = DefaultDmlExecutionProvider()->GetDataTransfer();
-
-  auto test_params = GenerateTestParameters<float>()();
-  lora::LoraAdapter adapter(std::move(dml_allocator));
-  adapter.Load(std::move(test_params));
-
-  auto [begin, end] = adapter.GetParamIterators();
-  for (; begin != end; ++begin) {
-    const auto& [_, param] = *begin;
-    const auto& tensor_device = param.GetDeviceOrMapped().Get<Tensor>();
-    ASSERT_EQ(0, strcmp(tensor_device.Location().name, onnxruntime::DML));
-
-    const auto& tensor_cpu = param.GetMapped().Get<Tensor>();
-    ASSERT_EQ(tensor_cpu.Shape().Size(), tensor_device.Shape().Size());
-
-    Tensor copy(tensor_cpu.DataType(), tensor_cpu.Shape(), cpu_allocator);
-    ASSERT_TRUE(dml_transfer->CanCopy(tensor_device.Location().device,
+    ASSERT_TRUE(gpu_transfer->CanCopy(tensor_device.Location().device,
                                       copy.Location().device));
-    ASSERT_STATUS_OK(dml_transfer->CopyTensor(tensor_device, copy));
+    ASSERT_STATUS_OK(gpu_transfer->CopyTensor(tensor_device, copy));
 
     auto expected_span = tensor_cpu.DataAsSpan<float>();
     auto copy_span = copy.DataAsSpan<float>();
@@ -265,6 +233,5 @@ TEST(LoraAdapterTest, VerifyDmlDeviceCopy) {
   }
 }
 #endif
-
 }  // namespace test
 }  // namespace onnxruntime

@@ -5,6 +5,11 @@
 
 #include "test/util/include/default_providers.h"
 
+#define SKIP_CUDA_TEST_WITH_DML                                          \
+  if (DefaultCudaExecutionProvider() == nullptr) {                       \
+    GTEST_SKIP() << "CUDA Tests are not supported while DML is enabled"; \
+  }
+
 namespace onnxruntime {
 namespace test {
 
@@ -13,6 +18,10 @@ namespace test {
 int GetCudaArchitecture();
 
 inline bool HasCudaEnvironment(int min_cuda_architecture) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return false;
+  }
+
   if (DefaultCudaExecutionProvider().get() == nullptr) {
     return false;
   }

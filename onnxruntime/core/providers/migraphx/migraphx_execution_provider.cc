@@ -49,6 +49,8 @@ class Memcpy final : public OpKernel {
     const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     if (!gpu_data_transfer)
       return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
+    // CopyTensorAsync could handle both pinned memory and non-pinned CPU memory.
+    // For non-pinned CPU memory, the copy is synchronous.
     return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
@@ -800,6 +802,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ATen",
                                                     "AveragePool",
                                                     "BatchNormalization",
+                                                    "BiasGelu",
                                                     "Cast",
                                                     "Ceil",
                                                     "Celu",
@@ -824,12 +827,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Exp",
                                                     "Expand",
                                                     "EyeLike",
+                                                    "FastGelu",
                                                     "Flatten",
                                                     "Floor",
                                                     "GRU",
                                                     "Gather",
                                                     "GatherElements",
                                                     "GatherND",
+                                                    "Gelu",
                                                     "Gemm",
                                                     "GlobalAveragePool",
                                                     "GlobalMaxPool",
@@ -1152,7 +1157,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     if (!no_input_shape) {
       if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-        LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model";
+        LOGS_DEFAULT(INFO) << "No input shapes detected quantizing model";
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
         // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1293,7 +1298,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       // re-compile the program
       if (!input_shape_match) {
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-          LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+          LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling" << std::endl;
 #ifndef ENABLE_TRAINING_CORE
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
           cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());

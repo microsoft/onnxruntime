@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <core/common/status.h>
 #include "core/common/inlined_containers.h"
 #include <core/graph/basic_types.h>
@@ -191,6 +192,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
 static const InlinedHashMap<std::string, std::string> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
+    {"And", "logicalAnd"},
     {"ArgMax", "argMax"},
     {"ArgMin", "argMin"},
     {"AveragePool", "averagePool2d"},
@@ -203,6 +205,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ConvInteger", "conv2dInteger"},
     {"ConvTranspose", "convTranspose2d"},
     {"Cos", "cos"},
+    {"CumSum", "cumulativeSum"},
     {"Div", "div"},
     {"DequantizeLinear", "dequantizeLinear"},
     {"Dropout", "identity"},
@@ -215,6 +218,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Flatten", "reshape"},
     {"Floor", "floor"},
     {"Gather", "gather"},
+    {"GatherElements", "gatherElements"},
     {"GatherND", "gatherND"},
     {"Gelu", "gelu"},
     {"Gemm", "gemm"},
@@ -235,6 +239,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
     {"LSTM", "lstm"},
+    {"LRN", "averagePool2d"},
     {"MatMul", "matmul"},
     {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
@@ -243,6 +248,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Mul", "mul"},
     {"Neg", "neg"},
     {"Not", "logicalNot"},
+    {"Or", "logicalOr"},
     {"Pad", "pad"},
     {"Pow", "pow"},
     {"PRelu", "prelu"},
@@ -261,9 +267,12 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
+    {"ScatterElements", "scatterElements"},
     {"ScatterND", "scatterND"},
     {"Shape", "slice"},
     {"Sigmoid", "sigmoid"},
+    {"Sign", "sign"},
+    {"SimplifiedLayerNormalization", "layerNormalization"},
     {"Softplus", "softplus"},
     {"Softsign", "softsign"},
     {"Sin", "sin"},
@@ -280,6 +289,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Trilu", "triangular"},
     {"Unsqueeze", "reshape"},
     {"Where", "where"},
+    {"Xor", "logicalXor"},
 };
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder,
@@ -336,6 +346,9 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
 bool IsMLTensorSupported();
+
+uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type);
+uint16_t PackFloat32ToUint16AsFloat16(float value);
 
 }  // namespace webnn
 }  // namespace onnxruntime

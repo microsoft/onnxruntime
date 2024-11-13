@@ -242,8 +242,8 @@ namespace Dml
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
-              return (srcDevice.Type() == OrtDevice::GPU) ||
-                     (dstDevice.Type() == OrtDevice::GPU);
+          return (srcDevice.Type() == OrtDevice::DML) ||
+                 (dstDevice.Type() == OrtDevice::DML);
         }
 
     private:

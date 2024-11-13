@@ -126,10 +126,8 @@ class ConvTranspose : public JsKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* /* prepacked_weights */) override {
-    ORT_UNUSED_PARAMETER(save_prepacked_initializers);
     is_packed = false;
 
     if (input_idx == 1) {

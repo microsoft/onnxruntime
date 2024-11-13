@@ -225,6 +225,30 @@ export declare namespace JSEP {
      * @returns the MLTensor ID for the external MLTensor.
      */
     jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
+
+    /**
+     * [exported from pre-jsep.js] Create an MLContext from a GPUDevice or MLContextOptions.
+     * @param optionsOrGpuDevice - specify the options or GPUDevice.
+     * @returns
+     */
+    jsepCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN Constant operand from external data.
+     * @param externalFilePath - specify the external file path.
+     * @param dataOffset - specify the external data offset.
+     * @param dataLength - specify the external data length.
+     * @param builder - specify the MLGraphBuilder used for constructing the Constant.
+     * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @returns the WebNN Constant operand for the specified external data.
+     */
+    jsepRegisterMLConstant(
+      externalFilePath: string,
+      dataOffset: number,
+      dataLength: number,
+      builder: MLGraphBuilder,
+      desc: MLOperandDescriptor,
+    ): MLOperand;
   }
 }
 
