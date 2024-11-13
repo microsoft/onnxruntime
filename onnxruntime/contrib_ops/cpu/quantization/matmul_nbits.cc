@@ -66,8 +66,8 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
   // By converting Fp16 to Fp32, there is not precision increase, and the performance
   // becomes worse.
   if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
-      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
-    return SQNBIT_CompInt8;
+      MlasIsQNBitGemmAvailable(nbits, block_size, HQNBIT_CompInt8)) {
+    return HQNBIT_CompInt8;
   }
 
   // if HQNBIT_CompFp16 is not supported, will fallback to unpacked computation.
@@ -176,9 +176,7 @@ class MatMulNBits final : public OpKernel {
                         Tensor* y,
                         AllocatorPtr& allocator,
                         concurrency::ThreadPool* thread_pool,
-                        const MatMulComputeHelper& helper) const {
-    ORT_THROW("ComputeBPacked is not supported for T1 type.");
-  }
+                        const MatMulComputeHelper& helper) const;
 };
 
 template <typename T1>
@@ -221,6 +219,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   return Status::OK();
 }
 
+#if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
+// Non-ARM-with-fp16-intrinsics fall back fp16 to fp32.
 template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
@@ -274,6 +274,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 
   return Status::OK();
 }
+#endif  // end !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
 
 template <typename T1>
 Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
@@ -288,8 +289,8 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
   return Status::OK();
 }
 
-template <>
-Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
+template <typename T1>
+Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
                                           const Tensor* scales,
                                           const Tensor* zero_points,
                                           const Tensor* bias,
@@ -297,11 +298,11 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
                                           AllocatorPtr& allocator,
                                           concurrency::ThreadPool* thread_pool,
                                           const MatMulComputeHelper& helper) const {
-  const auto* a_data = a->Data<float>();
-  const auto* scales_data = scales->Data<float>();
+  const auto* a_data = a->Data<T1>();
+  const auto* scales_data = scales->Data<T1>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<float>();
-  auto* y_data = y->MutableData<float>();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
+  auto* y_data = y->MutableData<T1>();
 
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
@@ -317,7 +318,7 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
     workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
   }
 
-  InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS> data(batch_count);
+  InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<T1>> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
     data[i].A = a_data + helper.LeftOffsets()[i];
     data[i].lda = lda;
@@ -338,6 +339,7 @@ Status MatMulNBits<float>::ComputeBPacked(const Tensor* a,
   return Status::OK();
 }
 
+#if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
 template <>
 Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
                                               const Tensor* scales,
@@ -394,7 +396,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   size_t c_size = static_cast<size_t>(y->Shape().Size());
   std::vector<float> c_v(c_size);
 
-  InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS> data(batch_count);
+  InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
     data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
     data[i].lda = lda;
@@ -415,6 +417,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
   return Status::OK();
 }
+#endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64
 
 template <>
 Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
@@ -550,9 +553,10 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   const size_t ldb = helper.Ldb(true);
 
   float* scales_ptr = nullptr;
+  IAllocatorUniquePtr<float> temp_scales;
   if (!scales_fp32_) {
     auto scales_size = static_cast<size_t>(scales->Shape().Size());
-    auto temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
+    temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
     MlasConvertHalfToFloatBuffer(scales_data, temp_scales.get(), scales_size);
     scales_ptr = temp_scales.get();
   } else {
@@ -633,8 +637,9 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   if (bias) {
     float* bias_ptr = nullptr;
     const size_t bias_size = static_cast<size_t>(bias->Shape().Size());
+    IAllocatorUniquePtr<float> bias_temp;
     if (!bias_fp32_) {
-      auto bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
+      bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
       MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), bias_temp.get(), bias_size);
       bias_ptr = bias_temp.get();
     } else {

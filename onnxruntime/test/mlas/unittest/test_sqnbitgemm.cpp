@@ -65,7 +65,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 void* Workspace,
                 MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
                 MLAS_THREADPOOL* Threadpool) {
-    MLAS_QNBIT_GEMM_DATA_PARAMS params;
+    MLAS_QNBIT_GEMM_DATA_PARAMS<float> params;
     params.A = A;
     params.lda = lda;
     params.Bias = Bias;
