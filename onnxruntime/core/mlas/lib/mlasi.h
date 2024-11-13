@@ -1184,7 +1184,7 @@ struct MLAS_PLATFORM {
     const MLAS_FPQ4GEMM_DISPATCH* FpQ4GemmDispatch{nullptr};
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 
-    const MLAS_QNBIT_GEMM_DISPATCH* SQNBitGemmDispatch{nullptr};
+    const MLAS_QNBIT_GEMM_DISPATCH* QNBitGemmDispatch{nullptr};
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
