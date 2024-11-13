@@ -19,6 +19,7 @@
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
 	import OliveSharedCache from '../../images/blogs/olive-shared-cache-user-flow.png';
+	import OliveCli from '../../images/blogs/olive-flow.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -47,6 +48,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Democratizing AI Model optimization with the new Olive CLI',
+			date: 'November 11th, 2024',
+			blurb:
+				"Learn how to use the new Olive CLI to easily optimize AI Models for on-device inference",
+			link: 'blogs/olive-cli',
+			image: OliveCli,
+			imgalt:
+				'Olive Flow'
+		},
+		{
 			title: 'Enhancing team collaboration during AI model optimization with the Olive Shared Cache',
 			date: 'October 30th, 2024',
 			blurb:
@@ -66,6 +77,8 @@
 			imgalt:
 				'Speedup for ONNX Runtime with TensorRT and CUDA vs. torch.compile for difference batch sizes and sequence lengths.'
 		},
+	];
+	let blogs = [
 		{
 			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
 			date: 'June 17th, 2024',
@@ -76,10 +89,6 @@
 			imgalt:
 				'Image of the different steps of an ML pipeline on a mobile device, running using NimbleEdge and ONNX Runtime.'
 		},
-		
-		
-	];
-	let blogs = [
 		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
 			date: 'June 12th, 2024',
