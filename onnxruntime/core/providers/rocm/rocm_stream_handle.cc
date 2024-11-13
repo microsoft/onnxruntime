@@ -7,6 +7,25 @@
 
 namespace onnxruntime {
 
+DeferredCpuAllocator::DeferredCpuAllocator(RocmStream& rocm_stream) : rocm_stream_(rocm_stream) {
+  OrtAllocator::version = ORT_API_VERSION;
+  OrtAllocator::Alloc =
+      [](OrtAllocator* this_, size_t size) {
+        auto self = reinterpret_cast<DeferredCpuAllocator*>(this_);
+        return self->rocm_stream_.GetCpuAllocator()->Alloc(size);
+      };
+  OrtAllocator::Free =
+      [](OrtAllocator* this_, void* p) {
+        auto self = reinterpret_cast<DeferredCpuAllocator*>(this_);
+        self->rocm_stream_.EnqueDeferredCPUBuffer(p);
+      };
+  OrtAllocator::Info =
+      [](const OrtAllocator* this_) {
+        auto self = reinterpret_cast<const DeferredCpuAllocator*>(this_);
+        return &self->rocm_stream_.GetCpuAllocator()->Info();
+      };
+}
+
 struct RocmNotification : public synchronize::Notification {
   RocmNotification(Stream& s) : Notification(s) {
     HIP_CALL_THROW(hipEventCreateWithFlags(&event_, hipEventDisableTiming));
@@ -25,7 +44,8 @@ struct RocmNotification : public synchronize::Notification {
   void wait_on_device(Stream& device_stream) {
     ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU, "Unexpected device:", device_stream.GetDevice().ToString());
     // launch a wait command to the rocm stream
-    HIP_CALL_THROW(hipStreamWaitEvent(static_cast<hipStream_t>(device_stream.GetHandle()), event_, 0));
+    HIP_CALL_THROW(hipStreamWaitEvent(static_cast<hipStream_t>(device_stream.GetHandle()),
+                                      event_, 0));
   };
 
   void wait_on_host() {
@@ -42,18 +62,21 @@ RocmStream::RocmStream(hipStream_t stream,
                        bool release_cpu_buffer_on_rocm_stream,
                        bool own_flag,
                        miopenHandle_t external_miopen_handle,
-                       rocblas_handle external_rocblas_handle) : Stream(stream, device),
-                                                                 own_stream_(own_flag),
-                                                                 cpu_allocator_(cpu_allocator),
-                                                                 release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
+                       hipblasHandle_t external_hipblas_handle,
+                       const ROCMExecutionProviderInfo& ep_info) : Stream(stream, device),
+                                                                   own_stream_(own_flag),
+                                                                   cpu_allocator_(cpu_allocator),
+                                                                   release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream),
+                                                                   deferred_cpu_allocator_(*this),
+                                                                   ep_info_(ep_info) {
   if (own_flag) {
-    ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
+    HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
+    HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
     MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
     MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
   } else {
-    rocblas_handle_ = external_rocblas_handle;
-    ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
+    hipblas_handle_ = external_hipblas_handle;
+    HIPBLAS_CALL_THROW(hipblasSetStream(hipblas_handle_, stream));
     miopen_handle_ = external_miopen_handle;
     MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
   }
@@ -62,7 +85,7 @@ RocmStream::RocmStream(hipStream_t stream,
 RocmStream::~RocmStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
   if (own_stream_) {
-    rocblas_destroy_handle(rocblas_handle_);
+    hipblasDestroy(hipblas_handle_);
     miopenDestroy(miopen_handle_);
     auto* handle = GetHandle();
     if (handle)
@@ -149,8 +172,18 @@ void* RocmStream::GetResource(int version, int id) const {
     case RocmResource::miopen_handle_t:
       return reinterpret_cast<void*>(miopen_handle_);
       break;
-    case RocmResource::rocblas_handle_t:
-      return reinterpret_cast<void*>(rocblas_handle_);
+    case RocmResource::hipblas_handle_t:
+      return reinterpret_cast<void*>(hipblas_handle_);
+      break;
+    case RocmResource::deferred_cpu_allocator_t:
+      return const_cast<DeferredCpuAllocator*>(&deferred_cpu_allocator_);
+      break;
+    case RocmResource::device_id_t:
+      return reinterpret_cast<void*>(ep_info_.device_id);
+      break;
+    case RocmResource::arena_extend_strategy_t:
+      return reinterpret_cast<void*>(ep_info_.arena_extend_strategy);
+      break;
       break;
     default:
       break;
@@ -174,25 +207,28 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                hipStream_t external_stream,
                                bool use_existing_stream,
                                miopenHandle_t external_miopen_handle,
-                               rocblas_handle external_rocblas_handle) {
+                               hipblasHandle_t external_hipblas_handle,
+                               const ROCMExecutionProviderInfo& ep_info) {
   // wait rocm notification on rocm ep
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitRocmNotificationOnDevice);
   // wait rocm notification on cpu ep
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitRocmNotificationOnHost);
   if (!use_existing_stream)
-    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_rocm_stream](const OrtDevice& device) {
+    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_rocm_stream, ep_info](const OrtDevice& device) {
       HIP_CALL_THROW(hipSetDevice(device.Id()));
       hipStream_t stream = nullptr;
       HIP_CALL_THROW(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
-      return std::make_unique<RocmStream>(stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, true, nullptr, nullptr);
+      // HIP_CALL_THROW(hipStreamCreate(&stream));
+      return std::make_unique<RocmStream>(stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, true, nullptr, nullptr, ep_info);
     });
   else
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
                                                                 release_cpu_buffer_on_rocm_stream,
                                                                 external_stream,
                                                                 external_miopen_handle,
-                                                                external_rocblas_handle](const OrtDevice& device) {
-      return std::make_unique<RocmStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, false, external_miopen_handle, external_rocblas_handle);
+                                                                external_hipblas_handle,
+                                                                ep_info](const OrtDevice& device) {
+      return std::make_unique<RocmStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, false, external_miopen_handle, external_hipblas_handle, ep_info);
     });
 }
 

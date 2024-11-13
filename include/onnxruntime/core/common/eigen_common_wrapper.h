@@ -49,6 +49,12 @@
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 
+// eigen-src/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h:215:9:
+// error: implicit capture of 'this' with a capture default of '=' is deprecated [-Werror,-Wdeprecated-this-capture]
+#ifdef HAS_DEPRECATED_THIS_CAPTURE
+#pragma GCC diagnostic ignored "-Wdeprecated-this-capture"
+#endif
+
 #elif defined(_MSC_VER)
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence

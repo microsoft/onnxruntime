@@ -4,7 +4,7 @@
 import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
 import { ShapeUtil } from '../../util';
-import { ComputeContext, ProgramInfo, ProgramShaderCacheInfo } from '../types';
+import { ComputeContext, ProgramInfo } from '../types';
 
 import { inputVariable, outputVariable, ShaderHelper } from './common';
 import { createReduceAttributesFromInputs, ReduceAttributes } from './reduce';
@@ -119,7 +119,7 @@ const getAxesPermutation = (axes: number[], rank: number): number[] => {
 
 export const createReduceSharedProgramInfo = (
   name: string,
-  shaderCache: ProgramShaderCacheInfo,
+  cacheKey: string,
   inputs: readonly TensorView[],
   reduceType: string,
   outputDataType: DataType,
@@ -134,7 +134,11 @@ export const createReduceSharedProgramInfo = (
   const input = inputVariable('_A', inputs[0].dataType, inputShape);
   const output = outputVariable('output', outputDataType, outputShape);
 
-  const workgroupSize = 32;
+  let workgroupSize = 64;
+  // If only one workgroup is dispatched, increase workgroupSize to improve parallelism.
+  if (outputSize === 1) {
+    workgroupSize = 256;
+  }
 
   const sharedMemorySnippet = `
           var<workgroup> aBestValues : array<f32, ${workgroupSize}>;
@@ -188,7 +192,8 @@ export const createReduceSharedProgramInfo = (
   // One work group is responsible for only one element of output.
   return {
     name,
-    shaderCache,
+    // Note that in JSEP, WG size is not included in cache by default, but WebGPU EP it is.
+    shaderCache: { hint: `${cacheKey};${workgroupSize}`, inputDependencies: ['type'] },
     getShaderSource,
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType: outputDataType }],
@@ -233,7 +238,7 @@ const reduceCommon = (
   context.compute(
     createReduceSharedProgramInfo(
       name,
-      { hint: updatedAttributes.cacheKey, inputDependencies: ['type'] },
+      updatedAttributes.cacheKey,
       [input],
       reduceType,
       context.inputs[0].dataType,

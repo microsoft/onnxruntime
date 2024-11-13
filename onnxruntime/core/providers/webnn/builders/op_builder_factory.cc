@@ -26,6 +26,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
+    CreateUnaryOpBuilder("Sign", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
     CreateUnaryOpBuilder("Tan", op_registrations);
@@ -80,6 +81,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
+  {  // CumSum
+    CreateConcatOpBuilder("CumSum", op_registrations);
+  }
+
   {  // Dropout
     CreateDropoutOpBuilder("Dropout", op_registrations);
   }
@@ -98,6 +103,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherOpBuilder("Gather", op_registrations);
   }
 
+  {  // GatherElements
+    CreateGatherElementsOpBuilder("GatherElements", op_registrations);
+  }
+
+  {  // GatherND
+    CreateGatherNDOpBuilder("GatherND", op_registrations);
+  }
+
   {  // Flatten
     CreateFlattenOpBuilder("Flatten", op_registrations);
   }
@@ -113,12 +126,23 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Logical
+    CreateLogicalOpBuilder("And", op_registrations);
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
     CreateLogicalOpBuilder("LessOrEqual", op_registrations);
     CreateLogicalOpBuilder("Not", op_registrations);
+    CreateLogicalOpBuilder("Or", op_registrations);
+    CreateLogicalOpBuilder("Xor", op_registrations);
+  }
+
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
+  {  // LSTM
+    CreateLstmOpBuilder("LSTM", op_registrations);
   }
 
   {  // Max/Min
@@ -130,6 +154,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
+    CreateNormalizationOpBuilder("SimplifiedLayerNormalization", op_registrations);
   }
 
   {  // Pad
@@ -166,6 +191,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
   }
 
+  {  // ScatterElements
+    CreateScatterElementsOpBuilder("ScatterElements", op_registrations);
+  }
+
+  {  // ScatterND
+    CreateScatterNDOpBuilder("ScatterND", op_registrations);
+  }
+
   {  // Shape
     CreateShapeOpBuilder("Shape", op_registrations);
   }
@@ -185,6 +218,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Squeeze/Unsqueeze
     CreateSqueezeUnsqueezeOpBuilder("Squeeze", op_registrations);
     CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
+  }
+
+  {  // Tile
+    CreateTileOpBuilder("Tile", op_registrations);
   }
 
   {  // Transpose

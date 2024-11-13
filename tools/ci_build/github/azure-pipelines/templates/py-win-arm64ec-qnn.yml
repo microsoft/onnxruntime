@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.26.0.240828
+  default: 2.28.0.241029
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -28,10 +28,6 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
   strategy:
     matrix:
-      Python38_x64:
-        PythonVersion: '3.8'
-      Python39_x64:
-        PythonVersion: '3.9'
       Python310_x64:
         PythonVersion: '3.10'
       Python311_x64:
@@ -53,6 +49,11 @@ jobs:
           versionSpec: $(PythonVersion)
           addToPath: true
           architecture: 'x64'
+
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'

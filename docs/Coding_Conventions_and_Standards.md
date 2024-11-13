@@ -155,7 +155,7 @@ Using `Show Code Coverage Coloring` will allow you to visually inspect which lin
 This project uses [lintrunner](https://github.com/suo/lintrunner) for linting. It provides a consistent linting experience locally and in CI. You can install the dependencies and initialize with
 
 ```sh
-pip install lintrunner lintrunner-adapters
+pip install -r requirements-lintrunner.txt
 lintrunner init
 ```
 

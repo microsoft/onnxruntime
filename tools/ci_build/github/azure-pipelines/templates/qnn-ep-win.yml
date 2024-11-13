@@ -1,6 +1,6 @@
 parameters:
-  QnnSdk: '2.26.0.240828'
-  build_config: 'RelWithDebInfo'  
+  QnnSdk: '2.28.0.241029'
+  build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
   qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
@@ -32,9 +32,9 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: '3.8'
+          versionSpec: '3.12'
           addToPath: true
-      
+
       - template: jobs/download_win_qnn_sdk.yml
         parameters:
           QnnSDKVersion: ${{ parameters.QnnSdk }}
@@ -44,7 +44,7 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: '--use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
-          
+
       - task: VSBuild@1
         displayName: 'Build onnxruntime'
         inputs:
@@ -131,7 +131,7 @@ stages:
           solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
           platform: 'Any CPU'
           configuration: ${{ parameters.build_config }}
-          msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=${{ parameters.buildArch }}'
+          msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=$(targetArchitecture)'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
       - task: CopyFiles@2

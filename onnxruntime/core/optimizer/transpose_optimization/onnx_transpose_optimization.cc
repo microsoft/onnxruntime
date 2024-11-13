@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <unordered_map>
@@ -2749,7 +2750,9 @@ static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
 
 /// <summary>
 /// Try to remove empty DQ -> Q pair that results from moving a Transpose downstream or a Transpose being canceled out.
-/// (DQ -> Q -> consumer node) => consumer node
+/// Handles the following scenarios:
+///   - (DQ -> Q -> consumer node) => consumer node
+///   - (parent node -> DQ -> Q -> graph output) => parent node -> graph output
 /// </summary>
 /// <param name="ctx">Optimizer context</param>
 /// <param name="q_node">QuantizeLinear node</param>
@@ -2764,12 +2767,27 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
   }
 
   auto& dq_node = *input_node;
-  std::unique_ptr<api::NodeRef> single_consumer_node;
 
-  // remove empty DQ -> Q before a consumer node if the DQ and Q have matching types, scale and zp.
-  if (OutputValueHasSingleConsumerNode(ctx.graph, dq_node, 0, single_consumer_node) &&
-      OutputValueHasSingleConsumerNode(ctx.graph, q_node, 0, single_consumer_node) &&
-      CheckQDQNodePairMatch(ctx.graph, dq_node, q_node)) {
+  // DQ should have a single consumer (the Q)
+  std::unique_ptr<api::NodeRef> dq_consumer_node;
+  if (!OutputValueHasSingleConsumerNode(ctx.graph, dq_node, 0, dq_consumer_node)) {
+    return false;
+  }
+
+  // The DQ and Q should have matching types, scale and zp.
+  if (!CheckQDQNodePairMatch(ctx.graph, dq_node, q_node)) {
+    return false;
+  }
+
+  std::string_view q_output = q_node.Outputs()[0];
+  auto q_consumers = ctx.graph.GetValueConsumers(q_output);
+  const size_t num_q_consumers = q_consumers->nodes.size();
+  const bool q_has_single_consumer = q_consumers->comprehensive && (num_q_consumers == 1);
+
+  // (DQ -> Q -> consumer node) => consumer node
+  if (q_has_single_consumer) {
+    std::unique_ptr<api::NodeRef> single_consumer_node = std::move(q_consumers->nodes[0]);
+
     // connect Q consumer to DQ input
     for (size_t j_idx = 0, j_end = single_consumer_node->Inputs().size(); j_idx < j_end; ++j_idx) {
       if (single_consumer_node->Inputs()[j_idx] == q_node.Outputs()[0]) {
@@ -2780,6 +2798,40 @@ static bool TryRemoveEmptyDQQ(OptimizerCtx& ctx, api::NodeRef& q_node) {
 
     // disconnect other nodes and remove
     dq_node.SetInput(0, "");
+    q_node.SetInput(0, "");
+    ctx.graph.RemoveNode(dq_node);
+    ctx.graph.RemoveNode(q_node);
+
+    return true;
+  }
+
+  // (parent node -> DQ -> Q -> graph output) => (parent node -> graph output)
+  if (num_q_consumers == 0 && ctx.graph.IsGraphOutput(q_output)) {
+    // Get the DQ's parent node.
+    std::string_view dq_input = dq_node.Inputs()[0];
+    auto dq_parent_node = ctx.graph.GetNodeProducingOutput(dq_input);
+    if (!dq_parent_node) {
+      return false;  // Don't handle DQ that consumes a graph input.
+    }
+
+    // Find index of output from DQ's parent node
+    auto dq_parent_outputs = dq_parent_node->Outputs();
+    size_t dq_parent_output_index = 0;
+    for (dq_parent_output_index = 0; dq_parent_output_index < dq_parent_outputs.size(); ++dq_parent_output_index) {
+      if (dq_parent_outputs[dq_parent_output_index] == dq_input) break;
+    }
+
+    // The DQ's parent should only have a single consumer (i.e., the DQ itself).
+    std::unique_ptr<api::NodeRef> dq_parent_consumer;
+    if (!OutputValueHasSingleConsumerNode(ctx.graph, *dq_parent_node, dq_parent_output_index, dq_parent_consumer)) {
+      return false;
+    }
+
+    // Move Q's output to come out of DQ's parent node so the graph output value name is maintained.
+    dq_node.SetInput(0, "");  // Disconnect DQ from its parent first.
+    ctx.graph.MoveOutput(q_node, 0, *dq_parent_node, dq_parent_output_index);
+
+    // Disconnect Q and remove both DQ and Q from the graph.
     q_node.SetInput(0, "");
     ctx.graph.RemoveNode(dq_node);
     ctx.graph.RemoveNode(q_node);

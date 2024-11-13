@@ -31,7 +31,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                                                                 const IKernelLookup& /*kernel_lookup*/) const override;
 
   int GetDeviceId() const { return 0; }
-
+  common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) override;
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -39,6 +39,8 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
   // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
   const InlinedVector<const Node*> GetEpContextNodes() const override;
+  virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
+                                             gsl::span<const char* const> /*values*/) override;
 
  private:
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;
@@ -48,7 +50,6 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   ProviderOptions info_;
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::shared_ptr<KernelRegistry> registry_;
-  std::set<std::string> vitisai_optypes_;
   // EP context related.
   bool ep_ctx_enabled_ = false;
   bool ep_ctx_embed_mode_ = true;

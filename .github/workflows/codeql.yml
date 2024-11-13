@@ -15,10 +15,14 @@ on:
   schedule:
     - cron: '41 13 * * 0'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions:
       actions: read
       contents: read
@@ -54,6 +58,11 @@ jobs:
       with:
         java-version: '11'
         distribution: 'microsoft'
+
+    - if: ${{ matrix.language == 'javascript' }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
 
     # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
     # If this step fails, then you should remove it and run the build manually (see below)

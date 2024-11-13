@@ -29,6 +29,10 @@ struct TensorInfo {
   const ONNX_NAMESPACE::TensorProto* initializer_tensor;
 };
 
+struct ModelSettings {
+  bool offload_graph_io_quantization = false;
+};
+
 class QnnModelWrapper {
  public:
   QnnModelWrapper(const GraphViewer& graph_viewer,
@@ -38,7 +42,8 @@ class QnnModelWrapper {
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
                   const std::unordered_set<std::string>& initializer_lookup,
-                  QnnBackendType qnn_backend_type)
+                  QnnBackendType qnn_backend_type,
+                  const ModelSettings& model_settings)
       : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
@@ -46,11 +51,14 @@ class QnnModelWrapper {
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
         initializer_lookup_(initializer_lookup),
-        qnn_backend_type_(qnn_backend_type) {
+        qnn_backend_type_(qnn_backend_type),
+        model_settings_(model_settings) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
   ~QnnModelWrapper() = default;
+
+  const ModelSettings& GetModelSettings() const { return model_settings_; }
 
   bool CreateQnnGraph(const Qnn_ContextHandle_t& context,
                       const std::string& graph_name,
@@ -279,6 +287,7 @@ class QnnModelWrapper {
   const std::unordered_map<std::string, size_t>& output_index_map_;
   const std::unordered_set<std::string>& initializer_lookup_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
+  ModelSettings model_settings_ = {};
 };  // QnnModelWrapper
 
 }  // namespace qnn
