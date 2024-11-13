@@ -2294,8 +2294,11 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
 #ifdef USE_TENSORRT
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
-    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
-        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+    // Don't allow key and value to be empty except the value of trt_op_types_to_exclude
+    if (provider_options_keys[i] == nullptr ||
+        provider_options_keys[i][0] == '\0' ||
+        (provider_options_values[i] == nullptr && strcmp("trt_op_types_to_exclude", provider_options_keys[i])) ||
+        (provider_options_values[i][0] == '\0' && strcmp("trt_op_types_to_exclude", provider_options_keys[i]))) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
     }
 
@@ -2410,6 +2413,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_profile_opt_shapes;
     delete[] ptr->trt_ep_context_file_path;
     delete[] ptr->trt_onnx_model_folder_path;
+    if (!ptr->trt_op_types_to_exclude) delete[] ptr->trt_op_types_to_exclude;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);

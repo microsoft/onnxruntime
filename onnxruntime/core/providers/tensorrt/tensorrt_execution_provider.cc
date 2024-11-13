@@ -1379,6 +1379,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
+    op_types_to_exclude_ = info.op_types_to_exclude;
+
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1565,6 +1567,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
       }
 
+      const std::string op_types_to_exclude_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOpTypesToExclude);
+      if (!op_types_to_exclude_env.empty()) {
+        op_types_to_exclude_ = op_types_to_exclude_env;
+      }
+
     } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
     } catch (const std::out_of_range& ex) {
@@ -1725,6 +1732,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
 
+  trt_version_ = getInferLibVersion();
+
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -1762,7 +1773,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
-                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
+                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2430,6 +2442,18 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   return cycle_detected;
 }
 
+std::set<std::string> GetExcludedNodeSet(std::string node_list_to_exclude) {
+  std::set<std::string> set;
+  if (!node_list_to_exclude.empty()) {
+    std::stringstream node_list(node_list_to_exclude);
+    std::string node;
+    while (std::getline(node_list, node, ',')) {
+      set.insert(node);
+    }
+  }
+  return set;
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
@@ -2462,10 +2486,27 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::vector<size_t> filtered_nodes_vector;
+  std::set<std::string> exclude_set = GetExcludedNodeSet(op_types_to_exclude_);
+
+  // Print excluded nodes, if any.
+  std::set<std::string>::iterator it;
+  for (it = exclude_set.begin(); it != exclude_set.end(); ++it) {
+    std::string op = *it;
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude \"" << op << "\" from running on TRT, if any.";
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Remove \"" << op << "\" from trt_op_types_to_exclude or specify trt_op_types_to_exclude with empty string to include the op in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this op for TRT.";
+  }
+
+  SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  bool new_subgraph = true;
+
+  /* Iterate all the nodes and exclude the node if:
+   *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible.
+   *   2. It's in the exlucded set which specified by trt_op_types_to_exclude.
+   */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
+    bool supported_node = true;
 
     /* If current node is control flow op, we take different approach based on following four cases:
      *
@@ -2477,29 +2518,43 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
      * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
      */
     if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
-      auto sub_graphs = node->GetSubgraphs();
-      if (sub_graphs.size() != 0) {
-        bool all_subgraphs_are_supported = true;
-        for (auto sub_graph : sub_graphs) {
-          // TRT EP should consider the empty subgraph is fully supported by TRT.
-          if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
-            continue;
-          }
-          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
-            all_subgraphs_are_supported = false;
-            break;
+      auto supported_control_flow_op = [&](const Node* node) {
+        auto sub_graphs = node->GetSubgraphs();
+        if (sub_graphs.size() != 0) {
+          for (auto sub_graph : sub_graphs) {
+            // TRT EP should consider the empty subgraph is fully supported by TRT.
+            if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
+              continue;
+            }
+            if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
+              // if not all its subgraphs are supported, we need to exclude this control flow op
+              return false;
+            }
           }
         }
-        if (!all_subgraphs_are_supported) {
-          // if not all its subgraphs are supported, we need to exclude this control flow op
-          continue;
-        }
-      }
+        return true;
+      };
+      supported_node = supported_control_flow_op(node);
     }
-    filtered_nodes_vector.push_back(index);
+
+    // Exclude any ops, if applicable
+    if (exclude_set.find(node->OpType()) != exclude_set.end()) {
+      supported_node = false;
+    }
+
+    if (supported_node) {
+      if (new_subgraph) {
+        parser_nodes_vector.emplace_back();
+        // Mark all new graphs as "UnKnown" which will later be parsed by TRT parser
+        parser_nodes_vector.back().second = false;
+        new_subgraph = false;
+      }
+      parser_nodes_vector.back().first.emplace_back(index);
+    } else {
+      new_subgraph = true;
+    }
   }
 
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
