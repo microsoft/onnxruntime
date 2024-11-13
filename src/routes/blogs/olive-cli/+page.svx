@@ -20,8 +20,8 @@ authorsLink:
     'https://www.linkedin.com/in/samuel-kemp-a9253724/'
 
    ]
-image: ''
-imageSquare: ''
+image: 'https://iili.io/2uu6zG4.png'
+imageSquare: 'https://iili.io/2uu6zG4.png'
 url: 'https://onnxruntime.ai/blogs/olive-cli'
 ---
 <style>
