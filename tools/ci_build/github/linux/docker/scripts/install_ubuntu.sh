@@ -47,7 +47,7 @@ PACKAGE_LIST=(
     "libtinfo5"
     "libtool"
     "libunwind8"
-    "openjdk-11-jdk"
+    "openjdk-17-jdk"
     "openssh-server"
     "pkg-config"
     "python3-dev"
