@@ -556,6 +556,17 @@ ORT_API2_STATUS(OrtNode_GetAttributeIthFloat, const OrtNode* node, const char* k
  */
 ORT_API2_STATUS(OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key, int i, _Outptr_ const char** out);
 
+/** \brief Gets the i-th string in the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[in] i The index of the string
+ * \param[out] out The i-th string in the attribute
+ * \param[out] size The length of the string
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeIthStrWithSize, const OrtNode* node, const char* key, int i, _Outptr_ const char** out, _Outptr_ size_t* size);
+
 /** \brief Gets the string value of the attribute with the given key.
  *
  * \param[in] node The node to query
@@ -564,6 +575,16 @@ ORT_API2_STATUS(OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key
  *
  */
 ORT_API2_STATUS(OrtNode_GetAttributeStr, const OrtNode* node, const char* key, _Outptr_ const char** out);
+
+/** \brief Gets the string value of the attribute with the given key.
+ *
+ * \param[in] node The node to query
+ * \param[in] key The attribute key
+ * \param[out] out The string value of the attribute
+ * \param[out] size The length of the string 
+ *
+ */
+ORT_API2_STATUS(OrtNode_GetAttributeStrWithSize, const OrtNode* node, const char* key,  _Outptr_ const char** out, _Outptr_ size_t* size);
 
 /** \brief Gets the int value of the attribute with the given key.
  *

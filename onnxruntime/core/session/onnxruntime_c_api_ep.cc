@@ -752,8 +752,22 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetAttributeIthStr, const OrtNode* nod
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetAttributeIthStrWithSize, const OrtNode* node, const char* key, int i, _Outptr_ const char** out, _Outptr_ size_t* size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *size = n->GetAttributes().at(key).strings(i).size();
+  *out = n->GetAttributes().at(key).strings(i).c_str();
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetAttributeStr, const OrtNode* node, const char* key, _Outptr_ const char** out) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *out = n->GetAttributes().at(key).s().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtNode_GetAttributeStrWithSize, const OrtNode* node, const char* key,  _Outptr_ const char** out, _Outptr_ size_t* size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *size = n->GetAttributes().at(key).s().size();
   *out = n->GetAttributes().at(key).s().c_str();
   return nullptr;
 }
@@ -841,7 +855,9 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtNode_GetAttributeIthInt,
     &OrtGraphApis::OrtNode_GetAttributeIthFloat,
     &OrtGraphApis::OrtNode_GetAttributeIthStr,
+    &OrtGraphApis::OrtNode_GetAttributeIthStrWithSize,
     &OrtGraphApis::OrtNode_GetAttributeStr,
+    &OrtGraphApis::OrtNode_GetAttributeStrWithSize,
     &OrtGraphApis::OrtNode_GetAttributeInt,
     &OrtGraphApis::OrtNode_GetAttributeFloat,
     &OrtGraphApis::OrtNode_GetSubgraphs,
