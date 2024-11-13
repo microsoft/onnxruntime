@@ -1679,7 +1679,7 @@ class SymbolicShapeInference:
         if get_opset(self.out_mp_) <= 10:
             scales = self._try_get_value(node, 1)
             if scales is not None:
-                new_sympy_shape = [sympy.simplify(sympy.floor(d * s)) for d, s in zip(input_sympy_shape, scales)]
+                new_sympy_shape = [sympy.simplify(float(sympy.floor(d * s))) for d, s in zip(input_sympy_shape, scales)]
                 self._update_computed_dims(new_sympy_shape)
                 vi.CopyFrom(
                     helper.make_tensor_value_info(
@@ -1706,7 +1706,7 @@ class SymbolicShapeInference:
                     roi_end = [1] * rank
                 scales = list(scales)
                 new_sympy_shape = [
-                    sympy.simplify(sympy.floor(d * (end - start) * scale))
+                    sympy.simplify(float(sympy.floor(d * (end - start) * scale)))
                     for d, start, end, scale in zip(input_sympy_shape, roi_start, roi_end, scales)
                 ]
                 self._update_computed_dims(new_sympy_shape)
