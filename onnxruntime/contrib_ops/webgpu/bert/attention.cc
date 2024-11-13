@@ -225,7 +225,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_, parameters.past_present_share_buffer_)
+      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_, parameters.past_present_share_buffer_, past_key != nullptr, total_sequence_length, seqlen_k != nullptr)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -460,7 +460,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   program.SetDispatchGroupSize((parameters.v_head_size_ + tile_size - 1) / tile_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
-      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_, parameters.past_present_share_buffer_)
+      .CacheHint(std::to_string(tile_size), parameters.is_first_prompt_, parameters.past_present_share_buffer_, past_value != nullptr, total_sequence_length, seqlen_k != nullptr)
       .SetWorkgroupSize(tile_size, tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(total_sequence_length)},
