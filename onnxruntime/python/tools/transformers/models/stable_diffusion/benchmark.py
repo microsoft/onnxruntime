@@ -136,7 +136,7 @@ def run_ort_pipeline(
     prompts, negative_prompt = example_prompts()
 
     def warmup():
-        pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
+        pipe(["warm up"] * batch_size, height, width, num_inference_steps=steps)
 
     # Run warm up, and measure GPU memory of two runs
     # cuDNN/MIOpen The first run has  algo search so it might need more memory)
@@ -306,6 +306,7 @@ def get_optimum_ort_pipeline(
     directory: str,
     provider="CUDAExecutionProvider",
     disable_safety_checker: bool = True,
+    use_io_binding: bool = False,
 ):
     from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
 
@@ -321,7 +322,7 @@ def get_optimum_ort_pipeline(
             pipeline = ORTStableDiffusionPipeline.from_pretrained(
                 directory,
                 provider=provider,
-                use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
+                use_io_binding=use_io_binding,
             )
     elif "xl" in model_name:
         pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
@@ -337,7 +338,7 @@ def get_optimum_ort_pipeline(
             model_name,
             export=True,
             provider=provider,
-            use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
+            use_io_binding=use_io_binding,
         )
         pipeline.save_pretrained(directory)
 
@@ -364,7 +365,7 @@ def run_optimum_ort_pipeline(
 
     assert isinstance(pipe, (ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline))
 
-    prompts = example_prompts()
+    prompts, negative_prompt = example_prompts()
 
     def warmup():
         pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
@@ -429,9 +430,11 @@ def run_optimum_ort(
     batch_count: int,
     start_memory,
     memory_monitor_type,
+    use_io_binding: bool = False,
 ):
     load_start = time.time()
-    pipe = get_optimum_ort_pipeline(model_name, directory, provider, disable_safety_checker)
+    pipe = get_optimum_ort_pipeline(model_name, directory, provider, disable_safety_checker,
+                                    use_io_binding=use_io_binding)
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
@@ -1138,6 +1141,14 @@ def parse_arguments():
     parser.set_defaults(use_xformers=False)
 
     parser.add_argument(
+        "--use_io_binding",
+        required=False,
+        action="store_true",
+        help="Use I/O Binding for Optimum.",
+    )
+    parser.set_defaults(use_io_binding=False)
+
+    parser.add_argument(
         "-b",
         "--batch_size",
         type=int,
@@ -1312,6 +1323,7 @@ def main():
             batch_count=args.batch_count,
             start_memory=start_memory,
             memory_monitor_type=memory_monitor_type,
+            use_io_binding=args.use_io_binding,
         )
     elif args.engine == "onnxruntime":
         assert args.pipeline and os.path.isdir(
