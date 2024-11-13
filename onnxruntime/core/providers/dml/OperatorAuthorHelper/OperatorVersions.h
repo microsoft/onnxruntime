@@ -498,4 +498,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_DynamicQuantizeMatMul = 1;
     } // namespace MsftOperatorSet1
 
+    namespace MsftOperatorSet21
+    {
+        static const int sc_sinceVer_GroupNorm = 21;
+    } // namespace MsftOperatorSet21
+
 } // namespace OperatorHelper
