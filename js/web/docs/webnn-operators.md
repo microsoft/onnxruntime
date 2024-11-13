@@ -57,6 +57,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | LessOrEqual | ai.onnx(12-15, 16+) | lesserOrEqual | ✓ | ✓ | |
 | Log | ai.onnx(7-12, 13+) | log | ✓ | ✓ | |
 | LpPool | ai.onnx(7-10, 11-17, 18+) | l2Pool2d | ✗ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'p' value is 2 |
+| LRN | ai.onnx(7-12, 13+) | pad, averagePool2d, transpose, add, mul, pow, div | ✓ | ✓ | |
 | LSTM | ai.onnx(7-13, 14-21, 22+) | lstm | ✓ | ✓ | Only supports 'layout' == 0, 'input_forget' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | ✓ | ✓ | |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | ✓ | ✓ | |
@@ -93,7 +94,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
 | Softsign | ai.onnx(7+) | softsign | ✓ | ✓ | |
 | Sin | ai.onnx(7+) | sin | ✓ | ✓ | |
-| Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant, only supports 'steps' value 1 |
+| Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant, only supports 'steps' value >= 1 |
 | Softmax | ai.onnx(7-10, 11-12, 13+) | softmax | ✓ | ✓ | |
 | Split | ai.onnx(7-10, 11-12, 13-17, 18+) | split | ✓ | ✓ | Input 'split' if present should be a constant |
 | Sqrt | ai.onnx(7-12, 13+) | sqrt | ✓ | ✓ | |
