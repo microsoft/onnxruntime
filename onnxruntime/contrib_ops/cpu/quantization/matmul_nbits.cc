@@ -42,12 +42,9 @@ typedef enum {
 // T: A data type.
 template <typename T>
 MLAS_QNBIT_GEMM_COMPUTE_TYPE
-GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr);
-
-template <>
-MLAS_QNBIT_GEMM_COMPUTE_TYPE
-GetComputeType<float>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
   // For Fp32, only accuracy level 1 or 4 makes sense.
+  // non-ARM CPU converts Fp16 to Fp32.
   // By converting Fp32 to Fp16, precision becomes worse. And due to the casting,
   // there is no performance gain.
   if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
@@ -73,18 +70,8 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
   // if HQNBIT_CompFp16 is not supported, will fallback to unpacked computation.
   return HQNBIT_CompFp16;
 }
-#else   // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
-template <>
-MLAS_QNBIT_GEMM_COMPUTE_TYPE
-GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
-  // non-ARM CPU converts Fp16 to Fp32.
-  if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
-      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
-    return SQNBIT_CompInt8;
-  }
-  return SQNBIT_CompFp32;
-}
-#endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
+#endif  // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
+
 }  // namespace
 
 bool GetType(const NodeArg& node_arg, int32_t& type) {
@@ -206,7 +193,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       auto sptr = tensor.Data<float>();
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
-                                   has_zp_input_, nullptr, nullptr);
+                                  has_zp_input_, nullptr, nullptr);
       is_packed = false;
     } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
       auto zptr = tensor.Data<uint8_t>();
@@ -255,18 +242,18 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
-                                 nullptr, has_zp_input_, nullptr, nullptr);
+                                nullptr, has_zp_input_, nullptr, nullptr);
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
-                                   scales_fp32_.get(), has_zp_input_, nullptr, nullptr);
+                                  scales_fp32_.get(), has_zp_input_, nullptr, nullptr);
       is_packed = false;
     } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
       auto zptr = tensor.Data<uint8_t>();
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
-                                   nullptr, has_zp_input_, zptr, nullptr);
+                                  nullptr, has_zp_input_, zptr, nullptr);
       is_packed = false;
     }
 #endif  // MLAS_TARGET_AMD64_IX86
@@ -291,13 +278,13 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 
 template <typename T1>
 Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
-                                          const Tensor* scales,
-                                          const Tensor* zero_points,
-                                          const Tensor* bias,
-                                          Tensor* y,
-                                          AllocatorPtr& allocator,
-                                          concurrency::ThreadPool* thread_pool,
-                                          const MatMulComputeHelper& helper) const {
+                                       const Tensor* scales,
+                                       const Tensor* zero_points,
+                                       const Tensor* bias,
+                                       Tensor* y,
+                                       AllocatorPtr& allocator,
+                                       concurrency::ThreadPool* thread_pool,
+                                       const MatMulComputeHelper& helper) const {
   const auto* a_data = a->Data<T1>();
   const auto* scales_data = scales->Data<T1>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
@@ -335,7 +322,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
     data[i].ldc = N;
   }
   MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
-                      thread_pool);
+                     thread_pool);
   return Status::OK();
 }
 
@@ -413,7 +400,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].ldc = N;
   }
   MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
-                      thread_pool);
+                     thread_pool);
   MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
   return Status::OK();
 }

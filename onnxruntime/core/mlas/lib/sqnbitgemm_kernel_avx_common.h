@@ -7,7 +7,7 @@
 //
 
 static size_t
-SQ4BitGemmPackQuantBDataSize(
+Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -326,7 +326,7 @@ PackQuantBDataAndBlkSum(
 //
 
 static size_t
-SQ4BitGemmPerGemmWorkspaceSize(
+Q4BitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
@@ -351,7 +351,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
 }
 
 static size_t
-SQ4BitGemmPerGemmWorkspaceAlignment(
+Q4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )

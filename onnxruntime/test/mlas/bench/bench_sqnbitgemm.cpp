@@ -72,8 +72,8 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
-                                 QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
-                                 tp.get());
+                                QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
+                                tp.get());
   }
 
   MLAS_QNBIT_GEMM_DATA_PARAMS<float> params{};
@@ -119,13 +119,13 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
-      {128},                                   // BlkLen
-      {1},                                     // M
-      {4096, 11008},                           // N
-      {4096, 11008},                           // K
-      {1, 8},                                  // Threads
-      {int64_t{false}, int64_t{true}},         // Symmetric
-      {int64_t{false}, int64_t{true}},         // HasBias
+      {128},                                                 // BlkLen
+      {1},                                                   // M
+      {4096, 11008},                                         // N
+      {4096, 11008},                                         // K
+      {1, 8},                                                // Threads
+      {int64_t{false}, int64_t{true}},                       // Symmetric
+      {int64_t{false}, int64_t{true}},                       // HasBias
       {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}},  // ComputeType
   });
 }

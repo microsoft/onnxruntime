@@ -51,7 +51,7 @@ struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-      // TODO: duplicate code from SQ4BitGemmPackQuantBDataSize
+      // TODO: duplicate code from Q4BitGemmPackQuantBDataSize
         constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
@@ -98,7 +98,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
+    SQ4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
     /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
     typedef void(SQ4BitGemmPackQuantBData_Fn)(
@@ -150,7 +150,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
+    SQ4BitGemmPerGemmWorkspaceSize_Fn* Q4BitGemmPerGemmWorkspaceSize = nullptr;
 
     /**
      * @brief Gets the required byte alignment of the per-GEMM intermediate workspace.
@@ -163,7 +163,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
+    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* Q4BitGemmPerGemmWorkspaceAlignment = nullptr;
 
     //
     // SQNBIT_CompFp32 kernel function prototypes.

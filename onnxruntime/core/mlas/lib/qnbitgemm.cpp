@@ -113,8 +113,8 @@ QNBitGemmPerGemmWorkspaceSize(
         return 0;
     }
 
-    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceSize != nullptr) {
-        return Dispatch->SQ4BitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, ComputeType);
+    if (BlkBitWidth == 4 && Dispatch->Q4BitGemmPerGemmWorkspaceSize != nullptr) {
+        return Dispatch->Q4BitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, ComputeType);
     }
 
     return 0;
@@ -132,8 +132,8 @@ QNBitGemmPerGemmWorkspaceAlignment(
         return 1;
     }
 
-    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment != nullptr) {
-        return Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment(BlkLen, ComputeType);
+    if (BlkBitWidth == 4 && Dispatch->Q4BitGemmPerGemmWorkspaceAlignment != nullptr) {
+        return Dispatch->Q4BitGemmPerGemmWorkspaceAlignment(BlkLen, ComputeType);
     }
 
     return 1;
@@ -193,8 +193,8 @@ MlasQNBitGemmPackQuantBDataSize(
         return 0;
     }
 
-    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPackQuantBDataSize != nullptr) {
-        return Dispatch->SQ4BitGemmPackQuantBDataSize(
+    if (BlkBitWidth == 4 && Dispatch->Q4BitGemmPackQuantBDataSize != nullptr) {
+        return Dispatch->Q4BitGemmPackQuantBDataSize(
             N, K, BlkLen, ComputeType
         );
     }

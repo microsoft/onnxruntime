@@ -34,7 +34,7 @@ namespace
 //
 
 size_t
-SQ4BitGemmPackQuantBDataSize(
+Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -126,7 +126,7 @@ SQ4BitGemmPackQuantBData(
 //
 
 size_t
-SQ4BitGemmPerGemmWorkspaceSize(
+Q4BitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
@@ -150,7 +150,7 @@ SQ4BitGemmPerGemmWorkspaceSize(
 }
 
 size_t
-SQ4BitGemmPerGemmWorkspaceAlignment(
+Q4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
@@ -178,11 +178,11 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
 
-    d.SQ4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment;
+    d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
+    d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp32;

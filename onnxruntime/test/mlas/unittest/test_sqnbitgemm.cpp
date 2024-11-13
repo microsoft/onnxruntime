@@ -276,8 +276,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;
       MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
-                                   QuantBScale, has_zp_input, QuantBZeroPoint,
-                                   GetMlasThreadPool());
+                                  QuantBScale, has_zp_input, QuantBZeroPoint,
+                                  GetMlasThreadPool());
     }
 
     CallGemm(M, N, K,
