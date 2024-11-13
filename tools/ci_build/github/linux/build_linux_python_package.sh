@@ -16,15 +16,16 @@ PYTHON_EXES=(
   "/opt/python/cp313-cp313t/bin/python3.13t"
   "/opt/python/cp310-cp310/bin/python3.10"
   )
-while getopts "d:p::x:c:e" parameter_Option
+while getopts "d:p:x:c:e" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|CPU|NPU.
 d) BUILD_DEVICE=${OPTARG};;
 p)
-  # If OPTARG is empty, -p was provided without an argument
-  if [ -z "${OPTARG}" ]; then
-     echo "No argument provided for -p; using default PYTHON_EXES paths."
+  # Check if OPTARG is empty or starts with a hyphen, indicating a missing or invalid argument for -p
+  if [[ -z "${OPTARG}" || "${OPTARG}" == -* ]]; then
+    echo "ERROR: Option -p requires a valid argument, not another option."
+    exit 1
   else
     PYTHON_EXES=("${OPTARG}") # Use the provided argument for -p
   fi
