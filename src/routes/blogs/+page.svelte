@@ -77,6 +77,8 @@
 			imgalt:
 				'Speedup for ONNX Runtime with TensorRT and CUDA vs. torch.compile for difference batch sizes and sequence lengths.'
 		},
+	];
+	let blogs = [
 		{
 			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
 			date: 'June 17th, 2024',
@@ -87,10 +89,6 @@
 			imgalt:
 				'Image of the different steps of an ML pipeline on a mobile device, running using NimbleEdge and ONNX Runtime.'
 		},
-		
-		
-	];
-	let blogs = [
 		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
 			date: 'June 12th, 2024',
