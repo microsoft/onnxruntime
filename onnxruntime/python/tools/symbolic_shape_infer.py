@@ -1693,7 +1693,7 @@ class SymbolicShapeInference:
             scales = self._try_get_value(node, 2)
             sizes = self._try_get_value(node, 3)
             if sizes is not None:
-                new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
+                new_sympy_shape = [sympy.simplify(float(sympy.floor(s))) for s in sizes]
                 self._update_computed_dims(new_sympy_shape)
             elif scales is not None:
                 rank = len(scales)
