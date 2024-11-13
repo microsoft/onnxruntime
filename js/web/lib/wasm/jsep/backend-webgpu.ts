@@ -13,6 +13,7 @@ import { ProgramManager } from './webgpu/program-manager';
 import {
   AdapterInfo,
   ComputeContext,
+  DeviceInfo,
   GpuArchitecture,
   GpuData,
   GpuVendor,
@@ -134,6 +135,26 @@ class AdapterInfoImpl implements AdapterInfo {
   }
 }
 
+class DeviceInfoImpl implements DeviceInfo {
+  readonly subgroupsSupported: boolean;
+  readonly subgroupsF16Supported: boolean;
+  readonly subgroupSizeRange?: readonly [number, number];
+
+  constructor(device: GPUDevice) {
+    this.subgroupsSupported = device.features.has('subgroups' as GPUFeatureName);
+    this.subgroupsF16Supported = device.features.has('subgroups' as GPUFeatureName);
+    // Currently subgroups feature is still experimental and size attributes are not in the WebGPU IDL, so we have to
+    // workaround the IDL type checks.
+    // TODO: clean this after subgroups feature is settled in IDL.
+    const deviceSubgroupsLimits = device.limits as { minSubgroupSize?: number; maxSubgroupSize?: number };
+    if (!this.subgroupsSupported || !deviceSubgroupsLimits.minSubgroupSize || !deviceSubgroupsLimits.maxSubgroupSize) {
+      this.subgroupSizeRange = undefined;
+    } else {
+      this.subgroupSizeRange = [deviceSubgroupsLimits.minSubgroupSize, deviceSubgroupsLimits.maxSubgroupSize];
+    }
+  }
+}
+
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
@@ -141,6 +162,7 @@ class AdapterInfoImpl implements AdapterInfo {
 export class WebGpuBackend {
   adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
+  deviceInfo: DeviceInfoImpl;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
    */
@@ -243,16 +265,22 @@ export class WebGpuBackend {
       requiredFeatures,
     };
 
-    if (adapter.features.has('chromium-experimental-timestamp-query-inside-passes')) {
-      requiredFeatures.push('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName);
-    } else if (adapter.features.has('timestamp-query')) {
-      requiredFeatures.push('timestamp-query');
+    // Try requiring WebGPU features
+    const requireFeatureIfAvailable = (feature: GPUFeatureName) =>
+      adapter.features.has(feature) && requiredFeatures.push(feature) && true;
+    // Try chromium-experimental-timestamp-query-inside-passes and fallback to timestamp-query
+    if (!requireFeatureIfAvailable('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName)) {
+      requireFeatureIfAvailable('timestamp-query');
     }
-    if (adapter.features.has('shader-f16')) {
-      requiredFeatures.push('shader-f16');
+    requireFeatureIfAvailable('shader-f16');
+    // Try subgroups
+    if (requireFeatureIfAvailable('subgroups' as GPUFeatureName)) {
+      // If subgroups feature is available, also try subgroups-f16
+      requireFeatureIfAvailable('subgroups-f16' as GPUFeatureName);
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
+    this.deviceInfo = new DeviceInfoImpl(this.device);
     this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
@@ -900,6 +928,10 @@ export class WebGpuBackend {
     // flush the left commands before we change the status.
     this.flush();
     this.sessionStatus = 'default';
+  }
+
+  onCreateSession(): void {
+    this.gpuDataManager.onCreateSession();
   }
 
   onReleaseSession(sessionId: number): void {

@@ -94,6 +94,10 @@
 #include "core/providers/webnn/webnn_provider_factory_creator.h"
 #endif
 
+#if defined(USE_WEBGPU)
+#include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#endif
+
 #if defined(USE_CANN)
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #endif

@@ -192,6 +192,9 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
       return backend['createDownloader'](gpuBuffer, size, type);
     };
+    Module['jsepOnCreateSession'] = sessionId => {
+      backend['onCreateSession'](sessionId);
+    };
     Module['jsepOnReleaseSession'] = sessionId => {
       backend['onReleaseSession'](sessionId);
     };
@@ -234,6 +237,13 @@ Module['jsepInit'] = (name, params) => {
     }
     Module['jsepRegisterMLTensor'] = (tensor, dataType, shape) => {
       return backend['registerMLTensor'](tensor, dataType, shape);
-    }
+    };
+    Module['jsepCreateMLContext'] = (optionsOrGpuDevice) => {
+      return backend['createMLContext'](optionsOrGpuDevice);
+    };
+    Module['jsepRegisterMLConstant'] = (externalFilePath, dataOffset, dataLength, builder, desc) => {
+      return backend['registerMLConstant'](
+          externalFilePath, dataOffset, dataLength, builder, desc, Module.MountedFiles);
+    };
   }
 };

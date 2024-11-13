@@ -7,7 +7,9 @@
 #include <iostream>
 #include <codecvt>
 #include <fstream>
-
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 #include "./vai_assert.h"
 
 #include "core/common/exceptions.h"
@@ -52,6 +54,10 @@ struct OrtVitisAIEpAPI {
   int (*vitisai_ep_on_run_start)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const void* state,
       vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) = nullptr;
+  int (*vitisai_ep_set_ep_dynamic_options)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+      const char* const* keys,
+      const char* const* values, size_t kv_len) = nullptr;
   void Ensure() {
     if (handle_)
       return;
@@ -77,6 +83,7 @@ struct OrtVitisAIEpAPI {
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_set_ep_dynamic_options", (void**)&vitisai_ep_set_ep_dynamic_options));
   }
 
  private:
@@ -114,6 +121,15 @@ int vitisai_ep_on_run_start(
     vaip_core::DllSafe<std::string> (*get_config_entry)(const void* state, const char* entry_name)) {
   if (s_library_vitisaiep.vitisai_ep_on_run_start) {
     return s_library_vitisaiep.vitisai_ep_on_run_start(eps, state, get_config_entry);
+  }
+  return 100;
+}
+
+int vitisai_ep_set_ep_dynamic_options(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps, const char* const* keys,
+    const char* const* values, size_t kv_len) {
+  if (s_library_vitisaiep.vitisai_ep_set_ep_dynamic_options) {
+    return s_library_vitisaiep.vitisai_ep_set_ep_dynamic_options(eps, keys, values, kv_len);
   }
   return 100;
 }
@@ -428,6 +444,11 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     }
   };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
+  the_global_api.model_to_proto = [](onnxruntime::Model& model) { return model.ToProto().release(); };
+  the_global_api.model_proto_serialize_as_string = [](ONNX_NAMESPACE::ModelProto& model_proto) {
+    return vaip_core::DllSafe(model_proto.SerializeAsString());
+  };
+  the_global_api.model_proto_delete = [](ONNX_NAMESPACE::ModelProto* p) { delete p; };
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {

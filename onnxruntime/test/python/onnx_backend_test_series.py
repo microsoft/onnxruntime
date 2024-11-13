@@ -152,6 +152,9 @@ def create_backend_test(test_name=None):
         if backend.supports_device("MIGRAPHX"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_MIGRAPHX")
 
+        if backend.supports_device("WEBGPU"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_WEBGPU")
+
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
         # EPs are available (Windows GPU CI pipeline has this config) - these test will pass because CUDA has higher precedence than DML
         # and the nodes are assigned to only the CUDA EP (which supports these tests)

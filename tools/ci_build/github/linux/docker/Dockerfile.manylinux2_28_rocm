@@ -6,7 +6,7 @@ ARG LD_LIBRARY_PATH_ARG=${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/
 ARG PREPEND_PATH=${DEVTOOLSET_ROOTPATH}/usr/bin:
 
 FROM $BASEIMAGE AS base_image
-ARG ROCM_VERSION=5.5
+ARG ROCM_VERSION=6.2.3
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
@@ -185,8 +185,6 @@ ARG INSTALL_DEPS_EXTRA_ARGS
 RUN cd /tmp/scripts && \
     /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.10 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
@@ -203,5 +201,5 @@ ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-ENV PATH /usr/local/dotnet:$PATH
+ENV PATH=/usr/local/dotnet:$PATH
 ENV ORTMODULE_ONNX_OPSET_VERSION=$OPSET_VERSION
