@@ -1,6 +1,6 @@
 # usage:
 # cd build/
-# cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DTENSORRT_HOME=/home/yifanl/TensorRT-10.5.0.18 -DORT_HOME=/home/yifanl/onnxruntime (see the result of "nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits")
+# cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DTENSORRT_HOME=/home/yifanl/TensorRT-10.4.0.26 -DORT_HOME=/home/yifanl/onnxruntime (see the result of "nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits")
 # cmake --build ./
 cmake_minimum_required(VERSION 3.26)
 project(TensorRTEp VERSION 1.0)

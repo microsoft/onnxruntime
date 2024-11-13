@@ -186,8 +186,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     //Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
     //std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
     //    tensorrt_options, api.ReleaseTensorRTProviderOptions);
-    
-    OrtEnv* ortenv = env->GetOrtEnv();
+    OrtEnv* ortenv = env;
     OrtSessionOptions* so = session_options;
 
 #ifdef _WIN32
@@ -195,7 +194,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", ortenv, "tensorrtEp"));
 #endif 
-    
+
     std::vector<const char*> option_keys, option_values;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
@@ -236,13 +235,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     //session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", ortenv, option_keys.data(), option_values.data(), option_keys.size()));
+    ORT_THROW("EP Plugin: trt option is loaded\n");
 
-    OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = 0;
-    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
-    cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_CUDA(cuda_options);
+    //OrtCUDAProviderOptions cuda_options;
+    //cuda_options.device_id = 0;
+    //cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
+    //cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    //// TODO: Support arena configuration for users of perf test
+    //session_options.AppendExecutionProvider_CUDA(cuda_options);
+    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
+    g_ort->ReleaseCUDAProviderOptions(cuda_options);
+    ORT_THROW("EP Plugin: cuda option is loaded\n");
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
