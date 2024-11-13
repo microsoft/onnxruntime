@@ -24,6 +24,20 @@
       "createdDate": "2024-11-13 00:40:35Z",
       "expirationDate": "2025-05-02 01:29:47Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2024-11-13 01:29:47Z"
+    },
+    "9cb6eddb3f3e886ad06cae65f5886412ff0c5fb0b96d4e943e4efa237be617b1": {
+      "signature": "9cb6eddb3f3e886ad06cae65f5886412ff0c5fb0b96d4e943e4efa237be617b1",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20241113111547065.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2024-11-13 11:20:17Z",
+      "expirationDate": "2025-05-02 11:55:15Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2024-11-13 11:55:15Z"
     }
   }
 }
