@@ -221,7 +221,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  ${onnxruntime_tvm_libs}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph

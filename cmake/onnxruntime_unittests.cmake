@@ -9,9 +9,6 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
-if (onnxruntime_USE_TVM)
-  list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
-endif()
 
 set(disabled_warnings)
 function(AddTest)
@@ -111,7 +108,6 @@ function(AddTest)
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
-    target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
     if (${HAS_NOERROR})
@@ -641,13 +637,11 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
-    # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
-    ${onnxruntime_tvm_libs}
     onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
@@ -747,12 +741,6 @@ if(onnxruntime_USE_AZURE)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
-endif()
-
-if(WIN32)
-  if (onnxruntime_USE_TVM)
-    list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
-  endif()
 endif()
 
 file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
@@ -855,9 +843,6 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     list(APPEND all_tests ${onnxruntime_test_training_api_src})
 endif()
 
-if (onnxruntime_USE_TVM)
-    list(APPEND all_tests ${onnxruntime_test_tvm_src})
-endif()
 
 if (onnxruntime_USE_OPENVINO)
   list(APPEND all_tests ${onnxruntime_test_openvino_src})
