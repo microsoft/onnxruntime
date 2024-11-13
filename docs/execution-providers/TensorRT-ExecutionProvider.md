@@ -824,3 +824,7 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
     ```
 
 Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
+
+## Known Issues
+- TensorRT 8.6 built-in parser and TensorRT oss parser behaves differently. Namely built-in parser cannot recognize some custom plugin ops while OSS parser can. See [EfficientNMS_TRT missing attribute class_agnostic w/ TensorRT 8.6
+](https://github.com/microsoft/onnxruntime/issues/16121). 
