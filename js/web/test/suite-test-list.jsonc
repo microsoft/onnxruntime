@@ -1396,6 +1396,7 @@
       "pow-big-number.jsonc",
       "reshape.jsonc",
       "rotary-embedding.jsonc",
+      "scatternd.jsonc",
       "simplified-layer-norm.jsonc",
       "skip-layer-norm.jsonc",
       "skip-simplified-layer-norm.jsonc",
