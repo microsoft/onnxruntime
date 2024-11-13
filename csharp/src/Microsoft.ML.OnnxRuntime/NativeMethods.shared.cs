@@ -2122,9 +2122,11 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtGetTensorMemoryInfo OrtGetTensorMemoryInfo;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetExecutionProviderApi(byte[] /*(const char*)*/ provider_name,
-                                                                                uint /*(uint32_t)*/ version,
-                                                                                out IntPtr /* const OrtMemoryInfo** */ provider_api);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetExecutionProviderApi(
+            byte[] /*(const char*)*/ provider_name,
+            uint /*(uint32_t)*/ version,
+            out IntPtr /* const OrtMemoryInfo** */ provider_api
+        );
 
         public static DOrtGetExecutionProviderApi OrtGetExecutionProviderApi;
 
