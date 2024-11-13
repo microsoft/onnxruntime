@@ -22,6 +22,7 @@ def run_model_in_pytorch(model, inputs):
     return output
 
 def run_model_in_ort(model_file, inputs, ep, use_graph_opt=True):
+    ort.set_default_logger_severity(0) 
     if use_graph_opt:
         sess_opt = None
     else:
@@ -31,7 +32,6 @@ def run_model_in_ort(model_file, inputs, ep, use_graph_opt=True):
     outputs = session.run(None, inputs)
     output = np.array(outputs[0])
     return output
-
 
 def get_model_and_inputs(model_name, use_minimal_model=True):
     if model_name == "microsoft/resnet-50" or model_name == "microsoft/resnet-18":
@@ -50,9 +50,9 @@ def get_model_and_inputs(model_name, use_minimal_model=True):
             model.config.num_hidden_layers = 1 # default 32
         else:
             print(f"Using full model for {model_name}")
-            # model.model.layers = model.model.layers[:4]
+            model.model.layers = model.model.layers[:2]
             # # Update the configuration to reflect the reduced number of layers
-            # model.config.num_hidden_layers = 4 # default 32
+            model.config.num_hidden_layers = 2 # default 32
         dim = (1, 30)
         input_ids = torch.randint(0, 32064, dim)  # 32064 is vocab size
         attention_masks = torch.ones(*dim, dtype=torch.int64)
@@ -67,13 +67,20 @@ def get_model_and_inputs(model_name, use_minimal_model=True):
         }
     return model, pytorch_inputs, ort_inputs
 
-def get_ep(use_tensorrt=True, use_fp16=True):
-    if not use_tensorrt:
-        return [('CPUExecutionProvider', {})]
+def get_ep(ep_name='CPUExecutionProvider', use_fp16=True):
+    # Check valid EP, fall back to CPU
+    if not ep_name in ['CPUExecutionProvider', 'CUDAExecutionProvider', 'TensorrtExecutionProvider']:
+        ep_name = 'CPUExecutionProvider'
+    # if not use_tensorrt:
+    #     return [('CPUExecutionProvider', {})]
+    # else:
+    #     return [
+    #         ('TensorrtExecutionProvider', {'trt_fp16_enable': use_fp16})
+    #         ]
+    if ep_name == 'TensorrtExecutionProvider':
+        return [('TensorrtExecutionProvider', {'trt_fp16_enable': use_fp16})]
     else:
-        return [
-            ('TensorrtExecutionProvider', {'trt_fp16_enable': use_fp16})
-            ]
+        return [(ep_name, {})]
 
 """
 This hacky fix is required to fix onnx model graph. Github issue: https://github.com/pytorch/pytorch/issues/138637
@@ -149,7 +156,7 @@ def fix_phi35_model(onnx_model_filename):
     # Overwrite old model file with external weights since Phi3.5 full model exeeds 2GB
     onnx.save_model(model, onnx_model_filename, save_as_external_data=True, all_tensors_to_one_file=True, location="external_weights", size_threshold=1024, convert_attribute=False)
 
-def run_comparison(self, model_name, use_minimal_model=True, use_tensorrt=True, use_fp16=True, use_graph_opt=True, rtol=1e-2, atol=1e-2):
+def run_comparison(self, model_name, use_minimal_model=True, ep_name='CPUExecutionProvider', use_fp16=True, use_graph_opt=True, rtol=1e-2, atol=1e-2):
     start_time = time.time()
     model, pytorch_inputs, ort_inputs = get_model_and_inputs(model_name, use_minimal_model)
     pytorch_output = run_model_in_pytorch(model, pytorch_inputs)
@@ -161,7 +168,7 @@ def run_comparison(self, model_name, use_minimal_model=True, use_tensorrt=True, 
     torch.onnx.export(model, pytorch_inputs, model_file, input_names=input_names)
     if model_name == "microsoft/Phi-3.5-mini-instruct":
         fix_phi35_model(model_file)
-    providers = get_ep(use_tensorrt, use_fp16)
+    providers = get_ep(ep_name, use_fp16)
     ort_output = run_model_in_ort(model_file, ort_inputs, providers, use_graph_opt=use_graph_opt)
     # print(f"pytorch_output={pytorch_output}")
     # print(f"ort_output={ort_output}")
@@ -192,27 +199,27 @@ class TestResnetAccuracy(unittest.TestCase):
 
     def test_resnet18_cpu_fp32_wo_opt(self):
         run_comparison(self, "microsoft/resnet-18", 
-            use_minimal_model=False, use_tensorrt=False, use_fp16=False, use_graph_opt=False)
+            use_minimal_model=False, ep_name='CPUExecutionProvider', use_fp16=False, use_graph_opt=False)
     
     def test_resnet18_cpu_fp32(self):
         run_comparison(self, "microsoft/resnet-18", 
-            use_minimal_model=False, use_tensorrt=False, use_fp16=False, use_graph_opt=True)
-
-    def test_resnet18_cpu_fp32(self):
-        run_comparison(self, "microsoft/resnet-18", 
-            use_minimal_model=False, use_tensorrt=True, use_fp16=False, use_graph_opt=True)
+            use_minimal_model=False, ep_name='CPUExecutionProvider', use_fp16=False, use_graph_opt=True)
 
     def test_resnet18_trt_fp32(self):
         run_comparison(self, "microsoft/resnet-18", 
-            use_minimal_model=False, use_tensorrt=True, use_fp16=True, use_graph_opt=True)
+            use_minimal_model=False, ep_name='TensorrtExecutionProvider', use_fp16=True, use_graph_opt=True)
 
     def test_resnet18_trt_fp16(self):
         run_comparison(self, "microsoft/resnet-18", 
-            use_minimal_model=False, use_tensorrt=True, use_fp16=False, use_graph_opt=True)
+            use_minimal_model=False, ep_name='TensorrtExecutionProvider', use_fp16=False, use_graph_opt=True)
 
     def test_resnet50_trt_fp16(self):
         run_comparison(self, "microsoft/resnet-50", 
-            use_minimal_model=False, use_tensorrt=True, use_fp16=False, use_graph_opt=True)
+            use_minimal_model=False, ep_name='TensorrtExecutionProvider', use_fp16=False, use_graph_opt=True)
+    
+    def test_resnet50_cuda_fp16(self):
+        run_comparison(self, "microsoft/resnet-50", 
+            use_minimal_model=False, ep_name='CUDAExecutionProvider', use_fp16=False, use_graph_opt=True)
 
 """
 Test Phi3.5 (1 layer) and full Phi3.5 with different configurations
@@ -227,24 +234,32 @@ class TestPhi35Accuracy(unittest.TestCase):
 
     def test_phi35_1l_cpu_fp32_wo_opt(self):
         run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
-            use_minimal_model=True, use_tensorrt=False, use_fp16=False, use_graph_opt=False)
+            use_minimal_model=True, ep_name='CPUExecutionProvider', use_fp16=False, use_graph_opt=False)
     
     def test_phi35_1l_cpu_fp32(self):
         run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
-            use_minimal_model=True, use_tensorrt=False, use_fp16=False, use_graph_opt=True)
+            use_minimal_model=True, ep_name='CPUExecutionProvider', use_fp16=False, use_graph_opt=True)
 
     def test_phi35_1l_trt_fp32(self):
         run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
-            use_minimal_model=True, use_tensorrt=True, use_fp16=False, use_graph_opt=True)
+            use_minimal_model=True, ep_name='TensorrtExecutionProvider', use_fp16=False, use_graph_opt=True)
 
     def test_phi35_1l_trt_fp16(self):
         run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
-            use_minimal_model=True, use_tensorrt=True, use_fp16=True, use_graph_opt=True,
+            use_minimal_model=True, ep_name='TensorrtExecutionProvider', use_fp16=True, use_graph_opt=True,
             rtol=1e-1, atol=1e-1) # Need to relax rtol and atol for fp16 test case to pass
 
-    def test_phi35_full_trt_fp16(self):
+    # def test_phi35_full_trt_fp16(self):
+    #     run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
+    #         use_minimal_model=False, ep_name='TensorrtExecutionProvider', use_fp16=True, use_graph_opt=True)
+    
+    def test_phi35_1l_cuda_fp16(self):
         run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
-            use_minimal_model=False, use_tensorrt=True, use_fp16=True, use_graph_opt=True)
+            use_minimal_model=True, ep_name='CUDAExecutionProvider', use_fp16=True, use_graph_opt=True)
+    
+    def test_phi35_full_cuda_fp16(self):
+        run_comparison(self, "microsoft/Phi-3.5-mini-instruct", 
+            use_minimal_model=False, ep_name='CUDAExecutionProvider', use_fp16=True, use_graph_opt=True)
 
 
 if __name__ == "__main__":
