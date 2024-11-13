@@ -235,7 +235,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     //session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", ortenv, option_keys.data(), option_values.data(), option_keys.size()));
-    ORT_THROW("EP Plugin: trt option is loaded\n");
+    std::cout << "EP Plugin: trt option is loaded\n";
 
     //OrtCUDAProviderOptions cuda_options;
     //cuda_options.device_id = 0;
@@ -247,7 +247,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
     THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
     g_ort->ReleaseCUDAProviderOptions(cuda_options);
-    ORT_THROW("EP Plugin: cuda option is loaded\n");
+    std::cout << "EP Plugin: cuda option is loaded\n";
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
