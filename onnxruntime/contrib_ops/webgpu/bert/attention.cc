@@ -147,9 +147,9 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
-                                                                                                                       "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                                                                                                                       "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
-                                                                                                                       "    }\n";
+                              << "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
+                              << "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
+                              << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n"
                                  "      tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
@@ -220,7 +220,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
     program.AddOutput({present_key, ProgramTensorMetadataDependency::Rank, components});
   }
 
-  const uint32_t vectorized_head_size = parameters.head_size_ / components;
+  const uint32_t vectorized_head_size = (parameters.head_size_  + components - 1) / components;
   program.SetDispatchGroupSize((total_sequence_length + tile_size - 1) / tile_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
@@ -303,7 +303,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                              const Tensor* seqlen_k, bool is_first_prompt) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
-  const int total_sequence_length_comp = total_sequence_length / components;
+  const int total_sequence_length_comp = (total_sequence_length + components -1) / components;
   if (total_sequence_length_comp < work_group_size) {
     work_group_size = 32;
   }
