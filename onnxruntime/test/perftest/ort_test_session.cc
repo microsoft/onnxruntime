@@ -21,6 +21,11 @@
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
+#ifdef USE_TENSORRT
+#include <vector>
+#include "core/session/onnxruntime_c_api_ep.h"
+#endif
+
 #ifdef _WIN32
 #define strdup _strdup
 #endif
@@ -28,6 +33,13 @@ extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
+
+inline void THROW_ON_ERROR(OrtStatus* status) {
+  if (status != nullptr) {
+    std::cout << "ErrorMessage:" << g_ort->GetErrorMessage(status) << "\n";
+    abort();
+  }
+}
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
@@ -169,11 +181,21 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    const auto& api = Ort::GetApi();
-    OrtTensorRTProviderOptionsV2* tensorrt_options;
-    Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
-    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
-        tensorrt_options, api.ReleaseTensorRTProviderOptions);
+    //const auto& api = Ort::GetApi();
+    //OrtTensorRTProviderOptionsV2* tensorrt_options;
+    //Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
+    //std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
+    //    tensorrt_options, api.ReleaseTensorRTProviderOptions);
+    
+    OrtEnv* ortenv = env->GetOrtEnv();
+    OrtSessionOptions* so = session_options;
+
+#ifdef _WIN32
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary(L"/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", ortenv, "tensorrtEp"));
+#else
+    THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/yifanl/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", ortenv, "tensorrtEp"));
+#endif 
+    
     std::vector<const char*> option_keys, option_values;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
@@ -201,18 +223,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       option_values.push_back(buffer.back().c_str());
     }
 
-    Ort::Status status(api.UpdateTensorRTProviderOptions(tensorrt_options,
-                                                         option_keys.data(), option_values.data(), option_keys.size()));
-    if (!status.IsOK()) {
-      OrtAllocator* allocator;
-      char* options;
-      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
-      Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options, allocator, &options));
-      ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-                "\nSupported options are:\n", options);
+    //Ort::Status status(api.UpdateTensorRTProviderOptions(tensorrt_options,
+    //                                                     option_keys.data(), option_values.data(), option_keys.size()));
+    //if (!status.IsOK()) {
+    //  OrtAllocator* allocator;
+    //  char* options;
+    //  Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+    //  Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options, allocator, &options));
+    //  ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
+    //            "\nSupported options are:\n", options);
     }
 
-    session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
+    //session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", ortenv, option_keys.data(), option_values.data(), option_keys.size()));
 
     OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id = tensorrt_options->device_id;
