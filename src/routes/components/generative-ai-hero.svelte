@@ -3,7 +3,7 @@
 	import Ortgenerativeai from '../../images/undraw/image_ortgenerativeai.svelte';
 </script>
 
-<div class="container mx-auto px-10 mb-10">
+<div class="container mx-auto px-10 my-10">
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
 		<div class="">
 			<h2 class="text-4xl">Generative AI</h2>
