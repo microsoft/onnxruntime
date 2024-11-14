@@ -227,7 +227,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"GlobalLpPool", "l2Pool2d"},
     {"Greater", "greater"},
     {"GreaterOrEqual", "greaterOrEqual"},
-    {"Gru", "gru"},
+    {"GRU", "gru"},
     {"HardSigmoid", "hardSigmoid"},
     {"HardSwish", "hardSwish"},
     {"Identity", "identity"},
