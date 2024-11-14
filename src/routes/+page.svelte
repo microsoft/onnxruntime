@@ -66,9 +66,9 @@
 
 <Hero />
 <Customers />
+<GenerativeAi />
 <CodeBlocks />
 <VideoGallery {videos} />
-<GenerativeAi />
 <CrossPlatform />
 <Performance />
 <TrainingAndInference />
