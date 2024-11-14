@@ -19,7 +19,9 @@ except ImportError:
 from .calibrate import TensorData
 from .onnx_model import ONNXModel
 from .quant_utils import (
+    DEQUANT_OP_NAME,
     ONNX_TYPE_TO_NP_TYPE,
+    QUANT_OP_NAME,
     TENSOR_NAME_QUANT_SUFFIX,
     find_by_name,
     model_has_infer_metadata,
@@ -176,6 +178,9 @@ class BaseQuantizer:
             return False
 
         if node.op_type not in self.op_types_to_quantize:
+            return False
+
+        if node.op_type in (DEQUANT_OP_NAME, QUANT_OP_NAME):
             return False
 
         if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
