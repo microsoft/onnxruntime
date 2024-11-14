@@ -307,6 +307,7 @@ stages:
   - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
+      ep: 'cpu'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
 
 - stage: arm64_build_xnnpack
@@ -328,4 +329,5 @@ stages:
   - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
+      ep: 'XNNPack'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
