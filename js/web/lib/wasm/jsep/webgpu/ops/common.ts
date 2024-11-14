@@ -195,7 +195,7 @@ export interface IndicesHelper {
   /**
    * whether the helper is for an input, an output or an internal variable.
    */
-  readonly usage: 'input' | 'output' | 'internal';
+  readonly usage: 'input' | 'output' | 'atomicOutput' | 'internal';
 
   /**
    * the rank of the input or output.
@@ -734,6 +734,20 @@ export const outputVariable = (
 ): IndicesHelper => createIndicesHelper(name, type, shapeOrRank, 'output', components);
 
 /**
+ * Create a IndicesHelper for an atomic output.
+ *
+ * @param name - the name of the output.
+ * @param type - the tensor type of the output.
+ * @param shapeOrRank - the tensor shape or the rank of the output.
+ * @returns an IndicesHelper for the output.
+ */
+export const atomicOutputVariable = (
+  name: string,
+  type: number,
+  shapeOrRank: number | readonly number[],
+): IndicesHelper => createIndicesHelper(name, type, shapeOrRank, 'atomicOutput', 1);
+
+/**
  * Create a IndicesHelper for an internal variable.
  *
  * @param name - the name of the variable.
@@ -905,9 +919,8 @@ class ShaderHelperImpl implements ShaderHelper {
     }
     this.variables.push(variable);
     this.appendVariableUniforms(variable);
-
     const access = variable.usage === 'input' ? 'read' : 'read_write';
-    const storageType = variable.type.storage;
+    const storageType = variable.usage === 'atomicOutput' ? `atomic<i32>` : variable.type.storage;
     return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
   }
 
