@@ -20,6 +20,7 @@ from op_test_utils import (
     check_op_type_count,
     check_op_type_order,
     create_clip_node,
+    get_tensor_consumers_and_producers,
 )
 
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
@@ -2043,9 +2044,20 @@ class TestQDQPrequantWeights(unittest.TestCase):
                 onnx.checker.check_model(float_model, True)
                 onnx.save_model(float_model, float_model_path)
 
-                # Check that the input model only has a pre-quantized weight
+                # Check that the input model only has a pre-quantized weight and save its scale/zero-point
+                # to check that it doesn't change after quantization.
                 float_node_counts = {"QuantizeLinear": 0, "DequantizeLinear": 1}
                 check_op_type_count(self, float_model_path, **float_node_counts)
+                conv_node_original = next((node for node in float_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node_original, None)
+
+                _, producers_original = get_tensor_consumers_and_producers(float_model)
+                weight_dq_node_original = producers_original.get(conv_node_original.input[1], None)
+                initializers_original = {initializer.name: initializer for initializer in float_model.graph.initializer}
+                scale_name_original = weight_dq_node_original.input[1]
+                scale_val_original = onnx.numpy_helper.to_array(initializers_original[scale_name_original])
+                zp_name_original = weight_dq_node_original.input[2]
+                zp_val_original = onnx.numpy_helper.to_array(initializers_original[zp_name_original])
 
                 input_data_list = [
                     {"input_0": rng.uniform(-10.0, 10.0, inp_shape).astype(np_dtype)},
@@ -2065,6 +2077,25 @@ class TestQDQPrequantWeights(unittest.TestCase):
                 # The final model should have everything quantized
                 qdq_node_counts = {"QuantizeLinear": 2, "DequantizeLinear": 4}
                 check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+                # Check that the pre-quantized weight still has the same scale/zp after quantization
+                qdq_model = onnx.load_model(qdq_model_path)
+                conv_node = next((node for node in qdq_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node, None)
+
+                _, producers = get_tensor_consumers_and_producers(qdq_model)
+                weight_dq_node = producers.get(conv_node.input[1], None)
+                initializers = {initializer.name: initializer for initializer in qdq_model.graph.initializer}
+
+                scale_name = weight_dq_node.input[1]
+                self.assertEqual(scale_name, scale_name_original)
+                scale_val = onnx.numpy_helper.to_array(initializers[scale_name])
+                self.assertEqual(scale_val, scale_val_original)
+
+                zp_name = weight_dq_node.input[2]
+                self.assertEqual(zp_name, zp_name_original)
+                zp_val = onnx.numpy_helper.to_array(initializers[zp_name])
+                self.assertEqual(zp_val, zp_val_original)
 
     def test_quantize_with_prequantized_input(self):
         """
@@ -2103,10 +2134,22 @@ class TestQDQPrequantWeights(unittest.TestCase):
                 onnx.checker.check_model(float_model, True)
                 onnx.save_model(float_model, float_model_path)
 
-                # Check that the input model only has a pre-quantized input
+                # Check that the input model only has a pre-quantized input and save its scale/zero-point
+                # to check that it doesn't change after quantization.
                 float_node_counts = {"QuantizeLinear": 0, "DequantizeLinear": 1}
                 check_op_type_count(self, float_model_path, **float_node_counts)
+                conv_node_original = next((node for node in float_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node_original, None)
 
+                _, producers_original = get_tensor_consumers_and_producers(float_model)
+                input_dq_node_original = producers_original.get(conv_node_original.input[0], None)
+                initializers_original = {initializer.name: initializer for initializer in float_model.graph.initializer}
+                scale_name_original = input_dq_node_original.input[1]
+                scale_val_original = onnx.numpy_helper.to_array(initializers_original[scale_name_original])
+                zp_name_original = input_dq_node_original.input[2]
+                zp_val_original = onnx.numpy_helper.to_array(initializers_original[zp_name_original])
+
+                # Create data reader with random input calibration data.
                 dyn_weight_data_list = [
                     {"dyn_weight": rng.uniform(-10.0, 10.0, weight_shape).astype(np_dtype)},
                 ]
@@ -2138,6 +2181,25 @@ class TestQDQPrequantWeights(unittest.TestCase):
                     qdq_node_counts["DequantizeLinear"] += 1
 
                 check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+                # Check that the pre-quantized input still has the same scale/zp after quantization
+                qdq_model = onnx.load_model(qdq_model_path)
+                conv_node = next((node for node in qdq_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node, None)
+
+                _, producers = get_tensor_consumers_and_producers(qdq_model)
+                input_dq_node = producers.get(conv_node.input[0], None)
+                initializers = {initializer.name: initializer for initializer in qdq_model.graph.initializer}
+
+                scale_name = input_dq_node.input[1]
+                self.assertEqual(scale_name, scale_name_original)
+                scale_val = onnx.numpy_helper.to_array(initializers[scale_name])
+                self.assertEqual(scale_val, scale_val_original)
+
+                zp_name = input_dq_node.input[2]
+                self.assertEqual(zp_name, zp_name_original)
+                zp_val = onnx.numpy_helper.to_array(initializers[zp_name])
+                self.assertEqual(zp_val, zp_val_original)
 
 
 if __name__ == "__main__":
