@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm.h
+    qnbitgemm.h
 
 Abstract:
 
@@ -46,24 +46,25 @@ MlasAlignAddress(void* addr, const size_t alignment)
     return addr;
 }
 
+template <typename T>
 struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-      // TODO: duplicate code from SQ4BitGemmPackQuantBDataSize
+      // TODO: duplicate code from Q4BitGemmPackQuantBDataSize
         constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
 
         // _mm256_load_si256 requires alignment on a 32-byte boundary
         PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
-        QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
-        QuantBBlkSum = (float*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
-        PackedQuantBScale = (float*)((std::byte*)QuantBBlkSum + BlkSumSize);
+        QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
+        QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
+        PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
     }
     std::byte* PackedQuantBData;
-    float* PackedQuantBScale;
-    float* QuantBBlkSum;
+    T* PackedQuantBScale;
+    T* QuantBBlkSum;
 
     void* QuantBWorkspace_;
     size_t N_, BlockCountK_, BlkLen_;
@@ -84,27 +85,27 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 // Kernel dispatch structure.
 //
 
-struct MLAS_SQNBIT_GEMM_DISPATCH {
+struct MLAS_QNBIT_GEMM_DISPATCH {
     //
     // Quantized B data packing function prototypes.
     //
 
-    /** Gets size of packed quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBDataSize(). */
+    /** Gets size of packed quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
     typedef size_t(SQ4BitGemmPackQuantBDataSize_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
+    SQ4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
-    /** Packs quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBData(). */
+    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
     typedef void(SQ4BitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         std::byte* PackedQuantBDataBegin,
         MLAS_THREADPOOL* ThreadPool
@@ -116,12 +117,12 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         const float* QuantBScaleBegin,
         bool has_zp_input,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct& packed_quant_b,
+        PackedQuantBDataStruct<float>& packed_quant_b,
         MLAS_THREADPOOL* ThreadPool
     );
 
@@ -146,10 +147,10 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
+    SQ4BitGemmPerGemmWorkspaceSize_Fn* Q4BitGemmPerGemmWorkspaceSize = nullptr;
 
     /**
      * @brief Gets the required byte alignment of the per-GEMM intermediate workspace.
@@ -159,13 +160,13 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      */
     typedef size_t(SQ4BitGemmPerGemmWorkspaceAlignment_Fn)(
         size_t BlkLen,
-        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
+    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* Q4BitGemmPerGemmWorkspaceAlignment = nullptr;
 
     //
-    // CompFp32 kernel function prototypes.
+    // SQNBIT_CompFp32 kernel function prototypes.
     //
 
     /**
@@ -231,7 +232,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     Q4BitBlkDequantBForSgemm_CompFp32_Fn* Q4BitBlkDequantBForSgemm_CompFp32 = nullptr;
 
     //
-    // CompInt8 kernel function prototypes.
+    // SQNBIT_CompInt8 kernel function prototypes.
     //
 
     /**

@@ -23,7 +23,7 @@ Abstract:
 #include <type_traits>
 
 #include "fp16_common.h"
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_neon.h"
 
 namespace sqnbitgemm_neon
@@ -131,7 +131,7 @@ HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool

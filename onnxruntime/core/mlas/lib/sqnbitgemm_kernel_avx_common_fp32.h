@@ -1,5 +1,5 @@
 #pragma once
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 
 template <bool HasZeroPoint>
 MLAS_FORCEINLINE

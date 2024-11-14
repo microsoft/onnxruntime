@@ -387,7 +387,7 @@ Return Value:
                 this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
-                this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
+                this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
 
@@ -417,7 +417,7 @@ Return Value:
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
-                    this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
+                    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -458,7 +458,7 @@ Return Value:
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
                         this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
-                        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
+                        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -471,7 +471,7 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
-                            this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
+                            this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
                 }
@@ -562,7 +562,7 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
 
         // MlasSQNBitGemmDispatchNeon has a dependency on dot product instructions
-        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
+        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     }
 
 #if defined(__linux__)

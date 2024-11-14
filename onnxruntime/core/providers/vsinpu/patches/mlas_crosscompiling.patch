@@ -16,7 +16,7 @@ index e46105324a..414c46a1ce 100644
 --- a/onnxruntime/core/mlas/inc/mlas.h
 +++ b/onnxruntime/core/mlas/inc/mlas.h
 @@ -82,6 +82,9 @@ Abstract:
- 
+
  #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
  #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 +#if !defined(USE_VSINPU)
@@ -26,16 +26,16 @@ index e46105324a..414c46a1ce 100644
  // Had to temporary disable fp16 under APPLE ARM64, as compiling
  // the source files require a hardware specific compilation flag.
 @@ -90,6 +93,7 @@ Abstract:
- 
+
  #define MLAS_F16VEC_INTRINSICS_SUPPORTED
- 
+
 +#endif //
  #endif //
  #endif // ARM64
  #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 @@ -1635,6 +1639,7 @@ MlasHalfGemmConvertPackB(
      );
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
  /**
@@ -46,7 +46,7 @@ index e46105324a..414c46a1ce 100644
  MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
  #endif
 +#endif
- 
+
  /**
   * @brief Indirect Depthwise convolution for fp16
 diff --git a/onnxruntime/core/mlas/lib/mlasi.h b/onnxruntime/core/mlas/lib/mlasi.h
@@ -55,7 +55,7 @@ index 4239e2ecae..3df7e5573d 100644
 +++ b/onnxruntime/core/mlas/lib/mlasi.h
 @@ -361,6 +361,7 @@ size_t
  #else
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
  typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
@@ -66,7 +66,7 @@ index 4239e2ecae..3df7e5573d 100644
  );
  #endif
 +#endif
- 
+
  typedef
  size_t
 @@ -763,8 +765,10 @@ extern "C" {
@@ -82,13 +82,13 @@ index 4239e2ecae..3df7e5573d 100644
      MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 @@ -899,8 +903,10 @@ extern "C" {
  #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
  #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
  #endif
 +#endif
- 
+
  //
  // Single-threaded single precision matrix/matrix multiply operation.
 @@ -2570,4 +2576,3 @@ MlasPackInt4Elements(uint8_t* Output, UnpackedType ValueLow, UnpackedType ValueH
@@ -103,16 +103,16 @@ index ed437f20f7..8c9d0a75fd 100644
 @@ -20,7 +20,7 @@ Abstract:
  #include <thread>
  #include <mutex>
- 
--#if defined(MLAS_TARGET_POWER) 
+
+-#if defined(MLAS_TARGET_POWER)
 +#if defined(MLAS_TARGET_POWER)
  #if defined(__linux__)
  #include <sys/auxv.h>
  #elif defined(_AIX)
 @@ -536,7 +536,7 @@ Return Value:
-         this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
+         this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
      }
- 
+
 -#if defined(__linux__)
 +#if defined(__linux__) && !defined(USE_VSINPU)
      //
@@ -124,12 +124,12 @@ index de7fd72fad..4f75dbd6fa 100644
 +++ b/onnxruntime/core/mlas/lib/sbgemm.h
 @@ -31,6 +31,7 @@ Abstract:
  --*/
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
- 
+
  #pragma once
- 
+
 @@ -396,4 +397,5 @@ MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t Bat
          }
      );
@@ -141,7 +141,7 @@ index 6a71283f9d..d8bd348854 100644
 --- a/onnxruntime/core/providers/cpu/math/matmul.cc
 +++ b/onnxruntime/core/providers/cpu/math/matmul.cc
 @@ -132,7 +132,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
- 
+
    return Status::OK();
  }
 -#if defined(__aarch64__) && defined(__linux__)
@@ -187,7 +187,7 @@ index b9bbe36583..2f570502d2 100644
 +++ b/onnxruntime/core/providers/cpu/math/matmul.h
 @@ -31,8 +31,10 @@ class MatMul<float> final : public OpKernel {
      trans_batch_b_ = trans_batch_b_attr != 0;
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
      auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
@@ -195,10 +195,10 @@ index b9bbe36583..2f570502d2 100644
 +#endif
  #endif
    }
- 
+
 @@ -57,12 +59,14 @@ class MatMul<float> final : public OpKernel {
    bool trans_batch_b_;
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
    // fastmath mode state
@@ -209,7 +209,7 @@ index b9bbe36583..2f570502d2 100644
  #endif
 +#endif
  };
- 
+
  }  // namespace onnxruntime
 diff --git a/onnxruntime/test/mlas/unittest/test_sbgemm.cpp b/onnxruntime/test/mlas/unittest/test_sbgemm.cpp
 index f85fe97776..6039b7fa9e 100644
@@ -217,12 +217,12 @@ index f85fe97776..6039b7fa9e 100644
 +++ b/onnxruntime/test/mlas/unittest/test_sbgemm.cpp
 @@ -16,6 +16,7 @@ Abstract:
  --*/
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
- 
+
  #include "test_sbgemm.h"
- 
+
 @@ -138,4 +139,5 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
    }
    return SBGemmRegistLongExecute() > 0;
@@ -235,15 +235,15 @@ index 13701e2e3d..7e432f53c2 100644
 +++ b/onnxruntime/test/mlas/unittest/test_sbgemm.h
 @@ -16,6 +16,7 @@ Abstract:
  --*/
- 
+
  #if defined(__aarch64__) && defined(__linux__)
 +#if !defined(USE_VSINPU)
- 
+
  #pragma once
- 
+
 @@ -278,4 +279,5 @@ class MlasSBGemmTest : public MlasTestBase {
    }
  };
- 
+
 +#endif
  #endif  // defined(__aarch64__) && defined(__linux__)
