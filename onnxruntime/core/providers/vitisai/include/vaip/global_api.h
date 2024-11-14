@@ -24,3 +24,6 @@ int vitisai_ep_set_ep_dynamic_options(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
     const char* const* keys,
     const char* const* values, size_t kv_len);
+void profiler_collect(
+    std::vector<std::tuple<std::string, int, int, long long, long long>>& api_events,
+    std::vector<std::tuple<std::string, int, int, long long, long long>>& kernel_events);

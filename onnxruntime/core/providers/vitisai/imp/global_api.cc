@@ -58,6 +58,9 @@ struct OrtVitisAIEpAPI {
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       const char* const* keys,
       const char* const* values, size_t kv_len) = nullptr;
+  void (*profiler_collect)(
+      std::vector<std::tuple<std::string, int, int, long long, long long>>& api_events,
+      std::vector<std::tuple<std::string, int, int, long long, long long>>& kernel_events);
   void Ensure() {
     if (handle_)
       return;
@@ -79,6 +82,10 @@ struct OrtVitisAIEpAPI {
       ::onnxruntime::LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status);
     }
+    auto status2 = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
+    if (!status2.IsOK() ) {
+      ::onnxruntime::LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+    }
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
@@ -96,6 +103,14 @@ static std::vector<OrtCustomOpDomain*> s_domains_vitisaiep;
 static vaip_core::OrtApiForVaip the_global_api;
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
+
+void profiler_collect(
+    std::vector<std::tuple<std::string, int, int, long long, long long>>& api_events,
+    std::vector<std::tuple<std::string, int, int, long long, long long>>& kernel_events) {
+  if (s_library_vitisaiep.profiler_collect) {
+    s_library_vitisaiep.profiler_collect(api_events, kernel_events);
+  }
+}
 
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger, const ProviderOptions& options) {
