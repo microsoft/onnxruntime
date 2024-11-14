@@ -52,6 +52,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val inputs = model_builder.GetOperand(input_defs[0]->Name());
   std::vector<int32_t> starts(rank);
   std::vector<int32_t> sizes(rank);
+  std::vector<int32_t> steps(rank);
 
   // Copy the data from the starts/ends/axes/steps initializers.
   std::vector<int64_t> input_starts;
@@ -94,8 +95,11 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::transform(compute_metadata.ends_.cbegin(), compute_metadata.ends_.cend(), compute_metadata.starts_.cbegin(),
                  sizes.begin(),
                  [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
+  std::transform(compute_metadata.steps_.cbegin(), compute_metadata.steps_.cend(), steps.begin(),
+                 [](int64_t i) { return SafeInt<uint32_t>(i); });
 
   emscripten::val options = emscripten::val::object();
+  options.set("strides", emscripten::val::array(steps));
   options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", inputs,
                                                                             emscripten::val::array(starts),
@@ -144,18 +148,19 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return false;
     }
     const auto data_type = steps_tensor.data_type();
-    // WebNN doesn't support steps other than 1.
+    // WebNN doesn't support steps less than 1.
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      if (!std::all_of(reinterpret_cast<int64_t*>(unpacked_tensor.data()),
-                       reinterpret_cast<int64_t*>(unpacked_tensor.data() + unpacked_tensor.size()),
-                       [](int64_t i) { return i == 1; })) {
+      if (std::any_of(reinterpret_cast<int64_t*>(unpacked_tensor.data()),
+                      reinterpret_cast<int64_t*>(unpacked_tensor.data() + unpacked_tensor.size()),
+                      [](int64_t i) { return i < 1; })) {
+        LOGS(logger, VERBOSE) << "WebNN slice doesn't support steps less than 1";
         return false;
       }
     } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      if (!std::all_of(reinterpret_cast<int32_t*>(unpacked_tensor.data()),
-                       reinterpret_cast<int32_t*>(unpacked_tensor.data()) +
-                           unpacked_tensor.size() / sizeof(int32_t),
-                       [](int32_t i) { return i == 1; })) {
+      if (std::any_of(reinterpret_cast<int32_t*>(unpacked_tensor.data()),
+                      reinterpret_cast<int32_t*>(unpacked_tensor.data()) + unpacked_tensor.size() / sizeof(int32_t),
+                      [](int32_t i) { return i < 1; })) {
+        LOGS(logger, VERBOSE) << "WebNN slice doesn't support steps less than 1";
         return false;
       }
     }

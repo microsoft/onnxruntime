@@ -128,7 +128,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/2 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
@@ -210,7 +210,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/5 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
@@ -231,7 +231,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6a \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -258,7 +258,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6b \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -287,7 +287,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6c \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -317,7 +317,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/7 \
               --cmake_generator Ninja \
               --config MinSizeRel \
