@@ -2585,7 +2585,6 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Softmax", soft_hard_max_handler},
     {"Hardmax", soft_hard_max_handler},
     {"LogSoftmax", soft_hard_max_handler},
-    //{"com.microsoft.QLinearSoftmax", soft_hard_max_handler},
 
     {"QuantizeLinear", quantize_dequantize_linear_handler},
     {"DequantizeLinear", quantize_dequantize_linear_handler},
@@ -2602,8 +2601,6 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& exten
   } else {
     key = onnxruntime::MakeString(domain, ".", op_type);
   }
-
-  //std::cout << "key: " << key << std::endl;
 
   // extended map is higher priority
   auto match = extended_handlers.find(key);

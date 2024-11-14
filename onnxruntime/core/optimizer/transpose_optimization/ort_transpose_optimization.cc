@@ -34,10 +34,6 @@ static bool EPAwareHandleResize(HandlerArgs& args) {
 
 constexpr HandlerInfo ep_aware_resize_handler = {&FirstInput, &EPAwareHandleResize};
 
-//static bool HandleQLinearConcat(HandlerArgs& args) {
-//  return HandleSimpleNodeWithAxis(args);
-//}
-
 std::vector<size_t> QLinearConcatInputs(OptimizerCtx& ctx, api::NodeRef& node) {
   (void)ctx;
   std::vector<size_t> indices;
@@ -49,10 +45,6 @@ std::vector<size_t> QLinearConcatInputs(OptimizerCtx& ctx, api::NodeRef& node) {
 }
 
 constexpr HandlerInfo q_linear_concat_handler = {&QLinearConcatInputs, &HandleConcat};
-
-//static bool HandleQLinearBinaryOp(HandlerArgs& args) {
-//  return HandleSimpleNodeBroadcast(args);
-//}
 
 std::vector<size_t> QLinearBinaryOpInputs(OptimizerCtx&, api::NodeRef&) {
   // Inputs are: [A, A_scale, A_zero_point, B, B_scale, B_zero_point, C_scale, C_zero_point],

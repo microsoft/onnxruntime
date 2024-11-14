@@ -3264,7 +3264,6 @@ common::Status InferenceSession::AddPredefinedTransformers(
       }();
 
       for (auto& entry : transformers_to_register) {
-        //std::cout << "entry: " << entry->Name() << std::endl;
         ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
