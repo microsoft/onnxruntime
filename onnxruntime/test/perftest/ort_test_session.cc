@@ -303,7 +303,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Wrong value for htp_arch. select from: " + str);
         }
       } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" ||
-	         key == "enable_qnn_graph_dump") {
+                 key == "enable_qnn_graph_dump") {
         std::unordered_set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;

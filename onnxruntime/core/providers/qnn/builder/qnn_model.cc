@@ -152,7 +152,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
       ofs << json_graph.dump();
       ofs.close();
     } else {
-      LOGS(logger_, WARNING) << "Could not open JSON graph file: " << debug_json_graph_path;
+      LOGS(logger, WARNING) << "Could not open JSON graph file: " << debug_json_graph_path;
     }
   }
 
