@@ -452,6 +452,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_Flatten = 21;
         static const int sc_sinceVer_Pad = 21;
         static const int sc_sinceVer_Transpose = 21;
+        static const int sc_sinceVer_Identity = 21;
+        static const int sc_sinceVer_QLinearMatMul = 21;
+        static const int sc_sinceVer_GroupNorm = 21;
     }
 
     namespace MsftOperatorSet1
