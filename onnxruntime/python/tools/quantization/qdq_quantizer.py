@@ -196,6 +196,9 @@ class QDQQuantizer(BaseQuantizer):
         # In TRT, QDQ pair can`t be shared between nodes, so it will create dedicated QDQ pairs for each node.
         self.dedicated_qdq_pair = extra_options.get("DedicatedQDQPair", False)
         self.tensor_to_its_receiving_nodes: dict[str, list[onnx.NodeProto]] = {}
+
+        # Maps a tensor to the DequantizeLinear node (in the original input model) that outputs the tensor.
+        # Populated for input models with some pre-quantized weights (typically via a different tool).
         self.tensor_to_producing_dq: dict[str, onnx.NodeProto] = {}
 
         # Let user set channel axis for specific op type and it's effective only when per channel quantization is supported and per_channel is True.
@@ -1165,26 +1168,29 @@ class QDQQuantizer(BaseQuantizer):
 
         return True, axis
 
-    def _try_get_prequant_tensor_scale(
-        self,
-        tensor_name: str,
-        initializers_dict: dict[str, onnx.TensorProto] | None = None,
-    ) -> np.ndarray | None:
+    def _get_tensor_quantization_scale(self, tensor_name: str, consumer_node_name: str) -> np.ndarray | None:
         """
-        Returns the quantization scale of a tensor if it has already been quantized in the original model.
-        :parameter tensor_name: The name of the tensor that may the output of a DQ in the original model.
-        :parameter initializers_dict: Optional dictionary of initializers to speed up lookup of constant values.
+        Returns the quantization scale of a tensor that is consumed by the given node.
+        :parameter tensor_name: The name of the tensor.
+        :parameter consumer_node_name: The name of the node that consumes the tensor as input. Necessary in case
+                                       the quantization type of the tensor was converted.
+                                       Refer: QDQQuantizer::_add_qdq_ops_for_converted_activation.
         :returns: The quantization scale or None.
         """
-        dq_node = self.tensor_to_producing_dq.get(tensor_name, None)
-        if not dq_node:
-            return None
+        initializers = self.model.initializer()
+        scale_initializer: onnx.TensorProto | None = None
 
-        scale = self.model.get_constant_value(dq_node.input[1], initializers_dict=initializers_dict)
-        if scale is None or scale.dtype not in (np.float32, np.float16):
-            return None
+        if tensor_name in self.quantized_value_map:
+            # Tensor was quantized by this tool, so get scale from initializer created by this tool run.
+            scale_name = self.quantized_value_map[tensor_name].get_for_consumer(consumer_node_name).scale_name
+            scale_initializer = find_by_name(scale_name, initializers)
+        else:
+            # Tensor was already quantized in original model, so get scale from DQ node that outputs the tensor.
+            dq_node = self.tensor_to_producing_dq.get(tensor_name, None)
+            if dq_node:
+                scale_initializer = find_by_name(dq_node.input[1], initializers)
 
-        return scale
+        return tensor_proto_to_array(scale_initializer) if scale_initializer is not None else None
 
     def quantize_bias_static(self, bias_name: str, bias_info: QDQBiasQuantInfo) -> str:
         """
@@ -1195,42 +1201,21 @@ class QDQQuantizer(BaseQuantizer):
         if bias_name in self.quantized_value_map:
             return self.quantized_value_map[bias_name].original.q_name
 
-        initializers_dict = self.model.get_initializers_dict()
-        node_name = bias_info.node_name
+        # get scale for weight.
+        weight_scale = self._get_tensor_quantization_scale(bias_info.weight_name, bias_info.node_name)
+        if weight_scale is None:
+            raise ValueError(
+                f"Unable to get valid quantization scale for weight input '{bias_info.weight_name}' "
+                f"when quantizing bias '{bias_name}' to int32."
+            )
 
-        # Get the weight input's quantization scale.
-        weight_scale: np.ndarray | None = None
-        if bias_info.weight_name in self.quantized_value_map:
-            # Weight input was quantized by this tool.
-            weight_scale_name = self.quantized_value_map[bias_info.weight_name].get_for_consumer(node_name).scale_name
-            weight_scale_initializer = initializers_dict[weight_scale_name]
-            weight_scale = tensor_proto_to_array(weight_scale_initializer)
-        else:
-            # Weight input was already quantized in original model.
-            weight_scale = self._try_get_prequant_tensor_scale(bias_info.weight_name, initializers_dict)
-            if weight_scale is None:
-                raise ValueError(
-                    f"Unable to quantize bias '{bias_name}' because the pre-quantized weight input "
-                    f"'{bias_info.weight_name}' is not produced by a DQ with a constant quantization "
-                    "scale of type FLOAT or FLOAT16."
-                )
-
-        # Get input's quantization scale.
-        input_scale: np.ndarray | None = None
-        if bias_info.input_name in self.quantized_value_map:
-            # Input was quantized by this tool.
-            input_scale_name = self.quantized_value_map[bias_info.input_name].get_for_consumer(node_name).scale_name
-            input_scale_initializer = initializers_dict[input_scale_name]
-            input_scale = tensor_proto_to_array(input_scale_initializer)
-        else:
-            # Input was already quantized in original model.
-            input_scale = self._try_get_prequant_tensor_scale(bias_info.input_name, initializers_dict)
-            if input_scale is None:
-                raise ValueError(
-                    f"Unable to quantize bias '{bias_name}' because the pre-quantized input "
-                    f"'{bias_info.input_name}' is not produced by a DQ with a constant quantization "
-                    "scale of type FLOAT or FLOAT16."
-                )
+        # get scale for input.
+        input_scale = self._get_tensor_quantization_scale(bias_info.input_name, bias_info.node_name)
+        if input_scale is None:
+            raise ValueError(
+                f"Unable to get valid quantization scale for input '{bias_info.input_name}' "
+                f"when quantizing bias '{bias_name}' to int32."
+            )
 
         (
             quantized_bias_name,

@@ -2,11 +2,8 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from __future__ import annotations
-
 from pathlib import Path
 
-import numpy as np
 import onnx
 import onnx.helper as onnx_helper
 import onnx.numpy_helper as onnx_numpy_helper
@@ -179,24 +176,7 @@ class ONNXModel:
 
         return None
 
-    def get_constant_value(
-        self,
-        output_name: str,
-        initializers_dict: dict[str, onnx.TensorProto] | None = None,
-    ) -> np.ndarray | None:
-        """
-        Returns a constant value in the graph.
-        :parameter output_name: The name of the constant value. Can be the name of an initializer or a Constant node.
-        :parameter initializers_dict: Optional dict that maps an intializer's name to the onnx.TensorProto. Speeds up
-                                      lookup when calling this function multiple times with the same initializers.
-                                      Can be the output of ONNXModel::get_initializers_dict().
-        :returns: The constant value as a numpy array or None if the given name does not correspond to a valid constant.
-        """
-        # Try to get value from user provided initializers dictionary.
-        if initializers_dict and output_name in initializers_dict:
-            return onnx_numpy_helper.to_array(initializers_dict[output_name])
-
-        # Get value from a Constant node.
+    def get_constant_value(self, output_name):
         for node in self.model.graph.node:
             if node.op_type == "Constant":
                 if node.output[0] == output_name:
@@ -210,12 +190,6 @@ class ONNXModel:
             return onnx_numpy_helper.to_array(initializer)
 
         return None
-
-    def get_initializers_dict(self) -> dict[str, onnx.TensorProto]:
-        """
-        Returns a dictionary the maps an initializer's name to the initializer onnx.TensorProto.
-        """
-        return {initializer.name: initializer for initializer in self.model.graph.initializer}
 
     def get_initializer_name_set(self):
         return {initializer.name for initializer in self.model.graph.initializer}
