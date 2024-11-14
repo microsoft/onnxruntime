@@ -126,7 +126,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   } else {
     shader.MainFunctionBody() << "let kOffset = workgroup_id.z * uniforms.kv_sequence_length * uniforms.K;\n";
-    if (feed_past_key_ && has_present_key_ || past_present_share_buffer_) {
+    if (feed_past_key_ && has_present_key_) {
       shader.MainFunctionBody() << "let pastKeyOffset = workgroup_id.z * uniforms.past_sequence_length * uniforms.K;\n";
     } else if (past_present_share_buffer_) {
       shader.MainFunctionBody() << "let pastKeyOffset = workgroup_id.z * uniforms.present_sequence_length * uniforms.K;\n";
