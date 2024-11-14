@@ -220,7 +220,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
     program.AddOutput({present_key, ProgramTensorMetadataDependency::Rank, components});
   }
 
-  const uint32_t vectorized_head_size = (parameters.head_size_  + components - 1) / components;
+  const uint32_t vectorized_head_size = (parameters.head_size_ + components - 1) / components;
   program.SetDispatchGroupSize((total_sequence_length + tile_size - 1) / tile_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
@@ -303,7 +303,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                              const Tensor* seqlen_k, bool is_first_prompt) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
-  const int total_sequence_length_comp = (total_sequence_length + components -1) / components;
+  const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
   if (total_sequence_length_comp < work_group_size) {
     work_group_size = 32;
   }
