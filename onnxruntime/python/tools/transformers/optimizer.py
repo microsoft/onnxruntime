@@ -36,6 +36,7 @@ from onnx_model_clip import ClipOnnxModel
 from onnx_model_conformer import ConformerOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_phi import PhiOnnxModel
+from onnx_model_sam2 import Sam2OnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
@@ -53,17 +54,18 @@ MODEL_TYPES = {
     "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
     "clip": (ClipOnnxModel, "pytorch", 1),  # Clip in Stable Diffusion
+    "conformer": (ConformerOnnxModel, "pytorch", 1),
     "gpt2": (Gpt2OnnxModel, "pytorch", 1),
     "gpt2_tf": (Gpt2OnnxModel, "tf2onnx", 0),  # might add a class for GPT2OnnxModel for TF later.
     "gpt_neox": (BertOnnxModel, "pytorch", 0),  # GPT-NeoX
+    "phi": (PhiOnnxModel, "pytorch", 0),
+    "sam2": (Sam2OnnxModel, "pytorch", 1),
     "swin": (BertOnnxModel, "pytorch", 1),
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
     "t5": (T5OnnxModel, "pytorch", 2),
     "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
-    "conformer": (ConformerOnnxModel, "pytorch", 1),
-    "phi": (PhiOnnxModel, "pytorch", 0),
 }
 
 
@@ -235,7 +237,7 @@ def optimize_by_fusion(
      Returns:
         object of an optimizer class.
     """
-    if model_type not in ["bert", "swin", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
+    if model_type not in ["bert", "swin", "unet", "vae", "clip", "sam2"] and (num_heads == 0 or hidden_size == 0):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
     if model_type not in MODEL_TYPES:

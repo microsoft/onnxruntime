@@ -1067,11 +1067,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GridSample, 1,
 ONNX_MS_OPERATOR_SET_SCHEMA(
     UnfoldTensor, 1,
     OpSchema()
-        .SetDoc("Returns a tensor which contains all slices of size size from input tensor in the dimension dim. "
-                "Step between two slices is given by step. "
-                "If sizedim is the size of dimension dim for input tensor, the size of dimension dim in "
-                "the returned tensor will be (sizedim - size) / step + 1. "
-                "An additional dimension of size size is appended in the returned tensor.")
+        .SetDoc("Returns a tensor which contains all slices of size `size` from input tensor in the dimension `dim`. "
+                "Step between two slices is given by `step`. "
+                "If `sizedim` is the size of dimension `dim` for input tensor, the size of dimension `dim` in "
+                "the returned tensor will be `(sizedim - size) / step + 1`. "
+                "An additional dimension of size `size` is appended in the returned tensor.")
         .Attr("dim", "specify the dimension to unfold", AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("size", "specify the size", AttributeProto::INT)
         .Attr("step", "specify the step.", AttributeProto::INT, static_cast<int64_t>(1))
@@ -1122,7 +1122,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Input is cost matrix where each value in input[r][c] is the cost for pass the point (r, c). From current point"
                 "(r, c),  points (r+1, c), (r+1, c+1) or (r, c+1) could be arrived in next move. Given such cost matrix, return "
-                "dynamic time wrapping of shape [2, x], where the path made by all points (output[0][t], output[1][t])"
+                "dynamic time warping of shape [2, x], where the path made by all points (output[0][t], output[1][t])"
                 "have the lowest cost among all paths from (0, 0) to (M-1, N-1).")
         .Input(0, "input", "Input cost tensor, it must be 2D tensor of shape M x N, or 1 x M x N", "F")
         .Output(0, "output", "Output tensor. shape is [2, x], where max(M, N) <= x < M + N", "I")
@@ -3442,7 +3442,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
 
 Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
 Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-  - [CeilDiv((N * n_blocks_per_col + 1) *bits, 8)]
+  - [N * CeilDiv(n_blocks_per_col * bits, 8)]
   If zero_points has same type as A, it's not packed and has the same shape as Scales.
 )DOC";
 

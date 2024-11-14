@@ -3,7 +3,7 @@
 #include <cassert>
 #include <utility>
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
 
@@ -81,7 +81,7 @@ accumulate_blklen32_r2c1blk2_avx2(
         _mm256_sign_epi8(bv1_32_epi8, bv1_32_epi8), _mm256_sign_epi8(av01_32_epi8, bv1_32_epi8)
     );
     const __m256i sum_16_epi16 = _mm256_hadd_epi16(dot0_16_epi16, dot1_16_epi16);
-    
+
     __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv0_32_epi8, bv0_32_epi8), 15);
     const __m256i sum_8_epi32 = _mm256_madd_epi16(one_16_epi16, sum_16_epi16);
     const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
@@ -143,7 +143,7 @@ accumulate_blklen32_r2c1blk2_avx2(
     // const __m256i bv1 = _mm256_and_si256(_mm256_srli_epi16(bv_packed, 4), low_mask);  // 16, 17,...30, 31, 48, 49,...,62, 63
     __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 16, 17,...30, 31, 48, 49,...,62, 63
 
-    //__m256i bv0_32_epi8 = _mm256_set_m128i(_mm256_castsi256_si128(bv1), _mm256_castsi256_si128(bv0)); 
+    //__m256i bv0_32_epi8 = _mm256_set_m128i(_mm256_castsi256_si128(bv1), _mm256_castsi256_si128(bv0));
 
     //// This (the second line below) saves one _mm256_extracti128_si256 against using _mm256_set_m128i.
     ////__m256i bv1_32_epi8 = _mm256_set_m128i(_mm256_extracti128_si256(bv1, 1), _mm256_extracti128_si256(bv0, 1));
@@ -184,7 +184,7 @@ accumulate_blklen32_r2c1blk1_avx2(
     const __m128i bv_packed0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
     __m256i bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bv_packed0, 4), bv_packed0);
     bv_32_epi8 = _mm256_and_si256(_mm256_set1_epi8(0x0F), bv_32_epi8);
-    
+
     const int8_t zp = get_zp<HasZeroPoint>(true, QuantBZeroPointPtr);
     const __m256i bzp = _mm256_set1_epi8(zp);
     bv_32_epi8 = _mm256_sub_epi8(bv_32_epi8, bzp);
@@ -435,7 +435,7 @@ Q4Int8Gemm2x4BlkLen32Avx2(
     }
 }
 
-template <bool HasZeroPoint> 
+template <bool HasZeroPoint>
 void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
     const std::byte* QuantA,
     const std::byte* QuantBData,
@@ -877,7 +877,7 @@ MLAS_FORCEINLINE
           QuantBZeroPoint + multipleCols * StrideQuantBZeroPoint,
           C + multipleRows * ldc + multipleCols,
           remainingRows,
-          remainingCols, 
+          remainingCols,
           BlockCountK,
           Bias ? Bias + multipleCols : nullptr,
           lda,

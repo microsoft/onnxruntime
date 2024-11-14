@@ -17,11 +17,13 @@ concurrency:
 
 env:
   python_version: 3.11
-  xcode_version: 15.2
 
 jobs:
-  ARM64:
-    runs-on: macos-14
+  ARM64-Xcode16:
+    runs-on: macos-15
+
+    env:
+      xcode_version: 16
 
     timeout-minutes: 60
 
@@ -58,6 +60,55 @@ jobs:
           --use_xnnpack \
           --use_binskim_compliant_compile_flags
 
+  ARM64-Xcode16-targeting-iphonesimulator:
+    runs-on: macos-15
+
+    env:
+      xcode_version: 16
+
+    strategy:
+      matrix:
+        target_arch: [x86_64, arm64]
+
+    timeout-minutes: 60
+
+    steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.python_version }}
+
+    - name: Verify ARM64 machine
+      shell: python
+      run: |
+        import platform
+        assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
+
+    - name: Use Xcode ${{ env.xcode_version }}
+      shell: bash
+      run: |
+        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
+        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+    - uses: actions/checkout@v4
+
+    - name: Build for iphonesimulator ${{ matrix.target_arch }}
+      shell: bash
+      run: |
+        python ./tools/ci_build/build.py \
+          --build_dir ./build \
+          --update \
+          --build --parallel \
+          --test \
+          --build_apple_framework \
+          --use_xcode \
+          --use_coreml \
+          --use_xnnpack \
+          --use_binskim_compliant_compile_flags \
+          --ios \
+          --apple_deploy_target=13.0 \
+          --apple_sysroot=iphonesimulator \
+          --osx_arch=${{ matrix.target_arch }}
+
   Vcpkg:
     runs-on: macos-13
     steps:
@@ -81,11 +132,13 @@ jobs:
 
     - name: "Run compile_schema.py"
       run: |
+        set -e -x
         # Runner's host triplet should be x64-osx or arm64-osx
         export FLATC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-osx/tools/flatbuffers"
         export PATH="$FLATC_DIR:$PATH"
         flatc --version
         python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$(which flatc)"
+        python onnxruntime/lora/adapter_format/compile_schema.py --flatc "$(which flatc)"
 
     - name: "Detect protoc"
       id: protoc-detect
@@ -144,6 +197,9 @@ jobs:
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
+
+    env:
+      xcode_version: 15.2
 
     timeout-minutes: 30
 

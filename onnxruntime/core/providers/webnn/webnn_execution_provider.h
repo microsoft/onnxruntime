@@ -40,9 +40,12 @@ class WebNNExecutionProvider : public IExecutionProvider {
 #endif
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   emscripten::val wnn_context_ = emscripten::val::undefined();
+  emscripten::val wnn_limits_ = emscripten::val::undefined();
 
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;

@@ -120,9 +120,10 @@ void PrepareMask(const int32_t* mask_index,
                  bool causal,
                  int batch_size,
                  int sequence_length,
+                 int kv_sequence_length,
                  int past_sequence_length,
                  float mask_filter_value) {
-  const int all_sequence_length = past_sequence_length + sequence_length;
+  const int all_sequence_length = past_sequence_length + kv_sequence_length;
 
   // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;
@@ -236,19 +237,16 @@ T* ConcatStateChunkGQA(const T* past,
                        size_t past_buff_chunk_length,
                        size_t past_chunk_length,
                        size_t new_chunk_length,
-                       bool is_prompt,
                        bool past_present_share_buffer,
                        std::ptrdiff_t i) {
   T* start = present + i * present_buff_chunk_length;
 
   T* p = start;
-  if (!is_prompt) {
-    if (!past_present_share_buffer) {
-      const T* src_past = past + i * past_buff_chunk_length;
-      memcpy(p, src_past, past_chunk_length * sizeof(T));
-    }
-    p += past_chunk_length;
+  if (!past_present_share_buffer && past_chunk_length > 0) {
+    const T* src_past = past + i * past_buff_chunk_length;
+    memcpy(p, src_past, past_chunk_length * sizeof(T));
   }
+  p += past_chunk_length;
 
   memcpy(p, chunk, new_chunk_length * sizeof(T));
   return start;

@@ -87,15 +87,15 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
@@ -291,7 +291,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, DmlToCpuMemCpy}};
+      {OrtDevice::DML, DmlToCpuMemCpy}};
 
   return &map;
 }
@@ -465,6 +465,10 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   } else {
     return it->second;
   }
+}
+
+MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type) {
+  return DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)->GetElementType();
 }
 
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of

@@ -912,10 +912,28 @@ static GetTestModelFn BuildCastAddTestCase() {
   };
 }
 
-// A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)
-// the value pair(1, 0.00392156886) at index #1 don't match,
-// which is -0.996078 from 1
-TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
+TEST_F(QnnHTPBackendTests, ProfilingTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "detailed";
+  provider_options["profiling_file_path"] = "detailed_profile.csv";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
+
+TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1026,63 +1044,78 @@ TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
   // TODO(adrianlizarraga): Check that output json files were generated.
 }
 
-TEST_F(QnnHTPBackendTests, TestAIHubJob) {
-  Ort::SessionOptions so;
+// Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
+TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
+  // Returns a function that checks that the Q/DQ ops at the graph IO boundary are offloaded to CPU
+  // if the corresponding provider option is enabled.
+  auto graph_checker_builder = [](bool offload_graph_io_quantization) -> std::function<void(const Graph&)> {
+    return [offload_graph_io_quantization](const Graph& graph) {
+      size_t num_q = 0;
+      size_t num_dq = 0;
+      size_t num_qnn_fused_node = 0;
 
-#if 1
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "job_aihub.onnx";
-  //so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-#else
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "gatherelements_repro.onnx_ctx.onnx";
-#endif
-  auto& logging_manager = DefaultLoggingManager();
-  logging_manager.RemoveSink(logging::SinkType::EtwSink);
-  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kINFO);
+      for (const Node& node : graph.Nodes()) {
+        const std::string& ep_name = node.GetExecutionProviderType();
+        const std::string& op_type = node.OpType();
 
-  // Ensure all type/shape inference warnings result in errors!
-  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "0");  // Disable fallback to the CPU EP.
-  so.AddConfigEntry(kDebugLayoutTransformation, "1");
-  //so.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
-  //so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
-  onnxruntime::ProviderOptions options;
+        if (offload_graph_io_quantization && op_type == "QuantizeLinear") {
+          const bool consumes_graph_input = graph.IsInputsIncludingInitializers(node.InputDefs()[0]);
+          EXPECT_EQ(ep_name, kCpuExecutionProvider);
+          EXPECT_TRUE(consumes_graph_input);
+          num_q += 1;
+        } else if (offload_graph_io_quantization && op_type == "DequantizeLinear") {
+          const bool produces_graph_output = graph.IsOutput(node.OutputDefs()[0]);
+          EXPECT_EQ(ep_name, kCpuExecutionProvider);
+          EXPECT_TRUE(produces_graph_output);
+          num_dq += 1;
+        } else {
+          EXPECT_EQ(ep_name, kQnnExecutionProvider);
+          num_qnn_fused_node += 1;
+        }
+      }
 
+      EXPECT_EQ(num_q, static_cast<size_t>(offload_graph_io_quantization));
+      EXPECT_EQ(num_dq, static_cast<size_t>(offload_graph_io_quantization));
+      EXPECT_EQ(num_qnn_fused_node, 1);
+    };
+  };
+
+  ProviderOptions provider_options;
 #if defined(_WIN32)
-  options["backend_path"] = "QnnHtp.dll";
+  provider_options["backend_path"] = "QnnHtp.dll";
 #else
-  options["backend_path"] = "libQnnHtp.so";
+  provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  const std::vector<std::string> op_types = {
+      "Sigmoid",
+      "Transpose",
+      "Softmax",
+      "Sqrt",
+      "Elu",
+  };
 
-  options["enable_htp_fp16_precision"] = "1";
-  options["enable_qnn_graph_dump"] = "1";
+  // Test various QDQ ops with offloading of I/O quantization enabled and disabled.
+  for (auto op_type : op_types) {
+    for (int offload_io_quant = 0; offload_io_quant <= 1; offload_io_quant++) {
+      provider_options["offload_graph_io_quantization"] = offload_io_quant ? "1" : "0";
+      auto graph_checker = graph_checker_builder(offload_io_quant);
+      auto expected_ep_assignment = offload_io_quant ? ExpectedEPNodeAssignment::Some : ExpectedEPNodeAssignment::All;
 
-  so.AppendExecutionProvider("QNN", options);
-
-  Ort::Session session(*ort_env, ort_model_path, so);
-
-  std::vector<uint16_t> input0_data(1*3*224*224, 1);
-
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-  std::vector<Ort::Value> ort_inputs;
-  std::vector<const char*> ort_input_names;
-
-  // Add input "image_tensor" float32[1,3,224,224]
-  std::array<int64_t, 4> input0_shape{1, 3, 224, 224};
-  ort_inputs.emplace_back(Ort::Value::CreateTensor<uint16_t>(
-      memory_info, input0_data.data(), input0_data.size(), input0_shape.data(), input0_shape.size()));
-  ort_input_names.push_back("image_tensor");
-
-  // Run session and get outputs
-  std::array<const char*, 1> output_names{"class_logits"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                    ort_inputs.size(), output_names.data(), output_names.size());
-
-  // Check output shape.
-  Ort::Value& ort_output = ort_outputs[0];
-  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
-  const uint16_t* results = ort_output.GetTensorData<uint16_t>();
-
-  for (size_t i = 0; i < typeshape.GetElementCount() && i < 20; i++) {
-    std::cout << i << ": " << results[i] << std::endl;
+      float min_val = (op_type == "Sqrt") ? 0.0f : -10.0f;
+      TestInputDef<float> input_def({1, 2, 2, 2}, false, GetFloatDataInRange(min_val, 10.0f, 8));
+      auto f32_model_build_fn = BuildOpTestCase<float>(op_type, {input_def}, {}, {});
+      auto qdq_model_build_fn = BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {});
+      TestQDQModelAccuracy<uint8_t>(f32_model_build_fn,
+                                    qdq_model_build_fn,
+                                    provider_options,
+                                    /*opset*/ 21,
+                                    expected_ep_assignment,
+                                    /*abs_err*/ QDQTolerance(),
+                                    logging::Severity::kERROR,
+                                    /*qnn_ctx_model_path*/ "",
+                                    /*session_option_pairs*/ {},
+                                    &graph_checker);
+    }
   }
 }
 

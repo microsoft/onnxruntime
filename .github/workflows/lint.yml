@@ -7,6 +7,10 @@ on:
       - rel-*
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  cancel-in-progress: true
+
 jobs:
   optional-lint:
     name: Optional Lint
@@ -32,7 +36,10 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python
@@ -45,10 +52,15 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt
+      - name: Update PATH
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: |
-          python -m pip install -r requirements-dev.txt
-          python -m pip install lintrunner lintrunner-adapters
+          set -e -x
+          python -m pip install --user -r requirements-dev.txt
+          python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
       - name: Run lintrunner on all files
         run: |
@@ -77,8 +89,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+      - name: Update PATH
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Install ninja
-        run: python -m pip install --upgrade ninja
+        run: python -m pip install --user --upgrade ninja
       - name: Generate compile_commands.json
         run: |
           python tools/ci_build/build.py \
@@ -110,9 +126,12 @@ jobs:
 
   lint-js:
     name: Lint JavaScript
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check

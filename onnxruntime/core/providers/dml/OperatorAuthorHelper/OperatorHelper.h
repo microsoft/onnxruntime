@@ -285,8 +285,7 @@ void FusedMatMulShapeMapping(
 
 std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
     gsl::span<const uint32_t> sizes,
-    int32_t transBatch = 0,
-    int32_t transpose = 0);
+    int32_t transBatch = 0);
 
 class GetOutputShapeAsInputShapeHelper
 {
@@ -1649,6 +1648,7 @@ using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_GroupNorm = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_GroupNorm21 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_SkipLayerNormalization = SkipLayerNormHelper;
@@ -1674,6 +1674,7 @@ using ShapeInferenceHelper_Flatten7 = FlattenHelper;
 using ShapeInferenceHelper_Flatten9 = FlattenHelper;
 using ShapeInferenceHelper_Flatten11 = FlattenHelper;
 using ShapeInferenceHelper_Flatten13 = FlattenHelper;
+using ShapeInferenceHelper_Flatten21 = FlattenHelper;
 using ShapeInferenceHelper_Split7 = VersionedOpsetHelper<SplitHelper, 7>;
 using ShapeInferenceHelper_Split11 = VersionedOpsetHelper<SplitHelper, 11>;
 using ShapeInferenceHelper_Split13 = VersionedOpsetHelper<SplitHelper, 13>;
@@ -1690,6 +1691,7 @@ using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
 using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
 using ShapeInferenceHelper_Pad19 = VersionedOpsetHelper<PaddingHelper, 19>;
+using ShapeInferenceHelper_Pad21 = VersionedOpsetHelper<PaddingHelper, 21>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1838,6 +1840,7 @@ using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity16 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity19 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity21 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_MatMulIntegerToFloat = MatMulHelper;
@@ -1866,6 +1869,7 @@ using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CastLike19 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CastLike21 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
 using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;

@@ -117,15 +117,8 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   }
 
   // determine if arena should be used
-  bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
-
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-  // We use these allocators instead of the arena
-  create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64))
-  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-  create_arena = false;
-#endif
+  const bool is_arena_requested = mem_info.alloc_type == OrtArenaAllocator;
+  const bool create_arena = ShouldCpuAllocatorUseArena(is_arena_requested);
 
   AllocatorPtr allocator_ptr;
   // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena

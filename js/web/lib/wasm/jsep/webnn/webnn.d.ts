@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable @typescript-eslint/naming-convention */
+
 interface NavigatorML {
   readonly ml: ML;
 }
@@ -11,7 +13,6 @@ type MLPowerPreference = 'default'|'high-performance'|'low-power';
 interface MLContextOptions {
   deviceType?: MLDeviceType;
   powerPreference?: MLPowerPreference;
-  numThreads?: number;
 }
 interface ML {
   createContext(options?: MLContextOptions): Promise<MLContext>;
@@ -27,14 +28,16 @@ interface MLContext {
 }
 interface MLGraph {}
 type MLInputOperandLayout = 'nchw'|'nhwc';
-type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8';
+type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8'|'int4'|'uint4';
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
-  dimensions?: number[];
+  shape?: readonly number[];
+  /** @deprecated Use shape instead of dimensions */
+  dimensions?: readonly number[];
 }
 interface MLOperand {
-  dataType(): MLOperandDataType;
-  shape(): number[];
+  dataType: MLOperandDataType;
+  shape: readonly number[];
 }
 interface MLActivation {}
 type MLNamedOperands = Record<string, MLOperand>;
@@ -379,23 +382,37 @@ interface MLGraphBuilder {
   where(condition: MLOperand, input: MLOperand, other: MLOperand): MLOperand;
 }
 
-// Experimental MLBuffer interface
+// Experimental MLTensor interface
 
-type MLSize64Out = number;
-interface MLBuffer {
-  readonly size: MLSize64Out;
+interface MLTensor {
   destroy(): void;
 }
-type MLSize64 = number;
-interface MLBufferDescriptor {
-  size: MLSize64;
+
+type MLNamedTensor = Record<string, MLTensor>;
+
+type MLTensorUsageFlags = number;
+
+// TODO(@Honry): Remove this once it is deprecated in Chromium.
+declare const MLTensorUsage: {
+  readonly WEBGPU_INTEROP: MLTensorUsageFlags;
+  readonly READ: MLTensorUsageFlags;
+  readonly WRITE: MLTensorUsageFlags;
+};
+
+interface MLTensorDescriptor extends MLOperandDescriptor {
+  /** @deprecated Use readable/writeable instead of usage */
+  usage: MLTensorUsageFlags | undefined;
+  importableToWebGPU?: boolean;
+  readable?: boolean;
+  writable?: boolean;
 }
-type MLNamedBuffers = Record<string, MLBuffer>;
+
 interface MLContext {
-  createBuffer(descriptor: MLBufferDescriptor): MLBuffer;
-  writeBuffer(
-      dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: MLSize64,
-      srcElementSize?: MLSize64): void;
-  readBuffer(srcBuffer: MLBuffer): Promise<ArrayBuffer>;
-  dispatch(graph: MLGraph, inputs: MLNamedBuffers, outputs: MLNamedBuffers): void;
+  createTensor(descriptor: MLTensorDescriptor): Promise<MLTensor>;
+  writeTensor(
+      destinationTensor: MLTensor, sourceData: ArrayBufferView|ArrayBuffer, sourceElementOffset?: number,
+      sourceElementSize?: number): void;
+  readTensor(sourceTensor: MLTensor): Promise<ArrayBuffer>;
+  readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView|ArrayBuffer): Promise<undefined>;
+  dispatch(graph: MLGraph, inputs: MLNamedTensor, outputs: MLNamedTensor): void;
 }

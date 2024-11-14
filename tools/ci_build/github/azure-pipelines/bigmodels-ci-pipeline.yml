@@ -40,9 +40,8 @@ parameters:
   default: 0
 
 variables:
-  - template: templates/common-variables.yml
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241111.1
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
@@ -123,8 +122,8 @@ stages:
                 --build_shared_lib \
                 --parallel \
                 --build_wheel \
-                --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
-                --enable_cuda_profiling --enable_cuda_nhwc_ops \
+                --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
+                --enable_cuda_profiling \
                 --enable_pybind --build_java \
                 --use_cache \
                 --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
@@ -200,11 +199,15 @@ stages:
           nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c ' \
             set -ex; \
+            pip uninstall -y $(pip list --format=freeze | grep opencv); \
+            rm -rf /usr/local/lib/python3.8/dist-packages/cv2/; \
+            apt-get update; \
+            DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
-            python3 -m pip install -r requirements-cuda11.txt; \
+            python3 -m pip install -r requirements/cuda11/requirements.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
@@ -283,7 +286,7 @@ stages:
 - stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
-  condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+  condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'), eq(variables['UseA100'], '1'))
   jobs:
   - job: Llama2_7B_ONNX
     timeoutInMinutes: 120
