@@ -661,7 +661,7 @@ async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Ty
     shape: dims as number[],
     // Assign both shape and dimensions while transitioning to new API.
     dimensions: dims as number[],
-    usage: MLTensorUsage.READ,
+    usage: typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ,
     readable: true,
   });
 
@@ -686,7 +686,7 @@ async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tenso
     shape: cpuTensor.dims as number[],
     // Assign both shape and dimensions while transitioning to new API.
     dimensions: cpuTensor.dims as number[],
-    usage: MLTensorUsage.WRITE,
+    usage: typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.WRITE,
     writable: true,
   });
   mlContext.writeTensor(mlTensor, cpuTensor.data);
