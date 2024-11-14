@@ -14,6 +14,7 @@
 #include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn/shared_context.h"
 #include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
@@ -193,8 +194,7 @@ static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_in
                                             Qnn_ContextHandle_t qnn_context_handle,
                                             const OrtMemoryInfo& ort_value_memory_info,
                                             void* ort_value_data, uint32_t ort_value_data_size,
-                                            Qnn_Tensor_t& qnn_tensor,
-                                            std::unordered_map<const void*, Qnn_MemHandle_t>& qnn_mem_handles) {
+                                            Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
   const bool uses_shared_memory = ort_value_memory_info == RpcMemAllocator::MemoryInfo();
 
@@ -205,14 +205,12 @@ static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_in
   } else {
     ORT_RETURN_IF(rpcmem_api == nullptr, "RPCMEM API must be available when using shared memory.");
 
-    Qnn_MemHandle_t qnn_mem_handle;
-    auto qnn_mem_handle_it = qnn_mem_handles.find(ort_value_data);
-    if (qnn_mem_handle_it != qnn_mem_handles.end()) {
-      qnn_mem_handle = qnn_mem_handle_it->second;
-    } else {
+    const auto create_mem_handle = [&](const void* addr) {
+      LOGS(logger, VERBOSE) << "Registering mem handle for addr " << addr;
+
       // get RpcMem file descriptor from shared memory
-      const auto shared_memory_fd = rpcmem_api->to_fd(ort_value_data);
-      ORT_RETURN_IF(shared_memory_fd == -1, "rpcmem_to_fd() returned invalid file descriptor.");
+      const auto shared_memory_fd = rpcmem_api->to_fd(const_cast<void*>(addr));
+      ORT_ENFORCE(shared_memory_fd != -1, "rpcmem_to_fd() returned invalid file descriptor.");
 
       // set up QNN memory descriptor
       // note: we only support a single tensor per shared memory buffer (QNN_MEM_TYPE_ION) now
@@ -224,14 +222,18 @@ static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_in
       qnn_mem_descriptor.memType = QNN_MEM_TYPE_ION;
       qnn_mem_descriptor.ionInfo.fd = shared_memory_fd;
 
-      qnn_mem_handle = nullptr;
+      Qnn_MemHandle_t qnn_mem_handle = nullptr;
       const auto register_status = qnn_interface.memRegister(qnn_context_handle, &qnn_mem_descriptor, 1,
                                                              &qnn_mem_handle);
       // TODO show error message
-      ORT_RETURN_IF(register_status != QNN_SUCCESS, "qnnInterface.memRegister() failed with error code ", register_status);
+      ORT_ENFORCE(register_status == QNN_SUCCESS,
+                  "qnnInterface.memRegister() failed with error code ", register_status);
 
-      qnn_mem_handles.emplace(ort_value_data, qnn_mem_handle);
-    }
+      return qnn_mem_handle;
+    };
+
+    const Qnn_MemHandle_t qnn_mem_handle =
+        SharedContext::GetInstance().GetSharedMemHandles().GetOrCreate(ort_value_data, create_mem_handle);
 
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
@@ -239,19 +241,6 @@ static Status BindQnnTensorMemoryToOrtValue(const QNN_INTERFACE_VER_TYPE& qnn_in
   }
 
   return Status::OK();
-}
-
-QnnModel::~QnnModel() {
-  // clean up qnn_mem_handles_
-  if (!qnn_mem_handles_.empty()) {
-    const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
-    for (const auto [addr, qnn_mem_handle] : qnn_mem_handles_) {
-      auto deregister_status = qnn_interface.memDeRegister(&qnn_mem_handle, 1);
-      if (deregister_status != QNN_SUCCESS) {
-        LOGS_DEFAULT(ERROR) << "qnnInterface.memDeRegister() failed with error code " << deregister_status;
-      }
-    }
-  }
 }
 
 Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const RpcMemApi* rpcmem_api,
@@ -302,8 +291,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const RpcMemApi
           qnn_context_handle,
           *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
           const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
-          qnn_inputs.back(),
-          qnn_mem_handles_));
+          qnn_inputs.back()));
     }
 
     std::vector<Qnn_Tensor_t> qnn_outputs;
@@ -330,8 +318,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const RpcMemApi
           qnn_context_handle,
           *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
           const_cast<void*>(ort_output_tensor.GetTensorRawData()), qnn_output_info.tensor_byte_size,
-          qnn_outputs.back(),
-          qnn_mem_handles_));
+          qnn_outputs.back()));
     }
 
     LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();

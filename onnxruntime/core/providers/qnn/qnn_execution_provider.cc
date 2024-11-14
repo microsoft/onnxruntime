@@ -22,6 +22,7 @@
 #include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/rpcmem_library.h"
+#include "core/providers/qnn/shared_context.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -452,6 +453,19 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
+  // hack: need somewhere to clean up the global shared memory handle state, here might be sufficient for now
+  // clean up shared memory handles, if any
+  {
+    const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
+    const auto deregister_mem_handle = [&qnn_interface](const void* /*addr*/, Qnn_MemHandle_t qnn_mem_handle) {
+      auto deregister_status = qnn_interface.memDeRegister(&qnn_mem_handle, 1);
+      if (deregister_status != QNN_SUCCESS) {
+        LOGS_DEFAULT(ERROR) << "qnnInterface.memDeRegister() failed with error code " << deregister_status;
+      }
+    };
+    SharedContext::GetInstance().GetSharedMemHandles().Clear(deregister_mem_handle);
+  }
+
   // clean up thread local context caches
   std::lock_guard<std::mutex> lock(context_state_.mutex);
   for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
