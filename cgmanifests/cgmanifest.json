@@ -1,578 +1,508 @@
 {
-   "$schema": "https://json.schemastore.org/component-detection-manifest.json",
-   "Registrations": [
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
-               "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "Type": "maven",
-            "maven": {
-               "GroupId": "org.junit.platform",
-               "ArtifactId": "junit-platform-console-standalone",
-               "Version": "1.6.2"
-            },
-            "DevelopmentDependency": true
-         }
-      },
-      {
-         "component": {
-            "Type": "maven",
-            "maven": {
-               "GroupId": "com.google.protobuf",
-               "ArtifactId": "protobuf-java",
-               "Version": "3.21.7"
-            },
-            "DevelopmentDependency": true
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "2379917985919ed3918dc12cad47f469f245be7a",
-               "repositoryUrl": "https://github.com/apache/tvm.git"
-            },
-            "comments": "needed for TVM EP"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "cabe04d6d6b05356fa8f9741704924788f0dd762",
-               "repositoryUrl": "https://github.com/agauniyal/rang.git"
-            },
-            "comments": "dependency from tvm"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "a3bcc6981d5dad3afb212689e2c7853d1b1ee45d",
-               "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
-            },
-            "comments": "dependency from tvm"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "08f7c7e69f8ea61a0c4151359bc8023be8e9217b",
-               "repositoryUrl": "https://github.com/tlc-pack/libbacktrace.git"
-            },
-            "comments": "dependency from tvm"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "36a91576edf633479c78649e050f18dd2ddc8103",
-               "repositoryUrl": "https://github.com/apache/incubator-tvm-vta.git"
-            },
-            "comments": "dependency from tvm"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "111c9be5188f7350c2eac9ddaedd8cca3d7bf394",
-               "repositoryUrl": "https://github.com/kazuho/picojson.git"
-            },
-            "comments": "dependency from tvm"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "b5e4186d7ab63458e79084842dced166be2ca5b5",
-               "repositoryUrl": "https://github.com/lammertb/libcrc.git"
-            },
-            "comments": "dependency from tvm"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "e4a4c02764d37c9c3db0d64c4996651a3ef9513c",
-               "repositoryUrl": "https://github.com/dmlc/HalideIR.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "bee4d1dd8dc1ee4a1fd8fa6a96476c2f8b7492a3",
-               "repositoryUrl": "https://github.com/dmlc/dlpack.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "4d49691f1a9d944c3b0aa5e63f1db3cad1f941f8",
-               "repositoryUrl": "https://github.com/dmlc/dmlc-core.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "7de7e5d02bf687f971e7668963649728356e0c20",
-               "repositoryUrl": "https://github.com/intel/mkl-dnn.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "d860915b0198ddb96f93e9e97a789af156544dc6",
-               "repositoryUrl": "https://github.com/tensorflow/tensorflow.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "eddf9023206dc40974c26f589ee2ad63a4227a1e",
-               "repositoryUrl": "https://github.com/glennrp/libpng.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "217f52fb121ef92491e5d5f71394b07ce4ead1d0",
-               "repositoryUrl": "https://github.com/KjellKod/g3log.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "50893291621658f355bc5b4d450a8d06a563053d",
-               "repositoryUrl": "https://github.com/madler/zlib.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "d264a2603493fecda607c1d1cda87fedba77d36b",
-               "repositoryUrl": "https://github.com/Microsoft/CNTK.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "971e2e89d08deeae0139d3011d15646fdac13c92",
-               "repositoryUrl": "https://github.com/numpy/numpy.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "90537289a04ef5d572496240e2ac3a881be518d2",
-               "repositoryUrl": "https://github.com/pytorch/pytorch.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "b31f58de6fa8bbda5353b3c77d9be4914399724d",
-               "repositoryUrl": "https://github.com/pytorch/pytorch.git"
-            },
-            "comments": "pytorch 1.6 used by onnxruntime training image"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "7389dbac82d362f296dc2746f10e43ffa1615660",
-               "repositoryUrl": "https://github.com/scikit-learn/scikit-learn.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
-               "repositoryUrl": "https://github.com/BVLC/caffe.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "LLVM",
-               "Version": "9.0.0",
-               "DownloadUrl": "https://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz"
-            }
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "FreeBSD GetOpt",
-               "Version": "12.0.0",
-               "DownloadUrl": "https://svnweb.freebsd.org/base/release/12.0.0/lib/libc/stdlib/getopt.c?revision=341707&view=co"
-            }
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "Boost",
-               "Version": "1.69.0",
-               "DownloadUrl": "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2"
-            }
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "02a2a458ac15912d7d87cc1171e811b0c5219ece",
-               "repositoryUrl": "https://github.com/grpc/grpc"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "b29b21a81b32ec273f118f589f46d56ad3332420",
-               "repositoryUrl": "https://github.com/google/boringssl.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "3be1924221e1326df520f8498d704a5c4c8d0cce",
-               "repositoryUrl": "https://github.com/c-ares/c-ares.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "6599cac0965be8e5a835ab7a5684bbef033d5ad0",
-               "repositoryUrl": "https://github.com/llvm-mirror/libcxx.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "9245d481eb3e890f708ff2d7dadf2a10c04748ba",
-               "repositoryUrl": "https://github.com/llvm-mirror/libcxxabi.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "9ce4a77f61c134bbed28bfd5be5cd7dc0e80f5e3",
-               "repositoryUrl": "https://github.com/google/upb.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "type": "other",
-            "Other": {
-               "Name": "Go",
-               "Version": "1.12.6",
-               "DownloadUrl": "https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
-            }
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "OpenMPI",
-               "Version": "4.0.0",
-               "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz"
-            }
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "OpenMPI",
-               "Version": "4.0.4",
-               "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz"
-            },
-            "comments": "openmpi 4.0.4 used by onnxruntime training image"
-         }
-      },
-      {
-         "component": {
-            "Type": "git",
-            "git": {
-               "commitHash": "7db3f9c741d3dfd8dda14ffb537ed251280d2025",
-               "repositoryUrl": "https://github.com/mpi4py/mpi4py"
-            },
-            "comments": "mpi4py 3.0.3 used by onnxruntime training image"
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "NCCL",
-               "Version": "2.4.8",
-               "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "67afac65ce64fd4dce1494f43e565e8fe34bdffb",
-               "repositoryUrl": "https://android.googlesource.com/platform/frameworks/ml"
-            },
-            "comments": "used by onnxruntime"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "c30b7da2301202da5f9f0529966944f110e5d6e7",
-               "repositoryUrl": "https://github.com/openucx/ucx"
-            },
-            "comments": "middleware between IB verbs and OpenMPI used by onnxruntime training image"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "63d1e08e64e7e09408eb63cd8dd7c65ad766f277",
-               "repositoryUrl": "https://github.com/nodejs/node"
-            },
-            "comments": "For Nodejs binding"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "aead4d751c2101e23336aa73f2380df83e7a13f3",
-               "repositoryUrl": "https://github.com/pypa/manylinux"
-            },
-            "comments": "For building our CI build docker image"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "c974557598645360fbabac71352b083117e3cc17",
-               "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
-            },
-            "comments": "CMake 3.24.3. For building our CI build docker image"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "1e5d33e9b9b8631b36f061103a30208b206fd03a",
-               "repositoryUrl": "https://github.com/python/cpython"
-            },
-            "comments": "Python 3.9.1"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "6503f05dd59e26a9986bdea097b3da9b3546f45b",
-               "repositoryUrl": "https://github.com/python/cpython"
-            },
-            "comments": "Python 3.8.7"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "13c94747c74437e594b7fc242ff7da668e81887c",
-               "repositoryUrl": "https://github.com/python/cpython"
-            },
-            "comments": "Python 3.7.9"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "c0a9afe2ac1820409e6173bd1893ebee2cf50270",
-               "repositoryUrl": "https://github.com/python/cpython"
-            },
-            "comments": "Python 3.6.12"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "426b022776672fdf3d71ddd98d89af341c88080f",
-               "repositoryUrl": "https://github.com/python/cpython"
-            },
-            "comments": "Python 3.5.10"
-         }
-      },
-      {
-         "component": {
-            "type": "pip",
-            "pip": {
-               "Name": "transformers",
-               "Version": "4.38.0"
-            },
-            "comments": "Installed in the training docker image"
-         }
-      },
-      {
-         "component": {
-            "type": "pip",
-            "pip": {
-               "Name": "msgpack",
-               "Version": "1.0.0"
-            },
-            "comments": "Installed in the training docker image"
-         }
-      },
-      {
-         "component": {
-            "type": "pip",
-            "pip": {
-               "Name": "tensorboardX",
-               "Version": "1.8"
-            },
-            "comments": "Installed in the training docker image"
-         }
-      },
-      {
-         "component": {
-            "type": "pip",
-            "pip": {
-               "Name": "tensorboard",
-               "Version": "2.3.0"
-            },
-            "comments": "Installed in the training docker image"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56",
-               "repositoryUrl": "https://github.com/aappleby/smhasher"
-            },
-            "comments": "MurmurHash3"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "b89da3c5a0aa18fb2c6163ad9984f81ab65b22e3",
-               "repositoryUrl": "https://github.com/mestevens/gtest-ios-framework"
-            },
-            "comments": "gtest-ios-framework"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
-               "repositoryUrl": "https://github.com/dmlc/dlpack.git"
-            },
-            "comments": "dlpack"
-         }
-      },
-      {
-         "component": {
-            "Type": "other",
-            "Other": {
-               "Name": "SQLite3",
-               "Version": "3.22.0",
-               "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "9d0ef119d9fcb9139f831adc224857b791c81140",
-               "repositoryUrl": "https://github.com/dlfcn-win32/dlfcn-win32.git"
-            },
-            "comments": "dlfcn-win32"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "6812205f18ca4ef54372e87e1a13ce4a859434df",
-               "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
-            },
-            "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "e7248b26a1ed53fa030c5c459f7ea095dfd276ac",
-               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-            }
-         }
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+  "Registrations": [
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
+          "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
+        }
       }
-   ],
-   "Version": 1
+    },
+    {
+      "component": {
+        "Type": "maven",
+        "maven": {
+          "GroupId": "org.junit.platform",
+          "ArtifactId": "junit-platform-console-standalone",
+          "Version": "1.6.2"
+        },
+        "DevelopmentDependency": true
+      }
+    },
+    {
+      "component": {
+        "Type": "maven",
+        "maven": {
+          "GroupId": "com.google.protobuf",
+          "ArtifactId": "protobuf-java",
+          "Version": "3.21.7"
+        },
+        "DevelopmentDependency": true
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e4a4c02764d37c9c3db0d64c4996651a3ef9513c",
+          "repositoryUrl": "https://github.com/dmlc/HalideIR.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "bee4d1dd8dc1ee4a1fd8fa6a96476c2f8b7492a3",
+          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4d49691f1a9d944c3b0aa5e63f1db3cad1f941f8",
+          "repositoryUrl": "https://github.com/dmlc/dmlc-core.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7de7e5d02bf687f971e7668963649728356e0c20",
+          "repositoryUrl": "https://github.com/intel/mkl-dnn.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d860915b0198ddb96f93e9e97a789af156544dc6",
+          "repositoryUrl": "https://github.com/tensorflow/tensorflow.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "eddf9023206dc40974c26f589ee2ad63a4227a1e",
+          "repositoryUrl": "https://github.com/glennrp/libpng.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "217f52fb121ef92491e5d5f71394b07ce4ead1d0",
+          "repositoryUrl": "https://github.com/KjellKod/g3log.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "50893291621658f355bc5b4d450a8d06a563053d",
+          "repositoryUrl": "https://github.com/madler/zlib.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d264a2603493fecda607c1d1cda87fedba77d36b",
+          "repositoryUrl": "https://github.com/Microsoft/CNTK.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "971e2e89d08deeae0139d3011d15646fdac13c92",
+          "repositoryUrl": "https://github.com/numpy/numpy.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "90537289a04ef5d572496240e2ac3a881be518d2",
+          "repositoryUrl": "https://github.com/pytorch/pytorch.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b31f58de6fa8bbda5353b3c77d9be4914399724d",
+          "repositoryUrl": "https://github.com/pytorch/pytorch.git"
+        },
+        "comments": "pytorch 1.6 used by onnxruntime training image"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7389dbac82d362f296dc2746f10e43ffa1615660",
+          "repositoryUrl": "https://github.com/scikit-learn/scikit-learn.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
+          "repositoryUrl": "https://github.com/BVLC/caffe.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "LLVM",
+          "Version": "9.0.0",
+          "DownloadUrl": "https://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz"
+        }
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "FreeBSD GetOpt",
+          "Version": "12.0.0",
+          "DownloadUrl": "https://svnweb.freebsd.org/base/release/12.0.0/lib/libc/stdlib/getopt.c?revision=341707&view=co"
+        }
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "Boost",
+          "Version": "1.69.0",
+          "DownloadUrl": "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2"
+        }
+      }
+    },
+    {
+      "component": {
+        "git": {
+          "commitHash": "02a2a458ac15912d7d87cc1171e811b0c5219ece",
+          "repositoryUrl": "https://github.com/grpc/grpc"
+        },
+        "type": "git"
+      }
+    },
+    {
+      "component": {
+        "git": {
+          "commitHash": "b29b21a81b32ec273f118f589f46d56ad3332420",
+          "repositoryUrl": "https://github.com/google/boringssl.git"
+        },
+        "type": "git"
+      }
+    },
+    {
+      "component": {
+        "git": {
+          "commitHash": "3be1924221e1326df520f8498d704a5c4c8d0cce",
+          "repositoryUrl": "https://github.com/c-ares/c-ares.git"
+        },
+        "type": "git"
+      }
+    },
+    {
+      "component": {
+        "git": {
+          "commitHash": "6599cac0965be8e5a835ab7a5684bbef033d5ad0",
+          "repositoryUrl": "https://github.com/llvm-mirror/libcxx.git"
+        },
+        "type": "git"
+      }
+    },
+    {
+      "component": {
+        "git": {
+          "commitHash": "9245d481eb3e890f708ff2d7dadf2a10c04748ba",
+          "repositoryUrl": "https://github.com/llvm-mirror/libcxxabi.git"
+        },
+        "type": "git"
+      }
+    },
+    {
+      "component": {
+        "git": {
+          "commitHash": "9ce4a77f61c134bbed28bfd5be5cd7dc0e80f5e3",
+          "repositoryUrl": "https://github.com/google/upb.git"
+        },
+        "type": "git"
+      }
+    },
+    {
+      "component": {
+        "type": "other",
+        "Other": {
+          "Name": "Go",
+          "Version": "1.12.6",
+          "DownloadUrl": "https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
+        }
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "OpenMPI",
+          "Version": "4.0.0",
+          "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz"
+        }
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "OpenMPI",
+          "Version": "4.0.4",
+          "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz"
+        },
+        "comments": "openmpi 4.0.4 used by onnxruntime training image"
+      }
+    },
+    {
+      "component": {
+        "Type": "git",
+        "git": {
+          "commitHash": "7db3f9c741d3dfd8dda14ffb537ed251280d2025",
+          "repositoryUrl": "https://github.com/mpi4py/mpi4py"
+        },
+        "comments": "mpi4py 3.0.3 used by onnxruntime training image"
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "NCCL",
+          "Version": "2.4.8",
+          "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "67afac65ce64fd4dce1494f43e565e8fe34bdffb",
+          "repositoryUrl": "https://android.googlesource.com/platform/frameworks/ml"
+        },
+        "comments": "used by onnxruntime"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c30b7da2301202da5f9f0529966944f110e5d6e7",
+          "repositoryUrl": "https://github.com/openucx/ucx"
+        },
+        "comments": "middleware between IB verbs and OpenMPI used by onnxruntime training image"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "63d1e08e64e7e09408eb63cd8dd7c65ad766f277",
+          "repositoryUrl": "https://github.com/nodejs/node"
+        },
+        "comments": "For Nodejs binding"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "aead4d751c2101e23336aa73f2380df83e7a13f3",
+          "repositoryUrl": "https://github.com/pypa/manylinux"
+        },
+        "comments": "For building our CI build docker image"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c974557598645360fbabac71352b083117e3cc17",
+          "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
+        },
+        "comments": "CMake 3.24.3. For building our CI build docker image"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "1e5d33e9b9b8631b36f061103a30208b206fd03a",
+          "repositoryUrl": "https://github.com/python/cpython"
+        },
+        "comments": "Python 3.9.1"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6503f05dd59e26a9986bdea097b3da9b3546f45b",
+          "repositoryUrl": "https://github.com/python/cpython"
+        },
+        "comments": "Python 3.8.7"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "13c94747c74437e594b7fc242ff7da668e81887c",
+          "repositoryUrl": "https://github.com/python/cpython"
+        },
+        "comments": "Python 3.7.9"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c0a9afe2ac1820409e6173bd1893ebee2cf50270",
+          "repositoryUrl": "https://github.com/python/cpython"
+        },
+        "comments": "Python 3.6.12"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "426b022776672fdf3d71ddd98d89af341c88080f",
+          "repositoryUrl": "https://github.com/python/cpython"
+        },
+        "comments": "Python 3.5.10"
+      }
+    },
+    {
+      "component": {
+        "type": "pip",
+        "pip": {
+          "Name": "transformers",
+          "Version": "4.38.0"
+        },
+        "comments": "Installed in the training docker image"
+      }
+    },
+    {
+      "component": {
+        "type": "pip",
+        "pip": {
+          "Name": "msgpack",
+          "Version": "1.0.0"
+        },
+        "comments": "Installed in the training docker image"
+      }
+    },
+    {
+      "component": {
+        "type": "pip",
+        "pip": {
+          "Name": "tensorboardX",
+          "Version": "1.8"
+        },
+        "comments": "Installed in the training docker image"
+      }
+    },
+    {
+      "component": {
+        "type": "pip",
+        "pip": {
+          "Name": "tensorboard",
+          "Version": "2.3.0"
+        },
+        "comments": "Installed in the training docker image"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56",
+          "repositoryUrl": "https://github.com/aappleby/smhasher"
+        },
+        "comments": "MurmurHash3"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b89da3c5a0aa18fb2c6163ad9984f81ab65b22e3",
+          "repositoryUrl": "https://github.com/mestevens/gtest-ios-framework"
+        },
+        "comments": "gtest-ios-framework"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
+          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+        },
+        "comments": "dlpack"
+      }
+    },
+    {
+      "component": {
+        "Type": "other",
+        "Other": {
+          "Name": "SQLite3",
+          "Version": "3.22.0",
+          "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "9d0ef119d9fcb9139f831adc224857b791c81140",
+          "repositoryUrl": "https://github.com/dlfcn-win32/dlfcn-win32.git"
+        },
+        "comments": "dlfcn-win32"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6812205f18ca4ef54372e87e1a13ce4a859434df",
+          "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
+        },
+        "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e7248b26a1ed53fa030c5c459f7ea095dfd276ac",
+          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+        }
+      }
+    }
+  ],
+  "Version": 1
 }

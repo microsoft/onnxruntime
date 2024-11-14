@@ -1075,15 +1075,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if(WIN32)
-    if (onnxruntime_USE_TVM)
-      add_custom_command(
-        TARGET ${test_data_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
-        )
-    endif()
-  endif()
-
-  if(WIN32)
     set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
     onnxruntime_add_static_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
     target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
@@ -1123,12 +1114,6 @@ if (NOT IOS)
       target_link_libraries(onnx_test_runner PRIVATE Python::Python)
     endif()
     set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
-
-    if (onnxruntime_USE_TVM)
-      if (WIN32)
-        target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
-      endif()
-    endif()
 
     install(TARGETS onnx_test_runner
             ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1283,11 +1268,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-    if (onnxruntime_USE_TVM)
-      if (WIN32)
-        target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
-      endif()
-    endif()
   endif()
 
 
