@@ -128,7 +128,7 @@ OrtStatusPtr TensorRTCacheModelHandler::GetEpContextFromGraph(const OrtGraphView
     // Get engine from byte stream.
     const char* context_binary_cstr = nullptr;
     size_t size;
-    graph_api_->OrtNode_GetAttributeStr(node, EP_CACHE_CONTEXT.c_str(), &context_binary_cstr, &szie);
+    graph_api_->OrtNode_GetAttributeStrWithSize(node, EP_CACHE_CONTEXT.c_str(), &context_binary_cstr, &size);
     std::string context_binary(context_binary_cstr, size);
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
                                                                                                 static_cast<size_t>(context_binary.length())));
