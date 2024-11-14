@@ -374,7 +374,7 @@ def run_optimum_ort_pipeline(
     batch_count,
     start_memory,
     memory_monitor_type,
-    use_num_images_per_prompt = False,
+    use_num_images_per_prompt=False,
 ):
     from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
 
@@ -391,7 +391,7 @@ def run_optimum_ort_pipeline(
                 width=width,
                 num_inference_steps=steps,
                 negative_prompt=negative,
-                num_images_per_prompt=batch_count
+                num_images_per_prompt=batch_count,
             )
         else:
             pipe(
@@ -413,25 +413,17 @@ def run_optimum_ort_pipeline(
     for i, prompt in enumerate(prompts):
         if i >= num_prompts:
             break
+        inference_start = time.time()
         if use_num_images_per_prompt:
-            for j in range(batch_count):
-                inference_start = time.time()
-                images = pipe(
-                    prompt=prompt,
-                    height=height,
-                    width=width,
-                    num_inference_steps=steps,
-                    negative_prompt=negative_prompt,
-                    num_images_per_prompt=batch_size,
-                ).images
-                inference_end = time.time()
-                latency = inference_end - inference_start
-                latency_list.append(latency)
-                print(f"Inference took {latency:.3f} seconds")
-                for k, image in enumerate(images):
-                    image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
+            images = pipe(
+                prompt=prompt,
+                height=height,
+                width=width,
+                num_inference_steps=steps,
+                negative_prompt=negative_prompt,
+                num_images_per_prompt=batch_size,
+            ).images
         else:
-            inference_start = time.time()
             images = pipe(
                 prompt=[prompt] * batch_size,
                 height=height,
@@ -439,12 +431,12 @@ def run_optimum_ort_pipeline(
                 num_inference_steps=steps,
                 negative_prompt=[negative_prompt] * batch_size,
             ).images
-            inference_end = time.time()
-            latency = inference_end - inference_start
-            latency_list.append(latency)
-            print(f"Inference took {latency:.3f} seconds")
-            for k, image in enumerate(images):
-                image.save(f"{image_filename_prefix}_{i}_{k}.jpg")
+        inference_end = time.time()
+        latency = inference_end - inference_start
+        latency_list.append(latency)
+        print(f"Inference took {latency:.3f} seconds")
+        for k, image in enumerate(images):
+            image.save(f"{image_filename_prefix}_{i}_{k}.jpg")
 
     from onnxruntime import __version__ as ort_version
 
@@ -1220,8 +1212,8 @@ def parse_arguments():
         "--num_prompts",
         required=False,
         type=int,
-        default=1,
-        help="Number of prompts. Default is 1.",
+        default=10,
+        help="Number of prompts. Default is 10.",
     )
 
     parser.add_argument(
