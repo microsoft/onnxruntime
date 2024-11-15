@@ -45,16 +45,17 @@ jobs:
     submodules: none
 
   - task: UsePythonVersion@0
-    displayName: Use Python 3.11
+    displayName: Use Python 3.10
     inputs:
-      versionSpec: 3.11
+      versionSpec: 3.10
+
   - task: NodeTool@0
     inputs:
       versionSpec: '20.x'
 
   - task: JavaToolInstaller@0
     inputs:
-      versionSpec: "11"
+      versionSpec: "17"
       jdkArchitectureOption: "x64"
       jdkSourceOption: 'PreInstalled'
 

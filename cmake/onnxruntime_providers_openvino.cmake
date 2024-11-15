@@ -11,22 +11,22 @@
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
-  if (WIN32)
-      set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
-  endif()
-
   # Header paths
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
-  if(OpenVINO_VERSION VERSION_LESS 2024.0)
-    message(FATAL_ERROR "OpenVINO 2024.0 and newer are supported. Please, use latest OpenVINO release")
+  if(OpenVINO_VERSION VERSION_LESS 2024.3)
+    message(FATAL_ERROR "OpenVINO 2024.3 and newer are supported. Please, use latest OpenVINO release")
   endif()
 
   if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
     add_definitions(-DUSE_OVEP_NPU_MEMORY=1)
   endif()
 
-  if (WIN32)
-    unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
+  # If building RelWithDebInfo and OV package does not have that configuration map to Release
+  get_target_property(ov_rt_implib_rwdi openvino::runtime IMPORTED_IMPLIB_RELWITHDEBINFO)
+  if ((CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo) AND NOT ov_rt_implib_rwdi)
+    set_target_properties(openvino::runtime PROPERTIES
+      MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+    )
   endif()
 
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
@@ -82,3 +82,8 @@
             LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+
+set_target_properties(onnxruntime_providers_openvino PROPERTIES
+  MAP_IMPORTED_CONFIG_RELEASE RelWithDebInfo
+  MAP_IMPORTED_CONFIG_DEBUG RelWithDebInfo
+  )
