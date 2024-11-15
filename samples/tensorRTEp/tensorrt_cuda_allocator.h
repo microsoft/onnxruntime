@@ -9,6 +9,12 @@
 
 namespace onnxruntime {
 
+#ifdef _WIN32
+#define ORT_UNUSED_PARAMETER(x) (x)
+#else
+#define ORT_UNUSED_PARAMETER(x) (void)(x)
+#endif
+
 // Following names are originally defined in allocator.h
 constexpr const char* CUDA_ALLOCATOR = "Cuda";
 constexpr const char* CUDA_PINNED_ALLOCATOR = "CudaPinned";

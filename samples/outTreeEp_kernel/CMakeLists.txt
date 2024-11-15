@@ -9,4 +9,4 @@ add_library(kernelEp SHARED kernel_ep.cc)
 target_include_directories(kernelEp PUBLIC "${ORT_HOME}/include/onnxruntime")
 
 # looks we need this in Win as in Windows you cannot build shared library with undefined symbol
-target_link_libraries(outTreeEp PUBLIC "${ORT_HOME}/build/Linux/Release/libonnxruntime.so")
+target_link_libraries(kernelEp PUBLIC "${ORT_HOME}/build/Linux/Release/libonnxruntime.so")
