@@ -195,7 +195,7 @@ class TensorIdTracker {
     }
 
     // eslint-disable-next-line no-bitwise
-    const usage = MLTensorUsage.READ | MLTensorUsage.WRITE;
+    const usage = typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ | MLTensorUsage.WRITE;
     this.wrapper = await this.tensorManager.getCachedTensor(dataType, shape, usage, true, true);
 
     if (copyOld && this.activeUpload) {
@@ -349,7 +349,7 @@ class TensorManagerImpl implements TensorManager {
   public async getCachedTensor(
     dataType: MLOperandDataType,
     shape: readonly number[],
-    usage: MLTensorUsageFlags,
+    usage: MLTensorUsageFlags | undefined,
     writable: boolean,
     readable: boolean,
   ): Promise<TensorWrapper> {

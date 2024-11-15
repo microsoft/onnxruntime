@@ -30,13 +30,13 @@ namespace sqnbitgemm_neon
 
 //
 // Function declarations for SQNBitGemm ARM NEON kernel entry points.
-// Refer to the prototypes in sqnbitgemm.h for documentation.
+// Refer to the prototypes in qnbitgemm.h for documentation.
 // These are declared here so they can be used to initialize the
-// MLAS_SQNBIT_GEMM_DISPATCH structure and also be implemented in separate
+// MLAS_QNBIT_GEMM_DISPATCH structure and also be implemented in separate
 // files.
 //
 
-// CompFp32 declarations
+// SQNBIT_CompFp32 declarations
 
 void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -64,7 +64,7 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlockCountK
 );
 
-// CompInt8 declarations
+// SQNBIT_CompInt8 declarations
 
 void
 QuantizeARow_CompInt8(
