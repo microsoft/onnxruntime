@@ -3815,8 +3815,8 @@ TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
     auto& qlinearsoftmax_1 = builder.AddNode("QLinearSoftmax",
-      {transpose_1_out_0, input_x_scale, input_x_zero_point, input_y_scale, input_y_zero_point},
-      {qlinearsoftmax_1_out_0}, kMSDomain);
+                                             {transpose_1_out_0, input_x_scale, input_x_zero_point, input_y_scale, input_y_zero_point},
+                                             {qlinearsoftmax_1_out_0}, kMSDomain);
     qlinearsoftmax_1.AddAttribute("axis", static_cast<int64_t>(1));
     qlinearsoftmax_1.AddAttribute("opset", static_cast<int64_t>(13));
     auto& transpose_2 = builder.AddNode("Transpose", {qlinearsoftmax_1_out_0}, {transpose_2_out_0});
