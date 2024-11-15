@@ -53,6 +53,10 @@
     target_compile_options(onnxruntime_providers_vitisai PRIVATE -Wno-unused-parameter)
   endif(MSVC)
 
+  if(MSVC)
+    target_link_options(onnxruntime_providers_vitisai PRIVATE "/NODEFAULTLIB:libucrt.lib" "/DEFAULTLIB:ucrt.lib")
+  endif(MSVC)
+
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES LINKER_LANGUAGE CXX)
 
