@@ -3801,8 +3801,6 @@ TEST(TransposeOptimizerTests, TestCast) {
                     /*opset_version*/ {15, 18});
 }
 
-//#ifndef DISABLE_CONTRIB_OPS
-
 TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<uint8_t>(builder, std::nullopt, {1, 384, 384, 21}, 0, 255);
@@ -3842,8 +3840,6 @@ TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
                     /*disabled_optimizers*/ {},
                     /*ep*/ DefaultCpuExecutionProvider());
 }
-
-//#endif  // DISABLE_CONTRIB_OPS
 
 TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
