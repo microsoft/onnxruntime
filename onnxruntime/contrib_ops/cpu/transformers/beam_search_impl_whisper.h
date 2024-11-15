@@ -476,6 +476,10 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
     const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
     auto beam_indices = this->beam_scorer_->GetNextIndicesGPU();  // currently only support on GPU
+    
+    // std::cout << "Iteration counter = " << iteration_counter << std::endl;
+    // std::cout << "Sequence length = " << parameters->sequence_length << std::endl;
+
     ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
         this->ort_stream_,
         iteration_counter,
