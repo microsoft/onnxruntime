@@ -16,8 +16,8 @@ from ..run import run
 
 _log = get_logger("util.android")
 
-
-SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
+SdkToolPaths = collections.namedtuple("SdkToolPaths",
+                                      ["emulator", "adb", "sdkmanager", "avdmanager"])
 
 
 def get_sdk_tool_paths(sdk_root: str):
@@ -34,15 +34,18 @@ def get_sdk_tool_paths(sdk_root: str):
         emulator=str((sdk_root / "emulator" / filename("emulator", "exe")).resolve(strict=True)),
         adb=str((sdk_root / "platform-tools" / filename("adb", "exe")).resolve(strict=True)),
         sdkmanager=str(
-            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("sdkmanager", "bat")).resolve(strict=True)
+            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("sdkmanager", "bat")).resolve(
+                strict=True)
         ),
         avdmanager=str(
-            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("avdmanager", "bat")).resolve(strict=True)
+            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("avdmanager", "bat")).resolve(
+                strict=True)
         ),
     )
 
 
-def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
+def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str,
+                          avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
 
     run(
@@ -105,8 +108,26 @@ def _stop_process_with_pid(pid: int):
 
 
 def start_emulator(
-    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None
+        sdk_tool_paths: SdkToolPaths, avd_name: str,
+        extra_args: typing.Optional[typing.Sequence[str]] = None
 ) -> subprocess.Popen:
+    def check_emulator_running() -> bool:
+        """
+        Check if an emulator is already running by parsing adb devices output.
+        """
+        try:
+            output = subprocess.check_output([sdk_tool_paths.adb, "devices"], timeout=10, text=True)
+            # Filter lines containing "emulator" to detect running emulators
+            running_devices = [line for line in output.splitlines() if "emulator" in line]
+            return len(running_devices) > 0
+        except subprocess.SubprocessError as e:
+            _log.error(f"Error checking running emulators: {e}")
+            return False
+
+    if check_emulator_running():
+        raise RuntimeError(
+            "An emulator is already running. Please close it before starting a new one.")
+
     with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
             sdk_tool_paths.emulator,
@@ -202,16 +223,57 @@ def start_emulator(
             elif datetime.datetime.now() > end_time:
                 raise RuntimeError("Emulator startup timeout. sys.boot_completed was not set.")
 
-            _log.debug(f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
+            _log.debug(
+                f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
             time.sleep(sleep_interval_seconds)
-
+        # Verify if the emulator is now running
+        if not check_emulator_running():
+            raise RuntimeError("Emulator failed to start.")
         return emulator_process
 
 
-def stop_emulator(emulator_proc_or_pid: typing.Union[subprocess.Popen, int]):
+def stop_emulator(
+        emulator_proc_or_pid: typing.Union[subprocess.Popen, int], timeout: int = 120
+):
+    """
+    Stops the emulator process, checking its running status before and after stopping.
+
+    :param emulator_proc_or_pid: The emulator process (subprocess.Popen) or PID (int).
+    :param timeout: Maximum time (in seconds) to wait for the emulator to stop.
+    """
+
+    def is_emulator_running() -> bool:
+        """Check if any emulator instance is running using adb."""
+        try:
+            output = subprocess.check_output(["adb", "devices"], text=True, timeout=10)
+            running_devices = [line for line in output.splitlines() if "emulator" in line]
+            return len(running_devices) > 0
+        except subprocess.SubprocessError as e:
+            _log.error(f"Error checking running emulators: {e}")
+            return False
+
+    if not is_emulator_running():
+        _log.warning("No emulator instances are currently running.")
+        return
+
     if isinstance(emulator_proc_or_pid, subprocess.Popen):
+        _log.info("Stopping emulator using subprocess.Popen instance.")
         _stop_process(emulator_proc_or_pid)
     elif isinstance(emulator_proc_or_pid, int):
+        _log.info(f"Stopping emulator with PID: {emulator_proc_or_pid}")
         _stop_process_with_pid(emulator_proc_or_pid)
     else:
         raise ValueError("Expected either a PID or subprocess.Popen instance.")
+
+    # Loop to check if the emulator stops within the timeout
+    interval = 5
+    end_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+
+    while is_emulator_running():
+        if datetime.datetime.now() > end_time:
+            raise RuntimeError(
+                f"Failed to stop the emulator within the specified timeout = {timeout} seconds.")
+        _log.debug("Emulator still running. Checking again in 5 seconds...")
+        time.sleep(interval)
+
+    _log.info("Emulator stopped successfully.")
