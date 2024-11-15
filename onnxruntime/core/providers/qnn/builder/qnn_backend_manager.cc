@@ -658,7 +658,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
-  
+
   // HTP spill fill buffer only works for multiple QNN contexts generated after QNN v2.28
   if (total_context_size > 1 && max_spill_fill_buffer_ == 0) {
     for (uint32_t i = 0; i < graph_count; ++i) {
