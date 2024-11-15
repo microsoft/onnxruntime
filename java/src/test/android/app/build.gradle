@@ -7,12 +7,12 @@ def minSdkVer = System.properties.get("minSdkVer")?:24
 def qnnVersion = System.properties['qnnVersion']
 
 android {
-	compileSdkVersion 32
+	compileSdkVersion 34
 
 	defaultConfig {
 		applicationId "ai.onnxruntime.example.javavalidator"
 		minSdkVersion minSdkVer
-		targetSdkVersion 32
+		targetSdkVersion 34
 		versionCode 1
 		versionName "1.0"
 
@@ -34,11 +34,11 @@ android {
 		}
 	}
 	compileOptions {
-		sourceCompatibility JavaVersion.VERSION_1_8
-		targetCompatibility JavaVersion.VERSION_1_8
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
 	}
 	kotlinOptions {
-		jvmTarget = '1.8'
+		jvmTarget = '17'
 	}
 	// Conditional packagingOptions for QNN builds only
 	if (qnnVersion != null)	{
