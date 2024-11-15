@@ -82,7 +82,11 @@ class ModelTestBuilder {
   }
 
   template <typename T>
-  NodeArg* MakeInput(const std::vector<int64_t>& shape, const std::vector<T>& data) {
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, const std::vector<T>& data,
+                     AllocatorPtr allocator = nullptr) {
+    if (!allocator) {
+      allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+    }
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
 
@@ -93,7 +97,7 @@ class ModelTestBuilder {
     }
 
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+    CreateMLValue<T>(allocator,
                      shape,
                      data,
                      &input_value);
@@ -104,17 +108,19 @@ class ModelTestBuilder {
   }
 
   template <typename T>
-  NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max) {
-    return MakeInput<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max,
+                     AllocatorPtr allocator = nullptr) {
+    return MakeInput<T>(shape, rand_gen_.Uniform<T>(shape, min, max), allocator);
   }
 
-  NodeArg* MakeInputBool(const std::vector<int64_t>& shape) {
+  NodeArg* MakeInputBool(const std::vector<int64_t>& shape,
+                         AllocatorPtr allocator = nullptr) {
     std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
     std::vector<bool> data;
     for (uint8_t x : data_uint8) {
       data.push_back(x != 0);
     }
-    return MakeInput<bool>(shape, data);
+    return MakeInput<bool>(shape, data, allocator);
   }
 
   template <typename T>
