@@ -694,7 +694,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   custom_config.groupRegistration = group_info;
   spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   spill_fill_config.customConfig = &custom_config;
-  QnnContext_Config_t* spill_fill_config_pointer = 
+  QnnContext_Config_t* spill_fill_config_pointer =
       (total_context_size > 1 && max_spill_fill_buffer_ > 0) ? &spill_fill_config : nullptr;
 
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, spill_fill_config_pointer, nullptr};
