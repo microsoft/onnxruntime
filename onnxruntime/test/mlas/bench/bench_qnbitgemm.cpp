@@ -19,12 +19,12 @@
 
 template <typename AType, size_t BlkBitWidth>
 void RunQNBitGemmBenchmark(size_t BlkLen,
-                            size_t M, size_t N, size_t K,
-                            size_t Threads,
-                            bool Symmetric,
-                            bool HasBias,
-                            MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-                            benchmark::State& state) {
+                           size_t M, size_t N, size_t K,
+                           size_t Threads,
+                           bool Symmetric,
+                           bool HasBias,
+                           MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+                           benchmark::State& state) {
   if (!MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
     state.SkipWithMessage("QNBitGemm is not available with the given configuration on the current machine.");
     return;
@@ -121,13 +121,13 @@ static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
-      {128},                                                 // BlkLen
-      {1, 4096},                                                   // M
-      {4096, 11008},                                         // N
-      {4096, 11008},                                         // K
-      {1, 8},                                                // Threads
-      {int64_t{false}, int64_t{true}},                       // Symmetric
-      {int64_t{false}, int64_t{true}},                       // HasBias
+      {128},                            // BlkLen
+      {1, 4096},                        // M
+      {4096, 11008},                    // N
+      {4096, 11008},                    // K
+      {1, 8},                           // Threads
+      {int64_t{false}, int64_t{true}},  // Symmetric
+      {int64_t{false}, int64_t{true}},  // HasBias
       std::is_same_v<AType, MLAS_FP16>
           ? std::vector<int64_t>{int64_t{HQNBIT_CompFp16}}
           : std::vector<int64_t>{int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}},  // ComputeType
@@ -153,8 +153,8 @@ void QNBITGEMM_ENV(benchmark::State& state) {
                                                                         static_cast<int32_t>(SQNBIT_CompFp32));
 
   RunQNBitGemmBenchmark<AType, BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
-                                      static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
-                                      state);
+                                            static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
+                                            state);
 
   std::ostringstream s;
   s << "BlkBitWidth:" << BlkBitWidth << "/BlkLen:" << BlkLen
