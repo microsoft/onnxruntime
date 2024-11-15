@@ -10,4 +10,4 @@ target_include_directories(outTreeEp PUBLIC "${ORT_HOME}/include/onnxruntime")
 
 # looks we need this in Win as in Windows you cannot build shared library with undefined symbol
 # link ORT for Python API. Otherwise there will be error(undefined symbol: OrtGetApiBase) when loading this shared library
-target_link_libraries(outTreeEp PUBLIC "${ORT_HOME}/build/tensorrt/Release/libonnxruntime.so")
+target_link_libraries(outTreeEp PUBLIC "${ORT_HOME}/build/Linux/Release/libonnxruntime.so")
