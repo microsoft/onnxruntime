@@ -103,6 +103,8 @@ if (
             "cudnn",
             "cudart",
             "cufft",
+            # "curand",
+            # "nvJitLink",
         )
         # Construct a regex pattern for each library name with optional parts
         # Pattern explanation:
