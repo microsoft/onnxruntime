@@ -99,12 +99,10 @@ if (
         # Define the list of DLL patterns
         cuda_libs = (
             "cublas",
+            "cublasLt",
             "cudnn",
             "cudart",
-            "nvrtc",
             "cufft",
-            "curand",
-            "nvJitLink",
         )
         # Construct a regex pattern for each library name with optional parts
         # Pattern explanation:
