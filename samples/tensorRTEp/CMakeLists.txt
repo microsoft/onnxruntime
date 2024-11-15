@@ -34,6 +34,6 @@ target_link_libraries(TensorRTEp PUBLIC "${ORT_HOME}/build/Linux/Release/libonnx
                                      CUDA::cudart
                                     "${ORT_HOME}/build/Linux/Release/_deps/onnx-build/libonnx.a"
                                     "${ORT_HOME}/build/Linux/Release/_deps/onnx-build/libonnx_proto.a"
-                                    "${ORT_HOME}/build/Linux/Release/_deps/protobuf-build/libprotobufd.a"
-                                    "${ORT_HOME}/build/Linux/Release/_deps/protobuf-build/libprotocd.a"
+                                    "${ORT_HOME}/build/Linux/Release/_deps/protobuf-build/libprotobuf.a"
+                                    "${ORT_HOME}/build/Linux/Release/_deps/protobuf-build/libprotoc.a"
                                     )
