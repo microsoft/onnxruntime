@@ -261,7 +261,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t BlockStrideQuantB
     );
 
-    Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ4BitBlkDequantBForSgemm_CompFp16 = nullptr;
+    Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ4BitBlkDequantBForHgemm_CompFp16 = nullptr;
 
     //
     // SQNBIT_CompInt8 kernel function prototypes.
