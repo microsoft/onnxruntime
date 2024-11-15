@@ -120,8 +120,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   } catch (const char* msg) {
     ORT_THROW(msg);
   }
-
-  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, 1));
+  int num_infer_req = (global_context_.num_of_threads > 0) ? global_context_.num_of_threads : 1;
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req));
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -663,7 +663,6 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     // Requesting for an idle infer_request from a pool of infer_requests_
     OVInferRequestPtr infer_request;
     infer_request = inferRequestsQueue_->getIdleRequest();
-
 #ifdef IO_BUFFER_ENABLED
     if ((global_context_.device_type.find("GPU") != std::string::npos) &&
         (global_context_.context != nullptr) && global_context_.is_wholly_supported_graph) {
