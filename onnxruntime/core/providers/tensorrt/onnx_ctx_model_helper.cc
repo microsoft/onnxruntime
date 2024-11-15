@@ -127,8 +127,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
   // Serialize modelproto to string
-  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
   auto new_graph_viewer = graph_build.CreateGraphViewer();
+  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
   auto model = new_graph_viewer->CreateModel(*logger, metadata);
   auto model_proto = model->ToProto();
   new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
