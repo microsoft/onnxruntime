@@ -7,10 +7,12 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+#include "core/framework/data_types.h"
 // some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
+#include "core/framework/tensor_shape.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -83,6 +85,15 @@ class IAllocator {
   virtual void* Alloc(size_t size) = 0;
 
   virtual void Free(void* p) = 0;
+
+  /**
+   * Allocate memory for a tensor of the given shape and element data type.
+   * If the tensor size is 0, nullptr is returned.
+   * On other failures, an exception is thrown.
+   *
+   * Note: The default implementation will call Alloc().
+   */
+  virtual void* TensorAlloc(MLDataType element_data_type, const TensorShape& shape);
 
   // Reserve() is an interface exposed for an implementation of IAllocator
   // to optionally implement some allocation logic that by-passes any arena-based

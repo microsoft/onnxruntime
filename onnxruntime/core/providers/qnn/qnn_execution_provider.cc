@@ -396,7 +396,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
+  qnn_backend_manager_ = std::make_shared<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
       profiling_level,
@@ -453,19 +453,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
-  // hack: need somewhere to clean up the global shared memory handle state, here might be sufficient for now
-  // clean up shared memory handles, if any
-  {
-    const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
-    const auto deregister_mem_handle = [&qnn_interface](const void* /*addr*/, Qnn_MemHandle_t qnn_mem_handle) {
-      auto deregister_status = qnn_interface.memDeRegister(&qnn_mem_handle, 1);
-      if (deregister_status != QNN_SUCCESS) {
-        LOGS_DEFAULT(ERROR) << "qnnInterface.memDeRegister() failed with error code " << deregister_status;
-      }
-    };
-    SharedContext::GetInstance().GetSharedMemHandles().Clear(deregister_mem_handle);
-  }
-
   // clean up thread local context caches
   std::lock_guard<std::mutex> lock(context_state_.mutex);
   for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
@@ -837,11 +824,10 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
     ORT_UNUSED_PARAMETER(state);
   };
 
-  compute_info.compute_func = [this, &logger](FunctionState state, const OrtApi*, OrtKernelContext* context) {
+  compute_info.compute_func = [&logger](FunctionState state, const OrtApi*, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
-    const qnn::RpcMemApi* rpcmem_api = rpcmem_library_ ? &rpcmem_library_->Api() : nullptr;
     qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-    Status result = model->ExecuteGraph(ctx, rpcmem_api, logger);
+    Status result = model->ExecuteGraph(ctx, logger);
     return result;
   };
 
@@ -1184,7 +1170,7 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
     LOGS_DEFAULT(INFO) << "Creating RpcMemAllocator.";
 
     AllocatorFactory rpcmem_allocator_factory = [this](OrtDevice::DeviceId) {
-      return std::make_unique<qnn::RpcMemAllocator>(rpcmem_library_);
+      return std::make_unique<qnn::RpcMemAllocator>(rpcmem_library_, qnn_backend_manager_);
     };
 
     AllocatorCreationInfo rpcmem_allocator_creation_info{rpcmem_allocator_factory,

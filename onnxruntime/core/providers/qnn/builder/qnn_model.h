@@ -45,7 +45,6 @@ class QnnModel {
   Status SetupQnnInputOutput(const logging::Logger& logger);
 
   Status ExecuteGraph(const Ort::KernelContext& context,
-                      const RpcMemApi* rpcmem_api,
                       const logging::Logger& logger);
 
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {

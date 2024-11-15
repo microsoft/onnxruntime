@@ -8,6 +8,7 @@
 
 #include <QnnInterface.h>
 
+#include "core/common/common.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 
 #pragma once
@@ -16,27 +17,27 @@ namespace onnxruntime {
 
 class SharedMemHandles {
  public:
-  Qnn_MemHandle_t GetOrCreate(const void* addr, const std::function<Qnn_MemHandle_t(const void*)>& create_fn) {
+  Qnn_MemHandle_t Get(const void* addr) {
     std::lock_guard g{mutex_};
-    Qnn_MemHandle_t& qnn_mem_handle = qnn_mem_handles_[addr];
-    if (qnn_mem_handle == Qnn_MemHandle_t{}) {
-      qnn_mem_handle = create_fn(addr);
-    }
-    return qnn_mem_handle;
+    const auto it = qnn_mem_handles_.find(addr);
+    ORT_ENFORCE(it != qnn_mem_handles_.end(), "Failed to find mem handle associated with address (", addr, ").");
+    return it->second;
   }
 
-  void Clear(const std::function<void(const void*, Qnn_MemHandle_t)>& cleanup_fn) {
-    std::unordered_map<const void*, Qnn_MemHandle_t> qnn_mem_handles_copy;
-    {
-      std::lock_guard g{mutex_};
-      std::swap(qnn_mem_handles_, qnn_mem_handles_copy);
-    }
+  void Add(const void* addr, Qnn_MemHandle_t mem_handle) {
+    std::lock_guard g{mutex_};
+    auto [it, added] = qnn_mem_handles_.emplace(addr, mem_handle);
+    ORT_ENFORCE(added,
+                "There is already a mem handle (", mem_handle, ") associated with the address (", addr, ").");
+  }
 
-    if (cleanup_fn) {
-      for (const auto [addr, mem_handle] : qnn_mem_handles_copy) {
-        cleanup_fn(addr, mem_handle);
-      }
-    }
+  Qnn_MemHandle_t GetAndRemove(const void* addr) {
+    std::lock_guard g{mutex_};
+    const auto it = qnn_mem_handles_.find(addr);
+    ORT_ENFORCE(it != qnn_mem_handles_.end(), "Failed to find mem handle associated with address (", addr, ").");
+    const auto qnn_mem_handle = it->second;
+    qnn_mem_handles_.erase(it);
+    return qnn_mem_handle;
   }
 
  private:
@@ -106,7 +107,7 @@ class SharedContext {
   // Consumer sessions have to be after producer sessions initialized
   std::mutex mtx_;
 
-  // hack: we should tie the mem handle lifetime to the OrtValue with the shared mem data
+  // TODO can we avoid keeping mem handles in SharedContext?
   SharedMemHandles shared_mem_handles_;
 };
 
