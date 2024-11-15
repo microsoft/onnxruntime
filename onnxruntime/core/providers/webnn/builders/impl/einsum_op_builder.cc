@@ -62,7 +62,7 @@ struct Component {
 };
 
 bool ParseEquationComponents(const Node& node,
-                             const std::string_view& equation,
+                             const std::string_view equation,
                              std::vector<uint32_t>& label_indices,
                              std::vector<Component>& components,
                              std::vector<uint32_t>& output_dimensions,
