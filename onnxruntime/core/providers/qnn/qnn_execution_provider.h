@@ -141,7 +141,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::string context_node_name_prefix_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
-  bool enable_htp_weight_sharing_ = false;
   int32_t vtcm_size_in_mb_ = 0;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
   ModelMetadefIdGenerator metadef_id_generator_;

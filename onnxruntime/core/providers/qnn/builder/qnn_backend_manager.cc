@@ -8,6 +8,7 @@
 #include <string>
 #include "QnnOpDef.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
+#include "HTP/QnnHtpSystemContext.h"
 #include "CPU/QnnCpuCommon.h"
 // TODO: not exist for Windows yet
 // #include "GPU/QnnGpuCommon.h"
@@ -531,11 +532,11 @@ Status QnnBackendManager::CreateContext() {
   }
 
   QnnContext_Config_t context_config_weight_sharing = QNN_CONTEXT_CONFIG_INIT;
-  QnnHtpContext_CustomConfig_t customConfig;
-  customConfig.option = QNN_HTP_CONTEXT_CONFIG_OPTION_WEIGHT_SHARING_ENABLED;
-  customConfig.weightSharingEnabled = enable_htp_weight_sharing_;
+  QnnHtpContext_CustomConfig_t custom_config;
+  custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_WEIGHT_SHARING_ENABLED;
+  custom_config.weightSharingEnabled = enable_htp_weight_sharing_;
   context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
-  context_config_weight_sharing.customConfig = &customConfig;
+  context_config_weight_sharing.customConfig = &custom_config;
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
@@ -616,7 +617,8 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
 
 Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                                          std::string node_name,
-                                                         QnnModelLookupTable& qnn_models) {
+                                                         QnnModelLookupTable& qnn_models,
+                                                         uint32_t total_context_size) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
@@ -656,14 +658,49 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
-
-  ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
-                "Invalid function pointer for contextCreateFromBinary.");
+  
+  // HTP spill fill buffer only works for multiple QNN contexts generated after QNN v2.28
+  if (total_context_size > 1 && max_spill_fill_buffer_ == 0) {
+    for (uint32_t i = 0; i < graph_count; ++i) {
+      if (graphs_info[i].version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
+        auto htp_graph_info = reinterpret_cast<QnnHtpSystemContext_GraphBlobInfo_t*>(graphs_info[i].graphInfoV3.graphBlobInfo);
+        if (htp_graph_info->version == QNN_SYSTEM_CONTEXT_HTP_GRAPH_INFO_BLOB_VERSION_V1) {
+          auto spill_fill_buffer_size = htp_graph_info->contextBinaryGraphBlobInfoV1.spillFillBufferSize;
+          max_spill_fill_buffer_ = spill_fill_buffer_size > max_spill_fill_buffer_ ? spill_fill_buffer_size : max_spill_fill_buffer_;
+        } else {
+          LOGS(*logger_, VERBOSE) << "Unknown context binary graph info blob version.";
+        }
+      } else if (graphs_info[i].version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2 ||
+                 graphs_info[i].version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
+        LOGS(*logger_, VERBOSE) << "Skip retrieve spill file buffer size, it is not supported with graph info v1 & v2.";
+      } else {
+        LOGS(*logger_, VERBOSE) << "Unknown context binary graph info version.";
+      }
+    }
+  }
 
   QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
-  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
+  // Register spill fill buffer for multi context
+  QnnContext_Config_t spill_fill_config = QNN_CONTEXT_CONFIG_INIT;
+  QnnHtpContext_CustomConfig_t custom_config;
+  custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_REGISTER_MULTI_CONTEXTS;
+  QnnHtpContext_GroupRegistration_t group_info;
+  size_t current_contexts_size = GetQnnContextSize();
+  // set to 0x0 (new group) if this is the first context, otherwise point to the first context handle
+  group_info.firstGroupHandle = current_contexts_size > 0 ? GetQnnContext(0) : 0x0;
+  group_info.maxSpillFillBuffer = max_spill_fill_buffer_;  // Max spill-fill buffer across contexts. Must be >0
+  custom_config.groupRegistration = group_info;
+  spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+  spill_fill_config.customConfig = &custom_config;
+  QnnContext_Config_t* spill_fill_config_pointer = 
+      (total_context_size > 1 && max_spill_fill_buffer_ > 0) ? &spill_fill_config : nullptr;
+
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, spill_fill_config_pointer, nullptr};
+
+  ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
+                "Invalid function pointer for contextCreateFromBinary.");
   Qnn_ContextHandle_t context = nullptr;
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
@@ -672,7 +709,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                               buffer_length,
                                               &context,
                                               profile_backend_handle_);
-  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
   contexts_.push_back(context);
   if (1 == graph_count) {
     // in case the EPContext node is generated from script
@@ -930,20 +967,6 @@ Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_
   }
 
   return Status::OK();
-}
-
-void QnnBackendManager::Split(std::vector<std::string>& split_string,
-                              const std::string& tokenized_string,
-                              const char separator) {
-  split_string.clear();
-  std::istringstream tokenized_string_stream(tokenized_string);
-  while (!tokenized_string_stream.eof()) {
-    std::string value;
-    getline(tokenized_string_stream, value, separator);
-    if (!value.empty()) {
-      split_string.push_back(value);
-    }
-  }
 }
 
 Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) {
