@@ -75,17 +75,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
 
-  // Get graph inputs and outputs
   std::vector<onnxruntime::NodeArg*> inputs, outputs;
-  for (auto input : graph_viewer.GetInputs()) {
-    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-    inputs.push_back(&n_input);
-  }
-
-  for (auto output : graph_viewer.GetOutputs()) {
-    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-    outputs.push_back(&n_output);
-  }
 
   // Create EP context node attributes
   auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
@@ -124,6 +114,22 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
 
   // Create EP context node
   graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+
+  // Get graph inputs and outputs
+  for (auto input : graph_viewer.GetInputs()) {
+    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+    inputs.push_back(&n_input);
+  }
+
+  for (auto output : graph_viewer.GetOutputs()) {
+    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+    outputs.push_back(&n_output);
+  }
+
+
+  // Set inputs outputs explicitly to make sure the order is same as the user model
+  graph_build.SetInputs(inputs);
+  graph_build.SetOutputs(outputs);
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
   // Serialize modelproto to string
