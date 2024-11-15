@@ -53,7 +53,7 @@ SQ4BitGemmM1Kernel_CompFp32(
 );
 
 void
-Q4BitBlkDequantBForSgemm_CompFp32(
+SQ4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
     const std::byte* QuantBData,
