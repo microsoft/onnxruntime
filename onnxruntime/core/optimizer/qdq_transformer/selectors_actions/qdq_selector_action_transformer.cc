@@ -68,10 +68,14 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative
   // scale will change the ordering of the elements between quantized & de-quantized values.
   std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
+
+  // We don't drop the resample QDQ ops here for DML because we don't know yet whether it is allowed to be executed in DML.
+  // This will be done within DML during a graph pass if allowed, but otherwise we need to keep the dequantize op alive.
+  std::vector<const char*> cpu_ep = {kCpuExecutionProvider};
   std::unique_ptr<NodeSelector> selector_no_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false,
                                                                                                 false,
                                                                                                 true,
-                                                                                                providers);
+                                                                                                cpu_ep);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
                                                          {{"Resize", {}}},
                                                          std::move(selector_no_16bit),
@@ -143,7 +147,7 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
@@ -232,7 +236,7 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearConv supports 16-bit.
-  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed,
                                                                                false,
                                                                                false,

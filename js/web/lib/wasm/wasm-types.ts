@@ -142,6 +142,12 @@ export declare namespace JSEP {
      */
     jsepOnRunStart: (sessionId: number) => void;
     /**
+     * [exported from pre-jsep.js] Create a session. This function will be called after _OrtCreateSession() is
+     * called.
+     * @returns
+     */
+    jsepOnCreateSession: () => void;
+    /**
      * [exported from pre-jsep.js] Release a session. This function will be called before _OrtReleaseSession() is
      * called.
      * @param sessionId - specify the session ID.
@@ -219,21 +225,45 @@ export declare namespace JSEP {
      * @returns the MLTensor ID for the external MLTensor.
      */
     jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
+
+    /**
+     * [exported from pre-jsep.js] Create an MLContext from a GPUDevice or MLContextOptions.
+     * @param optionsOrGpuDevice - specify the options or GPUDevice.
+     * @returns
+     */
+    jsepCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN Constant operand from external data.
+     * @param externalFilePath - specify the external file path.
+     * @param dataOffset - specify the external data offset.
+     * @param dataLength - specify the external data length.
+     * @param builder - specify the MLGraphBuilder used for constructing the Constant.
+     * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @returns the WebNN Constant operand for the specified external data.
+     */
+    jsepRegisterMLConstant(
+      externalFilePath: string,
+      dataOffset: number,
+      dataLength: number,
+      builder: MLGraphBuilder,
+      desc: MLOperandDescriptor,
+    ): MLOperand;
   }
 }
 
 export interface OrtInferenceAPIs {
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
-  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
+  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): number;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
-  _OrtReleaseSession(sessionHandle: number): void;
+  _OrtReleaseSession(sessionHandle: number): number;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
   _OrtGetOutputName(sessionHandle: number, index: number): number;
 
-  _OrtFree(stringHandle: number): void;
+  _OrtFree(stringHandle: number): number;
 
   _OrtCreateTensor(
     dataType: number,
@@ -250,12 +280,12 @@ export interface OrtInferenceAPIs {
     dimsOffset: number,
     dimsLength: number,
   ): number;
-  _OrtReleaseTensor(tensorHandle: number): void;
+  _OrtReleaseTensor(tensorHandle: number): number;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
   _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
-  _OrtClearBoundOutputs(ioBindingHandle: number): void;
-  _OrtReleaseBinding(ioBindingHandle: number): void;
+  _OrtClearBoundOutputs(ioBindingHandle: number): number;
+  _OrtReleaseBinding(ioBindingHandle: number): number;
   _OrtRunWithBinding(
     sessionHandle: number,
     ioBindingHandle: number,
@@ -289,11 +319,11 @@ export interface OrtInferenceAPIs {
   _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;
 
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseRunOptions(runOptionsHandle: number): void;
+  _OrtReleaseRunOptions(runOptionsHandle: number): number;
 
   _OrtEndProfiling(sessionHandle: number): number;
 }
@@ -302,10 +332,13 @@ export interface OrtInferenceAPIs {
  * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
  */
 export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<JSEP.Module> {
+  PTR_SIZE: number;
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;

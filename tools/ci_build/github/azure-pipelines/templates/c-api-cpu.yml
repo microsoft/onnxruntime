@@ -98,7 +98,12 @@ stages:
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-  #TODO: Add test job for QNN Android AAR
+
+  - template: android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      job_name_suffix: 'QNN'
+      packageName: 'onnxruntime-android-qnn'
 
 - stage: iOS_Full_xcframework
   dependsOn: []
@@ -446,7 +451,7 @@ stages:
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
-        versionSpec: 3.8
+        versionSpec: 3.12
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

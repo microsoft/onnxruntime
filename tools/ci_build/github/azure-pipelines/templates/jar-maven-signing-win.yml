@@ -15,6 +15,7 @@ steps:
     displayName: 'Sign jar files: GnuPG and sha256'
     inputs:
       targetType: 'inline'
+      pwsh: true
       workingDirectory: '$(Build.SourcesDirectory)'
       script: |
         $jar_file_directory = '${{ parameters.JarFileDirectory }}'
@@ -53,15 +54,22 @@ steps:
             Write-Host "GnuPG signed to file: "$file_path
         }
 
+        $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8NoBOM'
+        $sha256sum_exe_path = "C:\Program Files\Git\usr\bin\sha256sum.exe"
         $targeting_asc_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
+        $original_location = Get-Location
+        Set-Location $jar_file_directory
         foreach ($file in $targeting_asc_files) {
-            $file_path = Join-Path $jar_file_directory -ChildPath $file
-            Write-Host "Adding checksum of sha256 to file: "$file_path
-            $file_path_sha256 = $file_path + ".sha256"
-            CertUtil -hashfile $file_path SHA256
-            CertUtil -hashfile $file_path SHA256 | find /v `"hash`" | Out-File -FilePath $file_path_sha256
-            Write-Host "Added checksum of sha256 to file: "$file_path
+            Write-Host "Adding checksum of sha256 to file: "$file
+            $file_path_sha256 = $file + ".sha256"
+            & $sha256sum_exe_path $file  1>$file_path_sha256
+            if ($lastExitCode -ne 0) {
+                Write-Host -Object "sha256sum command failed. Exitcode: $exitCode"
+                exit $lastExitCode
+            }
+            Write-Host "Added checksum of sha256 to file: "$file
         }
+        Set-Location $original_location
 
         Write-Host "GnuPG and sha256 signing to files completed."
         Write-Host "Deleting GnuPG key files."

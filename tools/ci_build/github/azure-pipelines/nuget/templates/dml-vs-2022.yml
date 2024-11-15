@@ -75,7 +75,7 @@ stages:
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '18.x'
+          versionSpec: '20.x'
 
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'
@@ -85,7 +85,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: '3.8'
+          versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
 

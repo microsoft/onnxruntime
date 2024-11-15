@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "test/providers/compare_provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
@@ -65,8 +66,8 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   std::vector<float> Y_data = FillZeros<float>(n_x_m_dims);
   test.AddOutput<float>("output", n_x_m_dims, Y_data);
 
-#ifndef USE_DML
-  // DML doesn't support more than one output for these ops yet
+#if !defined(USE_DML) && !defined(USE_WEBGPU)
+  // DML and WebGPU don't support more than one output for these ops yet
   const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
   std::vector<float> mean_data = FillZeros<float>(stats_dims);
   std::vector<float> var_data = FillZeros<float>(stats_dims);
@@ -79,11 +80,19 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 #endif
 
 #ifdef USE_CUDA
-  test.CompareWithCPU(kCudaExecutionProvider);
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    test.CompareWithCPU(kCudaExecutionProvider);
+  }
 #elif USE_ROCM
   test.CompareWithCPU(kRocmExecutionProvider);
-#elif USE_DML
-  test.CompareWithCPU(kDmlExecutionProvider);
+#elif USE_WEBGPU
+  test.CompareWithCPU(kWebGpuExecutionProvider);
+#endif
+
+#ifdef USE_DML
+  if (DefaultDmlExecutionProvider() != nullptr) {
+    test.CompareWithCPU(kDmlExecutionProvider);
+  }
 #endif
 }
 

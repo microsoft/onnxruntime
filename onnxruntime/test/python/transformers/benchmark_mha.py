@@ -72,6 +72,7 @@ class SdpaKernel(IntEnum):
     TRT_FLASH_ATTENTION = 32
     TRT_CROSS_ATTENTION = 64
     TRT_CAUSAL_ATTENTION = 128
+    LEAN_ATTENTION = 256
 
 
 # Since we support attention bias, so we only need support up to 2D mask.
@@ -598,8 +599,8 @@ def measure_latency(cuda_session: CudaSession, input_dict):
     return end - start
 
 
-def flops(batch, sequence_length, head_size, num_heads, causal):
-    return 4 * batch * sequence_length**2 * num_heads * head_size // (2 if causal else 1)
+def flops(batch, sequence_length_q, sequence_length_kv, head_size, num_heads, causal):
+    return 4 * batch * sequence_length_q * sequence_length_kv * num_heads * head_size // (2 if causal else 1)
 
 
 def tflops_per_second(flop, time):
@@ -613,6 +614,7 @@ def get_gpu_kernel_name(attention_kernel: SdpaKernel) -> str:
     kernel_names = {
         SdpaKernel.DEFAULT: "ort:default",
         SdpaKernel.FLASH_ATTENTION: "ort:flash",
+        SdpaKernel.LEAN_ATTENTION: "ort:lean",
         SdpaKernel.EFFICIENT_ATTENTION: "ort:efficient",
         SdpaKernel.CUDNN_FLASH_ATTENTION: "ort:cudnn",
         SdpaKernel.MATH: "ort:math",
@@ -808,16 +810,17 @@ def sdpa_kernel_from_debug_info(
 ):
     os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
     captured_text = None
+
     try:
         with CaptureStdout() as captured:
             session = create_session(config, sess_options, attention_kernel=attention_kernel)
             input_dict = config.random_inputs()
             session.infer(input_dict)
-            captured_text = captured.output.decode()
+        captured_text = captured.output.decode()
     except Exception as e:
         print(f"Failed to run {attention_kernel=} for {config=}. Exception: {e}")
-    finally:
-        os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "0"
+
+    os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "0"
 
     if captured_text is not None:
         m = re.search("SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
@@ -825,6 +828,7 @@ def sdpa_kernel_from_debug_info(
             name = m.group("kernel")
             kernel_names = {
                 "FLASH_ATTENTION": "ort:flash",
+                "LEAN_ATTENTION": "ort:lean",
                 "EFFICIENT_ATTENTION": "ort:efficient",
                 "CUDNN_FLASH_ATTENTION": "ort:cudnn",
                 "MATH": "ort:math",
@@ -867,6 +871,15 @@ def run_tflops_test(
                 SdpaKernel.CUDNN_FLASH_ATTENTION,
                 SdpaKernel.MATH,
             ]
+
+            if args.past_sequence_length > 0:
+                backends.append(SdpaKernel.LEAN_ATTENTION)
+
+            if args.past_sequence_length > 0 and causal:
+                backends.remove(SdpaKernel.CUDNN_FLASH_ATTENTION)
+
+            if args.past_sequence_length > 4096:
+                backends.remove(SdpaKernel.MATH)
         else:
             backends = [SdpaKernel.DEFAULT, SdpaKernel.EFFICIENT_ATTENTION, SdpaKernel.MATH]
     else:
@@ -884,6 +897,8 @@ def run_tflops_test(
 
     for input_format in formats:
         for batch_size, sequence_length, past_sequence_length, num_heads, head_size, enable_unfused in configs:
+            if past_sequence_length > 0 and input_format not in [InputFormats.Q_K_V_BSNH_BSNH_BSNH]:
+                continue
             config = MultiHeadAttentionConfig(
                 batch_size=batch_size,
                 sequence_length=sequence_length,
@@ -900,6 +915,7 @@ def run_tflops_test(
                 dtype=torch.float16 if use_gpu else torch.float,
                 share_past_present_buffer=False,
                 input_format=input_format,
+                has_past_input=past_sequence_length > 0,
                 has_attn_bias=args.has_attn_bias,
                 broadcast_attn_bias_dim_0=args.broadcast_attn_bias_dim_0,
                 broadcast_attn_bias_dim_1=args.broadcast_attn_bias_dim_1,
@@ -926,10 +942,18 @@ def run_tflops_test(
                             print(f"skip input_format for {vars(config)}")
                         continue
 
+                    if use_gpu and config.total_sequence_length > 8192:
+                        if config.verbose:
+                            print(f"skip large sequence length for {vars(config)}")
+                        continue
+
                 if use_gpu:
                     actual_kernel = sdpa_kernel_from_debug_info(config, attention_kernel, sess_options)
                     if actual_kernel is None:
                         print(f"Warning: skip {config} since kernel from debug info is None")
+                        continue
+                    if actual_kernel != request_kernel and request_kernel != "ort:default":
+                        print(f"Skip since {actual_kernel=} != {request_kernel=}")
                         continue
                 else:
                     # CPU has no debug info for now.
@@ -956,11 +980,17 @@ def run_tflops_test(
                 format_str = InputFormats.input_format_str(input_format)
 
                 # compute TFLOPS per second
-                speed = None
-                if past_sequence_length == 0:
-                    speed = tflops_per_second(
-                        flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
-                    )
+                speed = tflops_per_second(
+                    flops(
+                        batch_size,
+                        sequence_length,
+                        sequence_length + past_sequence_length,
+                        head_size,
+                        num_heads,
+                        causal,
+                    ),
+                    average_latency,
+                )
 
                 row = {
                     "use_gpu": use_gpu,
@@ -983,11 +1013,11 @@ def run_tflops_test(
                 }
                 csv_writer.writerow(row)
 
-                speed = f"{speed:.2f}" if speed is not None else "NA"
+                speed = f"{speed:.3f}" if speed is not None else "NA"
                 print(
                     f"{format_str}\t{causal}\t{args.has_attn_bias}\t{batch_size}\t"
                     f"{sequence_length}\t{past_sequence_length}\t{num_heads}\t{head_size}\t"
-                    f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed}\t{actual_kernel}\t{request_kernel}"
+                    f"{intra_op_num_threads}\t{average_latency * 1000:.3f}\t{speed}\t{actual_kernel}\t{request_kernel}"
                 )
 
 
@@ -1055,7 +1085,17 @@ def run_torch_test(
             except RuntimeError:
                 continue
 
-            speed = tflops_per_second(flops(batch_size, sequence_length, head_size, num_heads, causal), torch_latency)
+            speed = tflops_per_second(
+                flops(
+                    batch_size,
+                    sequence_length,
+                    sequence_length + past_sequence_length,
+                    head_size,
+                    num_heads,
+                    causal,
+                ),
+                torch_latency,
+            )
             input_format = "Q,K,V"
             print(
                 f"{input_format}\t{causal}\t{False}\t{batch_size}\t"
@@ -1090,7 +1130,8 @@ def run_tflops_tests(args):
         features += "_causal"
     if args.past_sequence_length > 0:
         features += "_past"
-    csv_filename = "benchmark_mha_{}_{}_{}.csv".format(
+    csv_filename = "{}_{}_{}_{}.csv".format(
+        args.csv_filename_prefix,
         features,
         "torch" if args.torch else "ort",
         datetime.now().strftime("%Y%m%d-%H%M%S"),
@@ -1342,6 +1383,14 @@ def _parse_arguments():
         help="broadcast attention bias dimension 1",
     )
     parser.set_defaults(broadcast_attn_bias_dim_1=False)
+
+    parser.add_argument(
+        "--csv_filename_prefix",
+        required=False,
+        type=str,
+        default="benchmark_mha",
+        help="Prefix of csv filename",
+    )
 
     args = parser.parse_args()
 

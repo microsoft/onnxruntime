@@ -27,7 +27,7 @@ DEFAULT_ANDROID_MIN_SDK_VER = 24
 
 # Android API 24 is the default target API version for Android builds, based on Microsoft 1CS requirements
 # It is possible to build from source using API level 21 and higher as the target SDK version
-DEFAULT_ANDROID_TARGET_SDK_VER = 33
+DEFAULT_ANDROID_TARGET_SDK_VER = 34
 
 
 def _parse_build_settings(args):

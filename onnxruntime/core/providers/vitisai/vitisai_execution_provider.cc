@@ -76,7 +76,17 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     auto& attrs = fused_node_graph.fused_node.get().GetAttributes();
     assert(attrs.count("index"));
     size_t index = attrs.at("index").i();
-    (**this->execution_providers_)[index]->set_fused_node(&fused_node_graph.fused_node.get());
+    auto& ep = (**this->execution_providers_)[index];
+    ep->set_fused_node(&fused_node_graph.fused_node.get());
+    if (ep->get_meta_def_fallback_CPU()) {
+      auto& subgraph = fused_node_graph.filtered_graph.get();
+      auto& logger = logging::LoggingManager::DefaultLogger();
+      auto model_proto = subgraph.CreateModel(logger)->ToProto();
+      subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+      auto local_registries = IOnnxRuntimeOpSchemaRegistryList{subgraph.GetSchemaRegistry()};
+      auto model = Model::Create(std::move(*model_proto), subgraph.ModelPath(), &local_registries, logger);
+      ep->set_model(model.release());
+    }
     compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
       auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
@@ -110,9 +120,19 @@ common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOption
   };
   auto error_code = vitisai_ep_on_run_start(**execution_providers_, (const void*)&run_options, get_config_entry);
   if (error_code) {
-    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, std::to_string(error_code));
+    std::string error_msg = "vitisai_ep_on_run_start ret: " + std::to_string(error_code);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
   }
   return Status::OK();
 }
 
+common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                             gsl::span<const char* const> values) {
+  auto error_code = vitisai_ep_set_ep_dynamic_options(**execution_providers_, keys.data(), values.data(), std::min(keys.size(), values.size()));
+  if (error_code) {
+    std::string error_msg = "vitisai_ep_set_ep_dynamic_options ret: " + std::to_string(error_code);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
+  }
+  return Status::OK();
+}
 }  // namespace onnxruntime

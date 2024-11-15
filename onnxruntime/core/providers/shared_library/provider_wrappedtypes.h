@@ -485,6 +485,10 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigEntry(this, config_key);
   }
 
+  std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const {
+    return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
+  }
+
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
@@ -1064,6 +1068,7 @@ class GraphViewer final {
     g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
   }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->GraphViewer__GetSchemaRegistry(this); }
 
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;

@@ -179,7 +179,9 @@ export class Tensor implements TensorInterface {
             type !== 'uint64' &&
             type !== 'int8' &&
             type !== 'uint8' &&
-            type !== 'bool'
+            type !== 'bool' &&
+            type !== 'uint4' &&
+            type !== 'int4'
           ) {
             throw new TypeError(`unsupported type "${type}" to create tensor from MLTensor`);
           }

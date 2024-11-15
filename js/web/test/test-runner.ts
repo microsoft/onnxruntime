@@ -291,14 +291,9 @@ export class ModelTestContext {
       if (['ml-tensor', 'ml-location'].includes(modelTest.ioBinding)) {
         const webnnOptions = executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption;
         const deviceType = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.deviceType;
-        const numThreads = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.numThreads;
         const powerPreference = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.powerPreference;
 
-        mlContext = await navigator.ml.createContext({
-          deviceType,
-          numThreads,
-          powerPreference,
-        });
+        mlContext = await navigator.ml.createContext({ deviceType, powerPreference });
         (executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption).context = mlContext;
         if (!deviceType) {
           (executionProviderConfig as ort.InferenceSession.WebNNContextOptions).deviceType = deviceType;
@@ -666,7 +661,8 @@ async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Ty
     shape: dims as number[],
     // Assign both shape and dimensions while transitioning to new API.
     dimensions: dims as number[],
-    usage: MLTensorUsage.READ,
+    usage: typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ,
+    readable: true,
   });
 
   return ort.Tensor.fromMLTensor(mlTensor, {
@@ -690,7 +686,8 @@ async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tenso
     shape: cpuTensor.dims as number[],
     // Assign both shape and dimensions while transitioning to new API.
     dimensions: cpuTensor.dims as number[],
-    usage: MLTensorUsage.WRITE,
+    usage: typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.WRITE,
+    writable: true,
   });
   mlContext.writeTensor(mlTensor, cpuTensor.data);
   return ort.Tensor.fromMLTensor(mlTensor, {

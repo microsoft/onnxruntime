@@ -365,6 +365,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Pad11);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad13);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad18);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad19);
+DML_OP_EXTERN_CREATION_FUNCTION(Pad21);
 DML_OP_EXTERN_CREATION_FUNCTION(SpaceToDepth);
 DML_OP_EXTERN_CREATION_FUNCTION(DepthToSpace);
 DML_OP_EXTERN_CREATION_FUNCTION(Sqrt);
@@ -445,6 +446,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(DynamicQuantizeMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(Cast);
 DML_OP_EXTERN_CREATION_FUNCTION(CastLike15);
 DML_OP_EXTERN_CREATION_FUNCTION(CastLike19);
+DML_OP_EXTERN_CREATION_FUNCTION(CastLike21);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyFromHost);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyToHost);
 DML_OP_EXTERN_CREATION_FUNCTION(TopK7);
@@ -792,6 +794,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 18,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO(     21,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
@@ -804,6 +807,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 13,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 18,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
+    {REG_INFO_VER( 21,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
 
 #if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 19,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
@@ -819,6 +823,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(     13,  Expand,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(0))},
+    {REG_INFO(     21,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(0))},
     {REG_INFO(      7,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
@@ -849,10 +854,12 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_COPY(14,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(16,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(19,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(21,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(21,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
@@ -1087,6 +1094,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     21,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 15,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 19,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
+    {REG_INFO_VER( 21,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,                  DmlGraphSupport::Supported)},
@@ -1102,6 +1110,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO(     13,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO(     19,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
+    {REG_INFO(     21,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO_DYNAMIC_OUTPUTS( 9,  NonZero,                 typeNameListDefault,            supportedTypeListNonZero,               DmlGraphSupport::NotSupported)},
     {REG_INFO_DYNAMIC_OUTPUTS(13,  NonZero,                 typeNameListDefault,            supportedTypeListNonZero,               DmlGraphSupport::NotSupported)},
 
@@ -1149,6 +1158,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(  1,   QLinearAdd,                         typeNameListDefault,            supportedTypeListInteger8,              DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
+    {REG_INFO(     21,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
     {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulIntegerToFloat,               typeNameListThree,              supportedTypeListMatMulIntegerToFloat,  DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
@@ -1162,6 +1172,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
+    {REG_INFO(      21, GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulNBits,                        typeNameListTwo,                supportedTypeListMatMulNBits,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryMatMulNBits)},
 
     // Operators that need to alias an input with an output
