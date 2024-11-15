@@ -29,7 +29,7 @@ When fine-tuning and quantizing a model, it is important to establish the correc
 
 - Is it better to quantize *before* fine-tuning or after?
 
-In theory, quantizing before fine-tuning should yield a higher quality model because it provides an opportunity for the fine-tuning process to recover some of the loss from the quantization process. In this blog post we demonstrate how Olive - a state-of-the-art model optimization toolkit for the ONNX runtime - can help you answer when to quantize and which quantization algorithm to use for a given model architecture and scenario.
+In theory, quantizing before fine-tuning should produce a better model as LoRA weights are trained with the same quantized base model weights they will be deployed with. This avoids the accuracy loss that occurs when training on float base weights and then deploying with a quantized base model. In this blog post we demonstrate how Olive - a state-of-the-art model optimization toolkit for the ONNX runtime - can help you answer when to quantize and which quantization algorithm to use for a given model architecture and scenario.
 
 Also, as part of answering the question of when to quantize we'll show how the following different quantization *algorithms* impact accuracy:
 
@@ -153,7 +153,7 @@ output_dir: models/eval
 
 We then executed the Olive configuration using:
 
-<pre><code>olive run perplexity-config.yaml</code></pre>
+<pre><code>olive run --config perplexity-config.yaml</code></pre>
 
 ## 📊 Results
 
@@ -193,4 +193,4 @@ The goal is for the quantized models to be as close to the fine-tuned model (sol
 
 ## Conclusion
 
-In this blog post, we demonstrated how we utilised Olive to address common AI model optimisation queries. Our findings revealed that quantizing before fine-tuning significantly enhances model quality for both Phi-3.5-mini-instruct and Llama-3.1-8B-Instruct. These quantied variants closely match the quality of their full precision (FP32) counterparts, while requiring less memory and storage. This underscores the potential for on-device AI to deliver high-quality performance with a reduced resource footprint.
+In this blog post, we demonstrated how we utilised Olive to address common AI model optimisation queries. Our findings revealed that quantizing before fine-tuning enhances model quality for both Phi-3.5-mini-instruct and Llama-3.1-8B-Instruct. These quantied variants closely match the quality of their full precision (FP32) counterparts, while requiring less memory and storage. This underscores the potential for on-device AI to deliver high-quality performance with a reduced resource footprint.
