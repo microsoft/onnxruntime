@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_neon.h
+    qnbitgemm_kernel_neon.h
 
 Abstract:
 
@@ -53,7 +53,7 @@ SQ4BitGemmM1Kernel_CompFp32(
 );
 
 void
-Q4BitBlkDequantBForSgemm_CompFp32(
+SQ4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
     const std::byte* QuantBData,
@@ -63,6 +63,47 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t CountK,
     size_t BlockCountK
 );
+
+// HQNBIT_CompFp16 declarations
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+void
+HQ4BitGemmPackQuantBData_CompFp16(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+void
+HQ4BitBlkDequantBForHgemm_CompFp16(
+    size_t BlkLen,
+    MLAS_FP16* FpData,
+    const std::byte* QuantBData,
+    const MLAS_FP16* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    size_t CountN,
+    size_t K,
+    size_t BlockCountK
+);
+
+void
+HQ4BitGemmKernel_CompFp16(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* C,
+    size_t CountM,
+    size_t CountN,
+    size_t K,
+    size_t lda,
+    size_t ldb,
+    size_t ldc
+);
+
+#endif  // !(defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64))
 
 // SQNBIT_CompInt8 declarations
 

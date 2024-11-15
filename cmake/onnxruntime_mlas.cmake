@@ -84,8 +84,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
-        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.h
-        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.h
+        ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         ${MLAS_SRC_DIR}/fp16_neon_common.cpp
@@ -363,8 +363,8 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.h
+          ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         )
