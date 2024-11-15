@@ -67,7 +67,10 @@ function(AddTest)
     if(onnxruntime_USE_CUDA)
       #XXX: we should not need to do this. onnxruntime_test_all.exe should not have direct dependency on CUDA DLLs,
       # otherwise it will impact when CUDA DLLs can be unloaded.
-      target_link_libraries(${_UT_TARGET} PRIVATE CUDA::cudart cudnn_frontend)
+      target_link_libraries(${_UT_TARGET} PRIVATE CUDA::cudart)
+      if(NOT onnxruntime_CUDA_MINIMAL)
+          target_link_libraries(${_UT_TARGET} PRIVATE cudnn_frontend)
+      endif()
     endif()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
