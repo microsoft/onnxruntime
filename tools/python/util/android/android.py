@@ -110,7 +110,8 @@ def start_emulator(
 ) -> subprocess.Popen:
     if is_emulator_running_by_avd(avd_name=avd_name):
         raise RuntimeError(
-            f"An emulator with avd_name{avd_name} is already running. Please close it before starting a new one.")
+            f"An emulator with avd_name{avd_name} is already running. Please close it before starting a new one."
+        )
     with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
             sdk_tool_paths.emulator,
