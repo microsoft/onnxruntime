@@ -291,7 +291,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "}\n";
   if (seqlen_k_) {
-    shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < total_sequence_length; total_seq_id++) {\n"
+    shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
                               << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
                               << "}\n";
   }
