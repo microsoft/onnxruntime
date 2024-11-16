@@ -49,6 +49,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   Ort::SessionOptions session_options;
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
+  plugin_ = performance_test_config.plugin;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
@@ -170,6 +171,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     const auto& api = Ort::GetApi();
+    if (plugin_) {
+      Ort::ThrowOnError(api.RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+      std::vector<const char*> keys{"trt_engine_cache_enable", "trt_dump_ep_context_model", "trt_ep_context_embed_mode"}, values{"0", "0", "0"};
+      Ort::ThrowOnError(api.SessionOptionsAppendPluginExecutionProvider(session_options, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+    } else {
     OrtTensorRTProviderOptionsV2* tensorrt_options;
     Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
     std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
@@ -213,9 +219,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
 
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
-
+    }
     OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = tensorrt_options->device_id;
+//    cuda_options.device_id = tensorrt_options->device_id;
+    cuda_options.device_id = 0;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test

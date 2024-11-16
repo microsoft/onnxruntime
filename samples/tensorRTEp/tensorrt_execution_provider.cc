@@ -1676,7 +1676,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     };
 
     info_ = TensorrtExecutionProviderInfo::FromProviderOptions(ep_info);
-    if (ep_info.size() > 0) info_.has_trt_options = true; 
+    if (ep_info.size() > 0) info_.has_trt_options = true;
     device_id_ = info_.device_id;
     api_->CreateDevice(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU, OrtMemoryType::OrtMemoryType_Default, device_id_, &default_device);
 
@@ -2535,7 +2535,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
                                        std::string& engine_cache_path,
                                        std::string& engine_cache_relative_path_to_context_model_dir,
                                        const char* ep_context_node_name,
-                                       char* serialized_engine, 
+                                       char* serialized_engine,
                                        size_t serialized_engine_size) {
     // if ep context model name is not given, create a model name based on original model name
     if (ctx_model_path_.empty()) {
@@ -3146,7 +3146,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
       // dump ep context model
       if (this_->dump_ep_context_model_ && this_->ep_context_embed_mode_) {
           graph_api_->OrtGraph_CreateOrUpdateEpCtxGraph(nullptr,
-                                                        fused_node_name.c_str(), 
+                                                        fused_node_name.c_str(),
                                                         1, // main_context
                                                         this_->ep_context_embed_mode_,
                                                         this_->ep_cache_context_attr_.c_str(),
@@ -3365,7 +3365,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 //        IncrementRegularRunCountBeforeGraphCapture();
 //      }
 //    }
-    std::cout << "end of ComputeFunc in TRTEp's CreateNodeComputeInfoFromGraph()\n";
+//    std::cout << "end of ComputeFunc in TRTEp's CreateNodeComputeInfoFromGraph()\n";
     return nullptr;
   };
 

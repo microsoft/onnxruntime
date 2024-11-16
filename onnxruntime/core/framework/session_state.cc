@@ -105,11 +105,18 @@ SessionState::SessionState(Graph& graph,
     allocators_ = allocators_unique_ptr_.get();
     // The allocator registration rule:
     // Each location (OrtDevice) will only have 1 allocator used for whole session.
-    // The EP which is registered first will have higher priority
+    // For plugin EP, let the builtin EP with the same OrtDevice value register first (think about the plugin TRT and builtin CUDA scenario, it may be changed back in the future)
+    // Once the allocator has been registered, it won't be overwritten by the allocator with the same key (OrtDevice)
+    std::string register_resource_after = "";
+    IExecutionProvider* plugin_ep = nullptr;
     for (auto& ep : execution_providers_) {
-      auto allocators = ep->CreatePreferredAllocators();
-      for (auto& alloc : allocators) {
-        allocators_->insert({alloc->Info().device, alloc});  // DONT overwrite existing key
+      if (register_resource_after == "") {
+        register_resource_after = ShouldPostPoneRegisterResourceFor(ep.get(), execution_providers_);
+        if (register_resource_after == "") InitializeAllocators(ep.get());
+        else plugin_ep = ep.get();
+      } else {
+        InitializeAllocators(ep.get());
+        if (register_resource_after == ep->Type()) InitializeAllocators(plugin_ep);
       }
     }
   }
@@ -1379,15 +1386,15 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // register stream handles from EP instances
 #ifdef ORT_ENABLE_STREAM
   std::string register_resource_after = "";
-  IExecutionProvider* out_tree_ep = nullptr;
+  IExecutionProvider* plugin_ep = nullptr;
   for (auto& ep : execution_providers_) {
     if (register_resource_after == "") {
       register_resource_after = ShouldPostPoneRegisterResourceFor(ep.get(), execution_providers_);
       if (register_resource_after == "") ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
-      else out_tree_ep = ep.get();
+      else plugin_ep = ep.get();
     } else {
       ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
-      if (register_resource_after == ep->Type()) out_tree_ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+      if (register_resource_after == ep->Type()) plugin_ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
     }
   }
 #endif

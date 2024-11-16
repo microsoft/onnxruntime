@@ -37,7 +37,7 @@ void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
 #else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
 #endif
-    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
+    std::vector<const char*> keys{"device_id"}, values{"0"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 }
 
@@ -47,7 +47,7 @@ void TestTensorRTAndCudaEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* 
 #else
     THROW_ON_ERROR(g_ort->RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
 #endif
-    std::vector<const char*> keys{"device_id", "str_property"}, values{"0", "strvalue"};
+    std::vector<const char*> keys{"device_id"}, values{"0"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendPluginExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 
     OrtCUDAProviderOptionsV2* cuda_options = nullptr;

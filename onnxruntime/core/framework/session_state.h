@@ -394,6 +394,13 @@ class SessionState {
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
+  inline void InitializeAllocators(IExecutionProvider* ep) {
+    auto allocators = ep->CreatePreferredAllocators();
+    for (auto& alloc : allocators) {
+      allocators_->insert({alloc->Info().device, alloc});  // DONT overwrite existing key
+    }
+  }
+
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
       gsl::span<const OrtValue> inputs,

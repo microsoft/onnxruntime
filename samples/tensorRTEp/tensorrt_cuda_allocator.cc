@@ -20,7 +20,7 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
     CUDA_RETURN_IF_ERROR(cuda_err);
   }
 #else
-  ORT_UNUSED_PARAMETER(throw_when_fail);
+//  ORT_UNUSED_PARAMETER(throw_when_fail);
 #endif
 }
 

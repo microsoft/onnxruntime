@@ -70,6 +70,7 @@ struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  bool plugin = false;
 };
 
 }  // namespace perftest
