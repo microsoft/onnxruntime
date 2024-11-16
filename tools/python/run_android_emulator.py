@@ -77,13 +77,12 @@ def main():
             sys.stdin.readline()
 
     elif args.start:
-        log.info(f"Starting emulator: {args.avd_name}")
         emulator_proc = android.start_emulator(**start_emulator_args)
+
         with open(args.emulator_pid_file, mode="w") as emulator_pid_file:
             print(f"{emulator_proc.pid}", file=emulator_pid_file)
 
     elif args.stop:
-        log.info (f"Stopping emulator: {args.avd_name}")
         with open(args.emulator_pid_file) as emulator_pid_file:
             emulator_pid = int(emulator_pid_file.readline().strip())
 
