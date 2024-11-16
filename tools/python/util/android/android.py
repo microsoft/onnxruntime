@@ -105,7 +105,8 @@ def _stop_process_with_pid(pid: int):
 
 
 def start_emulator(
-    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None
+    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None,
+        timeout_minutes: int = 20
 ) -> subprocess.Popen:
     if is_emulator_running_by_avd(avd_name=avd_name):
         raise RuntimeError(
@@ -121,6 +122,7 @@ def start_emulator(
             "America/Los_Angeles",
             "-no-snapstorage",
             "-no-audio",
+            "-no-bt", # No bluetooth
             "-no-boot-anim",
             "-gpu",
             "guest",
@@ -158,9 +160,9 @@ def start_emulator(
         waiter_stack.callback(_stop_process, waiter_process)
 
         # poll subprocesses.
-        # allow 20 minutes for startup as some CIs are slow. TODO: Make timeout configurable if needed.
+        # allow 20 minutes for startup as some CIs are slow.
         sleep_interval_seconds = 10
-        end_time = datetime.datetime.now() + datetime.timedelta(minutes=20)
+        end_time = datetime.datetime.now() + datetime.timedelta(minutes=timeout_minutes)
 
         while True:
             waiter_ret, emulator_ret = waiter_process.poll(), emulator_process.poll()
@@ -226,6 +228,7 @@ def is_emulator_running_by_avd(avd_name: str) -> bool:
         ]
 
         if not running_emulators:
+            _log.warning("No emulators running.")
             return False  # No emulators running
 
         # Step 2: Check each running emulator's AVD name
@@ -237,11 +240,12 @@ def is_emulator_running_by_avd(avd_name: str) -> bool:
                 if avd_info == avd_name:
                     return True
             except subprocess.SubprocessError:
+                _log.warning(f"Error checking AVD name for emulator: {emulator}")
                 continue  # Skip if there's an issue querying a specific emulator
-
+        _log.warning(f"No emulator running with AVD name: {avd_name}")
         return False  # No matching AVD name found
     except subprocess.SubprocessError as e:
-        print(f"Error checking emulator status: {e}")
+        _log.warning(f"Error checking emulator status: {e}")
         return False
 
 
