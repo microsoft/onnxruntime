@@ -202,7 +202,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, skip_size);
       MlasConvertHalfToFloatBuffer(skip_data, skip_fp32.get(), skip_size);
       skip_data_f = skip_fp32.get();
-    } else if(prepacked_skip_fp32_data_) {
+    } else if (prepacked_skip_fp32_data_) {
       skip_data_f = prepacked_skip_fp32_data_.get();
     }
 
