@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_BRANCH=main
 
 WORKDIR /code
 
-ENV PATH /code/cmake-3.27.3-linux-x86_64/bin:${PATH}
+ENV PATH=/code/cmake-3.27.3-linux-x86_64/bin:${PATH}
 
 # Prepare onnxruntime repository & build onnxruntime
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\

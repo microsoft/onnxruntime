@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_neon.cpp
+    qnbitgemm_kernel_neon.cpp
 
 Abstract:
 
@@ -19,8 +19,8 @@ Abstract:
 
 #include <cassert>
 
-#include "sqnbitgemm.h"
-#include "sqnbitgemm_kernel_neon.h"
+#include "qnbitgemm.h"
+#include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
 
 namespace sqnbitgemm_neon
@@ -34,11 +34,11 @@ namespace
 //
 
 size_t
-SQ4BitGemmPackQuantBDataSize(
+Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
@@ -55,7 +55,7 @@ SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
@@ -69,7 +69,7 @@ SQ4BitGemmPackQuantBData(
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    const size_t SubBlkLen = (ComputeType == CompInt8)
+    const size_t SubBlkLen = (ComputeType == SQNBIT_CompInt8)
                                  ? ((BlkLen == 16) ? 16 : 32)
                                  : 16;
 
@@ -126,18 +126,18 @@ SQ4BitGemmPackQuantBData(
 //
 
 size_t
-SQ4BitGemmPerGemmWorkspaceSize(
+Q4BitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
 
     switch (ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
@@ -150,15 +150,15 @@ SQ4BitGemmPerGemmWorkspaceSize(
 }
 
 size_t
-SQ4BitGemmPerGemmWorkspaceAlignment(
+Q4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
 
     switch (ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             return Q8BlkAlignment();
         }
         default: {
@@ -175,20 +175,27 @@ SQ4BitGemmPerGemmWorkspaceAlignment(
 // Kernel dispatch structure definition.
 //
 
-const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
-    MLAS_SQNBIT_GEMM_DISPATCH d;
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
+    MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.SQ4BitGemmPackQuantBDataSize = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
 
-    d.SQ4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceSize;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::SQ4BitGemmPerGemmWorkspaceAlignment;
+    d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
+    d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
-    d.Q4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::Q4BitBlkDequantBForSgemm_CompFp32;
-
-    d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
+    d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+        d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
+    }
     d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+    d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
+    d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
+    d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
     return d;
 }();

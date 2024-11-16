@@ -41,7 +41,7 @@ parameters:
 
 variables:
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241111.1
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
@@ -123,7 +123,7 @@ stages:
                 --parallel \
                 --build_wheel \
                 --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
-                --enable_cuda_profiling --enable_cuda_nhwc_ops \
+                --enable_cuda_profiling \
                 --enable_pybind --build_java \
                 --use_cache \
                 --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \

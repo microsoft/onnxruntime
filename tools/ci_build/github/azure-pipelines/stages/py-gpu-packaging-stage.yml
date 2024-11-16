@@ -68,9 +68,9 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
+            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241111.1
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241020.1
+            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241111.1
 
   - ${{ if eq(parameters.enable_windows_dml, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
@@ -79,6 +79,5 @@ stages:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: ${{ python_version }}
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
           cmake_build_type: ${{ parameters.cmake_build_type }}

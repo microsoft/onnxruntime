@@ -26,6 +26,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
+    CreateUnaryOpBuilder("Sign", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
     CreateUnaryOpBuilder("Tan", op_registrations);
@@ -80,6 +81,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
+  {  // CumSum
+    CreateConcatOpBuilder("CumSum", op_registrations);
+  }
+
   {  // Dropout
     CreateDropoutOpBuilder("Dropout", op_registrations);
   }
@@ -88,6 +93,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateQDQOpBuilder("DequantizeLinear", op_registrations);
     CreateQDQOpBuilder("QuantizeLinear", op_registrations);
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
+  }
+
+  {  // Einsum
+    CreateEinsumOpBuilder("Einsum", op_registrations);
   }
 
   {  // Expand
@@ -132,6 +141,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Xor", op_registrations);
   }
 
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
   {  // LSTM
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
@@ -145,6 +158,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
+    CreateNormalizationOpBuilder("SimplifiedLayerNormalization", op_registrations);
   }
 
   {  // Pad
