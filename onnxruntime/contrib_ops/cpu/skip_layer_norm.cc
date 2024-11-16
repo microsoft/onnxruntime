@@ -257,9 +257,6 @@ template <typename T, bool simplified>
 Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                              bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
-  ORT_UNUSED_PARAMETER(tensor);
-  ORT_UNUSED_PARAMETER(input_idx);
-  ORT_UNUSED_PARAMETER(alloc);
 
   is_packed = false;
   if (input_idx == 1) {  // skip
