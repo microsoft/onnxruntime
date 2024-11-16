@@ -215,6 +215,7 @@ def start_emulator(
             raise RuntimeError("Emulator failed to start.")
         return emulator_process
 
+
 def is_emulator_running_by_avd(avd_name: str) -> bool:
     """
     Check if an emulator is running based on the provided AVD name.
