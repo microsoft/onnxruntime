@@ -52,7 +52,7 @@ stages:
         buildArch: x64
         additionalBuildFlags: >-
           --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
-          --use_dml
+          --use_dml --disable_cuda_nhwc_ops
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
