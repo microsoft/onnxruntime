@@ -268,8 +268,7 @@ Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx
   } else if (input_idx == 2) {  // gamma
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_gamma_fp32_data_, is_packed);
   } else if (input_idx == 3) {
-    if (simplified)
-    {
+    if (simplified) {
       // bias
       ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
     } else {
