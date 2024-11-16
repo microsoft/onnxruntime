@@ -223,6 +223,7 @@ def is_emulator_running_by_avd(avd_name: str) -> bool:
     try:
         # Step 1: List running devices
         result = subprocess.check_output(["adb", "devices"], text=True).strip()
+        _log.info(f"adb devices output:\n{result}")
         running_emulators = [
             line.split("\t")[0] for line in result.splitlines()[1:] if "emulator" in line
         ]
