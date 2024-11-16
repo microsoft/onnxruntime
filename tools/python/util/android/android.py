@@ -283,8 +283,7 @@ def stop_emulator_by_proc(emulator_proc: subprocess.Popen, timeout: int = 120):
 
     while is_emulator_running_by_proc(emulator_proc):
         if datetime.datetime.now() > end_time:
-            raise RuntimeError(
-                f"Failed to stop the emulator within the specified timeout = {timeout} seconds.")
+            raise RuntimeError(f"Failed to stop the emulator within the specified timeout = {timeout} seconds.")
         _log.debug("Emulator still running. Checking again in 5 seconds...")
         time.sleep(interval)
 
